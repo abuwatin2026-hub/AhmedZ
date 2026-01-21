@@ -1,0 +1,12 @@
+{
+  "appId": "com.caty.app",
+  "appName": "مؤسسة أحمد زنقاح",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "android": {
+    "allowMixedContent": false
+  },
+  "server": {
+    "androidScheme": "https"
+  }
+}

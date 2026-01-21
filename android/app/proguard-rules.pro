@@ -1,0 +1,4 @@
+-keep class com.getcapacitor.** { *; }
+-keep class com.capacitorjs.plugins.** { *; }
+-dontwarn com.getcapacitor.**
+-dontwarn com.capacitorjs.plugins.**

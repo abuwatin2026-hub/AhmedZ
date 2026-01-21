@@ -1,0 +1,5 @@
+/version.json
+  Cache-Control: no-store
+
+/service-worker.js
+  Cache-Control: no-store

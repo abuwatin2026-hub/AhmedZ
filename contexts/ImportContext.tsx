@@ -1,0 +1,312 @@
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import { getSupabaseClient } from '../supabase';
+import { ImportShipment, ImportShipmentItem, ImportExpense } from '../types';
+import { useToast } from './ToastContext';
+import { useAuth } from './AuthContext';
+
+interface ImportContextType {
+    shipments: ImportShipment[];
+    loading: boolean;
+    fetchShipments: () => Promise<void>;
+    getShipmentDetails: (id: string) => Promise<ImportShipment | null>;
+    addShipment: (shipment: Omit<ImportShipment, 'id' | 'createdAt' | 'updatedAt'>) => Promise<ImportShipment | null>;
+    updateShipment: (id: string, updates: Partial<ImportShipment>) => Promise<void>;
+    deleteShipment: (id: string) => Promise<void>;
+    addShipmentItem: (item: Omit<ImportShipmentItem, 'id' | 'createdAt' | 'updatedAt'>) => Promise<void>;
+    deleteShipmentItem: (id: string) => Promise<void>;
+    addExpense: (expense: Omit<ImportExpense, 'id' | 'createdAt' | 'updatedAt'>) => Promise<void>;
+    deleteExpense: (id: string) => Promise<void>;
+    calculateLandedCost: (shipmentId: string) => Promise<void>;
+}
+
+const ImportContext = createContext<ImportContextType | undefined>(undefined);
+
+export const ImportProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+    const [shipments, setShipments] = useState<ImportShipment[]>([]);
+    const [loading, setLoading] = useState(true);
+    const { showNotification } = useToast();
+    const { hasPermission, user } = useAuth();
+    const supabase = getSupabaseClient();
+
+    const fetchShipments = useCallback(async () => {
+        if (!supabase || !hasPermission('stock.manage')) return;
+        try {
+            const { data, error } = await supabase
+                .from('import_shipments')
+                .select('*')
+                .order('created_at', { ascending: false });
+
+            if (error) throw error;
+
+            setShipments(data.map((d: any) => ({
+                id: d.id,
+                referenceNumber: d.reference_number,
+                supplierId: d.supplier_id,
+                status: d.status,
+                originCountry: d.origin_country,
+                destinationWarehouseId: d.destination_warehouse_id,
+                shippingCarrier: d.shipping_carrier,
+                trackingNumber: d.tracking_number,
+                departureDate: d.departure_date,
+                expectedArrivalDate: d.expected_arrival_date,
+                actualArrivalDate: d.actual_arrival_date,
+                totalWeightKg: d.total_weight_kg,
+                notes: d.notes,
+                createdAt: d.created_at,
+                updatedAt: d.updated_at,
+                createdBy: d.created_by
+            })));
+        } catch (error: any) {
+            console.error('Error fetching shipments:', error);
+            showNotification('Error fetching shipments', 'error');
+        }
+    }, [hasPermission, showNotification, supabase]);
+
+    const getShipmentDetails = async (id: string) => {
+        if (!supabase) return null;
+        try {
+            const { data, error } = await supabase
+                .from('import_shipments')
+                .select('*')
+                .eq('id', id)
+                .single();
+
+            if (error) throw error;
+
+            const { data: items } = await supabase.from('import_shipments_items').select('*').eq('shipment_id', id);
+            const { data: expenses } = await supabase.from('import_expenses').select('*').eq('shipment_id', id);
+
+            const shipment: ImportShipment = {
+                id: data.id,
+                referenceNumber: data.reference_number,
+                supplierId: data.supplier_id,
+                status: data.status,
+                originCountry: data.origin_country,
+                destinationWarehouseId: data.destination_warehouse_id,
+                shippingCarrier: data.shipping_carrier,
+                trackingNumber: data.tracking_number,
+                departureDate: data.departure_date,
+                expectedArrivalDate: data.expected_arrival_date,
+                actualArrivalDate: data.actual_arrival_date,
+                totalWeightKg: data.total_weight_kg,
+                notes: data.notes,
+                createdAt: data.created_at,
+                updatedAt: data.updated_at,
+                createdBy: data.created_by,
+                items: items?.map((i: any) => ({
+                    id: i.id,
+                    shipmentId: i.shipment_id,
+                    itemId: i.item_id,
+                    quantity: i.quantity,
+                    unitPriceFob: i.unit_price_fob,
+                    currency: i.currency,
+                    expiryDate: i.expiry_date,
+                    landingCostPerUnit: i.landing_cost_per_unit,
+                    notes: i.notes,
+                    createdAt: i.created_at,
+                    updatedAt: i.updated_at
+                })) || [],
+                expenses: expenses?.map((e: any) => ({
+                    id: e.id,
+                    shipmentId: e.shipment_id,
+                    expenseType: e.expense_type,
+                    amount: e.amount,
+                    currency: e.currency,
+                    exchangeRate: e.exchange_rate,
+                    description: e.description,
+                    invoiceNumber: e.invoice_number,
+                    paidAt: e.paid_at,
+                    createdBy: e.created_by,
+                    createdAt: e.created_at,
+                    updatedAt: e.updated_at
+                })) || []
+            };
+            return shipment;
+
+        } catch (error: any) {
+            console.error('Error fetching shipment details:', error);
+            showNotification('Error fetching details', 'error');
+            return null;
+        }
+    };
+
+    const addShipment = async (shipment: Omit<ImportShipment, 'id' | 'createdAt' | 'updatedAt'>) => {
+        if (!supabase) return null;
+        try {
+            const { data, error } = await supabase.from('import_shipments').insert([{
+                reference_number: shipment.referenceNumber,
+                supplier_id: shipment.supplierId,
+                status: shipment.status,
+                origin_country: shipment.originCountry,
+                destination_warehouse_id: shipment.destinationWarehouseId,
+                shipping_carrier: shipment.shippingCarrier,
+                tracking_number: shipment.trackingNumber,
+                departure_date: shipment.departureDate,
+                expected_arrival_date: shipment.expectedArrivalDate,
+                total_weight_kg: shipment.totalWeightKg,
+                notes: shipment.notes,
+                created_by: user?.id
+            }]).select().single();
+
+            if (error) throw error;
+            showNotification('Shipment created successfully', 'success');
+            fetchShipments();
+
+            return {
+                id: data.id,
+                referenceNumber: data.reference_number,
+                status: data.status,
+                createdAt: data.created_at
+            } as ImportShipment;
+
+        } catch (error: any) {
+            console.error('Error adding shipment:', error);
+            showNotification(error.message, 'error');
+            return null;
+        }
+    };
+
+    const updateShipment = async (id: string, updates: Partial<ImportShipment>) => {
+        if (!supabase) return;
+        try {
+            const dbUpdates: any = {};
+            if (updates.status) dbUpdates.status = updates.status;
+            if (updates.referenceNumber) dbUpdates.reference_number = updates.referenceNumber;
+            if (updates.actualArrivalDate) dbUpdates.actual_arrival_date = updates.actualArrivalDate;
+            if (updates.notes) dbUpdates.notes = updates.notes;
+            dbUpdates.updated_at = new Date().toISOString();
+
+            const { error } = await supabase
+                .from('import_shipments')
+                .update(dbUpdates)
+                .eq('id', id);
+
+            if (error) throw error;
+            showNotification('Shipment updated', 'success');
+            fetchShipments();
+        } catch (error: any) {
+            console.error('Error updating shipment:', error);
+            showNotification(error.message, 'error');
+        }
+    };
+
+    const deleteShipment = async (id: string) => {
+        if (!supabase) return;
+        try {
+            const { error } = await supabase.from('import_shipments').delete().eq('id', id);
+            if (error) throw error;
+            showNotification('Shipment deleted', 'success');
+            fetchShipments();
+        } catch (error: any) {
+            showNotification(error.message, 'error');
+        }
+    };
+
+    const addShipmentItem = async (item: Omit<ImportShipmentItem, 'id' | 'createdAt' | 'updatedAt'>) => {
+        if (!supabase) return;
+        try {
+            const { error } = await supabase.from('import_shipments_items').insert([{
+                shipment_id: item.shipmentId,
+                item_id: item.itemId,
+                quantity: item.quantity,
+                unit_price_fob: item.unitPriceFob,
+                currency: item.currency,
+                expiry_date: item.expiryDate,
+                notes: item.notes
+            }]);
+            if (error) throw error;
+            showNotification('Item added', 'success');
+        } catch (error: any) {
+            showNotification(error.message, 'error');
+        }
+    };
+
+    const deleteShipmentItem = async (id: string) => {
+        if (!supabase) return;
+        try {
+            const { error } = await supabase.from('import_shipments_items').delete().eq('id', id);
+            if (error) throw error;
+            showNotification('Item removed', 'success');
+        } catch (error: any) {
+            showNotification(error.message, 'error');
+        }
+    };
+
+    const addExpense = async (expense: Omit<ImportExpense, 'id' | 'createdAt' | 'updatedAt'>) => {
+        if (!supabase) return;
+        try {
+            const { error } = await supabase.from('import_expenses').insert([{
+                shipment_id: expense.shipmentId,
+                expense_type: expense.expenseType,
+                amount: expense.amount,
+                currency: expense.currency || 'YER',
+                exchange_rate: expense.exchangeRate || 1,
+                description: expense.description,
+                invoice_number: expense.invoiceNumber,
+                paid_at: expense.paidAt,
+                created_by: user?.id
+            }]);
+            if (error) throw error;
+            showNotification('Expense added', 'success');
+        } catch (error: any) {
+            showNotification(error.message, 'error');
+        }
+    };
+
+    const deleteExpense = async (id: string) => {
+        if (!supabase) return;
+        try {
+            const { error } = await supabase.from('import_expenses').delete().eq('id', id);
+            if (error) throw error;
+            showNotification('Expense removed', 'success');
+        } catch (error: any) {
+            showNotification(error.message, 'error');
+        }
+    };
+
+    const calculateLandedCost = async (shipmentId: string) => {
+        if (!supabase) return;
+        try {
+            const { error } = await supabase.rpc('calculate_shipment_landed_cost', { p_shipment_id: shipmentId });
+            if (error) throw error;
+            showNotification('Landed cost calculated successfully', 'success');
+        } catch (error: any) {
+            console.error('Error calculating landed cost:', error);
+            showNotification(error.message, 'error');
+        }
+    };
+
+    useEffect(() => {
+        if (user && supabase) {
+            fetchShipments();
+            setLoading(false);
+        }
+    }, [user, fetchShipments, supabase]);
+
+    return (
+        <ImportContext.Provider value={{
+            shipments,
+            loading,
+            fetchShipments,
+            getShipmentDetails,
+            addShipment,
+            updateShipment,
+            deleteShipment,
+            addShipmentItem,
+            deleteShipmentItem,
+            addExpense,
+            deleteExpense,
+            calculateLandedCost
+        }}>
+            {children}
+        </ImportContext.Provider>
+    );
+};
+
+export const useImport = () => {
+    const context = useContext(ImportContext);
+    if (context === undefined) {
+        throw new Error('useImport must be used within an ImportProvider');
+    }
+    return context;
+};

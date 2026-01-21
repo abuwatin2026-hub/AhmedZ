@@ -1,0 +1,357 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================
+   قاتي - Qati - Custom Styles
+   ============================================ */
+
+:root {
+  --color-primary-teal: #2F2B7C;
+  --color-dark-teal: #17132E;
+  --color-mint-green: #7E7BFF;
+  --color-light-mint: #B0AEFF;
+  --color-primary-gold: #B0AEFF;
+  --color-light-gold: #E9E8FF;
+  --color-cream: #F4F3FF;
+
+  /* Shadows */
+  --shadow-gold: 0 0 20px rgba(176, 174, 255, 0.3);
+  --shadow-teal: 0 0 20px rgba(47, 43, 124, 0.3);
+
+  --color-primary-50: 244 243 255;
+  --color-primary-100: 233 232 255;
+  --color-primary-200: 209 208 255;
+  --color-primary-300: 176 174 255;
+  --color-primary-400: 126 123 255;
+  --color-primary-500: 47 43 124;
+  --color-primary-600: 41 37 102;
+  --color-primary-700: 35 31 82;
+  --color-primary-800: 29 25 63;
+  --color-primary-900: 23 19 46;
+  --color-primary-950: 15 11 31;
+
+  --color-mint-50: 248 248 255;
+  --color-mint-100: 239 239 255;
+  --color-mint-200: 220 219 255;
+  --color-mint-300: 197 196 255;
+  --color-mint-400: 154 151 255;
+  --color-mint-500: 126 123 255;
+  --color-mint-600: 110 107 235;
+  --color-mint-700: 90 87 204;
+  --color-mint-800: 72 69 169;
+  --color-mint-900: 54 52 129;
+
+  --color-gold-50: 250 250 255;
+  --color-gold-100: 242 241 255;
+  --color-gold-200: 233 232 255;
+  --color-gold-300: 220 219 255;
+  --color-gold-400: 197 196 255;
+  --color-gold-500: 176 174 255;
+  --color-gold-600: 154 151 255;
+  --color-gold-700: 126 123 255;
+  --color-gold-800: 90 87 204;
+  --color-gold-900: 72 69 169;
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  width: 100%;
+}
+
+html {
+  width: 100%;
+}
+
+#root {
+  width: 100%;
+}
+
+img,
+video,
+canvas,
+svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* ============================================
+   Yemeni Decorative Patterns
+   ============================================ */
+
+.yemeni-zigzag {
+  position: relative;
+}
+
+.yemeni-zigzag::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: repeating-linear-gradient(45deg,
+      #B0AEFF 0px,
+      #B0AEFF 8px,
+      transparent 8px,
+      transparent 16px);
+}
+
+.yemeni-zigzag::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: repeating-linear-gradient(45deg,
+      #B0AEFF 0px,
+      #B0AEFF 8px,
+      transparent 8px,
+      transparent 16px);
+}
+
+.golden-frame {
+  border: 2px solid #B0AEFF;
+  box-shadow:
+    0 0 10px rgba(176, 174, 255, 0.3),
+    inset 0 0 10px rgba(176, 174, 255, 0.1);
+  position: relative;
+}
+
+.golden-frame::before,
+.golden-frame::after {
+  content: '';
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  border: 2px solid #B0AEFF;
+}
+
+.golden-frame::before {
+  top: -2px;
+  left: -2px;
+  border-right: none;
+  border-bottom: none;
+}
+
+.golden-frame::after {
+  bottom: -2px;
+  right: -2px;
+  border-left: none;
+  border-top: none;
+}
+
+/* ============================================
+   Animations
+   ============================================ */
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 20px, 0);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.5s ease-out forwards;
+}
+
+@keyframes bounce-in {
+  0% {
+    transform: scale(0.9);
+    opacity: 0;
+  }
+
+  50% {
+    transform: scale(1.05);
+    opacity: 1;
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}
+
+.animate-bounce-in {
+  animation: bounce-in 0.4s ease-out forwards;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+.animate-shimmer {
+  background: linear-gradient(90deg,
+      rgba(176, 174, 255, 0) 0%,
+      rgba(176, 174, 255, 0.3) 50%,
+      rgba(176, 174, 255, 0) 100%);
+  background-size: 1000px 100%;
+  animation: shimmer 2s linear infinite;
+}
+
+@keyframes glow {
+  0% {
+    box-shadow: 0 0 5px rgba(176, 174, 255, 0.5);
+  }
+
+  100% {
+    box-shadow: 0 0 20px rgba(176, 174, 255, 0.8);
+  }
+}
+
+.animate-glow {
+  animation: glow 2s ease-in-out infinite alternate;
+}
+
+@keyframes float {
+
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+/* ============================================
+   Custom Gradients
+   ============================================ */
+
+.bg-red-gradient {
+  background: linear-gradient(135deg, rgb(var(--color-primary-500)) 0%, rgb(var(--color-primary-700)) 100%);
+}
+
+.bg-gold-gradient {
+  background: linear-gradient(135deg, rgb(var(--color-gold-500)) 0%, rgb(var(--color-gold-200)) 100%);
+}
+
+.bg-dark-red-gradient {
+  background: linear-gradient(135deg, rgb(var(--color-primary-700)) 0%, rgb(var(--color-primary-950)) 100%);
+}
+
+/* ============================================
+   Print Styles
+   ============================================ */
+
+.print-only {
+  display: none;
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  .print-only {
+    display: block;
+  }
+
+  #print-area,
+  #print-area * {
+    visibility: visible;
+  }
+
+  #print-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    padding: 1rem;
+    margin: 0;
+    font-size: 12pt;
+  }
+
+  #print-area .shadow-md,
+  #print-area .shadow-lg,
+  #print-area .shadow-xl {
+    box-shadow: none !important;
+  }
+
+  #print-area .rounded-lg,
+  #print-area .rounded-xl {
+    border: 1px solid #ccc;
+    border-radius: 0 !important;
+  }
+
+  #print-area table,
+  #print-area th,
+  #print-area td {
+    border: 1px solid #ddd !important;
+  }
+
+  #print-area thead {
+    background-color: #f2f2f2 !important;
+  }
+
+  #print-area button {
+    display: none !important;
+  }
+
+  @page {
+    size: A4;
+    margin: 20mm;
+  }
+}
+
+/* ============================================
+   RTL/LTR Support
+   ============================================ */
+
+select {
+  padding-inline-end: 2.25rem;
+  background-color: inherit;
+}
+
+html[dir="rtl"] select {
+  padding-inline-start: 2.25rem;
+  padding-inline-end: 0.75rem;
+}
+
+/* ============================================
+   Custom Scrollbar (Yemeni Style)
+   ============================================ */
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: #FFF8DC;
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(135deg, #2F5D62 0%, #D4AF37 100%);
+  border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(135deg, #1F3D42 0%, #FFD700 100%);
+}
+
+.dark ::-webkit-scrollbar-track {
+  background: #1a0000;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: linear-gradient(135deg, #2F5D62 0%, #D4AF37 100%);
+}
