@@ -32,6 +32,7 @@ android/build/
 
 # Supabase local dev artifacts
 .supabase/
+supabase/.temp/
 
 # Android signing files
 *.jks
