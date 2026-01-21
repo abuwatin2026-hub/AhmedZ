@@ -41,12 +41,12 @@ export const AppProviders: React.FC<{ children: React.ReactNode }> = ({ children
                                                 <WarehouseProvider>
                                                     <PricingProvider>
                                                         <ReviewProvider>
-                                                            <OrderProvider>
-                                                                <CartProvider>
-                                                                    <DeliveryZoneProvider>
-                                                                        <ChallengeProvider>
-                                                                            <AdProvider>
-                                                                                <CouponProvider>
+                                                            <ChallengeProvider>
+                                                                <OrderProvider>
+                                                                    <CouponProvider>
+                                                                        <CartProvider>
+                                                                            <DeliveryZoneProvider>
+                                                                                <AdProvider>
                                                                                     <AddonProvider>
                                                                                         <PriceProvider>
                                                                                             <StockProvider>
@@ -62,12 +62,12 @@ export const AppProviders: React.FC<{ children: React.ReactNode }> = ({ children
                                                                                             </StockProvider>
                                                                                         </PriceProvider>
                                                                                     </AddonProvider>
-                                                                                </CouponProvider>
-                                                                            </AdProvider>
-                                                                        </ChallengeProvider>
-                                                                    </DeliveryZoneProvider>
-                                                                </CartProvider>
-                                                            </OrderProvider>
+                                                                                </AdProvider>
+                                                                            </DeliveryZoneProvider>
+                                                                        </CartProvider>
+                                                                    </CouponProvider>
+                                                                </OrderProvider>
+                                                            </ChallengeProvider>
                                                         </ReviewProvider>
                                                     </PricingProvider>
                                                 </WarehouseProvider>
