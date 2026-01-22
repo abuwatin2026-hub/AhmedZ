@@ -191,6 +191,7 @@ export interface MenuItem {
   id: string;
   name: LocalizedString;
   description: LocalizedString;
+  barcode?: string;
   price: number; // Price per unit (per kg, per piece, etc.)
   imageUrl: string;
   category: string;
@@ -266,6 +267,8 @@ export interface CartItem extends MenuItem {
   quantity: number; // Number of units (pieces, bundles) or weight (kg)
   selectedAddons: Record<string, { addon: Addon; quantity: number }>;
   cartItemId: string;
+  lineDiscountType?: 'amount' | 'percent';
+  lineDiscountValue?: number;
   // New fields for weight-based products
   weight?: number; // Weight in kg or grams (if unitType is weight-based)
   unit?: UnitType; // Unit type for this cart item

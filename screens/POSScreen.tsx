@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { CartItem, MenuItem } from '../types';
+import type { CartItem, Customer, MenuItem } from '../types';
 import { useToast } from '../contexts/ToastContext';
 import { useOrders } from '../contexts/OrderContext';
 import { useCashShift } from '../contexts/CashShiftContext';
+import { useUserAuth } from '../contexts/UserAuthContext';
 import POSHeaderShiftStatus from '../components/pos/POSHeaderShiftStatus';
 import POSItemSearch from '../components/pos/POSItemSearch';
 import POSLineItemList from '../components/pos/POSLineItemList';
@@ -16,12 +17,16 @@ const POSScreen: React.FC = () => {
   const navigate = useNavigate();
   const { orders, createInStoreSale, createInStorePendingOrder, resumeInStorePendingOrder, cancelInStorePendingOrder } = useOrders();
   const { currentShift } = useCashShift();
+  const { customers, fetchCustomers } = useUserAuth();
   const [items, setItems] = useState<CartItem[]>([]);
   const [discountType, setDiscountType] = useState<'amount' | 'percent'>('amount');
   const [discountValue, setDiscountValue] = useState<number>(0);
   const [pendingOrderId, setPendingOrderId] = useState<string | null>(null);
   const [customerName, setCustomerName] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
+  const [customerQuery, setCustomerQuery] = useState('');
+  const [customerDropdownOpen, setCustomerDropdownOpen] = useState(false);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [notes, setNotes] = useState('');
   const [autoOpenInvoice, setAutoOpenInvoice] = useState(true);
   const [addonsCartItemId, setAddonsCartItemId] = useState<string | null>(null);
@@ -65,6 +70,10 @@ const POSScreen: React.FC = () => {
   }, [touchMode]);
 
   useEffect(() => {
+    void fetchCustomers();
+  }, [fetchCustomers]);
+
+  useEffect(() => {
     let mql: MediaQueryList | null = null;
     try {
       mql = window.matchMedia ? window.matchMedia('(orientation: portrait)') : null;
@@ -88,6 +97,29 @@ const POSScreen: React.FC = () => {
       searchInputRef.current?.focus();
       searchInputRef.current?.select?.();
     } catch {}
+  };
+
+  const resetCustomerFields = () => {
+    setCustomerName('');
+    setPhoneNumber('');
+    setCustomerQuery('');
+    setSelectedCustomerId(null);
+  };
+
+  const applyCustomerDraft = (name: string, phone: string) => {
+    setCustomerName(name);
+    setPhoneNumber(phone);
+    setCustomerQuery(name || phone);
+    setSelectedCustomerId(null);
+  };
+
+  const handleCustomerSelect = (customer: Customer) => {
+    const label = customer.fullName || customer.phoneNumber || customer.email || customer.loginIdentifier || '';
+    setCustomerName(customer.fullName || '');
+    setPhoneNumber(customer.phoneNumber || '');
+    setCustomerQuery(label);
+    setSelectedCustomerId(customer.id);
+    setCustomerDropdownOpen(false);
   };
 
   useEffect(() => {
@@ -370,8 +402,7 @@ const POSScreen: React.FC = () => {
         setItems(d.items);
         setDiscountType(d.discountType);
         setDiscountValue(d.discountValue);
-        setCustomerName(d.customerName);
-        setPhoneNumber(d.phoneNumber);
+        applyCustomerDraft(d.customerName, d.phoneNumber);
         setNotes(d.notes);
         setSelectedCartItemId(d.selectedCartItemId || d.items[0]?.cartItemId || null);
         setDraftInvoice(null);
@@ -381,8 +412,7 @@ const POSScreen: React.FC = () => {
       }
       setPendingOrderId(null);
       setItems([]);
-      setCustomerName('');
-      setPhoneNumber('');
+      resetCustomerFields();
       setNotes('');
       setSelectedCartItemId(null);
       setPendingSelectedId(null);
@@ -399,6 +429,25 @@ const POSScreen: React.FC = () => {
       .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
     return list;
   }, [orders]);
+
+  const filteredCustomers = useMemo(() => {
+    const q = customerQuery.trim().toLowerCase();
+    if (!q) return [];
+    return customers
+      .filter(customer => {
+        const name = String(customer.fullName || '').toLowerCase();
+        const phone = String(customer.phoneNumber || '').toLowerCase();
+        const email = String(customer.email || '').toLowerCase();
+        const login = String(customer.loginIdentifier || '').toLowerCase();
+        return name.includes(q) || phone.includes(q) || email.includes(q) || login.includes(q);
+      })
+      .slice(0, 8);
+  }, [customerQuery, customers]);
+
+  const selectedCustomer = useMemo(() => {
+    if (!selectedCustomerId) return null;
+    return customers.find(customer => customer.id === selectedCustomerId) || null;
+  }, [customers, selectedCustomerId]);
 
   const filteredPendingTickets = useMemo(() => {
     const q = pendingFilter.trim().toLowerCase();
@@ -449,8 +498,7 @@ const POSScreen: React.FC = () => {
     setItems((ticket.items || []) as CartItem[]);
     setDiscountType('amount');
     setDiscountValue(Number((ticket as any).discountAmount) || 0);
-    setCustomerName(String((ticket as any).customerName || ''));
-    setPhoneNumber(String((ticket as any).phoneNumber || ''));
+    applyCustomerDraft(String((ticket as any).customerName || ''), String((ticket as any).phoneNumber || ''));
     setNotes(String((ticket as any).notes || ''));
     setSelectedCartItemId(((ticket.items || []) as any[])[0]?.cartItemId || null);
     setPendingSelectedId(ticket.id);
@@ -463,8 +511,7 @@ const POSScreen: React.FC = () => {
     setItems(draftInvoice.items);
     setDiscountType(draftInvoice.discountType);
     setDiscountValue(draftInvoice.discountValue);
-    setCustomerName(draftInvoice.customerName);
-    setPhoneNumber(draftInvoice.phoneNumber);
+    applyCustomerDraft(draftInvoice.customerName, draftInvoice.phoneNumber);
     setNotes(draftInvoice.notes);
     setSelectedCartItemId(draftInvoice.selectedCartItemId || draftInvoice.items[0]?.cartItemId || null);
     setDraftInvoice(null);
@@ -514,8 +561,7 @@ const POSScreen: React.FC = () => {
       }).then((order) => {
         setPendingOrderId(null);
         setItems([]);
-        setCustomerName('');
-        setPhoneNumber('');
+        resetCustomerFields();
         setNotes('');
         setDraftInvoice(null);
         setPendingSelectedId(null);
@@ -549,8 +595,7 @@ const POSScreen: React.FC = () => {
         })),
       }).then((order) => {
         setItems([]);
-        setCustomerName('');
-        setPhoneNumber('');
+        resetCustomerFields();
         setNotes('');
         setDraftInvoice(null);
         setPendingSelectedId(null);
@@ -584,8 +629,7 @@ const POSScreen: React.FC = () => {
           onClick={() => {
             if (pendingOrderId) return;
             setItems([]);
-            setCustomerName('');
-            setPhoneNumber('');
+            resetCustomerFields();
             setNotes('');
             setDiscountType('amount');
             setDiscountValue(0);
@@ -758,8 +802,7 @@ const POSScreen: React.FC = () => {
                                 } else {
                                   setPendingOrderId(null);
                                   setItems([]);
-                                  setCustomerName('');
-                                  setPhoneNumber('');
+                                  resetCustomerFields();
                                   setNotes('');
                                   setSelectedCartItemId(null);
                                   setPendingSelectedId(null);
@@ -795,16 +838,67 @@ const POSScreen: React.FC = () => {
               </label>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="sm:col-span-2">
+                <div className="relative">
+                  <input
+                    value={customerQuery}
+                    onChange={(e) => {
+                      setCustomerQuery(e.target.value);
+                      setSelectedCustomerId(null);
+                    }}
+                    onFocus={() => setCustomerDropdownOpen(true)}
+                    onBlur={() => window.setTimeout(() => setCustomerDropdownOpen(false), 150)}
+                    className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600"
+                    placeholder="بحث عميل بالاسم أو الهاتف"
+                    disabled={Boolean(pendingOrderId)}
+                  />
+                  {customerDropdownOpen && customerQuery.trim() !== '' && (
+                    <div className="absolute z-20 mt-1 w-full max-h-56 overflow-auto rounded-lg border bg-white dark:bg-gray-800 dark:border-gray-600 shadow-lg">
+                      {filteredCustomers.length > 0 ? (
+                        filteredCustomers.map(customer => {
+                          const title = customer.fullName || customer.phoneNumber || 'غير معروف';
+                          const meta = [customer.phoneNumber, customer.email].filter(Boolean).join(' • ');
+                          return (
+                            <button
+                              key={customer.id}
+                              type="button"
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={() => handleCustomerSelect(customer)}
+                              className="w-full px-3 py-2 text-right hover:bg-gray-50 dark:hover:bg-gray-700"
+                            >
+                              <div className="font-semibold truncate dark:text-white">{title}</div>
+                              <div className="text-xs text-gray-500 dark:text-gray-400 truncate">{meta}</div>
+                            </button>
+                          );
+                        })
+                      ) : (
+                        <div className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">لا نتائج</div>
+                      )}
+                    </div>
+                  )}
+                  {selectedCustomer && (
+                    <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      عميل مختار: {selectedCustomer.fullName || selectedCustomer.phoneNumber || selectedCustomer.email || selectedCustomer.loginIdentifier || ''}
+                    </div>
+                  )}
+                </div>
+              </div>
               <input
                 value={customerName}
-                onChange={(e) => setCustomerName(e.target.value)}
+                onChange={(e) => {
+                  setCustomerName(e.target.value);
+                  setSelectedCustomerId(null);
+                }}
                 className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600"
                 placeholder="اسم العميل"
                 disabled={Boolean(pendingOrderId)}
               />
               <input
                 value={phoneNumber}
-                onChange={(e) => setPhoneNumber(e.target.value)}
+                onChange={(e) => {
+                  setPhoneNumber(e.target.value);
+                  setSelectedCustomerId(null);
+                }}
                 className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600"
                 placeholder="الهاتف"
                 disabled={Boolean(pendingOrderId)}
