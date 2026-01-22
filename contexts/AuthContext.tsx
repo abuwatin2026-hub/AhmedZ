@@ -364,6 +364,39 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return raw;
   };
 
+  const getFreshAccessToken = async (supabaseClient: any): Promise<string> => {
+    const { data: sessionData, error: sessionError } = await supabaseClient.auth.getSession();
+    if (!sessionError && sessionData?.session?.access_token) return sessionData.session.access_token;
+
+    const { data: refreshData, error: refreshError } = await supabaseClient.auth.refreshSession();
+    if (!refreshError && refreshData?.session?.access_token) return refreshData.session.access_token;
+
+    throw new Error('انتهت الجلسة. يرجى إعادة تسجيل الدخول.');
+  };
+
+  const isEdgeFunctionDeployed = async (functionName: string): Promise<boolean> => {
+    const baseUrl = String((import.meta.env as any).VITE_SUPABASE_URL || '').replace(/\/+$/, '');
+    if (!baseUrl) return true;
+    const url = `${baseUrl}/functions/v1/${functionName}`;
+    try {
+      const res = await fetch(url, { method: 'GET' });
+      if (res.status !== 404) return true;
+      const text = await res.text();
+      try {
+        const body = JSON.parse(text);
+        const code = String(body?.code || '');
+        const message = String(body?.message || '');
+        if (code === 'NOT_FOUND') return false;
+        if (/requested function was not found/i.test(message)) return false;
+      } catch {
+        if (/requested function was not found/i.test(text)) return false;
+      }
+      return true;
+    } catch {
+      return true;
+    }
+  };
+
   const extractFunctionErrorMessage = async (error: unknown): Promise<string | null> => {
     const maybeContext = (error as { context?: { text?: () => Promise<string>; json?: () => Promise<any> } })?.context;
     if (!maybeContext) return null;
@@ -414,16 +447,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     const email = makeServiceEmail(username);
 
-    // Ensure session is valid and fresh before invoking the function
-    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-    if (sessionError || !sessionData.session) {
-      const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
-      if (refreshError || !refreshData.session) {
-        throw new Error('انتهت الجلسة. يرجى إعادة تسجيل الدخول.');
-      }
-    }
-
-    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    const accessToken = await getFreshAccessToken(supabase);
     const { error } = await supabase.functions.invoke('create-admin-user', {
       body: {
         email: email.toLowerCase(),
@@ -435,14 +459,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         permissions: data.permissions || [],
       },
       headers: {
-        Authorization: `Bearer ${anonKey}`, // Use Anon Key to pass Gateway check
-        'x-user-token': sessionData.session?.access_token ?? '' // Pass actual user token for internal verification
+        Authorization: `Bearer ${accessToken}`
       }
     });
 
     if (error) {
       const serverMessage = await extractFunctionErrorMessage(error);
       const resolved = serverMessage || (typeof (error as any)?.message === 'string' ? (error as any).message : '');
+      if (/failed to fetch|network|fetch/i.test(resolved)) {
+        const deployed = await isEdgeFunctionDeployed('create-admin-user');
+        if (!deployed) throw new Error('الدالة غير منشورة على Supabase. نفّذ نشر Edge Functions ثم أعد المحاولة.');
+      }
       throw new Error(localizeAdminInvokeError(resolved || 'فشل إنشاء المستخدم.'));
     }
   };
@@ -513,25 +540,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const supabase = getSupabaseClient();
     if (!supabase) throw new Error('Supabase غير مهيأ.');
 
-    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-    if (sessionError || !sessionData.session) {
-      const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
-      if (refreshError || !refreshData.session) {
-        throw new Error('انتهت الجلسة. يرجى إعادة تسجيل الدخول.');
-      }
-    }
-    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    const accessToken = await getFreshAccessToken(supabase);
     const { error } = await supabase.functions.invoke('reset-admin-password', {
       body: { userId, newPassword },
       headers: {
-        Authorization: `Bearer ${anonKey}`,
-        'x-user-token': sessionData.session?.access_token ?? ''
+        Authorization: `Bearer ${accessToken}`
       }
     });
 
     if (error) {
       const serverMessage = await extractFunctionErrorMessage(error);
       const resolved = serverMessage || (typeof (error as any)?.message === 'string' ? (error as any).message : '');
+      if (/failed to fetch|network|fetch/i.test(resolved)) {
+        const deployed = await isEdgeFunctionDeployed('reset-admin-password');
+        if (!deployed) throw new Error('الدالة غير منشورة على Supabase. نفّذ نشر Edge Functions ثم أعد المحاولة.');
+      }
       throw new Error(localizeAdminInvokeError(resolved || 'فشل تغيير كلمة المرور.'));
     }
   };
@@ -541,25 +564,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const supabase = getSupabaseClient();
     if (!supabase) throw new Error('Supabase غير مهيأ.');
 
-    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-    if (sessionError || !sessionData.session) {
-      const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
-      if (refreshError || !refreshData.session) {
-        throw new Error('انتهت الجلسة. يرجى إعادة تسجيل الدخول.');
-      }
-    }
-    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    const accessToken = await getFreshAccessToken(supabase);
     const { error } = await supabase.functions.invoke('delete-admin-user', {
       body: { userId },
       headers: {
-        Authorization: `Bearer ${anonKey}`,
-        'x-user-token': sessionData.session?.access_token ?? ''
+        Authorization: `Bearer ${accessToken}`
       }
     });
 
     if (error) {
       const serverMessage = await extractFunctionErrorMessage(error);
       const resolved = serverMessage || (typeof (error as any)?.message === 'string' ? (error as any).message : '');
+      if (/failed to fetch|network|fetch/i.test(resolved)) {
+        const deployed = await isEdgeFunctionDeployed('delete-admin-user');
+        if (!deployed) throw new Error('الدالة غير منشورة على Supabase. نفّذ نشر Edge Functions ثم أعد المحاولة.');
+      }
       throw new Error(localizeAdminInvokeError(resolved || 'فشل أرشفة المستخدم.'));
     }
 

@@ -5,11 +5,38 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
 function getAllowedOrigin(origin: string | null): string {
     const raw = (Deno.env.get('CATY_ALLOWED_ORIGINS') || '').trim();
-    if (!raw) return origin ?? '*';
+    if (!origin) {
+        if (!raw) return '*';
+        const first = raw.split(',').map(s => s.trim()).filter(Boolean)[0];
+        return first || '*';
+    }
+
+    const originUrl = (() => { try { return new URL(origin); } catch { return null; } })();
+    const host = originUrl?.hostname || '';
+    const isLocal = host === 'localhost' || host === '127.0.0.1';
+    const isPrivateIp = /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[0-1])\.)/.test(host);
+    if (!raw) return origin;
+
     const list = raw.split(',').map(s => s.trim()).filter(Boolean);
-    if (list.includes('*')) return origin ?? '*';
-    if (!origin) return list[0] || '*';
-    return list.includes(origin) ? origin : 'null';
+    if (list.includes('*')) return origin;
+    if (isLocal || isPrivateIp) return origin;
+
+    const matches = (allowed: string) => {
+        if (!allowed) return false;
+        if (allowed === origin) return true;
+        if (allowed.startsWith('*.')) {
+            const suffix = allowed.slice(1);
+            return host.endsWith(suffix) && host.length > suffix.length;
+        }
+        if (!allowed.includes('://')) return host === allowed;
+        const allowedUrl = (() => { try { return new URL(allowed); } catch { return null; } })();
+        if (!allowedUrl) return false;
+        if (allowedUrl.hostname !== host) return false;
+        if (allowedUrl.port && originUrl?.port && allowedUrl.port !== originUrl.port) return false;
+        return true;
+    };
+
+    return list.some(matches) ? origin : 'null';
 }
 
 function buildCors(origin: string | null, req?: Request) {

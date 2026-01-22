@@ -14,15 +14,15 @@ major_version = 17
 
 [functions.create-admin-user]
 enabled = true
-verify_jwt = true
+verify_jwt = false
 entrypoint = "./functions/create-admin-user/index.ts"
 
 [functions.delete-admin-user]
 enabled = true
-verify_jwt = true
+verify_jwt = false
 entrypoint = "./functions/delete-admin-user/index.ts"
 
 [functions.reset-admin-password]
 enabled = true
-verify_jwt = true
+verify_jwt = false
 entrypoint = "./functions/reset-admin-password/index.ts"

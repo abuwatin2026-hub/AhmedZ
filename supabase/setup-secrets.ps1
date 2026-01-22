@@ -3,7 +3,7 @@ Param(
   [string]$ApiUrl,
   [string]$AnonKey,
   [string]$ServiceRoleKey,
-  [string]$AllowedOrigins = "http://localhost:5174"
+  [string]$AllowedOrigins = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174"
 )
 
 if (-not $ApiUrl -or -not $AnonKey -or -not $ServiceRoleKey) {
@@ -11,15 +11,15 @@ if (-not $ApiUrl -or -not $AnonKey -or -not $ServiceRoleKey) {
   exit 1
 }
 
-supabase link --project-ref $ProjectRef
+npx supabase link --project-ref $ProjectRef
 
-supabase secrets set CATY_SUPABASE_URL=$ApiUrl
-supabase secrets set CATY_SUPABASE_ANON_KEY=$AnonKey
-supabase secrets set CATY_SUPABASE_SERVICE_ROLE_KEY=$ServiceRoleKey
-supabase secrets set CATY_ALLOWED_ORIGINS=$AllowedOrigins
+npx supabase secrets set CATY_SUPABASE_URL=$ApiUrl
+npx supabase secrets set CATY_SUPABASE_ANON_KEY=$AnonKey
+npx supabase secrets set CATY_SUPABASE_SERVICE_ROLE_KEY=$ServiceRoleKey
+npx supabase secrets set CATY_ALLOWED_ORIGINS=$AllowedOrigins
 
-supabase secrets list
+npx supabase secrets list
 
-supabase functions deploy create-admin-user
-supabase functions deploy reset-admin-password
-supabase functions deploy delete-admin-user
+npx supabase functions deploy create-admin-user
+npx supabase functions deploy reset-admin-password
+npx supabase functions deploy delete-admin-user
