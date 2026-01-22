@@ -166,7 +166,7 @@ const ItemDetailsScreen: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           <div className="md:col-span-1">
             <div className="relative">
-              <img src={item.imageUrl} alt={displayName} className="w-full h-auto max-h-[500px] object-cover rounded-lg shadow-md" />
+              <img src={item.imageUrl || undefined} alt={displayName} className="w-full h-auto max-h-[500px] object-cover rounded-lg shadow-md" />
               {!isInStock && (
                 <div className="absolute inset-0 bg-black/60 flex items-center justify-center rounded-lg">
                   <span className="bg-red-500 text-white font-bold px-6 py-3 rounded-lg text-xl">
@@ -319,7 +319,7 @@ const ItemDetailsScreen: React.FC = () => {
             <div className="space-y-6">
               {reviews.map(review => (
                 <div key={review.id} className="flex items-start space-x-4 rtl:space-x-reverse">
-                  <img src={review.userAvatarUrl} alt={review.userName} className="w-12 h-12 rounded-full object-cover" />
+                  <img src={review.userAvatarUrl || undefined} alt={review.userName} className="w-12 h-12 rounded-full object-cover" />
                   <div className="flex-grow">
                     <div className="flex items-center justify-between">
                       <div>

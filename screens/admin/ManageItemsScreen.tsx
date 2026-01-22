@@ -729,7 +729,7 @@ const ManageItemsScreen: React.FC = () => {
                 filteredItems.map((item) => (
                   <tr key={item.id}>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <img src={item.imageUrl} alt={item.name[language]} className="w-16 h-16 object-cover rounded-md" />
+                      <img src={item.imageUrl || undefined} alt={item.name[language]} className="w-16 h-16 object-cover rounded-md" />
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium text-gray-900 dark:text-white">{item.name[language]}</div>

@@ -251,7 +251,7 @@ const AdminLayout: React.FC = () => {
       {/* Sidebar */}
       <aside className={`absolute md:sticky md:top-0 inset-y-0 rtl:right-0 ltr:left-0 transform ${isSidebarOpen ? 'rtl:-translate-x-0 ltr:translate-x-0' : 'rtl:translate-x-full ltr:-translate-x-full'} md:rtl:translate-x-0 md:ltr:translate-x-0 w-64 bg-white dark:bg-gray-800 shadow-lg flex flex-col transition-transform duration-300 ease-in-out z-30 h-screen md:h-screen overflow-y-auto`}>
         <div className="p-4 border-b dark:border-gray-700 text-center flex-shrink-0">
-          <img src={user?.avatarUrl} alt="Admin" className="w-20 h-20 rounded-full mx-auto mb-2 border-4 border-gold-500/50 p-1" />
+          <img src={user?.avatarUrl || undefined} alt="Admin" className="w-20 h-20 rounded-full mx-auto mb-2 border-4 border-gold-500/50 p-1" />
           <h2 className="text-lg font-bold text-gray-800 dark:text-white truncate">{user?.fullName}</h2>
           <p className="text-xs text-gray-500 dark:text-gray-400">{roleLabel[user?.role || 'employee']}</p>
         </div>

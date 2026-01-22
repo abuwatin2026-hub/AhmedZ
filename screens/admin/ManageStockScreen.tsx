@@ -88,7 +88,7 @@ const StockRow = ({ item, stock, getCategoryLabel, getUnitLabel, handleUpdateSto
         <tr className={isLowStock ? 'bg-red-50 dark:bg-red-900/10' : ''}>
             <td className="px-6 py-4 whitespace-nowrap border-r dark:border-gray-700">
                 <div className="flex items-center">
-                    <img src={item.imageUrl} alt={itemName} className="w-10 h-10 rounded-md object-cover" />
+                    <img src={item.imageUrl || undefined} alt={itemName} className="w-10 h-10 rounded-md object-cover" />
                     <div className="mr-4 rtl:mr-0 rtl:ml-4">
                         <div className="text-sm font-medium text-gray-900 dark:text-white">
                             {itemName}

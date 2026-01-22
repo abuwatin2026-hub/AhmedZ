@@ -24,7 +24,7 @@ const CartItemCard: React.FC<{ item: CartItem }> = ({ item }) => {
 
     return (
         <div className="flex items-start bg-white dark:bg-gray-900 p-4 rounded-xl shadow-md gap-4 animate-fade-in-up border-2 border-gold-500/20 hover:border-gold-500/40 transition-all">
-            <img src={item.imageUrl} alt={item.name['ar'] || item.name['en']} className="w-24 h-24 object-cover rounded-md" />
+            <img src={item.imageUrl || undefined} alt={item.name['ar'] || item.name['en']} className="w-24 h-24 object-cover rounded-md" />
             <div className="flex-grow">
                 <h3 className="font-bold text-lg dark:text-white">{item.name['ar'] || item.name['en']}</h3>
 

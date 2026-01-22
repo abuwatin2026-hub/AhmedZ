@@ -101,7 +101,7 @@ const ManageAdsScreen: React.FC = () => {
                 ads.map((ad) => (
                   <tr key={ad.id}>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <img src={ad.imageUrl} alt={ad.title['ar'] || ''} className="w-24 h-16 object-cover rounded-md"/>
+                      <img src={ad.imageUrl || undefined} alt={ad.title['ar'] || ''} className="w-24 h-16 object-cover rounded-md"/>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium text-gray-900 dark:text-white">{ad.title['ar'] || ''}</div>

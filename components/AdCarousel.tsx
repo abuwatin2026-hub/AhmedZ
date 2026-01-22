@@ -94,7 +94,7 @@ const AdCarousel: React.FC<AdCarouselProps> = ({ onCategorySelect }) => {
                             aria-label={withBranding(ad.title?.ar || ad.title?.en || '')}
                             onClick={() => handleAdClick(ad)}
                         >
-                            <img src={ad.imageUrl} alt={withBranding(ad.title?.ar || ad.title?.en || '')} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                            <img src={ad.imageUrl || undefined} alt={withBranding(ad.title?.ar || ad.title?.en || '')} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
                             <div className="absolute inset-0 bg-black/30"></div>
                             <div className="absolute inset-0 flex items-center justify-center p-6 md:p-12 text-white text-center">
                                 {index === currentIndex && (

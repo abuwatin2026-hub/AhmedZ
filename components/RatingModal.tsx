@@ -125,7 +125,7 @@ const RatingModal: React.FC<RatingModalProps> = ({ isOpen, onClose, order }) => 
             {order.items.map((item: CartItem) => (
                 <div key={item.cartItemId} className="border-b dark:border-gray-700 pb-4">
                     <div className="flex items-start gap-4">
-                        <img src={item.imageUrl} alt={item.name['ar']} className="w-16 h-16 object-cover rounded-md" />
+                        <img src={item.imageUrl || undefined} alt={item.name['ar']} className="w-16 h-16 object-cover rounded-md" />
                         <div className="flex-grow">
                             <p className="font-semibold text-gray-800 dark:text-white">{item.name['ar']}</p>
                             <p className="text-sm text-gray-500 dark:text-gray-400">تقييمك:</p>

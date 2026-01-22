@@ -73,7 +73,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings }, r
             )}
             <div className="grid grid-cols-2 gap-8 mb-12">
                 <div>
-                    <img src={settings.logoUrl} alt={storeName} className="h-12 mb-4" />
+                    {settings.logoUrl ? <img src={settings.logoUrl} alt={storeName} className="h-12 mb-4" /> : null}
                     <h1 className="text-2xl font-bold text-gray-800">{storeName}</h1>
                     <p className="text-gray-500 text-sm">{settings.address}</p>
                     <p className="text-gray-500 text-sm">{settings.contactNumber}</p>

@@ -20,7 +20,7 @@ const FeaturedMenuItemCard: React.FC<FeaturedMenuItemCardProps> = ({ item }) => 
         </div>
 
         <div className="relative overflow-hidden flex-shrink-0">
-          <img className="w-32 h-32 object-cover group-hover:scale-110 transition-transform duration-500" src={item.imageUrl} alt={item.name?.ar || item.name?.en || ''} />
+          <img className="w-32 h-32 object-cover group-hover:scale-110 transition-transform duration-500" src={item.imageUrl || undefined} alt={item.name?.ar || item.name?.en || ''} />
           <div className="absolute inset-0 bg-gradient-to-r from-transparent to-black/20"></div>
         </div>
 

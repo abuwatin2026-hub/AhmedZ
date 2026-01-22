@@ -134,7 +134,7 @@ const ManagePricesScreen: React.FC = () => {
                                         <tr>
                                             <td className="px-6 py-4 whitespace-nowrap">
                                                 <div className="flex items-center">
-                                                    <img src={item.imageUrl} alt={itemName} className="w-10 h-10 rounded-md object-cover" />
+                                                    <img src={item.imageUrl || undefined} alt={itemName} className="w-10 h-10 rounded-md object-cover" />
                                                     <div className="mr-4 rtl:mr-0 rtl:ml-4">
                                                         <div className="text-sm font-medium text-gray-900 dark:text-white">
                                                             {itemName}

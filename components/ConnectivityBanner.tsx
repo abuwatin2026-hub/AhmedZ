@@ -26,16 +26,23 @@ const ConnectivityBanner: React.FC = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [flushing, setFlushing] = useState(false);
 
+  const hasConnectionInfo = useMemo(() => {
+    return Boolean(connectionInfo.effectiveType)
+      || typeof connectionInfo.downlink === 'number'
+      || typeof connectionInfo.rtt === 'number'
+      || typeof connectionInfo.saveData === 'boolean';
+  }, [connectionInfo.downlink, connectionInfo.effectiveType, connectionInfo.rtt, connectionInfo.saveData]);
+
   const isWeak = useMemo(() => {
+    if (!hasConnectionInfo) return false;
     const eff = String(connectionInfo.effectiveType || '');
     if (eff === 'slow-2g' || eff === '2g') return true;
     const rtt = connectionInfo.rtt;
     const downlink = connectionInfo.downlink;
     if (typeof rtt === 'number' && Number.isFinite(rtt) && rtt >= 1000) return true;
     if (typeof downlink === 'number' && Number.isFinite(downlink) && downlink > 0 && downlink <= 0.7) return true;
-    if (connectionInfo.saveData === true) return true;
     return false;
-  }, [connectionInfo.downlink, connectionInfo.effectiveType, connectionInfo.rtt, connectionInfo.saveData]);
+  }, [connectionInfo.downlink, connectionInfo.effectiveType, connectionInfo.rtt, hasConnectionInfo]);
   const isAdminRoute = useMemo(() => location.pathname.startsWith('/admin'), [location.pathname]);
 
   useEffect(() => {
@@ -70,6 +77,11 @@ const ConnectivityBanner: React.FC = () => {
   const refreshAll = async () => {
     if (!online) return;
     if (refreshing) return;
+    if (typeof window !== 'undefined') {
+      setRefreshing(true);
+      window.location.reload();
+      return;
+    }
     setRefreshing(true);
     try {
       const jobs: Array<Promise<unknown>> = [fetchOrders(), fetchMenuItems(), fetchDeliveryZones()];

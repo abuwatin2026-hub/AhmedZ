@@ -186,7 +186,7 @@ const ManageReviewsScreen: React.FC = () => {
                                         <tr key={review.id}>
                                             <td className="px-6 py-4 whitespace-nowrap border-r dark:border-gray-700">
                                                 <div className="flex items-center">
-                                                    <img src={menuItem?.imageUrl} alt="" className="w-12 h-12 object-cover rounded-md flex-shrink-0" />
+                                                    <img src={menuItem?.imageUrl || undefined} alt="" className="w-12 h-12 object-cover rounded-md flex-shrink-0" />
                                                     <div className="mx-3">
                                                         <div className="text-sm font-medium text-gray-900 dark:text-white">{menuItemName}</div>
                                                     </div>

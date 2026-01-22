@@ -81,7 +81,7 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item }) => {
         )}
 
         <div className="relative overflow-hidden">
-          <img className="w-full h-48 object-cover group-hover:scale-110 transition-transform duration-500" src={item.imageUrl} alt={item.name?.ar || item.name?.en || ''} />
+          <img className="w-full h-48 object-cover group-hover:scale-110 transition-transform duration-500" src={item.imageUrl || undefined} alt={item.name?.ar || item.name?.en || ''} />
           {/* Gradient overlay */}
           <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
 

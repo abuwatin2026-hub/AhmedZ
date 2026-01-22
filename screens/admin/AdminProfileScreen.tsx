@@ -176,7 +176,7 @@ const AdminProfileScreen: React.FC = () => {
 
         <div className="flex items-center space-x-6 rtl:space-x-reverse mb-8">
           <div className="relative">
-            <img src={formData.avatarUrl} alt="Profile" className="w-24 h-24 rounded-full object-cover border-4 border-gray-200 dark:border-gray-600" />
+            <img src={formData.avatarUrl || undefined} alt="Profile" className="w-24 h-24 rounded-full object-cover border-4 border-gray-200 dark:border-gray-600" />
             <button type="button" onClick={handleAvatarChange} className="absolute bottom-0 right-0 bg-primary-500 p-2 rounded-full hover:bg-primary-600 transition-colors">
               <CameraIcon />
             </button>

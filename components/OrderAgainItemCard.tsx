@@ -36,7 +36,7 @@ const OrderAgainItemCard: React.FC<OrderAgainItemCardProps> = ({ item }) => {
         {isCustomized && <span className="absolute top-1 left-1 rtl:left-auto rtl:right-1 z-10 text-xs bg-blue-500 text-white px-2 py-0.5 rounded-full font-bold shadow-md">معدل</span>}
 
         <Link to={`/item/${item.id}`} className="block relative overflow-hidden">
-          <img className="w-full h-24 object-cover group-hover:scale-110 transition-transform duration-500" src={item.imageUrl} alt={item.name?.ar || item.name?.en || ''} />
+          <img className="w-full h-24 object-cover group-hover:scale-110 transition-transform duration-500" src={item.imageUrl || undefined} alt={item.name?.ar || item.name?.en || ''} />
           <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
         </Link>
 
