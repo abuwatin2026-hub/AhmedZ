@@ -1,67 +1,234 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useMenu } from '../../contexts/MenuContext';
 import type { MenuItem } from '../../types';
 
 interface Props {
   onAddLine: (item: MenuItem, input: { quantity?: number; weight?: number }) => void;
+  inputRef?: React.RefObject<HTMLInputElement | null>;
+  disabled?: boolean;
+  touchMode?: boolean;
 }
 
-const POSItemSearch: React.FC<Props> = ({ onAddLine }) => {
+const POSItemSearch: React.FC<Props> = ({ onAddLine, inputRef, disabled, touchMode }) => {
   const { menuItems } = useMenu();
   const [query, setQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
   const [quantity, setQuantity] = useState<number>(1);
   const [weight, setWeight] = useState<number>(0);
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const qtyRef = useRef<HTMLInputElement | null>(null);
+  const weightRef = useRef<HTMLInputElement | null>(null);
+
+  const normalize = (value: unknown) => String(value || '')
+    .toLowerCase()
+    .replace(/[\s\-_]+/g, '')
+    .replace(/[^\p{L}\p{N}]+/gu, '');
+
+  useEffect(() => {
+    const h = window.setTimeout(() => setDebouncedQuery(query), 120);
+    return () => {
+      window.clearTimeout(h);
+    };
+  }, [query]);
+
+  useEffect(() => {
+    setSelectedIndex(0);
+  }, [debouncedQuery]);
+
+  const indexedItems = useMemo(() => {
+    return (menuItems || []).map((m) => {
+      const ar = String(m.name?.ar || '');
+      const en = String(m.name?.en || '');
+      const id = String(m.id || '');
+      return {
+        item: m,
+        idRaw: id,
+        id: normalize(id),
+        ar: normalize(ar),
+        en: normalize(en),
+        label: ar || en || id,
+      };
+    });
+  }, [menuItems]);
 
   const results = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return menuItems.slice(0, 10);
-    return menuItems
-      .filter(m => (m.name?.ar || m.name?.en || '').toLowerCase().includes(q))
-      .slice(0, 10);
-  }, [menuItems, query]);
+    const qRaw = debouncedQuery.trim();
+    const q = normalize(qRaw);
+    if (!q) {
+      return (indexedItems || [])
+        .slice(0, 16)
+        .map(r => r.item);
+    }
+
+    const scored = (indexedItems || [])
+      .map((row) => {
+        const id = row.id;
+        const ar = row.ar;
+        const en = row.en;
+
+        let score = 999;
+        if (id === q) score = 0;
+        else if (id.startsWith(q)) score = 1;
+        else if (id.includes(q)) score = 2;
+        else if (ar.startsWith(q)) score = 3;
+        else if (ar.includes(q)) score = 4;
+        else if (en.startsWith(q)) score = 5;
+        else if (en.includes(q)) score = 6;
+
+        return { row, score };
+      })
+      .filter(s => s.score < 999)
+      .sort((a, b) => {
+        if (a.score !== b.score) return a.score - b.score;
+        return String(a.row.label).localeCompare(String(b.row.label), 'ar');
+      })
+      .slice(0, 16);
+
+    return scored.map(s => s.row.item);
+  }, [indexedItems, debouncedQuery]);
+
+  useEffect(() => {
+    setSelectedIndex((idx) => {
+      if (results.length === 0) return 0;
+      if (idx < 0) return 0;
+      if (idx >= results.length) return results.length - 1;
+      return idx;
+    });
+  }, [results.length]);
+
+  const addSelected = (idx: number) => {
+    const item = results[idx];
+    if (!item) return;
+    const isWeight = item.unitType === 'kg' || item.unitType === 'gram';
+    onAddLine(item, isWeight ? { weight } : { quantity });
+    setQuery('');
+    setDebouncedQuery('');
+    setSelectedIndex(0);
+    if (inputRef?.current) {
+      try {
+        inputRef.current.focus();
+        inputRef.current.select?.();
+      } catch {}
+    }
+  };
 
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-3">
         <input
           type="text"
+          ref={inputRef}
           value={query}
           onChange={e => setQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (disabled) return;
+            if (e.key === 'ArrowDown') {
+              e.preventDefault();
+              setSelectedIndex((idx) => Math.min(results.length - 1, idx + 1));
+              return;
+            }
+            if (e.key === 'ArrowUp') {
+              e.preventDefault();
+              setSelectedIndex((idx) => Math.max(0, idx - 1));
+              return;
+            }
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              addSelected(selectedIndex);
+              return;
+            }
+            if (e.key === 'Tab') {
+              const item = results[selectedIndex];
+              if (!item) return;
+              const isWeight = item.unitType === 'kg' || item.unitType === 'gram';
+              if (isWeight) {
+                e.preventDefault();
+                weightRef.current?.focus();
+                weightRef.current?.select?.();
+                return;
+              }
+              e.preventDefault();
+              qtyRef.current?.focus();
+              qtyRef.current?.select?.();
+              return;
+            }
+          }}
           placeholder="ابحث عن صنف..."
-          className="flex-1 p-3 border rounded-lg dark:bg-gray-700 dark:border-gray-600"
+          className={`flex-1 border rounded-xl dark:bg-gray-700 dark:border-gray-600 ${touchMode ? 'p-6 text-lg' : 'p-4 text-base'}`}
+          disabled={Boolean(disabled)}
         />
         <input
           type="number"
+          ref={qtyRef}
           value={quantity}
           onChange={e => setQuantity(Number(e.target.value) || 0)}
-          className="w-24 p-3 border rounded-lg dark:bg-gray-700 dark:border-gray-600"
+          onKeyDown={(e) => {
+            if (disabled) return;
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              addSelected(selectedIndex);
+            }
+            if (e.key === 'Escape') {
+              e.preventDefault();
+              inputRef?.current?.focus();
+              inputRef?.current?.select?.();
+            }
+          }}
+          className={`border rounded-xl dark:bg-gray-700 dark:border-gray-600 ${touchMode ? 'w-32 p-6 text-lg' : 'w-28 p-4 text-base'}`}
           placeholder="الكمية"
           min={0}
+          disabled={Boolean(disabled)}
         />
         <input
           type="number"
+          ref={weightRef}
           value={weight}
           onChange={e => setWeight(Number(e.target.value) || 0)}
-          className="w-32 p-3 border rounded-lg dark:bg-gray-700 dark:border-gray-600"
+          onKeyDown={(e) => {
+            if (disabled) return;
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              addSelected(selectedIndex);
+            }
+            if (e.key === 'Escape') {
+              e.preventDefault();
+              inputRef?.current?.focus();
+              inputRef?.current?.select?.();
+            }
+          }}
+          className={`border rounded-xl dark:bg-gray-700 dark:border-gray-600 ${touchMode ? 'w-40 p-6 text-lg' : 'w-36 p-4 text-base'}`}
           placeholder="الوزن"
           min={0}
           step="0.01"
+          disabled={Boolean(disabled)}
         />
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {results.map(item => {
+      <div className="text-xs text-gray-500 dark:text-gray-400">
+        Enter لإضافة المحدد • ↑↓ للتنقل • Tab للكمية/الوزن • Ctrl+K للتركيز على البحث
+      </div>
+      <div className={`grid grid-cols-1 ${touchMode ? 'sm:grid-cols-2 gap-4' : 'sm:grid-cols-2 gap-3'}`}>
+        {results.map((item, idx) => {
           const isWeight = item.unitType === 'kg' || item.unitType === 'gram';
+          const isSelected = idx === selectedIndex;
+          const shortId = String(item.id || '').slice(-6).toUpperCase();
           return (
             <button
               key={item.id}
               onClick={() =>
                 onAddLine(item, isWeight ? { weight } : { quantity })
               }
-              className="text-left rtl:text-right p-3 border rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 dark:bg-gray-800 dark:border-gray-700"
+              onMouseEnter={() => setSelectedIndex(idx)}
+              disabled={Boolean(disabled)}
+              className={`text-left rtl:text-right border rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 dark:bg-gray-800 dark:border-gray-700 disabled:opacity-50 disabled:cursor-not-allowed ${touchMode ? 'p-6' : 'p-4'} ${isSelected ? 'ring-2 ring-primary-500 border-primary-500' : ''}`}
             >
-              <div className="font-bold dark:text-white">{item.name?.ar || item.name?.en || item.id}</div>
-              <div className="text-sm text-gray-600 dark:text-gray-300">
-                {isWeight ? 'وزن' : 'كمية'} • {item.price.toFixed(2)}
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className={`font-bold dark:text-white truncate ${touchMode ? 'text-lg' : ''}`}>{item.name?.ar || item.name?.en || item.id}</div>
+                  <div className={`text-gray-600 dark:text-gray-300 ${touchMode ? 'text-base' : 'text-sm'}`}>
+                    {isWeight ? 'وزن' : 'كمية'} • {item.price.toFixed(2)}
+                  </div>
+                </div>
+                <div className="text-xs font-mono text-gray-400 shrink-0">#{shortId}</div>
               </div>
             </button>
           );

@@ -62,7 +62,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const defaultPermissionsForRole = (role: AdminRole): AdminPermission[] => defaultAdminPermissionsForRole(role);
 
   const getEffectivePermissions = (candidate: AdminUser): Set<AdminPermission> => {
-    if (candidate.role === 'owner') return new Set(allPermissions);
+    if (candidate.role === 'owner' || candidate.role === 'manager') return new Set(allPermissions);
     if (Array.isArray(candidate.permissions) && candidate.permissions.length) {
       return new Set(candidate.permissions);
     }

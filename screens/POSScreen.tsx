@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import type { CartItem, MenuItem } from '../types';
 import { useToast } from '../contexts/ToastContext';
 import { useOrders } from '../contexts/OrderContext';
@@ -8,17 +9,135 @@ import POSItemSearch from '../components/pos/POSItemSearch';
 import POSLineItemList from '../components/pos/POSLineItemList';
 import POSTotals from '../components/pos/POSTotals';
 import POSPaymentPanel from '../components/pos/POSPaymentPanel';
+import ConfirmationModal from '../components/admin/ConfirmationModal';
 
 const POSScreen: React.FC = () => {
   const { showNotification } = useToast();
-  const { createInStoreSale, createInStorePendingOrder, resumeInStorePendingOrder, cancelInStorePendingOrder } = useOrders();
+  const navigate = useNavigate();
+  const { orders, createInStoreSale, createInStorePendingOrder, resumeInStorePendingOrder, cancelInStorePendingOrder } = useOrders();
   const { currentShift } = useCashShift();
   const [items, setItems] = useState<CartItem[]>([]);
   const [discountType, setDiscountType] = useState<'amount' | 'percent'>('amount');
   const [discountValue, setDiscountValue] = useState<number>(0);
   const [pendingOrderId, setPendingOrderId] = useState<string | null>(null);
+  const [customerName, setCustomerName] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [notes, setNotes] = useState('');
+  const [autoOpenInvoice, setAutoOpenInvoice] = useState(true);
+  const [addonsCartItemId, setAddonsCartItemId] = useState<string | null>(null);
+  const [addonsDraft, setAddonsDraft] = useState<Record<string, number>>({});
+  const [pendingFilter, setPendingFilter] = useState('');
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const pendingFilterRef = useRef<HTMLInputElement>(null);
+  const [selectedCartItemId, setSelectedCartItemId] = useState<string | null>(null);
+  const [pendingSelectedId, setPendingSelectedId] = useState<string | null>(null);
+  const [touchMode, setTouchMode] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('pos_touch_mode') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const [isPortrait, setIsPortrait] = useState<boolean>(() => {
+    try {
+      return window.matchMedia && window.matchMedia('(orientation: portrait)').matches;
+    } catch {
+      return false;
+    }
+  });
+
+  type DraftInvoice = {
+    items: CartItem[];
+    discountType: 'amount' | 'percent';
+    discountValue: number;
+    customerName: string;
+    phoneNumber: string;
+    notes: string;
+    selectedCartItemId: string | null;
+  };
+
+  const [draftInvoice, setDraftInvoice] = useState<DraftInvoice | null>(null);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('pos_touch_mode', touchMode ? '1' : '0');
+    } catch {}
+  }, [touchMode]);
+
+  useEffect(() => {
+    let mql: MediaQueryList | null = null;
+    try {
+      mql = window.matchMedia ? window.matchMedia('(orientation: portrait)') : null;
+    } catch {
+      mql = null;
+    }
+    if (!mql) return;
+    const onChange = () => setIsPortrait(mql?.matches || false);
+    onChange();
+    try {
+      mql.addEventListener('change', onChange);
+      return () => mql?.removeEventListener('change', onChange);
+    } catch {
+      mql.addListener(onChange);
+      return () => mql?.removeListener(onChange);
+    }
+  }, []);
+
+  const focusSearch = () => {
+    try {
+      searchInputRef.current?.focus();
+      searchInputRef.current?.select?.();
+    } catch {}
+  };
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const tag = (target?.tagName || '').toLowerCase();
+      const isTyping = tag === 'input' || tag === 'textarea' || tag === 'select';
+
+      if (e.key === 'Escape' && addonsCartItemId) {
+        e.preventDefault();
+        setAddonsCartItemId(null);
+        setAddonsDraft({});
+        focusSearch();
+        return;
+      }
+
+      if (isTyping) return;
+
+      if (e.ctrlKey && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        return;
+      }
+      if (e.ctrlKey && (e.key === 'p' || e.key === 'P')) {
+        e.preventDefault();
+        pendingFilterRef.current?.focus();
+        pendingFilterRef.current?.select?.();
+        return;
+      }
+      if (e.key === '/' && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => {
+      window.removeEventListener('keydown', handler);
+    };
+  }, [addonsCartItemId]);
+
+  useEffect(() => {
+    setSelectedCartItemId((current) => {
+      if (!items.length) return null;
+      if (current && items.some(i => i.cartItemId === current)) return current;
+      return items[0].cartItemId;
+    });
+  }, [items]);
 
   const addLine = (item: MenuItem, input: { quantity?: number; weight?: number }) => {
+    if (pendingOrderId) return;
     const isWeight = item.unitType === 'kg' || item.unitType === 'gram';
     const qty = isWeight ? 1 : Number(input.quantity || 0);
     const wt = isWeight ? Number(input.weight || 0) : undefined;
@@ -33,24 +152,146 @@ const POSScreen: React.FC = () => {
       unit: item.unitType || 'piece',
     };
     setItems(prev => [cartItem, ...prev]);
+    setSelectedCartItemId(cartItem.cartItemId);
   };
 
   const updateLine = (cartItemId: string, next: { quantity?: number; weight?: number }) => {
-    setItems(prev =>
-      prev.map(i => {
+    if (pendingOrderId) return;
+    setItems(prev => {
+      const updated = prev.map(i => {
         if (i.cartItemId !== cartItemId) return i;
         const isWeight = i.unitType === 'kg' || i.unitType === 'gram';
+        const nextQty = isWeight ? 1 : Number(next.quantity ?? i.quantity);
+        const nextWeight = isWeight ? Number(next.weight ?? i.weight) : undefined;
         return {
           ...i,
-          quantity: isWeight ? 1 : Number(next.quantity ?? i.quantity),
-          weight: isWeight ? Number(next.weight ?? i.weight) : undefined,
+          quantity: isWeight ? 1 : nextQty,
+          weight: isWeight ? nextWeight : undefined,
         };
-      })
-    );
+      });
+
+      const removedIds = new Set<string>();
+      const filtered = updated.filter(i => {
+        const isWeight = i.unitType === 'kg' || i.unitType === 'gram';
+        const ok = isWeight ? (Number(i.weight) || 0) > 0 : (Number(i.quantity) || 0) > 0;
+        if (!ok) removedIds.add(i.cartItemId);
+        return ok;
+      });
+
+      if (selectedCartItemId && removedIds.has(selectedCartItemId)) {
+        setSelectedCartItemId(filtered[0]?.cartItemId || null);
+      }
+
+      return filtered;
+    });
   };
 
   const removeLine = (cartItemId: string) => {
-    setItems(prev => prev.filter(i => i.cartItemId !== cartItemId));
+    if (pendingOrderId) return;
+    setItems(prev => {
+      const next = prev.filter(i => i.cartItemId !== cartItemId);
+      if (selectedCartItemId === cartItemId) {
+        setSelectedCartItemId(next[0]?.cartItemId || null);
+      }
+      return next;
+    });
+  };
+
+  const openAddons = (cartItemId: string) => {
+    if (pendingOrderId) return;
+    const target = items.find(i => i.cartItemId === cartItemId);
+    if (!target) return;
+    const defs = ((target as any).addons || []) as Array<{ id: string }>;
+    if (!Array.isArray(defs) || defs.length === 0) return;
+    const nextDraft: Record<string, number> = {};
+    for (const def of defs) {
+      const existingQty = Number((target.selectedAddons as any)?.[def.id]?.quantity) || 0;
+      nextDraft[def.id] = existingQty;
+    }
+    setAddonsDraft(nextDraft);
+    setAddonsCartItemId(cartItemId);
+  };
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const tag = (target?.tagName || '').toLowerCase();
+      const isTyping = tag === 'input' || tag === 'textarea' || tag === 'select';
+      if (isTyping) return;
+      if (addonsCartItemId) return;
+      if (pendingOrderId) return;
+      if (!items.length) return;
+
+      const idx = selectedCartItemId ? items.findIndex(i => i.cartItemId === selectedCartItemId) : -1;
+      const currentIndex = idx >= 0 ? idx : 0;
+      const current = items[currentIndex];
+      if (!current) return;
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        const nextIndex = Math.min(items.length - 1, currentIndex + 1);
+        setSelectedCartItemId(items[nextIndex].cartItemId);
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        const nextIndex = Math.max(0, currentIndex - 1);
+        setSelectedCartItemId(items[nextIndex].cartItemId);
+        return;
+      }
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault();
+        removeLine(current.cartItemId);
+        return;
+      }
+      if (e.key === '+' || e.key === '=') {
+        e.preventDefault();
+        if (current.unitType === 'kg' || current.unitType === 'gram') {
+          updateLine(current.cartItemId, { weight: Number(((Number(current.weight) || 0) + 0.1).toFixed(2)) });
+          return;
+        }
+        updateLine(current.cartItemId, { quantity: (Number(current.quantity) || 0) + 1 });
+        return;
+      }
+      if (e.key === '-') {
+        e.preventDefault();
+        if (current.unitType === 'kg' || current.unitType === 'gram') {
+          updateLine(current.cartItemId, { weight: Math.max(0, Number(((Number(current.weight) || 0) - 0.1).toFixed(2))) });
+          return;
+        }
+        updateLine(current.cartItemId, { quantity: Math.max(0, (Number(current.quantity) || 0) - 1) });
+        return;
+      }
+      if (e.key === 'a' || e.key === 'A') {
+        const defs = ((current as any).addons || []) as any[];
+        if (!Array.isArray(defs) || defs.length === 0) return;
+        e.preventDefault();
+        openAddons(current.cartItemId);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => {
+      window.removeEventListener('keydown', handler);
+    };
+  }, [addonsCartItemId, items, openAddons, pendingOrderId, removeLine, selectedCartItemId, updateLine]);
+
+  const confirmAddons = () => {
+    if (!addonsCartItemId) return;
+    setItems(prev => prev.map(it => {
+      if (it.cartItemId !== addonsCartItemId) return it;
+      const defs = ((it as any).addons || []) as Array<{ id: string; name: any; price: number }>;
+      const selected: any = {};
+      for (const def of defs) {
+        const qty = Math.max(0, Math.floor(Number(addonsDraft[def.id]) || 0));
+        if (qty > 0) {
+          selected[def.id] = { addon: def, quantity: qty };
+        }
+      }
+      return { ...it, selectedAddons: selected };
+    }));
+    setAddonsCartItemId(null);
+    setAddonsDraft({});
+    focusSearch();
   };
 
   const subtotal = useMemo(() => {
@@ -88,6 +329,7 @@ const POSScreen: React.FC = () => {
 
   const handleHold = () => {
     if (items.length === 0) return;
+    if (pendingOrderId) return;
     const lines = items.map(i => {
       const isWeight = i.unitType === 'kg' || i.unitType === 'gram';
       const addons: Record<string, number> = {};
@@ -104,10 +346,14 @@ const POSScreen: React.FC = () => {
     createInStorePendingOrder({
       lines,
       discountType,
-      discountValue
+      discountValue,
+      customerName: customerName.trim() || undefined,
+      phoneNumber: phoneNumber.trim() || undefined,
+      notes: notes.trim() || undefined,
     }).then(order => {
       setPendingOrderId(order.id);
       showNotification('تم تعليق الفاتورة', 'info');
+      focusSearch();
     }).catch(err => {
       const msg = err instanceof Error ? err.message : 'فشل تعليق الفاتورة';
       showNotification(msg, 'error');
@@ -117,22 +363,126 @@ const POSScreen: React.FC = () => {
   const handleCancelHold = () => {
     if (!pendingOrderId) return;
     cancelInStorePendingOrder(pendingOrderId).then(() => {
-      setPendingOrderId(null);
       showNotification('تم إلغاء التعليق وإفراج الحجز', 'info');
+      if (draftInvoice) {
+        const d = draftInvoice;
+        setPendingOrderId(null);
+        setItems(d.items);
+        setDiscountType(d.discountType);
+        setDiscountValue(d.discountValue);
+        setCustomerName(d.customerName);
+        setPhoneNumber(d.phoneNumber);
+        setNotes(d.notes);
+        setSelectedCartItemId(d.selectedCartItemId || d.items[0]?.cartItemId || null);
+        setDraftInvoice(null);
+        setPendingSelectedId(null);
+        focusSearch();
+        return;
+      }
+      setPendingOrderId(null);
+      setItems([]);
+      setCustomerName('');
+      setPhoneNumber('');
+      setNotes('');
+      setSelectedCartItemId(null);
+      setPendingSelectedId(null);
+      focusSearch();
     }).catch(err => {
       const msg = err instanceof Error ? err.message : 'فشل إلغاء التعليق';
       showNotification(msg, 'error');
     });
   };
 
-  const handleFinalize = (payload: { method: string; amount: number; cashReceived?: number }) => {
+  const pendingTickets = useMemo(() => {
+    const list = (orders || [])
+      .filter(o => o && o.status === 'pending' && (o as any).orderSource === 'in_store')
+      .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+    return list;
+  }, [orders]);
+
+  const filteredPendingTickets = useMemo(() => {
+    const q = pendingFilter.trim().toLowerCase();
+    if (!q) return pendingTickets;
+    return pendingTickets.filter(t => {
+      const id = String(t.id || '').toLowerCase();
+      const suffix = id.slice(-6);
+      const name = String((t as any).customerName || '').toLowerCase();
+      const phone = String((t as any).phoneNumber || '').toLowerCase();
+      return id.includes(q) || suffix.includes(q) || name.includes(q) || phone.includes(q);
+    });
+  }, [pendingFilter, pendingTickets]);
+
+  useEffect(() => {
+    if (filteredPendingTickets.length === 0) {
+      setPendingSelectedId(null);
+      return;
+    }
+    setPendingSelectedId((current) => {
+      if (current && filteredPendingTickets.some(t => t.id === current)) return current;
+      return filteredPendingTickets[0].id;
+    });
+  }, [filteredPendingTickets]);
+
+  const loadPendingTicket = (orderId: string) => {
+    const ticket = pendingTickets.find(o => o.id === orderId);
+    if (!ticket) return;
+    if (!pendingOrderId) {
+      const hasDraftContent =
+        items.length > 0 ||
+        Boolean(customerName.trim()) ||
+        Boolean(phoneNumber.trim()) ||
+        Boolean(notes.trim()) ||
+        (Number(discountValue) || 0) > 0;
+      if (hasDraftContent) {
+        setDraftInvoice({
+          items,
+          discountType,
+          discountValue,
+          customerName,
+          phoneNumber,
+          notes,
+          selectedCartItemId,
+        });
+      }
+    }
+    setPendingOrderId(ticket.id);
+    setItems((ticket.items || []) as CartItem[]);
+    setDiscountType('amount');
+    setDiscountValue(Number((ticket as any).discountAmount) || 0);
+    setCustomerName(String((ticket as any).customerName || ''));
+    setPhoneNumber(String((ticket as any).phoneNumber || ''));
+    setNotes(String((ticket as any).notes || ''));
+    setSelectedCartItemId(((ticket.items || []) as any[])[0]?.cartItemId || null);
+    setPendingSelectedId(ticket.id);
+    showNotification(`تم تحميل الفاتورة المعلّقة #${ticket.id.slice(-6).toUpperCase()}`, 'info');
+  };
+
+  const restoreDraft = () => {
+    if (!draftInvoice) return;
+    setPendingOrderId(null);
+    setItems(draftInvoice.items);
+    setDiscountType(draftInvoice.discountType);
+    setDiscountValue(draftInvoice.discountValue);
+    setCustomerName(draftInvoice.customerName);
+    setPhoneNumber(draftInvoice.phoneNumber);
+    setNotes(draftInvoice.notes);
+    setSelectedCartItemId(draftInvoice.selectedCartItemId || draftInvoice.items[0]?.cartItemId || null);
+    setDraftInvoice(null);
+    setPendingSelectedId(null);
+    showNotification('تمت استعادة الفاتورة السابقة', 'info');
+    focusSearch();
+  };
+
+  const handleFinalize = (payload: { paymentMethod: string; paymentBreakdown: Array<{ method: string; amount: number; referenceNumber?: string; senderName?: string; senderPhone?: string; declaredAmount?: number; amountConfirmed?: boolean; cashReceived?: number; }> }) => {
     if (items.length === 0) return;
-    if (!(payload.amount > 0)) return;
-    if (payload.method === 'cash' && !currentShift) {
+    const breakdown = (payload.paymentBreakdown || []).filter(p => (Number(p.amount) || 0) > 0);
+    const hasCash = breakdown.some(p => p.method === 'cash');
+    if (!(total > 0)) return;
+    if (hasCash && !currentShift) {
       showNotification('لا توجد وردية مفتوحة: الدفع النقدي غير مسموح.', 'error');
       return;
     }
-    if (payload.method !== 'cash' && !currentShift) {
+    if (!hasCash && !currentShift) {
       showNotification('تحذير: لا توجد وردية مفتوحة. الدفع غير النقدي مسموح.', 'info');
     }
     const lines = items.map(i => {
@@ -150,12 +500,30 @@ const POSScreen: React.FC = () => {
     });
     if (pendingOrderId) {
       resumeInStorePendingOrder(pendingOrderId, {
-        paymentMethod: payload.method,
-        paymentBreakdown: [{ method: payload.method, amount: total, cashReceived: payload.cashReceived }],
-      }).then(() => {
+        paymentMethod: payload.paymentMethod,
+        paymentBreakdown: breakdown.map(p => ({
+          method: p.method,
+          amount: Number(p.amount) || 0,
+          referenceNumber: p.referenceNumber,
+          senderName: p.senderName,
+          senderPhone: p.senderPhone,
+          declaredAmount: p.declaredAmount,
+          amountConfirmed: p.amountConfirmed,
+          cashReceived: p.cashReceived,
+        })),
+      }).then((order) => {
         setPendingOrderId(null);
         setItems([]);
+        setCustomerName('');
+        setPhoneNumber('');
+        setNotes('');
+        setDraftInvoice(null);
+        setPendingSelectedId(null);
         showNotification('تم إتمام الطلب المستأنف', 'success');
+        if (autoOpenInvoice && order?.id) {
+          navigate(`/admin/invoice/${order.id}`);
+        }
+        focusSearch();
       }).catch(err => {
         const msg = err instanceof Error ? err.message : 'فشل إتمام الطلب المستأنف';
         showNotification(msg, 'error');
@@ -165,11 +533,32 @@ const POSScreen: React.FC = () => {
         lines,
         discountType,
         discountValue,
-        paymentMethod: payload.method,
-        paymentBreakdown: [{ method: payload.method, amount: total, cashReceived: payload.cashReceived }]
-      }).then(() => {
+        customerName: customerName.trim() || undefined,
+        phoneNumber: phoneNumber.trim() || undefined,
+        notes: notes.trim() || undefined,
+        paymentMethod: payload.paymentMethod,
+        paymentBreakdown: breakdown.map(p => ({
+          method: p.method,
+          amount: Number(p.amount) || 0,
+          referenceNumber: p.referenceNumber,
+          senderName: p.senderName,
+          senderPhone: p.senderPhone,
+          declaredAmount: p.declaredAmount,
+          amountConfirmed: p.amountConfirmed,
+          cashReceived: p.cashReceived,
+        })),
+      }).then((order) => {
         setItems([]);
+        setCustomerName('');
+        setPhoneNumber('');
+        setNotes('');
+        setDraftInvoice(null);
+        setPendingSelectedId(null);
         showNotification('تم إتمام الطلب مباشرة', 'success');
+        if (autoOpenInvoice && order?.id) {
+          navigate(`/admin/invoice/${order.id}`);
+        }
+        focusSearch();
       }).catch(err => {
         const msg = err instanceof Error ? err.message : 'فشل إتمام الطلب';
         showNotification(msg, 'error');
@@ -182,49 +571,317 @@ const POSScreen: React.FC = () => {
       <div className="py-4">
         <POSHeaderShiftStatus />
       </div>
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-6">
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-4">
-            <POSItemSearch onAddLine={addLine} />
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => navigate('/admin/orders')}
+          className="px-4 py-3 rounded-xl border dark:border-gray-700 font-semibold"
+        >
+          إدارة الطلبات
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            if (pendingOrderId) return;
+            setItems([]);
+            setCustomerName('');
+            setPhoneNumber('');
+            setNotes('');
+            setDiscountType('amount');
+            setDiscountValue(0);
+            setDraftInvoice(null);
+            setPendingSelectedId(null);
+            showNotification('تم بدء فاتورة جديدة', 'info');
+            searchInputRef.current?.focus();
+          }}
+          disabled={Boolean(pendingOrderId)}
+          className="px-4 py-3 rounded-xl border dark:border-gray-700 font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          فاتورة جديدة
+        </button>
+        {pendingOrderId && draftInvoice && (
+          <button
+            type="button"
+            onClick={restoreDraft}
+            className="px-4 py-3 rounded-xl border dark:border-gray-700 font-semibold"
+          >
+            عودة للفاتورة السابقة
+          </button>
+        )}
+        <div className={`px-3 py-2 rounded-xl border dark:border-gray-700 text-sm font-semibold ${pendingOrderId ? 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-900' : 'bg-green-50 text-green-800 border-green-200 dark:bg-green-900/20 dark:text-green-300 dark:border-green-900'}`}>
+          {pendingOrderId ? `وضع معلّق: #${pendingOrderId.slice(-6).toUpperCase()}` : 'وضع جديد'}
+        </div>
+        <label className="flex items-center gap-2 px-3 py-2 rounded-xl border dark:border-gray-700 text-sm font-semibold">
+          <input
+            type="checkbox"
+            checked={touchMode}
+            onChange={(e) => setTouchMode(e.target.checked)}
+          />
+          وضع لمس
+        </label>
+        <div className="text-[11px] text-gray-500 dark:text-gray-400">
+          Ctrl+K بحث • Ctrl+P معلّق • F8 تعليق • F9 إتمام
+        </div>
+      </div>
+      <div className={`grid grid-cols-1 gap-6 ${touchMode ? 'xl:grid-cols-3 xl:gap-8' : 'lg:grid-cols-3'}`}>
+        <div className={`${touchMode ? 'xl:col-span-2' : 'lg:col-span-2'} space-y-6`}>
+          <div className={`bg-white dark:bg-gray-800 rounded-xl shadow-lg ${touchMode ? 'p-6' : 'p-4'}`}>
+            <POSItemSearch onAddLine={addLine} inputRef={searchInputRef} disabled={Boolean(pendingOrderId)} touchMode={touchMode} />
           </div>
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-4">
-            <POSLineItemList items={items} onUpdate={updateLine} onRemove={removeLine} />
+          <div className={`bg-white dark:bg-gray-800 rounded-xl shadow-lg ${touchMode ? 'p-6' : 'p-4'}`}>
+            <POSLineItemList
+              items={items}
+              onUpdate={updateLine}
+              onRemove={removeLine}
+              onEditAddons={openAddons}
+              selectedCartItemId={selectedCartItemId}
+              onSelect={setSelectedCartItemId}
+              touchMode={touchMode}
+            />
           </div>
         </div>
-        <div className="lg:col-span-1 space-y-6">
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-4">
-            <div className="flex items-center gap-3 mb-3">
-              <select
-                value={discountType}
-                onChange={e => setDiscountType(e.target.value as 'amount' | 'percent')}
-                className="p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600"
-              >
-                <option value="amount">خصم مبلغ</option>
-                <option value="percent">خصم نسبة</option>
-              </select>
-              <input
-                type="number"
-                step={discountType === 'percent' ? '1' : '0.01'}
-                value={discountValue}
-                onChange={e => setDiscountValue(Number(e.target.value) || 0)}
-                className="flex-1 p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600"
-                placeholder={discountType === 'percent' ? '0 - 100' : '0.00'}
+        <div className={`${touchMode ? 'xl:col-span-1' : 'lg:col-span-1'} space-y-6`}>
+          <div className={`${touchMode ? (isPortrait ? '' : 'xl:sticky xl:top-4') : 'lg:sticky lg:top-4'} space-y-6`}>
+            <div className={`bg-white dark:bg-gray-800 rounded-xl shadow-lg ${touchMode ? 'p-6' : 'p-4'}`}>
+              <div className="flex items-center gap-3 mb-3">
+                <select
+                  value={discountType}
+                  onChange={e => setDiscountType(e.target.value as 'amount' | 'percent')}
+                  className={`${touchMode ? 'p-4 text-lg' : 'p-2'} border rounded-lg dark:bg-gray-700 dark:border-gray-600`}
+                  disabled={Boolean(pendingOrderId)}
+                >
+                  <option value="amount">خصم مبلغ</option>
+                  <option value="percent">خصم نسبة</option>
+                </select>
+                <input
+                  type="number"
+                  step={discountType === 'percent' ? '1' : '0.01'}
+                  value={discountValue}
+                  onChange={e => setDiscountValue(Number(e.target.value) || 0)}
+                  className={`flex-1 border rounded-lg dark:bg-gray-700 dark:border-gray-600 ${touchMode ? 'p-4 text-lg' : 'p-2'}`}
+                  placeholder={discountType === 'percent' ? '0 - 100' : '0.00'}
+                  disabled={Boolean(pendingOrderId)}
+                />
+              </div>
+              <POSTotals subtotal={subtotal} discountAmount={discountAmount} total={total} />
+            </div>
+            <div className={`bg-white dark:bg-gray-800 rounded-xl shadow-lg ${touchMode ? 'p-6' : 'p-4'}`}>
+              <POSPaymentPanel
+                total={total}
+                canFinalize={items.length > 0}
+                onHold={handleHold}
+                onFinalize={handleFinalize}
+                pendingOrderId={pendingOrderId}
+                onCancelHold={handleCancelHold}
+                touchMode={touchMode}
               />
             </div>
-            <POSTotals subtotal={subtotal} discountAmount={discountAmount} total={total} />
           </div>
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-4">
-            <POSPaymentPanel
-              total={total}
-              canFinalize={items.length > 0}
-              onHold={handleHold}
-              onFinalize={handleFinalize}
-              pendingOrderId={pendingOrderId}
-              onCancelHold={handleCancelHold}
+          <div className={`bg-white dark:bg-gray-800 rounded-xl shadow-lg ${touchMode ? 'p-6' : 'p-4'}`}>
+            <div className="flex items-center justify-between mb-2">
+              <div className="font-bold dark:text-white">الفواتير المعلّقة</div>
+              <div className="text-xs text-gray-500 dark:text-gray-400">{pendingTickets.length}</div>
+            </div>
+            <input
+              ref={pendingFilterRef}
+              value={pendingFilter}
+              onChange={(e) => setPendingFilter(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'ArrowDown') {
+                  e.preventDefault();
+                  if (filteredPendingTickets.length === 0) return;
+                  const idx = pendingSelectedId ? filteredPendingTickets.findIndex(t => t.id === pendingSelectedId) : -1;
+                  const next = Math.min(filteredPendingTickets.length - 1, (idx >= 0 ? idx : 0) + 1);
+                  setPendingSelectedId(filteredPendingTickets[next].id);
+                  return;
+                }
+                if (e.key === 'ArrowUp') {
+                  e.preventDefault();
+                  if (filteredPendingTickets.length === 0) return;
+                  const idx = pendingSelectedId ? filteredPendingTickets.findIndex(t => t.id === pendingSelectedId) : -1;
+                  const next = Math.max(0, (idx >= 0 ? idx : 0) - 1);
+                  setPendingSelectedId(filteredPendingTickets[next].id);
+                  return;
+                }
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  const targetId = pendingSelectedId || filteredPendingTickets[0]?.id;
+                  if (targetId) loadPendingTicket(targetId);
+                }
+              }}
+              className={`w-full border rounded-lg dark:bg-gray-700 dark:border-gray-600 mb-2 ${touchMode ? 'p-4 text-lg' : 'p-2'}`}
+              placeholder="بحث: رقم / اسم / هاتف"
+            />
+            {pendingTickets.length === 0 ? (
+              <div className="text-sm text-gray-500 dark:text-gray-300">لا توجد فواتير معلّقة.</div>
+            ) : (
+              <div className="space-y-2 max-h-56 overflow-y-auto">
+                {filteredPendingTickets.slice(0, 25).map(t => (
+                  <div
+                    key={t.id}
+                    onClick={() => setPendingSelectedId(t.id)}
+                    className={`p-2 border rounded-lg dark:border-gray-700 flex items-center justify-between gap-2 cursor-pointer ${pendingSelectedId === t.id ? 'ring-2 ring-primary-500 border-primary-500' : ''}`}
+                  >
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <div className="font-semibold dark:text-white truncate">#{t.id.slice(-6).toUpperCase()}</div>
+                        {pendingOrderId === t.id && (
+                          <div className="text-[11px] px-2 py-1 rounded-full bg-primary-500 text-white">مفتوحة</div>
+                        )}
+                      </div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">
+                        {Number(t.total || 0).toFixed(2)} ر.ي
+                      </div>
+                      <div className="text-[11px] text-gray-500 dark:text-gray-400 truncate">
+                        {String((t as any).customerName || 'زبون حضوري')}
+                        {String((t as any).phoneNumber || '') ? ` • ${String((t as any).phoneNumber)}` : ''}
+                        {t.createdAt ? ` • ${new Date(t.createdAt).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })}` : ''}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => loadPendingTicket(t.id)}
+                        className={`${touchMode ? 'px-5 py-4 text-base' : 'px-3 py-2 text-sm'} rounded-lg border dark:border-gray-700 font-semibold ${pendingOrderId === t.id ? 'bg-primary-500 text-white border-primary-500' : ''}`}
+                      >
+                        فتح
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          cancelInStorePendingOrder(t.id)
+                            .then(() => {
+                              showNotification('تم إلغاء التعليق وإفراج الحجز', 'info');
+                              if (pendingOrderId === t.id) {
+                                if (draftInvoice) {
+                                  restoreDraft();
+                                } else {
+                                  setPendingOrderId(null);
+                                  setItems([]);
+                                  setCustomerName('');
+                                  setPhoneNumber('');
+                                  setNotes('');
+                                  setSelectedCartItemId(null);
+                                  setPendingSelectedId(null);
+                                  focusSearch();
+                                }
+                              }
+                            })
+                            .catch(err => showNotification(err instanceof Error ? err.message : 'فشل إلغاء التعليق', 'error'));
+                        }}
+                        className={`${touchMode ? 'px-5 py-4 text-base' : 'px-3 py-2 text-sm'} rounded-lg bg-red-500 text-white font-semibold`}
+                      >
+                        إلغاء
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {filteredPendingTickets.length > 25 && (
+              <div className="text-xs text-gray-500 dark:text-gray-400 mt-2">يتم عرض أول 25 فاتورة.</div>
+            )}
+          </div>
+          <div className={`bg-white dark:bg-gray-800 rounded-xl shadow-lg space-y-3 ${touchMode ? 'p-6' : 'p-4'}`}>
+            <div className="flex items-center justify-between">
+              <div className="font-bold dark:text-white">بيانات الفاتورة</div>
+              <label className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300">
+                <input
+                  type="checkbox"
+                  checked={autoOpenInvoice}
+                  onChange={(e) => setAutoOpenInvoice(e.target.checked)}
+                />
+                فتح بعد الإتمام
+              </label>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <input
+                value={customerName}
+                onChange={(e) => setCustomerName(e.target.value)}
+                className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600"
+                placeholder="اسم العميل"
+                disabled={Boolean(pendingOrderId)}
+              />
+              <input
+                value={phoneNumber}
+                onChange={(e) => setPhoneNumber(e.target.value)}
+                className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600"
+                placeholder="الهاتف"
+                disabled={Boolean(pendingOrderId)}
+              />
+            </div>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600"
+              placeholder="ملاحظات"
+              rows={2}
+              disabled={Boolean(pendingOrderId)}
             />
           </div>
         </div>
       </div>
+      <ConfirmationModal
+        isOpen={Boolean(addonsCartItemId)}
+        onClose={() => {
+          setAddonsCartItemId(null);
+          setAddonsDraft({});
+        }}
+        onConfirm={confirmAddons}
+        title="إضافات الصنف"
+        message=""
+        confirmText="حفظ"
+        confirmingText="جاري الحفظ..."
+        confirmButtonClassName="bg-primary-500 hover:bg-primary-600 disabled:bg-primary-300"
+      >
+        {(() => {
+          const target = items.find(i => i.cartItemId === addonsCartItemId);
+          const defs = ((target as any)?.addons || []) as Array<{ id: string; name?: any; price: number }>;
+          if (!target || !Array.isArray(defs) || defs.length === 0) {
+            return <div className="text-sm text-gray-600 dark:text-gray-300">لا توجد إضافات لهذا الصنف.</div>;
+          }
+          return (
+            <div className="space-y-2">
+              {defs.map(def => {
+                const label = (def as any)?.name?.ar || (def as any)?.name?.en || def.id;
+                const qty = Number(addonsDraft[def.id]) || 0;
+                return (
+                  <div key={def.id} className="flex items-center justify-between gap-3 p-2 border rounded-lg dark:border-gray-700">
+                    <div className="min-w-0">
+                      <div className="font-semibold dark:text-white truncate">{label}</div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">{(Number(def.price) || 0).toFixed(2)}</div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setAddonsDraft(prev => ({ ...prev, [def.id]: Math.max(0, (Number(prev[def.id]) || 0) - 1) }))}
+                        className="px-3 py-2 rounded-lg border dark:border-gray-700"
+                      >
+                        -
+                      </button>
+                      <input
+                        type="number"
+                        min={0}
+                        step={1}
+                        value={qty}
+                        onChange={(e) => setAddonsDraft(prev => ({ ...prev, [def.id]: Math.max(0, Math.floor(Number(e.target.value) || 0)) }))}
+                        className="w-20 p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 text-center"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setAddonsDraft(prev => ({ ...prev, [def.id]: (Number(prev[def.id]) || 0) + 1 }))}
+                        className="px-3 py-2 rounded-lg border dark:border-gray-700"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
+      </ConfirmationModal>
     </div>
   );
 };

@@ -114,6 +114,7 @@ const navLinks: Array<{ to: string; label: string; icon: React.ReactNode; permis
   { to: 'warehouses', label: 'المستودعات', icon: <Icons.Package />, permission: 'stock.manage' },
   { to: 'warehouse-transfers', label: 'تحويلات المستودعات', icon: <Icons.TruckIcon />, permission: 'stock.manage' },
   { to: 'orders', label: 'إدارة الطلبات', icon: <Icons.OrdersIcon />, permission: 'orders.view' },
+  { to: '/pos', label: 'نقطة البيع (POS)', icon: <Icons.CartIcon />, permission: 'orders.createInStore' },
   { to: 'my-shift', label: 'ورديتي', icon: <Icons.ClockIcon />, permission: 'cashShifts.viewOwn' },
   { to: 'delivery-zones', label: 'مناطق التوصيل', icon: <Icons.TruckIcon />, permission: 'deliveryZones.manage' },
   { to: 'items', label: 'إدارة الأصناف', icon: <Icons.ListIcon />, permission: 'items.manage' },
@@ -182,6 +183,9 @@ const AdminLayout: React.FC = () => {
   const canAccessLink = (link: (typeof navLinks)[number]) => {
     if (link.to === 'my-shift') {
       return hasPermission('cashShifts.viewOwn') || hasPermission('cashShifts.manage');
+    }
+    if (link.to === '/pos') {
+      return hasPermission('orders.createInStore') || hasPermission('orders.updateStatus.all');
     }
     return hasPermission(link.permission);
   };

@@ -756,11 +756,11 @@ export const ADMIN_PERMISSION_DEFS: Array<{ key: AdminPermission; labelAr: strin
 export const defaultAdminPermissionsForRole = (role: AdminRole): AdminPermission[] => {
   const allPermissions: AdminPermission[] = ADMIN_PERMISSION_DEFS.map(def => def.key);
 
-  if (role === 'owner') return allPermissions;
-  if (role === 'manager') return allPermissions.filter(permission => !['settings.manage'].includes(permission));
+  if (role === 'owner' || role === 'manager') return allPermissions;
   if (role === 'accountant') return [
     'dashboard.view',
     'profile.view',
+    'reports.view',
     'expenses.manage',
     'accounting.view',
     'accounting.manage',
