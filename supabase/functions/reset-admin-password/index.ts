@@ -4,24 +4,28 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
 function getAllowedOrigin(origin: string | null): string {
     const raw = (Deno.env.get('CATY_ALLOWED_ORIGINS') || '').trim();
-    if (!raw) return 'http://localhost:5174';
+    if (!raw) return origin ?? '*';
     const list = raw.split(',').map(s => s.trim()).filter(Boolean);
+    if (list.includes('*')) return origin ?? '*';
     if (!origin) return list[0] || '*';
-    return list.includes(origin) ? origin : list[0] || '*';
+    return list.includes(origin) ? origin : 'null';
 }
 
-function buildCors(origin: string | null) {
+function buildCors(origin: string | null, req?: Request) {
     const allowOrigin = getAllowedOrigin(origin);
+    const requestHeaders = (req?.headers.get('access-control-request-headers') || '').trim();
+    const allowHeaders = requestHeaders || 'authorization, x-client-info, apikey, content-type, x-user-token, x-supabase-api-version, x-supabase-user-agent';
     return {
         'Access-Control-Allow-Origin': allowOrigin,
-        'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-user-token',
+        'Access-Control-Allow-Headers': allowHeaders,
         'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Vary': 'Origin, Access-Control-Request-Headers',
     } as Record<string, string>;
 }
 
 serve(async (req) => {
     const origin = req.headers.get('origin');
-    const corsHeaders = buildCors(origin);
+    const corsHeaders = buildCors(origin, req);
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: corsHeaders })
     }

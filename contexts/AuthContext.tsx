@@ -165,16 +165,28 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   useEffect(() => {
     let cancelled = false;
+    let timedOut = false;
+    const timeoutMs = Number((import.meta.env as any)?.VITE_ADMIN_AUTH_INIT_TIMEOUT_MS || 8000);
+    const timeoutId = typeof window !== 'undefined'
+      ? window.setTimeout(() => {
+        timedOut = true;
+        if (!cancelled) setLoading(false);
+      }, Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 8000)
+      : null;
     const run = async () => {
       try {
         await hydrateSession();
+      } catch (err) {
+        logger.warn('Admin auth hydrate failed', { error: err instanceof Error ? err.message : String(err) });
       } finally {
-        if (!cancelled) setLoading(false);
+        if (timeoutId != null) window.clearTimeout(timeoutId);
+        if (!cancelled && !timedOut) setLoading(false);
       }
     };
     run();
     return () => {
       cancelled = true;
+      if (timeoutId != null) window.clearTimeout(timeoutId);
     };
   }, []);
 
