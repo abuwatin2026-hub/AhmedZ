@@ -94,8 +94,11 @@ serve(async (req) => {
             )
         }
 
-        const supabaseAnonKey = Deno.env.get('CATY_SUPABASE_ANON_KEY') ?? Deno.env.get('SUPABASE_ANON_KEY') ?? ''
-        const userClient = createClient(supabaseUrl, supabaseAnonKey, {
+        const userClient = createClient(supabaseUrl, serviceRoleKey, {
+            auth: {
+                autoRefreshToken: false,
+                persistSession: false,
+            },
             global: { headers: { Authorization: `Bearer ${token}` } }
         })
 

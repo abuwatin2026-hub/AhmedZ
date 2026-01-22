@@ -190,6 +190,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
   }, []);
 
+  useEffect(() => {
+    if (!supabase) return;
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!session?.user) {
+        setIsAuthenticated(false);
+        setUser(null);
+        return;
+      }
+      void hydrateSession();
+    });
+    return () => {
+      sub.subscription.unsubscribe();
+    };
+  }, [supabase]);
+
   const login = async (username: string, pass: string): Promise<boolean> => {
     if (!supabase) return false;
     const email = normalizeUsername(username);
@@ -364,16 +379,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return raw;
   };
 
-  const getFreshAccessToken = async (supabaseClient: any): Promise<string> => {
-    const { data: sessionData, error: sessionError } = await supabaseClient.auth.getSession();
-    if (!sessionError && sessionData?.session?.access_token) return sessionData.session.access_token;
-
-    const { data: refreshData, error: refreshError } = await supabaseClient.auth.refreshSession();
-    if (!refreshError && refreshData?.session?.access_token) return refreshData.session.access_token;
-
-    throw new Error('انتهت الجلسة. يرجى إعادة تسجيل الدخول.');
-  };
-
   const isEdgeFunctionDeployed = async (functionName: string): Promise<boolean> => {
     const baseUrl = String((import.meta.env as any).VITE_SUPABASE_URL || '').replace(/\/+$/, '');
     if (!baseUrl) return true;
@@ -433,10 +438,35 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return null;
   };
 
-  const createAdminUser = async (data: { username: string; fullName: string; role: AdminRole; password: string; permissions?: AdminPermission[] }) => {
-    ensurePermission('adminUsers.manage');
+  const isJwtIssue = (message: string) => {
+    const normalized = (message || '').toLowerCase();
+    if (!normalized) return false;
+    if (normalized.includes('invalid jwt')) return true;
+    if (normalized.includes('jwt')) return true;
+    if (normalized.includes('session_verification_failed')) return true;
+    return false;
+  };
+
+  const invokeAdminFunction = async (functionName: string, body: Record<string, any>) => {
     const supabase = getSupabaseClient();
     if (!supabase) throw new Error('Supabase غير مهيأ.');
+
+    const runOnce = async () => {
+      const result = await supabase.functions.invoke(functionName, { body });
+      if (!result.error) return result;
+      const serverMessage = await extractFunctionErrorMessage(result.error);
+      const resolved = serverMessage || (typeof (result.error as any)?.message === 'string' ? (result.error as any).message : '');
+      if (!isJwtIssue(resolved)) return result;
+      const { error: refreshError } = await supabase.auth.refreshSession();
+      if (refreshError) return result;
+      return await supabase.functions.invoke(functionName, { body });
+    };
+
+    return await runOnce();
+  };
+
+  const createAdminUser = async (data: { username: string; fullName: string; role: AdminRole; password: string; permissions?: AdminPermission[] }) => {
+    ensurePermission('adminUsers.manage');
 
     const username = normalizeUsername(data.username);
     if (!username) throw new Error('اسم المستخدم مطلوب.');
@@ -447,20 +477,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     const email = makeServiceEmail(username);
 
-    const accessToken = await getFreshAccessToken(supabase);
-    const { error } = await supabase.functions.invoke('create-admin-user', {
-      body: {
-        email: email.toLowerCase(),
-        password: data.password,
-        fullName: fullName,
-        username: username,
-        phoneNumber: null,
-        role: data.role,
-        permissions: data.permissions || [],
-      },
-      headers: {
-        Authorization: `Bearer ${accessToken}`
-      }
+    const { error } = await invokeAdminFunction('create-admin-user', {
+      email: email.toLowerCase(),
+      password: data.password,
+      fullName: fullName,
+      username: username,
+      phoneNumber: null,
+      role: data.role,
+      permissions: data.permissions || [],
     });
 
     if (error) {
@@ -537,16 +561,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const resetAdminUserPassword = async (userId: string, newPassword: string) => {
     ensurePermission('adminUsers.manage');
-    const supabase = getSupabaseClient();
-    if (!supabase) throw new Error('Supabase غير مهيأ.');
-
-    const accessToken = await getFreshAccessToken(supabase);
-    const { error } = await supabase.functions.invoke('reset-admin-password', {
-      body: { userId, newPassword },
-      headers: {
-        Authorization: `Bearer ${accessToken}`
-      }
-    });
+    const { error } = await invokeAdminFunction('reset-admin-password', { userId, newPassword });
 
     if (error) {
       const serverMessage = await extractFunctionErrorMessage(error);
@@ -561,16 +576,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const deleteAdminUser = async (userId: string) => {
     ensurePermission('adminUsers.manage');
-    const supabase = getSupabaseClient();
-    if (!supabase) throw new Error('Supabase غير مهيأ.');
-
-    const accessToken = await getFreshAccessToken(supabase);
-    const { error } = await supabase.functions.invoke('delete-admin-user', {
-      body: { userId },
-      headers: {
-        Authorization: `Bearer ${accessToken}`
-      }
-    });
+    const { error } = await invokeAdminFunction('delete-admin-user', { userId });
 
     if (error) {
       const serverMessage = await extractFunctionErrorMessage(error);
@@ -585,7 +591,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     // Optimistically remove from state if the user was in the list, though the list usually re-fetches.
     if (user?.id === userId) {
       try {
-        await supabase.auth.signOut();
+        const sb = getSupabaseClient();
+        if (sb) await sb.auth.signOut();
       } catch { }
       setIsAuthenticated(false);
       setUser(null);
