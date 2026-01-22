@@ -36,13 +36,13 @@ const OrderAgainItemCard: React.FC<OrderAgainItemCardProps> = ({ item }) => {
         {isCustomized && <span className="absolute top-1 left-1 rtl:left-auto rtl:right-1 z-10 text-xs bg-blue-500 text-white px-2 py-0.5 rounded-full font-bold shadow-md">معدل</span>}
 
         <Link to={`/item/${item.id}`} className="block relative overflow-hidden">
-          <img className="w-full h-24 object-cover group-hover:scale-110 transition-transform duration-500" src={item.imageUrl} alt={item.name['ar']} />
+          <img className="w-full h-24 object-cover group-hover:scale-110 transition-transform duration-500" src={item.imageUrl} alt={item.name?.ar || item.name?.en || ''} />
           <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
         </Link>
 
         <div className="p-2 flex flex-col flex-grow">
           <Link to={`/item/${item.id}`} className="block">
-            <h3 className="text-sm font-bold text-gray-800 dark:text-white truncate group-hover:text-primary-600 dark:group-hover:text-gold-400 transition-colors">{item.name['ar']}</h3>
+            <h3 className="text-sm font-bold text-gray-800 dark:text-white truncate group-hover:text-primary-600 dark:group-hover:text-gold-400 transition-colors">{item.name?.ar || item.name?.en || ''}</h3>
           </Link>
           <div className="flex justify-between items-center mt-2">
             <span className="text-md font-bold bg-red-gradient bg-clip-text text-transparent">{Number(item.price || 0).toFixed(2)}</span>

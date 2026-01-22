@@ -236,7 +236,7 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
 
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span>{language === 'ar' ? 'رسوم التوصيل:' : 'Delivery fee:'}</span>
-                    <span>{invoiceOrder.deliveryFee.toFixed(2)} ر.ي</span>
+                    <span>{(Number(invoiceOrder.deliveryFee) || 0).toFixed(2)} ر.ي</span>
                 </div>
 
                 {invoiceOrder.taxAmount && invoiceOrder.taxAmount > 0 && (

@@ -130,12 +130,14 @@ for each row execute function public.update_updated_at_column();
 drop function if exists public.get_item_price(text, text, numeric);
 drop function if exists public.get_item_discount(text, text, numeric);
 drop function if exists public.check_customer_credit_limit(text, numeric);
+drop function if exists public.get_item_price(text, uuid, numeric);
+drop function if exists public.get_item_discount(text, uuid, numeric);
 
-revoke all on function public.get_item_price(text, uuid, numeric) from public;
-grant execute on function public.get_item_price(text, uuid, numeric) to anon, authenticated;
+revoke all on function public.get_item_price(text, numeric, uuid) from public;
+grant execute on function public.get_item_price(text, numeric, uuid) to anon, authenticated;
 
-revoke all on function public.get_item_discount(text, uuid, numeric) from public;
-grant execute on function public.get_item_discount(text, uuid, numeric) to anon, authenticated;
+revoke all on function public.get_item_discount(text, numeric, uuid) from public;
+grant execute on function public.get_item_discount(text, numeric, uuid) to anon, authenticated;
 
 revoke all on function public.get_item_all_prices(text) from public;
 grant execute on function public.get_item_all_prices(text) to authenticated;

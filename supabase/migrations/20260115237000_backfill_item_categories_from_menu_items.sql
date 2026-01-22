@@ -18,7 +18,7 @@ begin
       gen_random_uuid() as id,
       m.key as key,
       case
-        when m.key = 'qat' then jsonb_build_object('ar', 'قات', 'en', 'Qat')
+        when m.key = 'grocery' then jsonb_build_object('ar', 'مواد غذائية', 'en', 'Groceries')
         else jsonb_build_object('ar', m.key, 'en', m.key)
       end as name
     from missing m

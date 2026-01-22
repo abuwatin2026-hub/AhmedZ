@@ -20,16 +20,16 @@ const FeaturedMenuItemCard: React.FC<FeaturedMenuItemCardProps> = ({ item }) => 
         </div>
 
         <div className="relative overflow-hidden flex-shrink-0">
-          <img className="w-32 h-32 object-cover group-hover:scale-110 transition-transform duration-500" src={item.imageUrl} alt={item.name['ar']} />
+          <img className="w-32 h-32 object-cover group-hover:scale-110 transition-transform duration-500" src={item.imageUrl} alt={item.name?.ar || item.name?.en || ''} />
           <div className="absolute inset-0 bg-gradient-to-r from-transparent to-black/20"></div>
         </div>
 
         <div className="p-4 flex flex-col flex-grow">
           <h3 className="text-md font-bold text-gray-800 dark:text-white group-hover:bg-gold-gradient group-hover:bg-clip-text group-hover:text-transparent transition-all">
-            {item.name['ar']}
+            {item.name?.ar || item.name?.en || ''}
           </h3>
           <p className="text-gray-500 dark:text-gray-400 text-xs mt-1 h-8 overflow-hidden">
-            {item.description['ar']}
+            {item.description?.ar || item.description?.en || ''}
           </p>
           <div className="mt-2">
             <span className="text-lg font-bold bg-red-gradient bg-clip-text text-transparent">{Number(item.price || 0).toFixed(2)} ر.ي</span>

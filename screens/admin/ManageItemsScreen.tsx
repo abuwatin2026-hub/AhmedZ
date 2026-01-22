@@ -89,7 +89,6 @@ const ManageItemsScreen: React.FC = () => {
     getCategoryLabel,
     getUnitLabel,
     getFreshnessLabel,
-    getFreshnessTone,
     isWeightBasedUnit,
   } = useItemMeta();
 
@@ -753,9 +752,11 @@ const ManageItemsScreen: React.FC = () => {
                           )}
                         </div>
                       )}
-                      {item.category !== 'qat' && (() => {
+                      {(() => {
                         const meta = getItemMeta(item);
-                        if (!meta.hasExplicitExpiry) return null;
+                        const hasAny = meta.hasExplicitExpiry || meta.hasProduction || Boolean(meta.effectiveExpiryDate);
+                        if (!hasAny) return null;
+
                         const expiryLabel =
                           meta.expiryStatus === 'expired'
                             ? (language === 'ar' ? 'منتهي' : 'Expired')
@@ -764,6 +765,7 @@ const ManageItemsScreen: React.FC = () => {
                               : meta.expiryStatus === 'ok'
                                 ? (language === 'ar' ? 'سليم' : 'OK')
                                 : (language === 'ar' ? 'بدون تاريخ' : 'Missing');
+
                         const expiryClass =
                           meta.expiryStatus === 'expired'
                             ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
@@ -772,60 +774,10 @@ const ManageItemsScreen: React.FC = () => {
                               : meta.expiryStatus === 'ok'
                                 ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
                                 : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200';
-                        const expiryText = item.expiryDate
-                          ? (language === 'ar' ? `انتهاء: ${item.expiryDate}` : `Expiry: ${item.expiryDate}`)
+
+                        const productionText = meta.productionDate
+                          ? (language === 'ar' ? `إنتاج: ${formatDateOnly(meta.productionDate)}` : `Production: ${formatDateOnly(meta.productionDate)}`)
                           : '';
-                        return (
-                          <div className="mt-2 flex flex-wrap gap-2">
-                            <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${expiryClass}`}>
-                              {language === 'ar' ? `حالة الانتهاء: ${expiryLabel}` : `Expiry: ${expiryLabel}`}
-                            </span>
-                            {expiryText && (
-                              <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-50 text-gray-700 dark:bg-gray-700 dark:text-gray-200">
-                                {expiryText}
-                              </span>
-                            )}
-                          </div>
-                        );
-                      })()}
-                      {item.category === 'qat' && (() => {
-                        const meta = getItemMeta(item);
-                        const freshness = meta.freshnessLevel;
-                        const freshnessLabel = freshness ? getFreshnessLabel(freshness as FreshnessLevel, language as 'ar' | 'en') : (language === 'ar' ? 'غير محدد' : 'Missing');
-                        const tone = getFreshnessTone(freshness as any);
-
-                        const freshnessClass =
-                          tone === 'green'
-                            ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-                            : tone === 'blue'
-                              ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
-                              : tone === 'yellow'
-                                ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
-                                : tone === 'red'
-                                  ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
-                                  : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200';
-
-                        const expiryLabel =
-                          meta.expiryStatus === 'expired'
-                            ? (language === 'ar' ? 'منتهي' : 'Expired')
-                            : meta.expiryStatus === 'expiring'
-                              ? (language === 'ar' ? 'قريب الانتهاء' : 'Expiring')
-                              : meta.expiryStatus === 'ok'
-                                ? (language === 'ar' ? 'سليم' : 'OK')
-                                : (language === 'ar' ? 'بدون تاريخ' : 'Missing');
-
-                        const expiryClass =
-                          meta.expiryStatus === 'expired'
-                            ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
-                            : meta.expiryStatus === 'expiring'
-                              ? 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200'
-                              : meta.expiryStatus === 'ok'
-                                ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-                                : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200';
-
-                        const harvestText = (item as any).productionDate || (item as any).harvestDate
-                          ? (language === 'ar' ? `إنتاج: ${(item as any).productionDate || (item as any).harvestDate}` : `Production: ${(item as any).productionDate || (item as any).harvestDate}`)
-                          : (language === 'ar' ? 'بدون تاريخ إنتاج' : 'Missing production');
 
                         const expiryText = item.expiryDate
                           ? (language === 'ar' ? `انتهاء: ${item.expiryDate}` : `Expiry: ${item.expiryDate}`)
@@ -833,22 +785,23 @@ const ManageItemsScreen: React.FC = () => {
                             ? (language === 'ar'
                               ? `انتهاء (تقديري): ${formatDateOnly(meta.effectiveExpiryDate)}`
                               : `Expiry (estimated): ${formatDateOnly(meta.effectiveExpiryDate)}`)
-                            : (language === 'ar' ? 'بدون تاريخ انتهاء' : 'Missing expiry');
+                            : '';
 
                         return (
                           <div className="mt-2 flex flex-wrap gap-2">
-                            <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${freshnessClass}`}>
-                              {language === 'ar' ? `نضارة: ${freshnessLabel}` : `Freshness: ${freshnessLabel}`}
-                            </span>
                             <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${expiryClass}`}>
                               {language === 'ar' ? `حالة الانتهاء: ${expiryLabel}` : `Expiry: ${expiryLabel}`}
                             </span>
-                            <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-50 text-gray-700 dark:bg-gray-700 dark:text-gray-200">
-                              {harvestText}
-                            </span>
-                            <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-50 text-gray-700 dark:bg-gray-700 dark:text-gray-200">
-                              {expiryText}
-                            </span>
+                            {productionText && (
+                              <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-50 text-gray-700 dark:bg-gray-700 dark:text-gray-200">
+                                {productionText}
+                              </span>
+                            )}
+                            {expiryText && (
+                              <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-50 text-gray-700 dark:bg-gray-700 dark:text-gray-200">
+                                {expiryText}
+                              </span>
+                            )}
                           </div>
                         );
                       })()}

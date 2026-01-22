@@ -24,6 +24,9 @@ BEGIN
     RAISE WARNING 'Encryption key not found in private.keys! Please insert it manually.';
   END IF;
 END $$;
+ALTER TABLE public.customers
+  ADD COLUMN IF NOT EXISTS phone_encrypted bytea,
+  ADD COLUMN IF NOT EXISTS address_encrypted bytea;
 -- 5. Update encrypt_text function to read from private.keys
 CREATE OR REPLACE FUNCTION public.encrypt_text(p_text text)
 RETURNS BYTEA

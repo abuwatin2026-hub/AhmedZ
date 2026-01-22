@@ -82,7 +82,7 @@ const HomeScreen: React.FC = () => {
 
     const lowercasedSearchTerm = searchTerm.toLowerCase();
     return byCategory.filter(item =>
-      item.name.ar.toLowerCase().includes(lowercasedSearchTerm)
+      (item.name?.ar || item.name?.en || '').toLowerCase().includes(lowercasedSearchTerm)
     );
   }, [activeMenuItems, selectedCategory, searchTerm]);
 

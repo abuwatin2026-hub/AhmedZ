@@ -25,7 +25,7 @@ export async function getAllChallenges(): Promise<Challenge[]> {
 
     const { data: rows, error } = await supabase
         .from('challenges')
-        .select('id, status, start_date, end_date, data')
+        .select('id, status, end_date, data')
         .order('created_at', { ascending: false });
 
     if (error) throw error;
@@ -39,7 +39,7 @@ export async function getAllChallenges(): Promise<Challenge[]> {
                 ...raw,
                 id: String(row.id),
                 status: typeof row?.status === 'string' ? row.status : raw.status,
-                startDate: row?.start_date ? String(row.start_date) : raw.startDate,
+                startDate: raw.startDate,
                 endDate: row?.end_date ? String(row.end_date) : raw.endDate,
             } as Challenge;
         })
@@ -55,7 +55,7 @@ export async function getChallengeById(id: string): Promise<Challenge | null> {
 
     const { data: row, error } = await supabase
         .from('challenges')
-        .select('id, status, start_date, end_date, data')
+        .select('id, status, end_date, data')
         .eq('id', id)
         .maybeSingle();
 
@@ -69,8 +69,8 @@ export async function getChallengeById(id: string): Promise<Challenge | null> {
         ...raw,
         id: String(row.id),
         status: typeof row?.status === 'string' ? row.status : raw.status,
-        startDate: row?.start_date ? String(row.start_date) : raw.startDate,
-        endDate: row?.end_date ? String(row.end_date) : raw.endDate,
+        startDate: raw.startDate,
+        endDate: (row as any)?.end_date ? String((row as any).end_date) : raw.endDate,
     } as Challenge;
 }
 
@@ -144,11 +144,11 @@ export async function createChallenge(challenge: Omit<Challenge, 'id'>): Promise
     if (!supabase) throw new Error('Supabase is not configured.');
 
     const id = crypto.randomUUID();
+    const endDate = typeof challenge.endDate === 'string' ? challenge.endDate.split('T')[0] : challenge.endDate;
     const payload = {
         id,
         status: challenge.status,
-        start_date: challenge.startDate,
-        end_date: challenge.endDate,
+        end_date: endDate,
         data: challenge,
     };
 
@@ -171,10 +171,10 @@ export async function updateChallenge(id: string, updates: Partial<Challenge>): 
 
     const updated = { ...current, ...updates };
 
+    const endDate = typeof updated.endDate === 'string' ? updated.endDate.split('T')[0] : updated.endDate;
     const payload = {
         status: updated.status,
-        start_date: updated.startDate,
-        end_date: updated.endDate,
+        end_date: endDate,
         data: updated,
     };
 

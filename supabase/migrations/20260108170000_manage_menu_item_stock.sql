@@ -168,5 +168,5 @@ begin
   );
 end;
 $$;
-revoke all on function public.manage_menu_item_stock(uuid, numeric, text, text, uuid, numeric, boolean) from public;
-grant execute on function public.manage_menu_item_stock(uuid, numeric, text, text, uuid, numeric, boolean) to anon, authenticated;
+revoke all on function public.manage_menu_item_stock(uuid, numeric, text, text, uuid, numeric, boolean, uuid) from public;
+grant execute on function public.manage_menu_item_stock(uuid, numeric, text, text, uuid, numeric, boolean, uuid) to anon, authenticated;

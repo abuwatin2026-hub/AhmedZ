@@ -306,7 +306,7 @@ export const ItemMetaProvider: React.FC<{ children: ReactNode }> = ({ children }
     const def = categoryMap.get(categoryKey) || categoryMapNormalized.get(normalizeLookupKey(categoryKey));
     if (def) return def.name[language] || def.name.ar || def.name.en || categoryKey;
     const normalized = normalizeLookupKey(categoryKey);
-    if (normalized === 'qat') return language === 'ar' ? 'مواد غذائية' : 'Food';
+    if (normalized === 'grocery') return language === 'ar' ? 'مواد غذائية' : 'Groceries';
     return categoryKey;
   };
 

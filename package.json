@@ -32,12 +32,12 @@
     "@supabase/supabase-js": "^2.89.0",
     "bcryptjs": "^3.0.3",
     "html2canvas": "^1.4.1",
-    "jspdf": "^3.0.3",
+    "jspdf": "^4.0.0",
+    "exceljs": "^4.4.0",
     "qrcode": "^1.5.3",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-router-dom": "^6.23.1",
-    "xlsx": "^0.18.5",
     "zod": "^4.2.1"
   },
   "devDependencies": {
@@ -57,5 +57,8 @@
     "tailwindcss": "^3.4.3",
     "typescript": "^5.2.2",
     "vite": "^7.0.0"
+  },
+  "overrides": {
+    "tar": "7.5.6"
   }
 }

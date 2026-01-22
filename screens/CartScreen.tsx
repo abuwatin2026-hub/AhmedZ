@@ -180,7 +180,7 @@ const CartScreen: React.FC = () => {
                                     )}
                                     <div className="flex justify-between items-center text-gray-700 dark:text-gray-300">
                                         <span>{'رسوم التوصيل'}:</span>
-                                        <span className="font-mono">{deliveryFee.toFixed(2)} {'ر.ي'}</span>
+                                        <span className="font-mono">{(Number(deliveryFee) || 0).toFixed(2)} {'ر.ي'}</span>
                                     </div>
                                     <div className="border-t border-gray-200 dark:border-gray-700"></div>
                                     <div className="flex justify-between items-center text-xl font-bold">

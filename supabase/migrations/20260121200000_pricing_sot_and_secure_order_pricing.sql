@@ -3,7 +3,7 @@
 create or replace function public.get_item_price_with_discount(
   p_item_id text,
   p_customer_id uuid default null,
-  p_quantity numeric
+  p_quantity numeric default 1
 )
 returns numeric
 language plpgsql

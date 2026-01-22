@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { NavLink, Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../contexts/NotificationContext';
+import { useToast } from '../../contexts/ToastContext';
 import * as Icons from '../../components/icons';
 import Notification from '../../components/Notification';
 import ConnectivityBanner from '../../components/ConnectivityBanner';
@@ -106,7 +107,12 @@ const navLinks: Array<{ to: string; label: string; icon: React.ReactNode; permis
   { to: 'dashboard', label: 'لوحة التحكم', icon: <Icons.DashboardIcon />, permission: 'dashboard.view' },
   { to: 'stock', label: 'إدارة المخزون', icon: <Icons.ListIcon />, permission: 'stock.manage' },
   { to: 'suppliers', label: 'الموردين', icon: <Icons.TruckIcon />, permission: 'stock.manage' },
+  { to: 'supplier-contracts', label: 'عقود الموردين', icon: <Icons.FileText />, permission: 'stock.manage' },
+  { to: 'supplier-evaluations', label: 'تقييم الموردين', icon: <Icons.StarIcon />, permission: 'stock.manage' },
   { to: 'purchases', label: 'المشتريات', icon: <Icons.ReportIcon />, permission: 'stock.manage' },
+  { to: 'import-shipments', label: 'الشحنات', icon: <Icons.Package />, permission: 'stock.manage' },
+  { to: 'warehouses', label: 'المستودعات', icon: <Icons.Package />, permission: 'stock.manage' },
+  { to: 'warehouse-transfers', label: 'تحويلات المستودعات', icon: <Icons.TruckIcon />, permission: 'stock.manage' },
   { to: 'orders', label: 'إدارة الطلبات', icon: <Icons.OrdersIcon />, permission: 'orders.view' },
   { to: 'my-shift', label: 'ورديتي', icon: <Icons.ClockIcon />, permission: 'cashShifts.viewOwn' },
   { to: 'delivery-zones', label: 'مناطق التوصيل', icon: <Icons.TruckIcon />, permission: 'deliveryZones.manage' },
@@ -118,6 +124,7 @@ const navLinks: Array<{ to: string; label: string; icon: React.ReactNode; permis
   { to: 'coupons', label: 'إدارة الكوبونات', icon: <Icons.CouponIcon />, permission: 'coupons.manage' },
   { to: 'reviews', label: 'إدارة التقييمات', icon: <Icons.StarIcon />, permission: 'reviews.manage' },
   { to: 'prices', label: 'إدارة الأسعار', icon: <Icons.TagIcon />, permission: 'prices.manage' },
+  { to: 'price-tiers', label: 'شرائح الأسعار', icon: <Icons.TagIcon />, permission: 'prices.manage' },
   { to: 'cost-centers', label: 'مراكز التكلفة', icon: <Icons.ListIcon />, permission: 'expenses.manage' },
   { to: 'expenses', label: 'إدارة المصاريف', icon: <Icons.ReportIcon />, permission: 'expenses.manage' },
   { to: 'accounting', label: 'المحاسبة', icon: <Icons.ReportIcon />, permission: 'accounting.view' },
@@ -133,7 +140,12 @@ const routePermissions: Record<string, AdminPermission> = {
   'dashboard': 'dashboard.view',
   'stock': 'stock.manage',
   'suppliers': 'stock.manage',
+  'supplier-contracts': 'stock.manage',
+  'supplier-evaluations': 'stock.manage',
   'purchases': 'stock.manage',
+  'import-shipments': 'stock.manage',
+  'warehouses': 'stock.manage',
+  'warehouse-transfers': 'stock.manage',
   'orders': 'orders.view',
   'my-shift': 'cashShifts.viewOwn',
   'delivery-zones': 'deliveryZones.manage',
@@ -145,6 +157,7 @@ const routePermissions: Record<string, AdminPermission> = {
   'coupons': 'coupons.manage',
   'reviews': 'reviews.manage',
   'prices': 'prices.manage',
+  'price-tiers': 'prices.manage',
   'cost-centers': 'expenses.manage',
   'expenses': 'expenses.manage',
   'accounting': 'accounting.view',
@@ -160,18 +173,20 @@ const AdminLayout: React.FC = () => {
   const { isAuthenticated, logout, user, loading, hasPermission } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const { showNotification } = useToast();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isShiftModalOpen, setIsShiftModalOpen] = useState(false);
   const { currentShift } = useCashShift();
   const { settings } = useSettings();
 
-  const allowedLinks = navLinks.filter(link => {
+  const canAccessLink = (link: (typeof navLinks)[number]) => {
     if (link.to === 'my-shift') {
       return hasPermission('cashShifts.viewOwn') || hasPermission('cashShifts.manage');
     }
     return hasPermission(link.permission);
-  });
-  const currentPage = allowedLinks.find(link => location.pathname.startsWith(`/admin/${link.to}`));
+  };
+
+  const currentPage = navLinks.find(link => location.pathname.startsWith(`/admin/${link.to}`));
   const isSubPageRoute = location.pathname.split('/').filter(Boolean).length > 2;
 
   // Route Protection Logic
@@ -237,22 +252,42 @@ const AdminLayout: React.FC = () => {
           <p className="text-xs text-gray-500 dark:text-gray-400">{roleLabel[user?.role || 'employee']}</p>
         </div>
         <nav className="flex-grow p-4 space-y-2">
-          {allowedLinks.map(link => (
-            <NavLink
-              key={link.to}
-              to={link.to}
-              onClick={() => setIsSidebarOpen(false)}
-              className={({ isActive }) =>
-                `flex items-center space-x-3 rtl:space-x-reverse p-3 rounded-lg transition-all duration-200 ${isActive
-                  ? 'bg-primary-500 text-white shadow-md'
-                  : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gold-500 dark:hover:text-gold-400'
-                }`
-              }
-            >
-              {link.icon}
-              <span className="font-semibold">{link.label}</span>
-            </NavLink>
-          ))}
+          {navLinks.map(link => {
+            const canAccess = canAccessLink(link);
+            if (canAccess) {
+              return (
+                <NavLink
+                  key={link.to}
+                  to={link.to}
+                  onClick={() => setIsSidebarOpen(false)}
+                  className={({ isActive }) =>
+                    `flex items-center space-x-3 rtl:space-x-reverse p-3 rounded-lg transition-all duration-200 ${isActive
+                      ? 'bg-primary-500 text-white shadow-md'
+                      : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gold-500 dark:hover:text-gold-400'
+                    }`
+                  }
+                >
+                  {link.icon}
+                  <span className="font-semibold">{link.label}</span>
+                </NavLink>
+              );
+            }
+
+            return (
+              <button
+                key={link.to}
+                type="button"
+                onClick={() => {
+                  setIsSidebarOpen(false);
+                  showNotification('ليس لديك صلاحية لفتح هذا القسم.', 'error');
+                }}
+                className="w-full flex items-center space-x-3 rtl:space-x-reverse p-3 rounded-lg transition-all duration-200 text-gray-400 dark:text-gray-500 cursor-not-allowed opacity-75"
+              >
+                <Icons.LockIcon />
+                <span className="font-semibold">{link.label}</span>
+              </button>
+            );
+          })}
         </nav>
         <div className="p-4 border-t dark:border-gray-700 flex-shrink-0">
           <button
