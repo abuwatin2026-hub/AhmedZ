@@ -1,5 +1,5 @@
 Param(
-  [string]$ProjectRef = "bvkxohvxzhwqsmbgowwd",
+  [string]$ProjectRef = "twcjjisnxmfpseksqnhb",
   [string]$ApiUrl,
   [string]$AnonKey,
   [string]$ServiceRoleKey,
