@@ -41,9 +41,71 @@ export const DeliveryZoneProvider: React.FC<{ children: ReactNode }> = ({ childr
         setDeliveryZones([]);
         return;
       }
-      const { data: rows, error: rowsError } = await supabase.from('delivery_zones').select('id,data');
+      const { data: rows, error: rowsError } = await supabase.from('delivery_zones').select('id,name,is_active,delivery_fee,data');
       if (rowsError) throw rowsError;
-      const list = (rows || []).map(row => row.data as DeliveryZone).filter(Boolean);
+      const list = (rows || [])
+        .map((row: any) => {
+          const raw = row?.data && typeof row.data === 'object' ? (row.data as Record<string, unknown>) : {};
+
+          const id = (typeof raw.id === 'string' && raw.id.trim()) ? raw.id : String(row.id || '');
+
+          const rawName = raw.name;
+          const name =
+            rawName && typeof rawName === 'object'
+              ? (rawName as DeliveryZone['name'])
+              : { ar: typeof row.name === 'string' ? row.name : '', en: '' };
+
+          const deliveryFeeCandidate =
+            (raw as any).deliveryFee ?? (raw as any).delivery_fee ?? row.delivery_fee;
+          const deliveryFee = Number.isFinite(Number(deliveryFeeCandidate)) ? Number(deliveryFeeCandidate) : 0;
+
+          const estimatedTimeCandidate = (raw as any).estimatedTime ?? (raw as any).estimated_time;
+          const estimatedTime = Number.isFinite(Number(estimatedTimeCandidate)) ? Number(estimatedTimeCandidate) : 0;
+
+          const isActive =
+            typeof (raw as any).isActive === 'boolean'
+              ? Boolean((raw as any).isActive)
+              : Boolean(row.is_active ?? true);
+
+          const coordsCandidate = (raw as any).coordinates;
+          const coordinates =
+            coordsCandidate &&
+            typeof coordsCandidate === 'object' &&
+            Number.isFinite(Number((coordsCandidate as any).lat)) &&
+            Number.isFinite(Number((coordsCandidate as any).lng)) &&
+            Number.isFinite(Number((coordsCandidate as any).radius))
+              ? {
+                  lat: Number((coordsCandidate as any).lat),
+                  lng: Number((coordsCandidate as any).lng),
+                  radius: Number((coordsCandidate as any).radius),
+                }
+              : undefined;
+
+          const statsCandidate = (raw as any).statistics;
+          const statistics =
+            statsCandidate && typeof statsCandidate === 'object'
+              ? {
+                  totalOrders: Number((statsCandidate as any).totalOrders) || 0,
+                  totalRevenue: Number((statsCandidate as any).totalRevenue) || 0,
+                  averageDeliveryTime: Number((statsCandidate as any).averageDeliveryTime) || 0,
+                  lastOrderDate: typeof (statsCandidate as any).lastOrderDate === 'string' ? (statsCandidate as any).lastOrderDate : undefined,
+                }
+              : undefined;
+
+          if (!id) return undefined;
+
+          return {
+            ...(raw as any),
+            id,
+            name,
+            deliveryFee,
+            estimatedTime,
+            isActive,
+            coordinates,
+            statistics,
+          } as DeliveryZone;
+        })
+        .filter(Boolean) as DeliveryZone[];
       setDeliveryZones(list);
       lastSnapshotRef.current = { zones: list, ts: Date.now() };
     } catch (error) {

@@ -13,7 +13,7 @@ drop function if exists public.confirm_order_delivery(uuid, jsonb, jsonb);
 create or replace function public.reserve_stock_for_order(
   p_items jsonb,
   p_order_id uuid default null,
-  p_warehouse_id uuid
+  p_warehouse_id uuid default null
 )
 returns void
 language plpgsql
@@ -172,7 +172,7 @@ grant execute on function public.reserve_stock_for_order(jsonb, uuid, uuid) to a
 create or replace function public.release_reserved_stock_for_order(
   p_items jsonb,
   p_order_id uuid default null,
-  p_warehouse_id uuid
+  p_warehouse_id uuid default null
 )
 returns void
 language plpgsql
@@ -489,7 +489,7 @@ begin
                       jsonb_set(
                         coalesce(v_stock_data->'reservedBatches','{}'::jsonb)->v_item_batch_text,
                         '{qty}',
-                        to_jsonb(greatest(0, coalesce(nullif(((coalesce(v_stock_data->'reservedBatches','{}'::jsonb)->v_item_batch_text)->>'qty'),'')::numeric, 0) - v_requested))),
+                        to_jsonb(greatest(0, coalesce(nullif((coalesce(v_stock_data->'reservedBatches','{}'::jsonb)->v_item_batch_text)->>'qty', '')::numeric, 0) - v_requested)),
                         true
                       )
                     when jsonb_typeof(coalesce(v_stock_data->'reservedBatches','{}'::jsonb)->v_item_batch_text) = 'array' then

@@ -165,8 +165,8 @@ CREATE POLICY special_prices_manage ON public.customer_special_prices
 -- ==========================================
 CREATE OR REPLACE FUNCTION public.get_item_price(
   p_item_id TEXT,
-  p_customer_id UUID DEFAULT NULL,
-  p_quantity NUMERIC
+  p_quantity NUMERIC,
+  p_customer_id UUID DEFAULT NULL
 ) RETURNS NUMERIC AS $$
 DECLARE
   v_customer_type TEXT;
@@ -235,8 +235,8 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- ==========================================
 CREATE OR REPLACE FUNCTION public.get_item_discount(
   p_item_id TEXT,
-  p_customer_id UUID DEFAULT NULL,
-  p_quantity NUMERIC
+  p_quantity NUMERIC,
+  p_customer_id UUID DEFAULT NULL
 ) RETURNS NUMERIC AS $$
 DECLARE
   v_customer_type TEXT;

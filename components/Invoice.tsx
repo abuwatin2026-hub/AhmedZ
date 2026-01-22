@@ -156,7 +156,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings }, r
                         </div>
                         <div className="flex justify-between items-center text-gray-600">
                             <span>رسوم التوصيل</span>
-                            <span className="font-mono">{invoiceOrder.deliveryFee.toFixed(2)} ج.م</span>
+                            <span className="font-mono">{(Number(invoiceOrder.deliveryFee) || 0).toFixed(2)} ج.م</span>
                         </div>
                         {(invoiceOrder.discountAmount || 0) > 0 && (
                              <div className="flex justify-between items-center text-green-600">

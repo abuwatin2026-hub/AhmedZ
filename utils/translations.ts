@@ -25,7 +25,7 @@ const arTranslations = {
     menuTitle: 'منتجات {storeName}',
     menuSubtitle: 'اكتشف أفضل المواد الغذائية',
     all: 'الكل',
-    qat: 'مواد غذائية',
+    grocery: 'مواد غذائية',
     noItemsInCategory: 'لا توجد أصناف تطابق بحثك.',
     tryAnotherCategory: 'جرب البحث بكلمة أخرى أو تغيير الفئة.',
     searchPlaceholder: 'ابحث عن منتج غذائي...',

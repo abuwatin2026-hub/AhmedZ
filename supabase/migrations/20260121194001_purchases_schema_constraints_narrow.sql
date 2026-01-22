@@ -153,4 +153,3 @@ after insert or update or delete
 on public.payments
 for each row
 execute function public.trg_sync_purchase_order_paid_amount();
-

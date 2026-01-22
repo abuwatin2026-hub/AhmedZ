@@ -29,7 +29,7 @@ const ItemFormModal: React.FC<ItemFormModalProps> = ({ isOpen, onClose, onSave, 
     ...((): Pick<MenuItem, 'category' | 'unitType' | 'freshnessLevel' | 'minWeight'> => {
       const activeCategoryKeys = categories.filter(c => c.isActive).map(c => c.key);
       const fallbackCategoryKeys = [...new Set(menuItems.map(i => i.category))].filter(Boolean);
-      const category = activeCategoryKeys[0] || fallbackCategoryKeys[0] || 'qat';
+      const category = activeCategoryKeys[0] || fallbackCategoryKeys[0] || 'grocery';
 
       const activeUnitKeys = unitTypes.filter(u => u.isActive).map(u => String(u.key) as UnitType);
       const unitType = activeUnitKeys[0] || ('kg' as UnitType);
@@ -271,7 +271,7 @@ const ItemFormModal: React.FC<ItemFormModalProps> = ({ isOpen, onClose, onSave, 
     if (existing && !active.includes(existing)) return [existing, ...active];
     if (active.length > 0) return active;
     const fallback = [...new Set(menuItems.map(i => i.category))].filter(Boolean);
-    return fallback.length > 0 ? fallback : ['qat'];
+    return fallback.length > 0 ? fallback : ['grocery'];
   }, [categories, itemToEdit?.category, menuItems]);
 
   const unitOptions = React.useMemo(() => {

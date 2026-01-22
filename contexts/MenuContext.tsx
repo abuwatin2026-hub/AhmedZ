@@ -71,6 +71,16 @@ export const MenuProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           const item = raw && typeof raw === 'object' ? raw : undefined;
           if (!item || typeof item !== 'object') return undefined;
           const mergedId = remoteId || item.id;
+          const nameObj: any = (item as any).name && typeof (item as any).name === 'object' ? (item as any).name : {};
+          const descObj: any = (item as any).description && typeof (item as any).description === 'object' ? (item as any).description : {};
+          const safeName = {
+            ar: typeof nameObj?.ar === 'string' ? nameObj.ar : '',
+            en: typeof nameObj?.en === 'string' ? nameObj.en : '',
+          };
+          const safeDescription = {
+            ar: typeof descObj?.ar === 'string' ? descObj.ar : '',
+            en: typeof descObj?.en === 'string' ? descObj.en : '',
+          };
           const smObj: any = mergedId ? stockMap[mergedId] || null : null;
           const availableStock = Number.isFinite(Number(smObj?.available_quantity))
             ? Number(smObj.available_quantity)
@@ -104,6 +114,8 @@ export const MenuProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             supplyTaxCost,
             availableStock,
             reservedQuantity,
+            name: safeName,
+            description: safeDescription,
           };
         })
         .filter(Boolean) as MenuItem[];

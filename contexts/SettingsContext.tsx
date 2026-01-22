@@ -3,7 +3,7 @@ import type { AppLanguage, AppSettings, AppTheme, PersistedAppSettings } from '.
 import { getSupabaseClient } from '../supabase';
 import { logger } from '../utils/logger';
 import { localizeSupabaseError } from '../utils/errorUtils';
-import appIconPng from '../resources/icon.png';
+import defaultLogoImage from '../resources/logo.jpg';
 
 // Minimal TranslationKeys type to satisfy the hook signature
 type TranslationKeys = string;
@@ -124,12 +124,9 @@ const applyPalette = (paletteName: 'primary' | 'gold' | 'mint', baseHex: string)
   });
 };
 
-const defaultLogoSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="46" fill="#FFFFFF" stroke="#2F2B7C" stroke-width="6"/><circle cx="50" cy="50" r="34" fill="#FFFFFF" stroke="#2F2B7C" stroke-width="2" opacity="0.9"/><text x="50" y="60" text-anchor="middle" fill="#2F2B7C" font-size="32" font-weight="800" font-family="Inter, Arial, sans-serif">AZT</text></svg>`;
-const defaultLogoUrl = `data:image/svg+xml;utf8,${encodeURIComponent(defaultLogoSvg)}`;
-
 const defaultSettings: AppSettings = {
   cafeteriaName: { ar: 'مؤسسة أحمد زنقاح للتجارة والتوكيلات', en: 'Ahmed Zangah Trading & Agencies Est' },
-  logoUrl: defaultLogoUrl,
+  logoUrl: defaultLogoImage,
   contactNumber: '967782681999',
   address: 'مأرب، اليمن',
   maintenanceEnabled: false,
@@ -314,7 +311,7 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
   useEffect(() => {
     if (typeof document === 'undefined') return;
     const logo = (settings.logoUrl || '').trim();
-    const fallback = appIconPng;
+    const fallback = defaultLogoImage;
     const run = async () => {
       try {
         if (!logo) {

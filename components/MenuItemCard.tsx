@@ -81,7 +81,7 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item }) => {
         )}
 
         <div className="relative overflow-hidden">
-          <img className="w-full h-48 object-cover group-hover:scale-110 transition-transform duration-500" src={item.imageUrl} alt={item.name['ar'] || item.name['en']} />
+          <img className="w-full h-48 object-cover group-hover:scale-110 transition-transform duration-500" src={item.imageUrl} alt={item.name?.ar || item.name?.en || ''} />
           {/* Gradient overlay */}
           <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
 
@@ -102,8 +102,8 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item }) => {
           {/* Top decorative line */}
           <div className="absolute top-0 left-4 right-4 h-0.5 bg-gold-gradient"></div>
 
-          <h3 className="text-lg font-bold text-gray-800 dark:text-white mt-2 group-hover:text-primary-600 dark:group-hover:text-gold-400 transition-colors">{item.name.ar}</h3>
-          <p className="text-gray-600 dark:text-gray-400 text-sm mt-1 h-10 overflow-hidden flex-grow">{item.description.ar}</p>
+          <h3 className="text-lg font-bold text-gray-800 dark:text-white mt-2 group-hover:text-primary-600 dark:group-hover:text-gold-400 transition-colors">{item.name?.ar || item.name?.en || ''}</h3>
+          <p className="text-gray-600 dark:text-gray-400 text-sm mt-1 h-10 overflow-hidden flex-grow">{item.description?.ar || item.description?.en || ''}</p>
 
           {/* Stock indicator */}
           {isInStock && stockQuantity > 0 && stockQuantity <= 10 && (

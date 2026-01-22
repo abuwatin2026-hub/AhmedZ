@@ -202,7 +202,7 @@ begin
     ds.did,
     coalesce(au.raw_user_meta_data->>'full_name', au.email, 'Unknown') as d_name,
     ds.d_count,
-    numeric(ds.avg_mins)
+    ds.avg_mins::numeric
   from driver_stats ds
   left join auth.users au on au.id = ds.did
   order by 3 desc;

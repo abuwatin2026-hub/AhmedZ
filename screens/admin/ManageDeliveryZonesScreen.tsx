@@ -301,7 +301,7 @@ const ManageDeliveryZonesScreen: React.FC = () => {
                       <div className="text-xs text-gray-500 dark:text-gray-400">{zone.name.en}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white font-bold">
-                      {zone.deliveryFee.toFixed(2)} ر.ي
+                      {(Number(zone.deliveryFee) || 0).toFixed(2)} ر.ي
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
                       {zone.estimatedTime} دقيقة

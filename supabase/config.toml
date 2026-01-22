@@ -12,13 +12,17 @@ shadow_port = 54320
 major_version = 17
 
 
-[functions.delete-user]
+[functions.create-admin-user]
 enabled = true
 verify_jwt = true
-import_map = "./functions/delete-user/deno.json"
-# Uncomment to specify a custom file path to the entrypoint.
-# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
-entrypoint = "./functions/delete-user/index.ts"
-# Specifies static files to be bundled with the function. Supports glob patterns.
-# For example, if you want to serve static HTML pages in your function:
-# static_files = [ "./functions/delete-user/*.html" ]
+entrypoint = "./functions/create-admin-user/index.ts"
+
+[functions.delete-admin-user]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/delete-admin-user/index.ts"
+
+[functions.reset-admin-password]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/reset-admin-password/index.ts"

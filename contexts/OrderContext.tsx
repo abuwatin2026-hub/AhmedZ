@@ -176,6 +176,9 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       if (typeof order.deliveryZoneId === 'string' && isUuid(order.deliveryZoneId)) {
         payload.delivery_zone_id = order.deliveryZoneId;
       }
+      if (typeof (order as any).warehouseId === 'string' && isUuid((order as any).warehouseId)) {
+        payload.warehouse_id = (order as any).warehouseId;
+      }
 
       const { error } = await supabase
         .from('orders')
@@ -197,6 +200,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         id: order.id,
         status: order.status,
         delivery_zone_id: order.deliveryZoneId ?? null,
+        warehouse_id: (order as any).warehouseId ?? null,
         data: order,
       };
       payload.customer_auth_user_id = order.userId || (order.orderSource === 'in_store' ? adminUser?.id : undefined);
@@ -608,11 +612,11 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       // 1. System Notification
       if ('Notification' in window) {
         if (Notification.permission === 'granted') {
-          try { new Notification('تنبيه جديد', { body: text, icon: '/icons/icon-192x192.png' }); } catch { }
+          try { new Notification('تنبيه جديد', { body: text, icon: '/logo.jpg' }); } catch { }
         } else if (Notification.permission !== 'denied') {
           Notification.requestPermission().then(permission => {
             if (permission === 'granted') {
-              try { new Notification('تنبيه جديد', { body: text, icon: '/icons/icon-192x192.png' }); } catch { }
+              try { new Notification('تنبيه جديد', { body: text, icon: '/logo.jpg' }); } catch { }
             }
           });
         }

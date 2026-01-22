@@ -11,4 +11,3 @@ revoke execute on function public.post_payment(uuid) from anon;
 revoke execute on function public.post_payment(uuid) from authenticated;
 revoke execute on function public.post_inventory_movement(uuid) from anon;
 revoke execute on function public.post_inventory_movement(uuid) from authenticated;
-

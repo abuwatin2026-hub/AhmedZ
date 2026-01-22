@@ -859,7 +859,7 @@ const CheckoutScreen: React.FC = () => {
                                             <option value="">اختر منطقة التوصيل</option>
                                             {deliveryZones.filter(z => z.isActive).map(zone => (
                                                 <option key={zone.id} value={zone.id}>
-                                                    {zone.name.ar} • {zone.deliveryFee.toFixed(2)} ر.ي • {zone.estimatedTime} دقيقة
+                                                    {zone.name.ar} • {(Number(zone.deliveryFee) || 0).toFixed(2)} ر.ي • {zone.estimatedTime} دقيقة
                                                 </option>
                                             ))}
                                             {/* Strict delivery only - no fallback */}
@@ -1079,7 +1079,7 @@ const CheckoutScreen: React.FC = () => {
                                         {referralDiscount > 0 && <div className="flex justify-between text-green-600 dark:text-green-400"><span>خصم الدعوة:</span><span className="font-mono">- {referralDiscount.toFixed(2)} ر.ي</span></div>}
                                         {tierDiscount > 0 && <div className="flex justify-between text-green-600 dark:text-green-400"><span>خصم المستوى:</span><span className="font-mono">- {tierDiscount.toFixed(2)} ر.ي</span></div>}
                                         {pointsDiscount > 0 && <div className="flex justify-between text-green-600 dark:text-green-400"><span>خصم النقاط:</span><span className="font-mono">- {pointsDiscount.toFixed(2)} ر.ي</span></div>}
-                                        <div className="flex justify-between text-gray-700 dark:text-gray-300"><span>رسوم التوصيل:</span><span className="font-mono">{effectiveDeliveryFee.toFixed(2)} ر.ي</span></div>
+                                        <div className="flex justify-between text-gray-700 dark:text-gray-300"><span>رسوم التوصيل:</span><span className="font-mono">{(Number(effectiveDeliveryFee) || 0).toFixed(2)} ر.ي</span></div>
                                         <div className="border-t border-gray-200 dark:border-gray-600 my-2"></div>
                                         <div className="flex justify-between items-center font-bold text-lg">
                                             <span className="dark:text-white">الإجمالي:</span>

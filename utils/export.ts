@@ -264,7 +264,8 @@ export const exportToXlsx = async (
     }
 ): Promise<boolean> => {
     try {
-        const XLSX = await import('xlsx');
+        const mod: any = await import('exceljs');
+        const ExcelJS: any = mod?.default ?? mod;
         const shouldSanitize = options?.sanitizeNumbers ?? true;
         const sanitizedRows = shouldSanitize
             ? rows.map(row =>
@@ -280,49 +281,56 @@ export const exportToXlsx = async (
             )
             : rows;
         const data: (string | number)[][] = [headers, ...sanitizedRows];
-        const worksheet = XLSX.utils.aoa_to_sheet(data);
-        const workbook = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(workbook, worksheet, options?.sheetName || 'Report');
+
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet(options?.sheetName || 'Report');
+        worksheet.addRow(headers);
+        for (const row of sanitizedRows) worksheet.addRow(row);
 
         const colCount = headers.length;
         const rowCount = data.length;
-        if (!worksheet['!ref']) {
-            worksheet['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: Math.max(0, rowCount - 1), c: Math.max(0, colCount - 1) } });
-        }
         const defaultNumFmt = options?.numberFormat || '#,##0.00';
         const defaultIntFmt = options?.integerFormat || '#,##0';
-        for (let r = 1; r < rowCount; r++) {
-            for (let c = 0; c < colCount; c++) {
-                const addr = XLSX.utils.encode_cell({ r, c });
-                const cell = worksheet[addr] as any;
-                if (cell && cell.t === 'n') {
-                    const v = Number(cell.v);
-                    cell.z = Number.isInteger(v) ? defaultIntFmt : defaultNumFmt;
+        for (let r = 2; r <= rowCount; r++) {
+            const row = worksheet.getRow(r);
+            for (let c = 1; c <= colCount; c++) {
+                const cell = row.getCell(c);
+                const v = cell.value;
+                if (typeof v === 'number') {
+                    cell.numFmt = Number.isInteger(v) ? defaultIntFmt : defaultNumFmt;
                 }
             }
         }
         if (options?.currencyColumns && options.currencyColumns.length) {
             const curFmt = options.currencyFormat || '#,##0.00';
             const set = new Set(options.currencyColumns.map(n => Math.max(0, Math.floor(n))));
-            for (let r = 1; r < rowCount; r++) {
-                for (const c of set) {
-                    const addr = XLSX.utils.encode_cell({ r, c });
-                    const cell = worksheet[addr] as any;
-                    if (cell && cell.t === 'n') {
-                        cell.z = curFmt;
+            for (let r = 2; r <= rowCount; r++) {
+                const row = worksheet.getRow(r);
+                for (const c0 of set) {
+                    const c = c0 + 1;
+                    if (c < 1 || c > colCount) continue;
+                    const cell = row.getCell(c);
+                    const v = cell.value;
+                    if (typeof v === 'number') {
+                        cell.numFmt = curFmt;
                     }
                 }
             }
         }
         if (options?.autoFilter ?? true) {
-            const topLeft = XLSX.utils.encode_cell({ r: 0, c: 0 });
-            const bottomRight = XLSX.utils.encode_cell({ r: Math.max(0, rowCount - 1), c: Math.max(0, colCount - 1) });
-            worksheet['!autofilter'] = { ref: `${topLeft}:${bottomRight}` };
+            worksheet.autoFilter = {
+                from: { row: 1, column: 1 },
+                to: { row: Math.max(1, rowCount), column: Math.max(1, colCount) },
+            };
         }
         if (options?.columnWidths && options.columnWidths.length) {
-            worksheet['!cols'] = options.columnWidths.map(w => ({ wch: Math.max(6, w) }));
+            for (let i = 0; i < colCount; i++) {
+                const w = options.columnWidths[i];
+                if (typeof w === 'number' && Number.isFinite(w)) {
+                    worksheet.getColumn(i + 1).width = Math.max(6, w);
+                }
+            }
         } else {
-            const widths: number[] = new Array(colCount).fill(10);
             for (let c = 0; c < colCount; c++) {
                 let maxLen = String(headers[c] || '').length;
                 for (let r = 1; r < rowCount; r++) {
@@ -330,10 +338,26 @@ export const exportToXlsx = async (
                     const len = typeof v === 'number' ? 12 : String(v ?? '').length;
                     if (len > maxLen) maxLen = len;
                 }
-                widths[c] = Math.min(40, Math.max(8, Math.round(maxLen * 1.1)));
+                const width = Math.min(40, Math.max(8, Math.round(maxLen * 1.1)));
+                worksheet.getColumn(c + 1).width = width;
             }
-            worksheet['!cols'] = widths.map(w => ({ wch: w }));
         }
+
+        const toBase64 = (bytes: Uint8Array) => {
+            let binary = '';
+            const chunk = 0x8000;
+            for (let i = 0; i < bytes.length; i += chunk) {
+                binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+            }
+            return btoa(binary);
+        };
+
+        const buildBytes = async (): Promise<Uint8Array> => {
+            const out: any = await workbook.xlsx.writeBuffer();
+            if (out instanceof ArrayBuffer) return new Uint8Array(out);
+            if (out instanceof Uint8Array) return out;
+            return new Uint8Array(out);
+        };
 
         if (Capacitor.isNativePlatform()) {
             try {
@@ -343,7 +367,7 @@ export const exportToXlsx = async (
                 }
             } catch {}
 
-            const wbBase64 = XLSX.write(workbook, { bookType: 'xlsx', type: 'base64' });
+            const wbBase64 = toBase64(await buildBytes());
             const targetPath = filename.endsWith('.xlsx') ? filename : `${filename}.xlsx`;
             const result = await Filesystem.writeFile({
                 path: targetPath,
@@ -355,8 +379,9 @@ export const exportToXlsx = async (
                 url: result.uri,
             });
         } else {
-            const wbArray = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
-            const blob = new Blob([wbArray], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            const bytes = await buildBytes();
+            const safeBytes = new Uint8Array(bytes);
+            const blob = new Blob([safeBytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
             const link = document.createElement('a');
             const url = URL.createObjectURL(blob);
             link.setAttribute('href', url);
