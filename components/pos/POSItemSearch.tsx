@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useMenu } from '../../contexts/MenuContext';
 import type { MenuItem } from '../../types';
 import { useSettings } from '../../contexts/SettingsContext';
+import { getSupabaseClient } from '../../supabase';
 
 interface Props {
   onAddLine: (item: MenuItem, input: { quantity?: number; weight?: number }) => void;
@@ -11,8 +11,8 @@ interface Props {
 }
 
 const POSItemSearch: React.FC<Props> = ({ onAddLine, inputRef, disabled, touchMode }) => {
-  const { menuItems } = useMenu();
   const { settings } = useSettings();
+  const [sellableItems, setSellableItems] = useState<MenuItem[]>([]);
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [quantity, setQuantity] = useState<number>(1);
@@ -27,6 +27,55 @@ const POSItemSearch: React.FC<Props> = ({ onAddLine, inputRef, disabled, touchMo
     .replace(/[^\p{L}\p{N}]+/gu, '');
 
   useEffect(() => {
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+    let mounted = true;
+    const run = async () => {
+      const { data, error } = await supabase
+        .from('v_sellable_products')
+        .select('id, name, barcode, price, base_unit, data, available_quantity');
+      if (!mounted) return;
+      if (error) {
+        setSellableItems([]);
+        return;
+      }
+      const items = (data || []).map((row: any) => {
+        const raw = row?.data && typeof row.data === 'object' ? row.data : {};
+        const nameObj = row?.name && typeof row.name === 'object' ? row.name : (raw as any).name;
+        const safeName = {
+          ar: typeof nameObj?.ar === 'string' ? nameObj.ar : '',
+          en: typeof nameObj?.en === 'string' ? nameObj.en : '',
+        };
+        const descObj: any = (raw as any).description && typeof (raw as any).description === 'object' ? (raw as any).description : {};
+        const safeDescription = {
+          ar: typeof descObj?.ar === 'string' ? descObj.ar : '',
+          en: typeof descObj?.en === 'string' ? descObj.en : '',
+        };
+        const baseUnit = typeof row?.base_unit === 'string' ? row.base_unit : (raw as any).unitType;
+        const price = Number.isFinite(Number(row?.price)) ? Number(row.price) : Number((raw as any).price || 0);
+        const availableStock = Number.isFinite(Number(row?.available_quantity)) ? Number(row.available_quantity) : 0;
+        const barcode = typeof row?.barcode === 'string' ? row.barcode : (raw as any).barcode;
+        return {
+          ...(raw as any),
+          id: String(row?.id || (raw as any).id || ''),
+          name: safeName,
+          description: safeDescription,
+          unitType: baseUnit,
+          price,
+          availableStock,
+          barcode: typeof barcode === 'string' ? barcode : undefined,
+          status: 'active',
+        } as MenuItem;
+      });
+      setSellableItems(items.filter(i => i && i.id));
+    };
+    void run();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
     const h = window.setTimeout(() => setDebouncedQuery(query), 120);
     return () => {
       window.clearTimeout(h);
@@ -38,7 +87,7 @@ const POSItemSearch: React.FC<Props> = ({ onAddLine, inputRef, disabled, touchMo
   }, [debouncedQuery]);
 
   const indexedItems = useMemo(() => {
-    return (menuItems || []).map((m) => {
+    return (sellableItems || []).map((m) => {
       const ar = String(m.name?.ar || '');
       const en = String(m.name?.en || '');
       const id = String(m.id || '');
@@ -55,7 +104,7 @@ const POSItemSearch: React.FC<Props> = ({ onAddLine, inputRef, disabled, touchMo
         label: ar || en || id,
       };
     });
-  }, [menuItems]);
+  }, [sellableItems]);
 
   const results = useMemo(() => {
     const qRaw = debouncedQuery.trim();

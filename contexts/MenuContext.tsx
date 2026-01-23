@@ -43,16 +43,24 @@ export const MenuProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const conn: any = (typeof navigator !== 'undefined' && (navigator as any).connection) ? (navigator as any).connection : null;
       const eff: string = typeof conn?.effectiveType === 'string' ? conn.effectiveType : '';
       const isSlow = eff === 'slow-2g' || eff === '2g';
+      let isStaff = false;
+      try {
+        const { data: staffFlag } = await supabase.rpc('is_staff');
+        isStaff = Boolean(staffFlag);
+      } catch {}
+
       const selectCols = isSlow
-        ? 'id,data'
-        : 'id, category, is_featured, unit_type, freshness_level, status, cost_price, buying_price, transport_cost, supply_tax_cost, data';
+        ? 'id, name, barcode, price, base_unit, is_food, expiry_required, sellable, status, category, unit_type, data'
+        : 'id, name, barcode, price, base_unit, is_food, expiry_required, sellable, category, is_featured, unit_type, freshness_level, status, cost_price, buying_price, transport_cost, supply_tax_cost, data';
+
+      const source = isStaff ? 'menu_items' : 'v_sellable_products';
       const { data: rows, error: rowsError } = await supabase
-        .from('menu_items')
-        .select(selectCols);
+        .from(source)
+        .select(isStaff ? selectCols : `${selectCols}, available_quantity`);
       if (rowsError) throw rowsError;
       const ids = (rows || []).map((r: any) => (typeof r?.id === 'string' ? r.id : null)).filter(Boolean) as string[];
       let stockMap: Record<string, { available_quantity?: number; reserved_quantity?: number }> = {};
-      if (!isSlow && ids.length > 0) {
+      if (isStaff && !isSlow && ids.length > 0) {
         try {
           const { data: stockRows } = await supabase
             .from('stock_management')
@@ -71,7 +79,9 @@ export const MenuProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           const item = raw && typeof raw === 'object' ? raw : undefined;
           if (!item || typeof item !== 'object') return undefined;
           const mergedId = remoteId || item.id;
-          const nameObj: any = (item as any).name && typeof (item as any).name === 'object' ? (item as any).name : {};
+          const nameObj: any = row?.name && typeof row.name === 'object'
+            ? row.name
+            : ((item as any).name && typeof (item as any).name === 'object' ? (item as any).name : {});
           const descObj: any = (item as any).description && typeof (item as any).description === 'object' ? (item as any).description : {};
           const safeName = {
             ar: typeof nameObj?.ar === 'string' ? nameObj.ar : '',
@@ -82,22 +92,31 @@ export const MenuProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             en: typeof descObj?.en === 'string' ? descObj.en : '',
           };
           const smObj: any = mergedId ? stockMap[mergedId] || null : null;
-          const availableStock = Number.isFinite(Number(smObj?.available_quantity))
-            ? Number(smObj.available_quantity)
-            : Number(item.availableStock || 0);
+          const availableStock = isStaff
+            ? (Number.isFinite(Number(smObj?.available_quantity))
+              ? Number(smObj.available_quantity)
+              : Number(item.availableStock || 0))
+            : (Number.isFinite(Number(row?.available_quantity))
+              ? Number(row.available_quantity)
+              : Number(item.availableStock || 0));
           const costPrice = Number.isFinite(Number(row?.cost_price)) ? Number(row.cost_price) : (Number(item.costPrice) || 0);
           const buyingPrice = Number.isFinite(Number(row?.buying_price)) ? Number(row.buying_price) : (Number(item.buyingPrice) || 0);
           const transportCost = Number.isFinite(Number(row?.transport_cost)) ? Number(row.transport_cost) : (Number(item.transportCost) || 0);
           const supplyTaxCost = Number.isFinite(Number(row?.supply_tax_cost)) ? Number(row.supply_tax_cost) : (Number(item.supplyTaxCost) || 0);
-          const reservedQuantity = Number.isFinite(Number(smObj?.reserved_quantity)) ? Number(smObj.reserved_quantity) : 0;
+          const reservedQuantity = isStaff && Number.isFinite(Number(smObj?.reserved_quantity)) ? Number(smObj.reserved_quantity) : 0;
 
           const mergedCategory = typeof row?.category === 'string' ? row.category : item.category;
           const mergedStatus = typeof row?.status === 'string' ? row.status : item.status;
-          const mergedUnitType = typeof row?.unit_type === 'string' ? row.unit_type : item.unitType;
+          const mergedUnitType = typeof row?.base_unit === 'string'
+            ? row.base_unit
+            : (typeof row?.unit_type === 'string' ? row.unit_type : item.unitType);
           const mergedFreshness = typeof row?.freshness_level === 'string' ? row.freshness_level : item.freshnessLevel;
           const mergedIsFeatured = typeof row?.is_featured === 'boolean' ? row.is_featured : Boolean(item.isFeatured ?? false);
           const normalizedCategory = normalizeCategoryKey(mergedCategory) || String(mergedCategory || '');
-          const normalizedPrice = Number.isFinite(Number((item as any)?.price)) ? Number((item as any).price) : 0;
+          const normalizedPrice = Number.isFinite(Number(row?.price))
+            ? Number(row.price)
+            : (Number.isFinite(Number((item as any)?.price)) ? Number((item as any).price) : 0);
+          const mergedBarcode = typeof row?.barcode === 'string' ? row.barcode : (typeof (item as any)?.barcode === 'string' ? (item as any).barcode : '');
 
           return {
             ...item,
@@ -114,6 +133,7 @@ export const MenuProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             supplyTaxCost,
             availableStock,
             reservedQuantity,
+            barcode: mergedBarcode || undefined,
             name: safeName,
             description: safeDescription,
           };
@@ -194,11 +214,23 @@ export const MenuProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const supabase = getSupabaseClient();
     if (supabase) {
       try {
+        const baseUnit = typeof newItem.unitType === 'string' ? newItem.unitType : 'piece';
+        const isFood = String(newItem.category || '').toLowerCase() === 'food';
+        const explicitSellable = typeof (newItem as any).sellable === 'boolean' ? (newItem as any).sellable : true;
+        const explicitExpiryRequired = typeof (newItem as any).expiryRequired === 'boolean' ? (newItem as any).expiryRequired : isFood;
+        const explicitIsFood = typeof (newItem as any).isFood === 'boolean' ? (newItem as any).isFood : isFood;
         const { error } = await supabase.from('menu_items').insert({
           id: newItem.id,
           category: newItem.category,
           is_featured: Boolean(newItem.isFeatured ?? false),
           unit_type: typeof newItem.unitType === 'string' ? newItem.unitType : null,
+          base_unit: baseUnit,
+          name: newItem.name,
+          barcode: (newItem as any).barcode || null,
+          price: Number(newItem.price) || 0,
+          is_food: explicitIsFood,
+          expiry_required: explicitExpiryRequired,
+          sellable: explicitSellable,
           freshness_level: typeof newItem.freshnessLevel === 'string' ? newItem.freshnessLevel : null,
           status: newItem.status,
           cost_price: Number(newItem.costPrice) || 0,
@@ -235,12 +267,24 @@ export const MenuProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const supabase = getSupabaseClient();
     if (supabase) {
       try {
+        const baseUnit = typeof normalizedItem.unitType === 'string' ? normalizedItem.unitType : 'piece';
+        const isFood = String(normalizedItem.category || '').toLowerCase() === 'food';
+        const explicitSellable = typeof (normalizedItem as any).sellable === 'boolean' ? (normalizedItem as any).sellable : undefined;
+        const explicitExpiryRequired = typeof (normalizedItem as any).expiryRequired === 'boolean' ? (normalizedItem as any).expiryRequired : undefined;
+        const explicitIsFood = typeof (normalizedItem as any).isFood === 'boolean' ? (normalizedItem as any).isFood : undefined;
         const { error } = await supabase.from('menu_items').upsert(
           {
             id: normalizedItem.id,
             category: normalizedItem.category,
             is_featured: Boolean(normalizedItem.isFeatured ?? false),
             unit_type: typeof normalizedItem.unitType === 'string' ? normalizedItem.unitType : null,
+            base_unit: baseUnit,
+            name: normalizedItem.name,
+            barcode: (normalizedItem as any).barcode || null,
+            price: Number(normalizedItem.price) || 0,
+            is_food: explicitIsFood ?? isFood,
+            expiry_required: explicitExpiryRequired,
+            sellable: explicitSellable,
             freshness_level: typeof normalizedItem.freshnessLevel === 'string' ? normalizedItem.freshnessLevel : null,
             status: normalizedItem.status,
             cost_price: Number(normalizedItem.costPrice) || 0,

@@ -29,12 +29,7 @@ const HomeScreen: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
 
   const activeMenuItems = useMemo(() => {
-    const isExpired = (d?: string) => {
-      if (!d) return false;
-      const ts = new Date(d).getTime();
-      return !isNaN(ts) && ts < Date.now();
-    };
-    return menuItems.filter(item => item.status !== 'archived' && !isExpired(item.expiryDate));
+    return menuItems.filter(item => item.status !== 'archived');
   }, [menuItems]);
 
   const featuredItems = useMemo(() => {

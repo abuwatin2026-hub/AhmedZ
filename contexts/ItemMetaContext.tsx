@@ -57,6 +57,12 @@ export const ItemMetaProvider: React.FC<{ children: ReactNode }> = ({ children }
 
   const loading = loadingState.categories || loadingState.unitTypes || loadingState.freshnessLevels;
 
+  const isInvalidJwt = (error: unknown) => {
+    const msg = String((error as any)?.message || '');
+    const raw = msg.toLowerCase();
+    return raw.includes('invalid jwt') || raw.includes('jwt expired') || raw.includes('refresh token not found');
+  };
+
   const ensureCanManage = () => {
     if (!hasPermission('items.manage')) {
       throw new Error('ليس لديك صلاحية تنفيذ هذا الإجراء.');
@@ -82,9 +88,9 @@ export const ItemMetaProvider: React.FC<{ children: ReactNode }> = ({ children }
         supabase.from('unit_types').select('id,data'),
         supabase.from('freshness_levels').select('id,data'),
       ]);
-      if (rowsCategoryError) throw new Error(localizeSupabaseError(rowsCategoryError));
-      if (rowsUnitError) throw new Error(localizeSupabaseError(rowsUnitError));
-      if (rowsFreshnessError) throw new Error(localizeSupabaseError(rowsFreshnessError));
+      if (rowsCategoryError) throw rowsCategoryError;
+      if (rowsUnitError) throw rowsUnitError;
+      if (rowsFreshnessError) throw rowsFreshnessError;
 
       const allCategories = (rowsCategories || []).map(row => row.data as ItemCategoryDef).filter(Boolean);
       const allUnitTypes = (rowsUnitTypes || []).map(row => row.data as UnitTypeDef).filter(Boolean);
@@ -93,6 +99,16 @@ export const ItemMetaProvider: React.FC<{ children: ReactNode }> = ({ children }
       setCategories(allCategories.sort((a, b) => a.key.localeCompare(b.key)));
       setUnitTypes(allUnitTypes.sort((a, b) => String(a.key).localeCompare(String(b.key))));
       setFreshnessLevels(allFreshnessLevels.sort((a, b) => String(a.key).localeCompare(String(b.key))));
+    } catch (err) {
+      const supabase = getSupabaseClient();
+      if (supabase && isInvalidJwt(err)) {
+        try {
+          await supabase.auth.signOut({ scope: 'local' });
+        } catch {}
+      }
+      setCategories([]);
+      setUnitTypes([]);
+      setFreshnessLevels([]);
     } finally {
       setLoadingState({ categories: false, unitTypes: false, freshnessLevels: false });
     }

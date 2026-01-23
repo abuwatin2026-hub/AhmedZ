@@ -29,8 +29,8 @@ const ItemDetailsScreen: React.FC = () => {
 
   const isWeightBased = isWeightBasedUnit(item?.unitType);
   const availableQuantity = stock ? stock.availableQuantity - stock.reservedQuantity : item?.availableStock || 999;
-  const isExpired = !!(item?.expiryDate) && !isNaN(new Date(item!.expiryDate!).getTime()) && new Date(item!.expiryDate!).getTime() < Date.now();
-  const isInStock = !isExpired && availableQuantity > 0;
+  const isExpired = false;
+  const isInStock = availableQuantity > 0;
 
   useEffect(() => {
     setQuantity(1);

@@ -1,11 +1,11 @@
-import React, { useMemo, useState } from 'react';
-import { useMenu } from '../../contexts/MenuContext';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useOrders } from '../../contexts/OrderContext';
 import { useCashShift } from '../../contexts/CashShiftContext';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useStock } from '../../contexts/StockContext';
 import type { MenuItem } from '../../types';
 import PageLoader from '../../components/PageLoader';
+import { getSupabaseClient } from '../../supabase';
 
 const pickSellableItems = (items: MenuItem[], count: number): MenuItem[] => {
   const sellable = items.filter(m => (m.availableStock || 0) > 0 && (m.status || 'active') === 'active');
@@ -14,11 +14,12 @@ const pickSellableItems = (items: MenuItem[], count: number): MenuItem[] => {
 };
 
 const POSTestConsole: React.FC = () => {
-  const { menuItems, loading: menuLoading, fetchMenuItems } = useMenu();
   const { createInStoreSale, createInStorePendingOrder, resumeInStorePendingOrder, cancelInStorePendingOrder } = useOrders();
   const { currentShift, startShift } = useCashShift();
   const { settings } = useSettings();
   const { fetchStock } = useStock();
+  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+  const [menuLoading, setMenuLoading] = useState(false);
   const [logs, setLogs] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
 
@@ -34,10 +35,52 @@ const POSTestConsole: React.FC = () => {
   const ready = useMemo(() => !menuLoading, [menuLoading]);
 
   const ensureDataReady = async () => {
-    if (!ready || menuItems.length === 0) {
-      await fetchMenuItems();
+    if (ready && menuItems.length > 0) return;
+    setMenuLoading(true);
+    try {
+      const supabase = getSupabaseClient();
+      if (!supabase) return;
+      const { data, error } = await supabase
+        .from('v_sellable_products')
+        .select('id, name, barcode, price, base_unit, data, available_quantity');
+      if (error) return;
+      const items = (data || []).map((row: any) => {
+        const raw = row?.data && typeof row.data === 'object' ? row.data : {};
+        const nameObj = row?.name && typeof row.name === 'object' ? row.name : (raw as any).name;
+        const safeName = {
+          ar: typeof nameObj?.ar === 'string' ? nameObj.ar : '',
+          en: typeof nameObj?.en === 'string' ? nameObj.en : '',
+        };
+        const descObj: any = (raw as any).description && typeof (raw as any).description === 'object' ? (raw as any).description : {};
+        const safeDescription = {
+          ar: typeof descObj?.ar === 'string' ? descObj.ar : '',
+          en: typeof descObj?.en === 'string' ? descObj.en : '',
+        };
+        const baseUnit = typeof row?.base_unit === 'string' ? row.base_unit : (raw as any).unitType;
+        const price = Number.isFinite(Number(row?.price)) ? Number(row.price) : Number((raw as any).price || 0);
+        const availableStock = Number.isFinite(Number(row?.available_quantity)) ? Number(row.available_quantity) : 0;
+        const barcode = typeof row?.barcode === 'string' ? row.barcode : (raw as any).barcode;
+        return {
+          ...(raw as any),
+          id: String(row?.id || (raw as any).id || ''),
+          name: safeName,
+          description: safeDescription,
+          unitType: baseUnit,
+          price,
+          availableStock,
+          barcode: typeof barcode === 'string' ? barcode : undefined,
+          status: 'active',
+        } as MenuItem;
+      });
+      setMenuItems(items.filter(i => i && i.id));
+    } finally {
+      setMenuLoading(false);
     }
   };
+
+  useEffect(() => {
+    void ensureDataReady();
+  }, []);
 
   const makeLines = (items: MenuItem[]) => {
     return items.map(i => {
