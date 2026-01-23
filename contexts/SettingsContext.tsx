@@ -3,6 +3,7 @@ import type { AppLanguage, AppSettings, AppTheme, PersistedAppSettings } from '.
 import { getSupabaseClient } from '../supabase';
 import { logger } from '../utils/logger';
 import { localizeSupabaseError } from '../utils/errorUtils';
+import { translations } from '../utils/translations';
 import defaultLogoImage from '../resources/logo.jpg';
 
 // Minimal TranslationKeys type to satisfy the hook signature
@@ -136,6 +137,14 @@ const defaultSettings: AppSettings = {
     gold: '#B0AEFF',
     mint: '#7E7BFF',
   },
+  posFlags: {
+    barcodeScanEnabled: true,
+    autoPrintThermalEnabled: true,
+    thermalCopies: 2,
+  },
+  inventoryFlags: {
+    autoArchiveExpired: false,
+  },
   paymentMethods: {
     cash: true,
     kuraimi: true,
@@ -178,6 +187,14 @@ const mergeSettings = (base: AppSettings, incoming: unknown): AppSettings => {
     cafeteriaName: {
       ...base.cafeteriaName,
       ...(isRecord(candidate.cafeteriaName) ? (candidate.cafeteriaName as any) : {}),
+    },
+    posFlags: {
+      ...base.posFlags,
+      ...(isRecord((candidate as any)?.posFlags) ? ((candidate as any).posFlags as any) : {}),
+    },
+    inventoryFlags: {
+      ...base.inventoryFlags,
+      ...(isRecord((candidate as any)?.inventoryFlags) ? ((candidate as any).inventoryFlags as any) : {}),
     },
     paymentMethods: {
       ...base.paymentMethods,
@@ -441,7 +458,15 @@ export const useSettings = () => {
     // Disabled language toggling - enforcing Arabic
   };
 
-  const t = (key: TranslationKeys | string, _options?: Record<string, string | number>) => key;
+  const t = useCallback((key: TranslationKeys | string, options?: Record<string, string | number>) => {
+    const dict = (translations as any)?.[language] || (translations as any)?.ar || {};
+    const template = dict?.[key];
+    const text = typeof template === 'string' ? template : String(key);
+    if (!options) return text;
+    return Object.entries(options).reduce((acc, [k, v]) => {
+      return acc.split(`{${k}}`).join(String(v));
+    }, text);
+  }, [language]);
 
   return {
     settings: context.settings,

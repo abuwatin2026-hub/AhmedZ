@@ -5,6 +5,7 @@ import { useToast } from '../contexts/ToastContext';
 import { useOrders } from '../contexts/OrderContext';
 import { useCashShift } from '../contexts/CashShiftContext';
 import { useUserAuth } from '../contexts/UserAuthContext';
+import { useSettings } from '../contexts/SettingsContext';
 import POSHeaderShiftStatus from '../components/pos/POSHeaderShiftStatus';
 import POSItemSearch from '../components/pos/POSItemSearch';
 import POSLineItemList from '../components/pos/POSLineItemList';
@@ -18,6 +19,7 @@ const POSScreen: React.FC = () => {
   const { orders, createInStoreSale, createInStorePendingOrder, resumeInStorePendingOrder, cancelInStorePendingOrder } = useOrders();
   const { currentShift } = useCashShift();
   const { customers, fetchCustomers } = useUserAuth();
+  const { settings } = useSettings();
   const [items, setItems] = useState<CartItem[]>([]);
   const [discountType, setDiscountType] = useState<'amount' | 'percent'>('amount');
   const [discountValue, setDiscountValue] = useState<number>(0);
@@ -567,7 +569,10 @@ const POSScreen: React.FC = () => {
         setPendingSelectedId(null);
         showNotification('تم إتمام الطلب المستأنف', 'success');
         if (autoOpenInvoice && order?.id) {
-          navigate(`/admin/invoice/${order.id}`);
+          const autoThermal = Boolean(settings?.posFlags?.autoPrintThermalEnabled);
+          const copies = Number(settings?.posFlags?.thermalCopies) || 1;
+          const q = autoThermal ? `?thermal=1&autoprint=1&copies=${copies}` : '';
+          navigate(`/admin/invoice/${order.id}${q}`);
         }
         focusSearch();
       }).catch(err => {
@@ -601,7 +606,10 @@ const POSScreen: React.FC = () => {
         setPendingSelectedId(null);
         showNotification('تم إتمام الطلب مباشرة', 'success');
         if (autoOpenInvoice && order?.id) {
-          navigate(`/admin/invoice/${order.id}`);
+          const autoThermal = Boolean(settings?.posFlags?.autoPrintThermalEnabled);
+          const copies = Number(settings?.posFlags?.thermalCopies) || 1;
+          const q = autoThermal ? `?thermal=1&autoprint=1&copies=${copies}` : '';
+          navigate(`/admin/invoice/${order.id}${q}`);
         }
         focusSearch();
       }).catch(err => {

@@ -74,7 +74,7 @@ const SupplierEvaluationsScreen: React.FC = () => {
         }
     };
 
-    const getSupplierName = (id: string) => suppliers.find(s => s.id === id)?.name || 'Unknown';
+    const getSupplierName = (id: string) => suppliers.find(s => s.id === id)?.name || t('unknown');
 
     const renderStars = (score: number) => {
         return (
@@ -92,7 +92,7 @@ const SupplierEvaluationsScreen: React.FC = () => {
         return 'bg-red-100 text-red-800';
     };
 
-    if (loading) return <div className="p-8 text-center">Loading...</div>;
+    if (loading) return <div className="p-8 text-center">{t('loading')}</div>;
 
     return (
         <div className="p-6">
@@ -154,7 +154,7 @@ const SupplierEvaluationsScreen: React.FC = () => {
 
                         <div className="text-sm text-gray-600 mb-4 bg-gray-50 dark:bg-gray-900 p-2 rounded">
                             <span className="font-semibold">{t('recommendation')}: </span>
-                            <span className="capitalize">{evaluation.recommendation}</span>
+                            <span>{t(evaluation.recommendation || 'maintain')}</span>
                         </div>
 
                         <div className="flex justify-end gap-2 text-sm">

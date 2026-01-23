@@ -459,6 +459,14 @@ export interface AppSettings {
     gold: string;
     mint: string;
   };
+  posFlags?: {
+    barcodeScanEnabled?: boolean;
+    autoPrintThermalEnabled?: boolean;
+    thermalCopies?: number;
+  };
+  inventoryFlags?: {
+    autoArchiveExpired?: boolean;
+  };
   paymentMethods: {
     cash: boolean;
     network: boolean;
@@ -594,6 +602,7 @@ export interface InventoryMovement {
   createdBy?: string;
   createdAt: string;
   batchId?: string;
+  warehouseId?: string;
 }
 
 export interface ItemBatch {
@@ -613,6 +622,25 @@ export interface OrderItemCogs {
   unitCost: number;
   totalCost: number;
   createdAt: string;
+}
+
+export interface AccountingLightEntry {
+  id: string;
+  entryType: 'wastage' | 'expiry';
+  itemId: string;
+  warehouseId?: string;
+  batchId?: string;
+  quantity: number;
+  unit?: string;
+  unitCost: number;
+  totalCost: number;
+  occurredAt: string;
+  debitAccount: string;
+  creditAccount: string;
+  createdBy?: string;
+  createdAt: string;
+  notes?: string;
+  sourceRef?: string;
 }
 
 export interface Payment {

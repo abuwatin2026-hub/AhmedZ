@@ -106,6 +106,9 @@ const AdminNotificationMenu: React.FC = () => {
 const navLinks: Array<{ to: string; label: string; icon: React.ReactNode; permission: AdminPermission }> = [
   { to: 'dashboard', label: 'لوحة التحكم', icon: <Icons.DashboardIcon />, permission: 'dashboard.view' },
   { to: 'stock', label: 'إدارة المخزون', icon: <Icons.ListIcon />, permission: 'stock.manage' },
+  { to: 'wastage', label: 'تسجيل هدر', icon: <Icons.ReportIcon />, permission: 'stock.manage' },
+  { to: 'expiry-batches', label: 'دفعات منتهية', icon: <Icons.ClockIcon />, permission: 'stock.manage' },
+  { to: 'wastage-expiry-reports', label: 'تقارير الهدر/الانتهاء', icon: <Icons.ReportIcon />, permission: 'reports.view' },
   { to: 'suppliers', label: 'الموردين', icon: <Icons.TruckIcon />, permission: 'stock.manage' },
   { to: 'supplier-contracts', label: 'عقود الموردين', icon: <Icons.FileText />, permission: 'stock.manage' },
   { to: 'supplier-evaluations', label: 'تقييم الموردين', icon: <Icons.StarIcon />, permission: 'stock.manage' },
@@ -140,6 +143,9 @@ const navLinks: Array<{ to: string; label: string; icon: React.ReactNode; permis
 const routePermissions: Record<string, AdminPermission> = {
   'dashboard': 'dashboard.view',
   'stock': 'stock.manage',
+  'wastage': 'stock.manage',
+  'expiry-batches': 'stock.manage',
+  'wastage-expiry-reports': 'reports.view',
   'suppliers': 'stock.manage',
   'supplier-contracts': 'stock.manage',
   'supplier-evaluations': 'stock.manage',

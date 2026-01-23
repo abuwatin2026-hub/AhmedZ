@@ -1,5 +1,5 @@
-import React, { useRef, useState } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import React, { useEffect, useRef, useState } from 'react';
+import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useOrders } from '../contexts/OrderContext';
 import { useToast } from '../contexts/ToastContext';
 import Invoice from '../components/Invoice';
@@ -18,6 +18,7 @@ const InvoiceScreen: React.FC = () => {
     const { getOrderById, incrementInvoicePrintCount, loading } = useOrders();
   const { showNotification } = useToast();
     const navigate = useNavigate();
+    const location = useLocation();
     const order = getOrderById(orderId || '');
     const invoiceRef = useRef<HTMLDivElement>(null);
     const [isSharing, setIsSharing] = useState(false);
@@ -146,6 +147,25 @@ const InvoiceScreen: React.FC = () => {
         printContent(content, `فاتورة #${order.id.slice(-6).toUpperCase()}`);
         incrementInvoicePrintCount(order.id);
     };
+
+    useEffect(() => {
+        const params = new URLSearchParams(location.search || '');
+        const autoprint = params.get('autoprint') === '1';
+        const thermal = params.get('thermal') === '1';
+        const copies = Math.max(1, Number(params.get('copies') || 1));
+        if (order && order.invoiceIssuedAt && autoprint && thermal) {
+            let printed = 0;
+            const run = () => {
+                if (!order) return;
+                handlePrint();
+                printed += 1;
+                if (printed < copies) {
+                    window.setTimeout(run, 300);
+                }
+            };
+            window.setTimeout(run, 100);
+        }
+    }, [location.search, order]);
 
     if (!order && loading) {
         return <PageLoader />;

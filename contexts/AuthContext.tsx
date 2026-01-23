@@ -146,7 +146,29 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     setIsConfigured(true);
     const { data, error } = await supabase.auth.getSession();
-    if (error) throw new Error(localizeSupabaseError(error));
+    if (error) {
+      const raw = String((error as any)?.message || '');
+      const localized = localizeSupabaseError(error);
+      const normalized = `${raw}\n${localized}`.toLowerCase();
+
+      const isInvalidRefreshToken =
+        normalized.includes('invalid refresh token') ||
+        normalized.includes('refresh token not found') ||
+        normalized.includes('refresh_token_not_found') ||
+        normalized.includes('invalid_refresh_token');
+
+      if (isInvalidRefreshToken) {
+        try {
+          await supabase.auth.signOut({ scope: 'local' });
+        } catch {
+        }
+        setIsAuthenticated(false);
+        setUser(null);
+        return;
+      }
+
+      throw new Error(localized);
+    }
     const authUser = data.session?.user;
     if (!authUser) {
       setIsAuthenticated(false);

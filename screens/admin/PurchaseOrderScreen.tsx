@@ -84,9 +84,13 @@ const PurchaseOrderScreen: React.FC = () => {
     const [isReturnModalOpen, setIsReturnModalOpen] = useState(false);
     const [supplierId, setSupplierId] = useState('');
     const [purchaseDate, setPurchaseDate] = useState(getLocalDateInputValue());
-    const [supplierInvoiceNumber, setSupplierInvoiceNumber] = useState('');
+    const [supplierInvoiceNumber, setSupplierInvoiceNumber] = useState<string>('');
     const [orderItems, setOrderItems] = useState<OrderItemRow[]>([]);
     const [receiveOnCreate, setReceiveOnCreate] = useState(true);
+    const [quickAddCode, setQuickAddCode] = useState<string>('');
+    const [quickAddQuantity, setQuickAddQuantity] = useState<number>(1);
+    const [quickAddUnitCost, setQuickAddUnitCost] = useState<number>(0);
+    const [bulkLinesText, setBulkLinesText] = useState<string>('');
     const [paymentOrder, setPaymentOrder] = useState<PurchaseOrder | null>(null);
     const [paymentAmount, setPaymentAmount] = useState<number>(0);
     const [paymentMethod, setPaymentMethod] = useState<string>('cash');
@@ -131,6 +135,93 @@ const PurchaseOrderScreen: React.FC = () => {
     const getQuantityStep = (itemId: string) => {
         const unit = getItemById(itemId)?.unitType;
         return unit === 'kg' || unit === 'gram' ? 0.5 : 1;
+    };
+
+    const normalizeCode = (value: unknown) => String(value || '').trim();
+
+    const findItemByCode = (codeRaw: string) => {
+        const code = normalizeCode(codeRaw);
+        if (!code) return null;
+        const codeLower = code.toLowerCase();
+        return (activeMenuItems || []).find((m) => {
+            const id = String(m.id || '').trim();
+            const barcode = String((m as any).barcode || '').trim();
+            return id.toLowerCase() === codeLower || barcode.toLowerCase() === codeLower;
+        }) || null;
+    };
+
+    const appendOrderItem = (itemId: string, quantity: number, unitCost: number) => {
+        const step = getQuantityStep(itemId);
+        const q = Math.max(step, Number(quantity) || 0);
+        const c = Math.max(0, Number(unitCost) || 0);
+        setOrderItems((prev) => {
+            const idx = prev.findIndex((r) => r.itemId === itemId && Number(r.unitCost || 0) === c);
+            if (idx === -1) {
+                return [...prev, { itemId, quantity: q, unitCost: c, productionDate: '', expiryDate: '' }];
+            }
+            const next = [...prev];
+            const row = next[idx];
+            next[idx] = { ...row, quantity: Number(row.quantity || 0) + q };
+            return next;
+        });
+    };
+
+    const handleQuickAdd = () => {
+        const item = findItemByCode(quickAddCode);
+        if (!item) {
+            showNotification('لم يتم العثور على صنف بهذا الباركود/الكود.', 'error');
+            return;
+        }
+        appendOrderItem(item.id, quickAddQuantity, quickAddUnitCost);
+        setQuickAddCode('');
+    };
+
+    const parseBulkNumber = (value: string) => {
+        const v = String(value || '').trim().replace(/,/g, '.');
+        const n = Number(v);
+        return Number.isFinite(n) ? n : NaN;
+    };
+
+    const handleBulkAdd = () => {
+        const raw = String(bulkLinesText || '').trim();
+        if (!raw) return;
+        const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+        let added = 0;
+        const missing: string[] = [];
+        let invalidCount = 0;
+
+        for (const line of lines) {
+            const parts = line.split(/[\t,;|]+/g).map(p => p.trim()).filter(Boolean);
+            if (parts.length < 2) {
+                invalidCount += 1;
+                continue;
+            }
+            const code = parts[0];
+            const quantity = parseBulkNumber(parts[1]);
+            const unitCost = parts.length >= 3 ? parseBulkNumber(parts[2]) : 0;
+            if (!Number.isFinite(quantity) || quantity <= 0) {
+                invalidCount += 1;
+                continue;
+            }
+            if (parts.length >= 3 && (!Number.isFinite(unitCost) || unitCost < 0)) {
+                invalidCount += 1;
+                continue;
+            }
+            const item = findItemByCode(code);
+            if (!item) {
+                missing.push(code);
+                continue;
+            }
+            appendOrderItem(item.id, quantity, Number.isFinite(unitCost) ? unitCost : 0);
+            added += 1;
+        }
+
+        if (added > 0) showNotification(`تمت إضافة ${added} سطر من الإدخال السريع.`, 'success');
+        if (missing.length > 0) {
+            const sample = missing.slice(0, 6).join('، ');
+            showNotification(`تعذر العثور على ${missing.length} كود: ${sample}${missing.length > 6 ? '…' : ''}`, 'info');
+        }
+        if (invalidCount > 0) showNotification(`تم تجاهل ${invalidCount} سطر غير صالح.`, 'info');
     };
 
     const lowStockSuggestions = useMemo(() => {
@@ -480,7 +571,16 @@ const PurchaseOrderScreen: React.FC = () => {
                     أوامر الشراء (المخزون)
                 </h1>
                 <button
-                    onClick={() => { setIsModalOpen(true); setOrderItems([]); setSupplierInvoiceNumber(''); addRow(); }}
+                    onClick={() => {
+                        setIsModalOpen(true);
+                        setSupplierInvoiceNumber('');
+                        setQuickAddCode('');
+                        setQuickAddQuantity(1);
+                        setQuickAddUnitCost(0);
+                        setBulkLinesText('');
+                        setOrderItems([]);
+                        addRow();
+                    }}
                     className="bg-primary-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-primary-600 shadow-lg self-end sm:self-auto"
                 >
                     <Icons.PlusIcon className="w-5 h-5" />
@@ -829,6 +929,77 @@ const PurchaseOrderScreen: React.FC = () => {
                                     <label htmlFor="receiveOnCreate" className="text-sm font-medium dark:text-gray-300">
                                         استلام المخزون الآن
                                     </label>
+                                </div>
+
+                                <div className="bg-gray-50 dark:bg-gray-700/30 border dark:border-gray-700 rounded-xl p-4 space-y-3">
+                                    <div className="font-bold dark:text-gray-100">إدخال سريع</div>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1 dark:text-gray-300">باركود/كود الصنف</label>
+                                            <input
+                                                type="text"
+                                                value={quickAddCode}
+                                                onChange={(e) => setQuickAddCode(e.target.value)}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') {
+                                                        e.preventDefault();
+                                                        handleQuickAdd();
+                                                    }
+                                                }}
+                                                className="w-full p-2 border rounded-lg dark:bg-gray-800 dark:border-gray-600 dark:text-white font-mono"
+                                                placeholder="امسح الباركود ثم Enter"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1 dark:text-gray-300">الكمية</label>
+                                            <input
+                                                type="number"
+                                                value={quickAddQuantity}
+                                                min={0}
+                                                step="0.01"
+                                                onChange={(e) => setQuickAddQuantity(Number(e.target.value) || 0)}
+                                                className="w-full p-2 border rounded-lg dark:bg-gray-800 dark:border-gray-600 dark:text-white font-mono"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1 dark:text-gray-300">سعر الشراء (للوحدة)</label>
+                                            <input
+                                                type="number"
+                                                value={quickAddUnitCost}
+                                                min={0}
+                                                step="0.01"
+                                                onChange={(e) => setQuickAddUnitCost(Number(e.target.value) || 0)}
+                                                className="w-full p-2 border rounded-lg dark:bg-gray-800 dark:border-gray-600 dark:text-white font-mono"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center justify-end gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={handleQuickAdd}
+                                            className="px-4 py-2 rounded-lg bg-primary-600 text-white font-semibold hover:bg-primary-700"
+                                        >
+                                            إضافة
+                                        </button>
+                                    </div>
+                                    <div className="grid grid-cols-1 gap-2">
+                                        <label className="block text-sm font-medium dark:text-gray-300">لصق من إكسل/CSV (كود, كمية, سعر)</label>
+                                        <textarea
+                                            value={bulkLinesText}
+                                            onChange={(e) => setBulkLinesText(e.target.value)}
+                                            className="w-full p-2 border rounded-lg dark:bg-gray-800 dark:border-gray-600 dark:text-white font-mono text-sm min-h-[100px]"
+                                            placeholder={"مثال:\n1234567890123\t10\t120\nITEM-001,5,80"}
+                                        />
+                                        <div className="flex items-center justify-end gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={handleBulkAdd}
+                                                className="px-4 py-2 rounded-lg bg-gray-900 text-white font-semibold hover:bg-black"
+                                            >
+                                                إضافة من النص
+                                            </button>
+                                        </div>
+                                    </div>
                                 </div>
 
                                 {/* Items Table */}

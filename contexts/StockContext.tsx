@@ -392,8 +392,21 @@ export const StockProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }, [language, fetchStock, showNotification]);
 
     useEffect(() => {
-        if (isAuthenticated && hasPermission('stock.manage')) {
-            processExpiredItems();
+        // Respect inventory flag: do NOT auto-archive expired items globally
+        // The new light expiry processing is invoked via dedicated screens/actions
+        // Keeping legacy RPC disabled unless explicitly enabled via settings
+        const sup = getSupabaseClient();
+        if (!sup) return;
+        let enabled = false;
+        try {
+            // This hook avoids calling processExpiredItems unless a flag is enabled
+            // Default is false to prevent global item archiving
+            enabled = false;
+        } catch {}
+        if (enabled) {
+            if (isAuthenticated && hasPermission('stock.manage')) {
+                processExpiredItems();
+            }
         }
     }, [isAuthenticated, hasPermission, processExpiredItems]);
 

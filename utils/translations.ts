@@ -1,4 +1,6 @@
-import type { Language } from '../contexts/SettingsContext';
+import type { AppLanguage } from '../types';
+
+type Language = AppLanguage;
 
 const arTranslations = {
     // Header
@@ -493,6 +495,40 @@ const arTranslations = {
     startPreparing: 'بدء التحضير',
     markReady: 'جاهز للتوصيل',
     confirmOrderReady: 'هل أنت متأكد أن الطلب جاهز؟',
+    supplierContracts: 'عقود الموردين',
+    addContract: 'إضافة عقد',
+    editContract: 'تعديل عقد',
+    searchContracts: 'بحث في العقود',
+    allStatuses: 'كل الحالات',
+    contractNumber: 'رقم العقد',
+    supplier: 'المورد',
+    duration: 'المدة',
+    paymentTerms: 'شروط الدفع',
+    draft: 'مسودة',
+    terminated: 'مفسوخ',
+    selectSupplier: 'اختر المورد',
+    net15: 'آجل 15 يوم',
+    net30: 'آجل 30 يوم',
+    net45: 'آجل 45 يوم',
+    net60: 'آجل 60 يوم',
+    custom: 'مخصص',
+    customTerms: 'شروط مخصصة',
+    supplierEvaluations: 'تقييم الموردين',
+    addEvaluation: 'إضافة تقييم',
+    editEvaluation: 'تعديل تقييم',
+    searchSuppliers: 'بحث عن مورد',
+    quality: 'الجودة',
+    timeliness: 'الالتزام بالوقت',
+    pricing: 'الأسعار',
+    communication: 'التواصل',
+    recommendation: 'التوصية',
+    maintain: 'الإبقاء',
+    improve: 'تحسين',
+    terminate: 'إنهاء',
+    notes: 'ملاحظات',
+    edit: 'تعديل',
+    delete: 'حذف',
+    unknown: 'غير معروف',
 
     // Shared
     currency: 'ر.ي',

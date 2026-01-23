@@ -80,9 +80,9 @@ const SupplierContractsScreen: React.FC = () => {
         }
     };
 
-    const getSupplierName = (id: string) => suppliers.find(s => s.id === id)?.name || 'Unknown';
+    const getSupplierName = (id: string) => suppliers.find(s => s.id === id)?.name || t('unknown');
 
-    if (loading) return <div className="p-8 text-center">Loading...</div>;
+    if (loading) return <div className="p-8 text-center">{t('loading')}</div>;
 
     return (
         <div className="p-6">
@@ -141,11 +141,13 @@ const SupplierContractsScreen: React.FC = () => {
                                 <td className="px-6 py-4 text-sm">
                                     <div className="flex flex-col">
                                         <span>{contract.startDate.split('T')[0]}</span>
-                                        <span className="text-gray-400 text-xs">to {contract.endDate.split('T')[0]}</span>
+                                        <span className="text-gray-400 text-xs">{t('to')} {contract.endDate.split('T')[0]}</span>
                                     </div>
                                 </td>
                                 <td className="px-6 py-4 text-sm">
-                                    {contract.paymentTerms === 'custom' ? contract.paymentTermsCustom : contract.paymentTerms}
+                                    {contract.paymentTerms === 'custom'
+                                        ? contract.paymentTermsCustom
+                                        : (contract.paymentTerms ? t(contract.paymentTerms) : '-')}
                                 </td>
                                 <td className="px-6 py-4 text-sm">
                                     <span className={`px-2 py-1 rounded-full text-xs font-medium ${contract.status === 'active' ? 'bg-green-100 text-green-800' :

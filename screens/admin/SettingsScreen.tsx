@@ -498,6 +498,19 @@ const SettingsScreen: React.FC = () => {
         }
       }));
     }
+    else if (name.startsWith('posFlags.')) {
+      const field = name.split('.')[1] as 'barcodeScanEnabled' | 'autoPrintThermalEnabled' | 'thermalCopies';
+      const isChecked = (e.target as HTMLInputElement).checked;
+      setFormState(prev => ({
+        ...prev,
+        posFlags: {
+          barcodeScanEnabled: Boolean(prev.posFlags?.barcodeScanEnabled),
+          autoPrintThermalEnabled: Boolean(prev.posFlags?.autoPrintThermalEnabled),
+          thermalCopies: Number(prev.posFlags?.thermalCopies) || 1,
+          [field]: field === 'thermalCopies' ? Math.max(1, parseInt(value) || 1) : isChecked,
+        },
+      }));
+    }
     else if (name.startsWith('accounting_accounts.')) {
       const field = name.split('.')[1];
       setFormState(prev => ({
@@ -833,6 +846,48 @@ const SettingsScreen: React.FC = () => {
               <input type="checkbox" name="payment.network" checked={formState.paymentMethods.network} onChange={handleChange} className="form-checkbox h-5 w-5 text-gold-500 rounded focus:ring-gold-500" />
               <span className="mx-3 text-gray-700 dark:text-gray-300">شبكة</span>
             </label>
+          </div>
+        </section>
+
+        <section>
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4 border-r-4 rtl:border-l-4 rtl:border-r-0 border-gold-500 pr-4 rtl:pr-0 rtl:pl-4">
+            إعدادات نقاط البيع (POS)
+          </h2>
+          <div className="space-y-4">
+            <label className="flex items-center p-3 bg-gray-50 dark:bg-gray-700 rounded-md cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600">
+              <input
+                type="checkbox"
+                name="posFlags.barcodeScanEnabled"
+                checked={Boolean(formState.posFlags?.barcodeScanEnabled)}
+                onChange={handleChange}
+                className="form-checkbox h-5 w-5 text-gold-500 rounded focus:ring-gold-500"
+              />
+              <span className="mx-3 text-gray-700 dark:text-gray-300">تمكين إضافة عبر الباركود (مسح + Enter)</span>
+            </label>
+            <label className="flex items-center p-3 bg-gray-50 dark:bg-gray-700 rounded-md cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600">
+              <input
+                type="checkbox"
+                name="posFlags.autoPrintThermalEnabled"
+                checked={Boolean(formState.posFlags?.autoPrintThermalEnabled)}
+                onChange={handleChange}
+                className="form-checkbox h-5 w-5 text-gold-500 rounded focus:ring-gold-500"
+              />
+              <span className="mx-3 text-gray-700 dark:text-gray-300">طباعة حرارية تلقائية بعد الإتمام</span>
+            </label>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">عدد النسخ الحرارية</label>
+                <NumberInput
+                  id="posFlags.thermalCopies"
+                  name="posFlags.thermalCopies"
+                  value={Number(formState.posFlags?.thermalCopies) || 1}
+                  onChange={handleChange}
+                  min={1}
+                  step={1}
+                />
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">مثلاً 2 لنسخة عميل + نسخة تاجر.</p>
+              </div>
+            </div>
           </div>
         </section>
 

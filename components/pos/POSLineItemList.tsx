@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import type { CartItem } from '../../types';
+import NumericKeypadModal from './NumericKeypadModal';
 
 interface Props {
   items: CartItem[];
@@ -12,6 +13,29 @@ interface Props {
 }
 
 const POSLineItemList: React.FC<Props> = ({ items, onUpdate, onRemove, onEditAddons, selectedCartItemId, onSelect, touchMode }) => {
+  const [keypadOpen, setKeypadOpen] = useState(false);
+  const [keypadTitle, setKeypadTitle] = useState('');
+  const [keypadInitial, setKeypadInitial] = useState(0);
+  const [keypadDecimal, setKeypadDecimal] = useState(true);
+  const [keypadTarget, setKeypadTarget] = useState<{ id: string; kind: 'qty' | 'weight' } | null>(null);
+
+  const openKeypad = (id: string, kind: 'qty' | 'weight', current: number) => {
+    setKeypadTarget({ id, kind });
+    setKeypadTitle(kind === 'weight' ? 'الوزن' : 'الكمية');
+    setKeypadInitial(current);
+    setKeypadDecimal(kind === 'weight');
+    setKeypadOpen(true);
+  };
+
+  const applyKeypad = (v: number) => {
+    const tgt = keypadTarget;
+    if (!tgt) return;
+    if (tgt.kind === 'weight') onUpdate(tgt.id, { weight: v });
+    else onUpdate(tgt.id, { quantity: Math.max(0, Math.floor(v)) });
+    setKeypadOpen(false);
+    setKeypadTarget(null);
+  };
+
   return (
     <div className="space-y-3">
       {items.length === 0 && (
@@ -54,6 +78,7 @@ const POSLineItemList: React.FC<Props> = ({ items, onUpdate, onRemove, onEditAdd
                 <span>{unitPrice.toFixed(2)}</span>
                 {addonsPrice > 0 && <span>+ إضافات {addonsPrice.toFixed(2)}</span>}
                 <span className="font-semibold text-indigo-600 dark:text-indigo-300">= {lineTotal.toFixed(2)}</span>
+                <span className="text-[11px] text-gray-500 dark:text-gray-400">متاح: {Number((item as any).availableStock || 0)} • محجوز: {Number((item as any).reservedQuantity || 0)}</span>
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -74,6 +99,15 @@ const POSLineItemList: React.FC<Props> = ({ items, onUpdate, onRemove, onEditAdd
                   onChange={e => onUpdate(item.cartItemId, { weight: Number(e.target.value) || 0 })}
                   className={`border rounded-xl dark:bg-gray-700 dark:border-gray-600 ${touchMode ? 'w-36 p-4 text-lg' : 'w-28 p-3 text-base'}`}
                 />
+                ) : null}
+                {isWeight ? (
+                  <button
+                    type="button"
+                    onClick={() => openKeypad(item.cartItemId, 'weight', Number(qty || 0))}
+                    className={`rounded-xl border dark:border-gray-600 text-sm font-semibold ${touchMode ? 'px-5 py-4' : 'px-4 py-3'}`}
+                  >
+                    لوحة
+                  </button>
               ) : (
                 <div className="flex items-center gap-2">
                   <button
@@ -89,6 +123,13 @@ const POSLineItemList: React.FC<Props> = ({ items, onUpdate, onRemove, onEditAdd
                   >
                     +
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => openKeypad(item.cartItemId, 'qty', Number(qty || 0))}
+                    className={`rounded-xl border dark:border-gray-600 text-sm font-semibold ${touchMode ? 'px-5 py-4' : 'px-4 py-3'}`}
+                  >
+                    لوحة
+                  </button>
                 </div>
               )}
               <button
@@ -101,6 +142,14 @@ const POSLineItemList: React.FC<Props> = ({ items, onUpdate, onRemove, onEditAdd
           </div>
         );
       })}
+      <NumericKeypadModal
+        isOpen={keypadOpen}
+        title={keypadTitle}
+        initialValue={keypadInitial}
+        allowDecimal={keypadDecimal}
+        onClose={() => { setKeypadOpen(false); setKeypadTarget(null); }}
+        onSubmit={applyKeypad}
+      />
     </div>
   );
 };

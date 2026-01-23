@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useMenu } from '../../contexts/MenuContext';
 import type { MenuItem } from '../../types';
+import { useSettings } from '../../contexts/SettingsContext';
 
 interface Props {
   onAddLine: (item: MenuItem, input: { quantity?: number; weight?: number }) => void;
@@ -11,6 +12,7 @@ interface Props {
 
 const POSItemSearch: React.FC<Props> = ({ onAddLine, inputRef, disabled, touchMode }) => {
   const { menuItems } = useMenu();
+  const { settings } = useSettings();
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [quantity, setQuantity] = useState<number>(1);
@@ -40,10 +42,14 @@ const POSItemSearch: React.FC<Props> = ({ onAddLine, inputRef, disabled, touchMo
       const ar = String(m.name?.ar || '');
       const en = String(m.name?.en || '');
       const id = String(m.id || '');
+      const barcode = String((m as any)?.barcode || (m as any)?.data?.barcode || '');
+      const sku = String((m as any)?.sku || (m as any)?.data?.sku || '');
       return {
         item: m,
         idRaw: id,
         id: normalize(id),
+        barcode: normalize(barcode),
+        sku: normalize(sku),
         ar: normalize(ar),
         en: normalize(en),
         label: ar || en || id,
@@ -63,17 +69,23 @@ const POSItemSearch: React.FC<Props> = ({ onAddLine, inputRef, disabled, touchMo
     const scored = (indexedItems || [])
       .map((row) => {
         const id = row.id;
+        const barcode = row.barcode;
+        const sku = row.sku;
         const ar = row.ar;
         const en = row.en;
 
         let score = 999;
-        if (id === q) score = 0;
-        else if (id.startsWith(q)) score = 1;
-        else if (id.includes(q)) score = 2;
-        else if (ar.startsWith(q)) score = 3;
-        else if (ar.includes(q)) score = 4;
-        else if (en.startsWith(q)) score = 5;
-        else if (en.includes(q)) score = 6;
+        if (barcode && barcode === q) score = 0;
+        else if (sku && sku === q) score = 1;
+        else if (id === q) score = 2;
+        else if (barcode && barcode.startsWith(q)) score = 3;
+        else if (id.startsWith(q)) score = 4;
+        else if (ar.startsWith(q)) score = 5;
+        else if (en.startsWith(q)) score = 6;
+        else if (barcode && barcode.includes(q)) score = 7;
+        else if (id.includes(q)) score = 8;
+        else if (ar.includes(q)) score = 9;
+        else if (en.includes(q)) score = 10;
 
         return { row, score };
       })
@@ -134,7 +146,29 @@ const POSItemSearch: React.FC<Props> = ({ onAddLine, inputRef, disabled, touchMo
             }
             if (e.key === 'Enter') {
               e.preventDefault();
-              addSelected(selectedIndex);
+          const enableBarcode = Boolean(settings?.posFlags?.barcodeScanEnabled);
+          if (enableBarcode) {
+            const q = normalize(query.trim());
+            if (q) {
+              const exact = indexedItems.find(row => (row.barcode && row.barcode === q) || (row.sku && row.sku === q));
+              if (exact) {
+                const item = exact.item;
+                const isWeight = item.unitType === 'kg' || item.unitType === 'gram';
+                onAddLine(item, isWeight ? { weight } : { quantity });
+                setQuery('');
+                setDebouncedQuery('');
+                setSelectedIndex(0);
+                if (inputRef?.current) {
+                  try {
+                    inputRef.current.focus();
+                    inputRef.current.select?.();
+                  } catch {}
+                }
+                return;
+              }
+            }
+          }
+          addSelected(selectedIndex);
               return;
             }
             if (e.key === 'Tab') {
@@ -226,6 +260,9 @@ const POSItemSearch: React.FC<Props> = ({ onAddLine, inputRef, disabled, touchMo
                   <div className={`font-bold dark:text-white truncate ${touchMode ? 'text-lg' : ''}`}>{item.name?.ar || item.name?.en || item.id}</div>
                   <div className={`text-gray-600 dark:text-gray-300 ${touchMode ? 'text-base' : 'text-sm'}`}>
                     {isWeight ? 'وزن' : 'كمية'} • {item.price.toFixed(2)}
+                  </div>
+                  <div className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                    متاح: {Number(item.availableStock || 0)} {item.unitType === 'gram' ? 'غ' : item.unitType === 'kg' ? 'كغ' : 'ق'} • محجوز: {Number((item as any).reservedQuantity || 0)}
                   </div>
                 </div>
                 <div className="text-xs font-mono text-gray-400 shrink-0">#{shortId}</div>

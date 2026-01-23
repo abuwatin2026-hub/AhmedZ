@@ -71,6 +71,9 @@ const SupplierEvaluationsScreen = lazy(() => import('./screens/admin/SupplierEva
 const ImportShipmentsScreen = lazy(() => import('./screens/admin/ImportShipmentsScreen'));
 const ImportShipmentDetailsScreen = lazy(() => import('./screens/admin/ImportShipmentDetailsScreen'));
 const POSTestConsole = lazy(() => import('./screens/admin/POSTestConsole'));
+const WastageScreen = lazy(() => import('./screens/admin/WastageScreen'));
+const ExpiryBatchesScreen = lazy(() => import('./screens/admin/ExpiryBatchesScreen'));
+const WastageExpiryReportsScreen = lazy(() => import('./screens/admin/WastageExpiryReportsScreen'));
 
 const CustomerLayout: React.FC = () => {
   const { settings } = useSettings();
@@ -267,6 +270,9 @@ const App: React.FC = () => {
                 <Route path="coupons" element={<AdminProtectedRoute permissions={['coupons.manage']}><ManageCouponsScreen /></AdminProtectedRoute>} />
                 <Route path="reviews" element={<AdminProtectedRoute permissions={['reviews.manage']}><ManageReviewsScreen /></AdminProtectedRoute>} />
                 <Route path="stock" element={<AdminProtectedRoute permissions={['stock.manage']}><ManageStockScreen /></AdminProtectedRoute>} />
+                <Route path="wastage" element={<AdminProtectedRoute permissions={['stock.manage']}><WastageScreen /></AdminProtectedRoute>} />
+                <Route path="expiry-batches" element={<AdminProtectedRoute permissions={['stock.manage']}><ExpiryBatchesScreen /></AdminProtectedRoute>} />
+                <Route path="wastage-expiry-reports" element={<AdminProtectedRoute permissions={['reports.view']}><WastageExpiryReportsScreen /></AdminProtectedRoute>} />
                 <Route path="suppliers" element={<AdminProtectedRoute permissions={['stock.manage']}><SuppliersScreen /></AdminProtectedRoute>} />
                 <Route path="purchases" element={<AdminProtectedRoute permissions={['stock.manage']}><PurchaseOrderScreen /></AdminProtectedRoute>} />
                 <Route path="supplier-contracts" element={<AdminProtectedRoute permissions={['stock.manage']}><SupplierContractsScreen /></AdminProtectedRoute>} />
