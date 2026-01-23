@@ -84,6 +84,7 @@ const PurchaseOrderScreen: React.FC = () => {
     const [isReturnModalOpen, setIsReturnModalOpen] = useState(false);
     const [supplierId, setSupplierId] = useState('');
     const [purchaseDate, setPurchaseDate] = useState(getLocalDateInputValue());
+    const [supplierInvoiceNumber, setSupplierInvoiceNumber] = useState('');
     const [orderItems, setOrderItems] = useState<OrderItemRow[]>([]);
     const [receiveOnCreate, setReceiveOnCreate] = useState(true);
     const [paymentOrder, setPaymentOrder] = useState<PurchaseOrder | null>(null);
@@ -174,6 +175,11 @@ const PurchaseOrderScreen: React.FC = () => {
                 alert('الرجاء اختيار المورد.');
                 return;
             }
+            const invoiceRef = typeof supplierInvoiceNumber === 'string' ? supplierInvoiceNumber.trim() : '';
+            if (!invoiceRef) {
+                alert('الرجاء إدخال رقم فاتورة المورد.');
+                return;
+            }
             if (receiveOnCreate) {
                 for (const row of validItems) {
                     const item = getItemById(row.itemId);
@@ -197,10 +203,11 @@ const PurchaseOrderScreen: React.FC = () => {
                 }
             }
 
-            await createPurchaseOrder(supplierId, purchaseDate, validItems, receiveOnCreate);
+            await createPurchaseOrder(supplierId, purchaseDate, validItems, receiveOnCreate, invoiceRef);
             setIsModalOpen(false);
             // Reset form
             setSupplierId('');
+            setSupplierInvoiceNumber('');
             setOrderItems([]);
         } catch (error) {
             console.error(error);
@@ -473,7 +480,7 @@ const PurchaseOrderScreen: React.FC = () => {
                     أوامر الشراء (المخزون)
                 </h1>
                 <button
-                    onClick={() => { setIsModalOpen(true); setOrderItems([]); addRow(); }}
+                    onClick={() => { setIsModalOpen(true); setOrderItems([]); setSupplierInvoiceNumber(''); addRow(); }}
                     className="bg-primary-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-primary-600 shadow-lg self-end sm:self-auto"
                 >
                     <Icons.PlusIcon className="w-5 h-5" />
@@ -530,7 +537,7 @@ const PurchaseOrderScreen: React.FC = () => {
                             <div key={order.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700 p-4">
                                 <div className="flex items-start justify-between gap-3">
                                     <div className="min-w-0">
-                                        <div className="text-sm text-gray-500 dark:text-gray-400">رقم المرجع</div>
+                                        <div className="text-sm text-gray-500 dark:text-gray-400">رقم المرجع (فاتورة المورد)</div>
                                         <div className="font-mono text-sm dark:text-gray-200 break-all">{order.referenceNumber || '-'}</div>
                                     </div>
                                     <span className={['px-2 py-1 rounded-full text-xs font-bold whitespace-nowrap', statusClass].join(' ')}>
@@ -635,7 +642,7 @@ const PurchaseOrderScreen: React.FC = () => {
                 <table className="min-w-[1100px] w-full text-right">
                     <thead className="bg-gray-50 dark:bg-gray-700/50">
                         <tr>
-                            <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">رقم المرجع</th>
+                            <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">رقم المرجع (فاتورة المورد)</th>
                             <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">المورد</th>
                             <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">التاريخ</th>
                             <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">عدد الأصناف</th>
@@ -801,13 +808,14 @@ const PurchaseOrderScreen: React.FC = () => {
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-medium mb-1 dark:text-gray-300">رقم المرجع</label>
+                                        <label className="block text-sm font-medium mb-1 dark:text-gray-300">رقم المرجع (فاتورة المورد)</label>
                                         <input
                                             type="text"
                                             className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                                            value=""
-                                            placeholder="يُولّد تلقائيًا: PO-YYYYMMDD-0001"
-                                            disabled
+                                            value={supplierInvoiceNumber}
+                                            required
+                                            placeholder="أدخل رقم فاتورة المورد"
+                                            onChange={(e) => setSupplierInvoiceNumber(e.target.value)}
                                         />
                                     </div>
                                 </div>

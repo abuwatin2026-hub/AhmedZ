@@ -281,6 +281,10 @@ export interface Order {
   userId?: string;
   orderSource?: 'online' | 'in_store';
   warehouseId?: string;
+  offlineId?: string;
+  offlineState?: 'CREATED_OFFLINE' | 'SYNCED' | 'DELIVERED' | 'FAILED' | 'CONFLICT';
+  offlineError?: string;
+  offlineSyncedAt?: string;
   items: CartItem[];
   subtotal: number;
   deliveryFee: number;

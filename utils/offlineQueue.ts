@@ -27,6 +27,7 @@ interface TableTask extends OfflineTaskBase {
 type OfflineTask = RpcTask | TableTask;
 
 const STORAGE_KEY = 'offline_tasks';
+const POS_OFFLINE_ORDERS_KEY = 'offline_pos_orders';
 let isProcessing = false;
 let processorStarted = false;
 
@@ -43,6 +44,68 @@ const BLOCK_OFFLINE_RPC = new Set<string>([
   'cancel_purchase_order',
   'create_purchase_return',
 ]);
+
+type OfflinePosState = 'CREATED_OFFLINE' | 'SYNCED' | 'DELIVERED' | 'FAILED' | 'CONFLICT';
+
+type OfflinePosOrder = {
+  offlineId: string;
+  orderId: string;
+  state: OfflinePosState;
+  error?: string;
+  createdAt: number;
+  updatedAt: number;
+};
+
+const readPosOrders = (): OfflinePosOrder[] => {
+  try {
+    const raw = localStorage.getItem(POS_OFFLINE_ORDERS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
+const writePosOrders = (orders: OfflinePosOrder[]) => {
+  try {
+    localStorage.setItem(POS_OFFLINE_ORDERS_KEY, JSON.stringify(orders));
+  } catch {}
+};
+
+export const upsertOfflinePosOrder = (input: { offlineId: string; orderId: string; state?: OfflinePosState; error?: string }) => {
+  const offlineId = String(input.offlineId || '');
+  const orderId = String(input.orderId || '');
+  if (!offlineId || !orderId) return;
+  const now = Date.now();
+  const list = readPosOrders();
+  const idx = list.findIndex((o) => o.offlineId === offlineId);
+  const next: OfflinePosOrder = {
+    offlineId,
+    orderId,
+    state: input.state || 'CREATED_OFFLINE',
+    error: input.error,
+    createdAt: idx >= 0 ? list[idx].createdAt : now,
+    updatedAt: now,
+  };
+  if (idx >= 0) {
+    list[idx] = { ...list[idx], ...next };
+  } else {
+    list.unshift(next);
+  }
+  writePosOrders(list);
+};
+
+export const setOfflinePosOrderState = (offlineId: string, state: OfflinePosState, error?: string) => {
+  const id = String(offlineId || '');
+  if (!id) return;
+  const now = Date.now();
+  const list = readPosOrders();
+  const idx = list.findIndex((o) => o.offlineId === id);
+  if (idx < 0) return;
+  list[idx] = { ...list[idx], state, error, updatedAt: now };
+  writePosOrders(list);
+};
 
 const read = (): OfflineTask[] => {
   try {
@@ -115,8 +178,23 @@ export const processQueue = async (): Promise<{ processed: number; remaining: nu
     for (const t of tasks) {
       try {
         if (t.kind === 'rpc') {
-          const { error } = await supabase.rpc(t.name, t.args);
+          const { data, error } = await supabase.rpc(t.name, t.args);
           if (error) throw error;
+          if (t.name === 'sync_offline_pos_sale' && data && typeof data === 'object') {
+            const status = String((data as any).status || '');
+            const offlineId = String((t.args as any)?.p_offline_id || '');
+            if (offlineId) {
+              if (status === 'DELIVERED') {
+                setOfflinePosOrderState(offlineId, 'DELIVERED');
+              } else if (status === 'CONFLICT') {
+                setOfflinePosOrderState(offlineId, 'CONFLICT', String((data as any).error || ''));
+              } else if (status === 'FAILED') {
+                setOfflinePosOrderState(offlineId, 'FAILED', String((data as any).error || ''));
+              } else if (status === 'SYNCED') {
+                setOfflinePosOrderState(offlineId, 'SYNCED');
+              }
+            }
+          }
         } else {
           if (t.op === 'insert') {
             const { error } = await supabase.from(t.table).insert(t.payload || {});
@@ -140,6 +218,14 @@ export const processQueue = async (): Promise<{ processed: number; remaining: nu
         const aborted = /abort|ERR_ABORTED|Failed to fetch/i.test(msg);
         if (isOffline() || aborted) {
           next.push(t);
+          continue;
+        }
+        if (t.kind === 'rpc' && t.name === 'sync_offline_pos_sale') {
+          const offlineId = String((t.args as any)?.p_offline_id || '');
+          if (offlineId) {
+            setOfflinePosOrderState(offlineId, 'FAILED', msg);
+          }
+          processed += 1;
           continue;
         }
         const attempts = (t.attempts || 0) + 1;

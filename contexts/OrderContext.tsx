@@ -8,7 +8,7 @@ import { generateInvoiceNumber } from '../utils/orderUtils';
 import { getSupabaseClient } from '../supabase';
 import { createLogger } from '../utils/logger';
 import { localizeSupabaseError, isAbortLikeError } from '../utils/errorUtils';
-import { enqueueRpc } from '../utils/offlineQueue';
+import { enqueueRpc, upsertOfflinePosOrder } from '../utils/offlineQueue';
 import { decryptField, isEncrypted } from '../utils/encryption';
 
 const logger = createLogger('OrderContext');
@@ -947,18 +947,29 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
 
     const nowIso = new Date().toISOString();
-    const supabaseForWarehouse = getSupabaseClient();
-    if (!supabaseForWarehouse) throw new Error('Supabase غير مهيأ.');
-    const { data: whRows } = await supabaseForWarehouse
-      .from('warehouses')
-      .select('id,code,is_active')
-      .eq('is_active', true)
-      .order('code', { ascending: true });
-    const mainWh = (whRows || []).find((w: any) => String(w?.code).toUpperCase() === 'MAIN');
-    const firstWh = (whRows || [])[0];
-    const warehouseId = String((mainWh || firstWh)?.id || '');
-    if (!warehouseId) {
-      throw new Error('تعذر تحديد المخزن الافتراضي.');
+    const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
+
+    let warehouseId = '';
+    if (offline) {
+      warehouseId = String(localStorage.getItem('pos_default_warehouse_id') || '');
+      if (!warehouseId) {
+        throw new Error('لا يوجد مخزن محفوظ. افتح النظام مرة واحدة وأنت متصل لتحديد المخزن.');
+      }
+    } else {
+      const supabaseForWarehouse = getSupabaseClient();
+      if (!supabaseForWarehouse) throw new Error('Supabase غير مهيأ.');
+      const { data: whRows } = await supabaseForWarehouse
+        .from('warehouses')
+        .select('id,code,is_active')
+        .eq('is_active', true)
+        .order('code', { ascending: true });
+      const mainWh = (whRows || []).find((w: any) => String(w?.code).toUpperCase() === 'MAIN');
+      const firstWh = (whRows || [])[0];
+      warehouseId = String((mainWh || firstWh)?.id || '');
+      if (!warehouseId) {
+        throw new Error('تعذر تحديد المخزن الافتراضي.');
+      }
+      localStorage.setItem('pos_default_warehouse_id', warehouseId);
     }
     let items: CartItem[] = normalizedLines.map((line, idx) => {
       const menuItem = menuItems[idx]!;
@@ -991,32 +1002,48 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       throw new Error('الكمية/الوزن يجب أن يكون أكبر من صفر.');
     }
 
-    await ensureSufficientStockForOrderItems(items, warehouseId);
+    if (!offline) {
+      await ensureSufficientStockForOrderItems(items, warehouseId);
+    }
 
-    const supabaseForPricing = getSupabaseClient();
-    if (!supabaseForPricing) throw new Error('Supabase غير مهيأ.');
+    let pricedItems: CartItem[] = items;
+    if (!offline) {
+      const supabaseForPricing = getSupabaseClient();
+      if (!supabaseForPricing) throw new Error('Supabase غير مهيأ.');
 
-    const pricedItems = await Promise.all(items.map(async (item) => {
-      const pricingQty = (item.unitType === 'kg' || item.unitType === 'gram')
-        ? (item.weight || item.quantity)
-        : item.quantity;
-      const { data, error } = await supabaseForPricing.rpc('get_item_price_with_discount', {
-        p_item_id: item.id,
-        p_customer_id: null,
-        p_quantity: pricingQty,
+      pricedItems = await Promise.all(items.map(async (item) => {
+        const pricingQty = (item.unitType === 'kg' || item.unitType === 'gram')
+          ? (item.weight || item.quantity)
+          : item.quantity;
+        const { data, error } = await supabaseForPricing.rpc('get_item_price_with_discount', {
+          p_item_id: item.id,
+          p_customer_id: null,
+          p_quantity: pricingQty,
+        });
+        if (error) {
+          throw new Error(localizeSupabaseError(error));
+        }
+        const unitPrice = Number(data);
+        if (!Number.isFinite(unitPrice) || unitPrice < 0) {
+          throw new Error('تعذر احتساب السعر.');
+        }
+        if (item.unitType === 'gram') {
+          return { ...item, price: unitPrice, pricePerUnit: unitPrice * 1000 };
+        }
+        return { ...item, price: unitPrice };
+      }));
+    } else {
+      pricedItems = items.map((item) => {
+        const unitPrice = Number(item.price);
+        if (!Number.isFinite(unitPrice) || unitPrice < 0) {
+          throw new Error('تعذر احتساب السعر بدون اتصال. يرجى فتح النظام متصلاً لتحديث الأسعار.');
+        }
+        if (item.unitType === 'gram') {
+          return { ...item, price: unitPrice, pricePerUnit: item.pricePerUnit || unitPrice * 1000 };
+        }
+        return { ...item, price: unitPrice };
       });
-      if (error) {
-        throw new Error(localizeSupabaseError(error));
-      }
-      const unitPrice = Number(data);
-      if (!Number.isFinite(unitPrice) || unitPrice < 0) {
-        throw new Error('تعذر احتساب السعر.');
-      }
-      if (item.unitType === 'gram') {
-        return { ...item, price: unitPrice, pricePerUnit: unitPrice * 1000 };
-      }
-      return { ...item, price: unitPrice };
-    }));
+    }
 
     items = pricedItems;
 
@@ -1175,6 +1202,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       userId: adminUser?.id,
       orderSource: 'in_store',
       warehouseId,
+      offlineState: offline ? 'CREATED_OFFLINE' : undefined,
       items,
       subtotal: computedSubtotal,
       deliveryFee: 0,
@@ -1215,6 +1243,38 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       invoicePrintCount: 0,
     };
 
+    const payloadItems = newOrder.items
+      .map((item) => ({
+        itemId: item.id,
+        quantity: getRequestedItemQuantity(item),
+      }))
+      .filter((entry) => Number(entry.quantity) > 0);
+
+    if (offline) {
+      newOrder.offlineId = newOrder.id;
+      upsertOfflinePosOrder({ offlineId: newOrder.id, orderId: newOrder.id, state: 'CREATED_OFFLINE' });
+      enqueueRpc('sync_offline_pos_sale', {
+        p_offline_id: newOrder.id,
+        p_order_id: newOrder.id,
+        p_order_data: newOrder,
+        p_items: payloadItems,
+        p_warehouse_id: warehouseId,
+        p_payments: (paymentBreakdown || []).map((p) => ({
+          method: p.method,
+          amount: Number(p.amount) || 0,
+          referenceNumber: p.referenceNumber,
+          senderName: p.senderName,
+          senderPhone: p.senderPhone,
+          declaredAmount: Number((p as any).declaredAmount) || 0,
+          amountConfirmed: Boolean((p as any).amountConfirmed),
+          cashReceived: (p as any).cashReceived,
+          occurredAt: nowIso,
+        })),
+      });
+      setOrders(prev => [newOrder, ...prev]);
+      return newOrder;
+    }
+
     // 1. Insert as pending (safe state)
     await createRemoteOrder({ ...newOrder, status: 'pending' });
 
@@ -1232,14 +1292,6 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       }
     } catch {}
 
-    // 2. Atomic Confirm (Stock + Status -> Delivered)
-    const payloadItems = newOrder.items
-      .map((item) => ({
-        itemId: item.id,
-        quantity: getRequestedItemQuantity(item),
-      }))
-      .filter((entry) => Number(entry.quantity) > 0);
-
     const supabase = getSupabaseClient();
     if (!supabase) throw new Error('Supabase غير مهيأ.');
     const { error: rpcError } = await supabase.rpc('confirm_order_delivery', {
@@ -1250,7 +1302,22 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     });
 
     if (rpcError) {
-      // Rollback: Delete the pending order
+      const offlineNow = typeof navigator !== 'undefined' && navigator.onLine === false;
+      if (offlineNow || isAbortLikeError(rpcError)) {
+        newOrder.offlineId = newOrder.id;
+        newOrder.offlineState = 'CREATED_OFFLINE';
+        upsertOfflinePosOrder({ offlineId: newOrder.id, orderId: newOrder.id, state: 'CREATED_OFFLINE' });
+        enqueueRpc('sync_offline_pos_sale', {
+          p_offline_id: newOrder.id,
+          p_order_id: newOrder.id,
+          p_order_data: newOrder,
+          p_items: payloadItems,
+          p_warehouse_id: warehouseId,
+          p_payments: (paymentBreakdown || []).map((p) => ({ ...p, occurredAt: nowIso })),
+        });
+        setOrders(prev => [newOrder, ...prev]);
+        return newOrder;
+      }
       await supabase.from('orders').delete().eq('id', newOrder.id);
       console.error('In-store sale confirmation failed:', rpcError);
       throw new Error(localizeSupabaseError(rpcError));

@@ -1,41 +1,90 @@
+do $$
+begin
+  if to_regclass('public.inventory_movements') is not null
+     and to_regclass('public.warehouses') is not null
+     and not exists (
+        select 1
+        from information_schema.columns
+        where table_schema = 'public'
+          and table_name = 'inventory_movements'
+          and column_name = 'warehouse_id'
+     ) then
+    alter table public.inventory_movements
+      add column warehouse_id uuid references public.warehouses(id) on delete set null;
+    create index if not exists idx_inventory_movements_warehouse_item_date
+      on public.inventory_movements(warehouse_id, item_id, occurred_at desc);
+    create index if not exists idx_inventory_movements_warehouse_batch
+      on public.inventory_movements(warehouse_id, batch_id);
+  end if;
+end $$;
+
 create or replace view public.v_food_batch_balances as
-with purchases as (
-  select
-    im.item_id,
-    im.batch_id,
-    sum(im.quantity) as received_qty,
-    max(
-      case
-        when (im.data->>'expiryDate') ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' then (im.data->>'expiryDate')::date
-        else null
-      end
-    ) as expiry_date
-  from public.inventory_movements im
-  where im.movement_type = 'purchase_in'
-    and im.batch_id is not null
-  group by im.item_id, im.batch_id
+with default_wh as (
+  select w.id as warehouse_id
+  from public.warehouses w
+  where upper(coalesce(w.code, '')) = 'MAIN'
+  order by w.code asc
+  limit 1
 ),
-consumed as (
+movements as (
   select
     im.item_id,
     im.batch_id,
-    sum(im.quantity) as consumed_qty
+    coalesce(
+      im.warehouse_id,
+      case
+        when (im.data ? 'warehouseId')
+             and (im.data->>'warehouseId') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+          then (im.data->>'warehouseId')::uuid
+        else null
+      end,
+      (select warehouse_id from default_wh)
+    ) as warehouse_id,
+    case
+      when im.movement_type in ('purchase_in','adjust_in','return_in') then im.quantity
+      else 0
+    end as in_qty,
+    case
+      when im.movement_type in ('sale_out','wastage_out','adjust_out','return_out') then im.quantity
+      else 0
+    end as out_qty,
+    case
+      when (im.data->>'expiryDate') ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' then (im.data->>'expiryDate')::date
+      else null
+    end as expiry_date
   from public.inventory_movements im
-  where im.movement_type in ('sale_out','wastage_out','adjust_out','return_out')
-    and im.batch_id is not null
-  group by im.item_id, im.batch_id
+  where im.batch_id is not null
+),
+batch_expiry as (
+  select
+    m.item_id,
+    m.batch_id,
+    max(m.expiry_date) as expiry_date
+  from movements m
+  group by 1, 2
+),
+balances as (
+  select
+    m.item_id,
+    m.batch_id,
+    m.warehouse_id,
+    sum(m.in_qty) as received_qty,
+    sum(m.out_qty) as consumed_qty
+  from movements m
+  group by 1, 2, 3
 )
 select
-  p.item_id,
-  p.batch_id,
-  p.expiry_date,
-  coalesce(p.received_qty, 0) as received_qty,
-  coalesce(c.consumed_qty, 0) as consumed_qty,
-  greatest(coalesce(p.received_qty, 0) - coalesce(c.consumed_qty, 0), 0) as remaining_qty
-from purchases p
-left join consumed c
-  on c.item_id = p.item_id
- and c.batch_id = p.batch_id;
+  b.item_id,
+  b.batch_id,
+  b.warehouse_id,
+  e.expiry_date,
+  coalesce(b.received_qty, 0) as received_qty,
+  coalesce(b.consumed_qty, 0) as consumed_qty,
+  greatest(coalesce(b.received_qty, 0) - coalesce(b.consumed_qty, 0), 0) as remaining_qty
+from balances b
+join batch_expiry e
+  on e.item_id = b.item_id
+ and e.batch_id = b.batch_id;
 
 create or replace function public.get_food_near_expiry_alert(p_threshold_days int default 7)
 returns table (
@@ -53,25 +102,19 @@ language sql
 stable
 set search_path = public
 as $$
-  with wh as (
-    select w.id, w.code, w.name
-    from public.warehouses w
-    where w.code = 'MAIN'
-    limit 1
-  )
   select
     mi.id as item_id,
     coalesce(mi.data->'name'->>'ar', mi.data->'name'->>'en', mi.data->>'name', mi.id) as item_name,
     b.batch_id,
-    wh.id as warehouse_id,
-    wh.code as warehouse_code,
-    wh.name as warehouse_name,
+    w.id as warehouse_id,
+    w.code as warehouse_code,
+    w.name as warehouse_name,
     b.expiry_date,
     (b.expiry_date - current_date)::int as days_remaining,
     b.remaining_qty as qty_remaining
   from public.v_food_batch_balances b
   join public.menu_items mi on mi.id = b.item_id
-  cross join wh
+  left join public.warehouses w on w.id = b.warehouse_id
   where mi.category = 'food'
     and b.expiry_date is not null
     and b.remaining_qty > 0
@@ -95,25 +138,19 @@ language sql
 stable
 set search_path = public
 as $$
-  with wh as (
-    select w.id, w.code, w.name
-    from public.warehouses w
-    where w.code = 'MAIN'
-    limit 1
-  )
   select
     mi.id as item_id,
     coalesce(mi.data->'name'->>'ar', mi.data->'name'->>'en', mi.data->>'name', mi.id) as item_name,
     b.batch_id,
-    wh.id as warehouse_id,
-    wh.code as warehouse_code,
-    wh.name as warehouse_name,
+    w.id as warehouse_id,
+    w.code as warehouse_code,
+    w.name as warehouse_name,
     b.expiry_date,
     (current_date - b.expiry_date)::int as days_expired,
     b.remaining_qty as qty_remaining
   from public.v_food_batch_balances b
   join public.menu_items mi on mi.id = b.item_id
-  cross join wh
+  left join public.warehouses w on w.id = b.warehouse_id
   where mi.category = 'food'
     and b.expiry_date is not null
     and b.remaining_qty > 0

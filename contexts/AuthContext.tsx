@@ -451,18 +451,57 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const supabase = getSupabaseClient();
     if (!supabase) throw new Error('Supabase غير مهيأ.');
 
-    const runOnce = async () => {
-      const result = await supabase.functions.invoke(functionName, { body });
+    const getFreshAccessToken = async () => {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const now = Date.now();
+      const expiresAtMs = (sessionData.session?.expires_at ? sessionData.session.expires_at * 1000 : 0);
+      const shouldRefresh = !sessionData.session || (expiresAtMs > 0 && (expiresAtMs - now) < 60_000);
+      if (!shouldRefresh) return sessionData.session!.access_token;
+      const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession();
+      if (refreshError || !refreshed.session) return null;
+      return refreshed.session.access_token;
+    };
+
+    const invokeOnce = async () => {
+      const anonKeyValue = (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined) || '';
+      const accessToken = await getFreshAccessToken();
+      const headers: Record<string, string> = {};
+      if (anonKeyValue.trim()) {
+        headers.apikey = anonKeyValue.trim();
+        headers.Authorization = `Bearer ${anonKeyValue.trim()}`;
+      } else if (accessToken) {
+        headers.Authorization = `Bearer ${accessToken}`;
+      }
+      if (accessToken) headers['x-user-token'] = accessToken;
+
+      const result = await supabase.functions.invoke(functionName, { body, headers });
       if (!result.error) return result;
       const serverMessage = await extractFunctionErrorMessage(result.error);
       const resolved = serverMessage || (typeof (result.error as any)?.message === 'string' ? (result.error as any).message : '');
       if (!isJwtIssue(resolved)) return result;
-      const { error: refreshError } = await supabase.auth.refreshSession();
-      if (refreshError) return result;
-      return await supabase.functions.invoke(functionName, { body });
+      const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession();
+      if (refreshError || !refreshed.session) {
+        try {
+          await supabase.auth.signOut({ scope: 'local' });
+        } catch {
+        }
+        setIsAuthenticated(false);
+        setUser(null);
+        return result;
+      }
+
+      const retryHeaders: Record<string, string> = {};
+      if (anonKeyValue.trim()) {
+        retryHeaders.apikey = anonKeyValue.trim();
+        retryHeaders.Authorization = `Bearer ${anonKeyValue.trim()}`;
+      } else {
+        retryHeaders.Authorization = `Bearer ${refreshed.session.access_token}`;
+      }
+      retryHeaders['x-user-token'] = refreshed.session.access_token;
+      return await supabase.functions.invoke(functionName, { body, headers: retryHeaders });
     };
 
-    return await runOnce();
+    return await invokeOnce();
   };
 
   const createAdminUser = async (data: { username: string; fullName: string; role: AdminRole; password: string; permissions?: AdminPermission[] }) => {

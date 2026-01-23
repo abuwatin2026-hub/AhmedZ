@@ -53,6 +53,17 @@ CREATE TABLE IF NOT EXISTS public.warehouse_transfer_items (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'warehouse_transfer_items' AND column_name = 'batch_id'
+  ) THEN
+    ALTER TABLE public.warehouse_transfer_items
+      ADD COLUMN batch_id UUID;
+  END IF;
+END $$;
+
 -- ==========================================
 -- 4. تعديل جدول المخزون لدعم المخازن
 -- ==========================================
@@ -95,6 +106,22 @@ BEGIN
     
     -- إنشاء فهرس فريد جديد
     CREATE UNIQUE INDEX idx_stock_item_warehouse ON public.stock_management(item_id, warehouse_id);
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF to_regclass('public.inventory_movements') is not null
+     AND NOT EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'inventory_movements' AND column_name = 'warehouse_id'
+     ) THEN
+    ALTER TABLE public.inventory_movements
+      ADD COLUMN warehouse_id UUID REFERENCES public.warehouses(id) ON DELETE SET NULL;
+    CREATE INDEX IF NOT EXISTS idx_inventory_movements_warehouse_item_date
+      ON public.inventory_movements(warehouse_id, item_id, occurred_at desc);
+    CREATE INDEX IF NOT EXISTS idx_inventory_movements_warehouse_batch
+      ON public.inventory_movements(warehouse_id, batch_id);
   END IF;
 END $$;
 
@@ -164,6 +191,17 @@ DECLARE
   v_from_warehouse UUID;
   v_to_warehouse UUID;
   v_transfer_date DATE;
+  v_sm_from record;
+  v_is_food boolean;
+  v_reserved_batches jsonb;
+  v_remaining numeric;
+  v_batch record;
+  v_batch_reserved numeric;
+  v_free numeric;
+  v_alloc numeric;
+  v_unit_cost numeric;
+  v_movement_out uuid;
+  v_movement_in uuid;
 BEGIN
   -- الحصول على معلومات النقل
   SELECT from_warehouse_id, to_warehouse_id, transfer_date
@@ -177,19 +215,31 @@ BEGIN
   
   -- نقل الأصناف
   FOR v_item IN 
-    SELECT item_id, quantity 
+    SELECT item_id, quantity, batch_id
     FROM public.warehouse_transfer_items 
     WHERE transfer_id = p_transfer_id
   LOOP
-    -- التحقق من توفر الكمية في المخزن المصدر
-    IF NOT EXISTS (
-      SELECT 1 FROM public.stock_management
-      WHERE item_id = v_item.item_id 
-        AND warehouse_id = v_from_warehouse
-        AND available_quantity >= v_item.quantity
-    ) THEN
-      RAISE EXCEPTION 'Insufficient stock for item % in source warehouse', v_item.item_id;
-    END IF;
+    select *
+    into v_sm_from
+    from public.stock_management sm
+    where sm.item_id = v_item.item_id
+      and sm.warehouse_id = v_from_warehouse
+    for update;
+
+    if not found then
+      raise exception 'Stock record not found for item % in source warehouse', v_item.item_id;
+    end if;
+
+    select coalesce(mi.category = 'food', false)
+    into v_is_food
+    from public.menu_items mi
+    where mi.id = v_item.item_id;
+
+    v_is_food := coalesce(v_is_food, false);
+
+    if coalesce(v_sm_from.available_quantity, 0) + 1e-9 < v_item.quantity then
+      raise exception 'Insufficient stock for item % in source warehouse', v_item.item_id;
+    end if;
     
     -- خصم من المخزن المصدر
     UPDATE public.stock_management
@@ -217,47 +267,228 @@ BEGIN
       available_quantity = public.stock_management.available_quantity + v_item.quantity,
       last_updated = NOW();
     
-    -- تسجيل حركة المخزون - خروج من المصدر
-    INSERT INTO public.inventory_movements (
-      id, item_id, movement_type, quantity, unit_cost, total_cost,
-      reference_table, reference_id, occurred_at, created_by, created_at
-    )
-    SELECT 
-      gen_random_uuid(),
-      v_item.item_id,
-      'adjust_out',
-      v_item.quantity,
-      COALESCE(sm.avg_cost, 0),
-      COALESCE(sm.avg_cost, 0) * v_item.quantity,
-      'warehouse_transfers',
-      p_transfer_id::text,
-      v_transfer_date::timestamptz,
-      auth.uid(),
-      NOW()
-    FROM public.stock_management sm
-    WHERE sm.item_id = v_item.item_id AND sm.warehouse_id = v_from_warehouse
-    LIMIT 1;
-    
-    -- تسجيل حركة المخزون - دخول للوجهة
-    INSERT INTO public.inventory_movements (
-      id, item_id, movement_type, quantity, unit_cost, total_cost,
-      reference_table, reference_id, occurred_at, created_by, created_at
-    )
-    SELECT 
-      gen_random_uuid(),
-      v_item.item_id,
-      'adjust_in',
-      v_item.quantity,
-      COALESCE(sm.avg_cost, 0),
-      COALESCE(sm.avg_cost, 0) * v_item.quantity,
-      'warehouse_transfers',
-      p_transfer_id::text,
-      v_transfer_date::timestamptz,
-      auth.uid(),
-      NOW()
-    FROM public.stock_management sm
-    WHERE sm.item_id = v_item.item_id AND sm.warehouse_id = v_from_warehouse
-    LIMIT 1;
+    if not v_is_food then
+      INSERT INTO public.inventory_movements (
+        id, item_id, movement_type, quantity, unit_cost, total_cost,
+        reference_table, reference_id, occurred_at, created_by, created_at, warehouse_id, data
+      )
+      VALUES (
+        gen_random_uuid(),
+        v_item.item_id,
+        'adjust_out',
+        v_item.quantity,
+        COALESCE(v_sm_from.avg_cost, 0),
+        COALESCE(v_sm_from.avg_cost, 0) * v_item.quantity,
+        'warehouse_transfers',
+        p_transfer_id::text,
+        v_transfer_date::timestamptz,
+        auth.uid(),
+        NOW(),
+        v_from_warehouse,
+        jsonb_build_object('warehouseId', v_from_warehouse, 'toWarehouseId', v_to_warehouse)
+      )
+      returning id into v_movement_out;
+
+      INSERT INTO public.inventory_movements (
+        id, item_id, movement_type, quantity, unit_cost, total_cost,
+        reference_table, reference_id, occurred_at, created_by, created_at, warehouse_id, data
+      )
+      VALUES (
+        gen_random_uuid(),
+        v_item.item_id,
+        'adjust_in',
+        v_item.quantity,
+        COALESCE(v_sm_from.avg_cost, 0),
+        COALESCE(v_sm_from.avg_cost, 0) * v_item.quantity,
+        'warehouse_transfers',
+        p_transfer_id::text,
+        v_transfer_date::timestamptz,
+        auth.uid(),
+        NOW(),
+        v_to_warehouse,
+        jsonb_build_object('warehouseId', v_to_warehouse, 'fromWarehouseId', v_from_warehouse)
+      )
+      returning id into v_movement_in;
+    else
+      v_reserved_batches := coalesce(v_sm_from.data->'reservedBatches', '{}'::jsonb);
+      v_remaining := v_item.quantity;
+
+      if v_item.batch_id is not null then
+        select im.unit_cost
+        into v_unit_cost
+        from public.inventory_movements im
+        where im.batch_id = v_item.batch_id
+          and im.movement_type = 'purchase_in'
+        order by im.occurred_at asc
+        limit 1;
+
+        v_unit_cost := coalesce(v_unit_cost, v_sm_from.avg_cost, 0);
+
+        select
+          coalesce(sum(coalesce(nullif(x->>'qty','')::numeric, 0)), 0)
+        into v_batch_reserved
+        from jsonb_array_elements(
+          case
+            when jsonb_typeof(v_reserved_batches -> (v_item.batch_id::text)) = 'array' then (v_reserved_batches -> (v_item.batch_id::text))
+            when jsonb_typeof(v_reserved_batches -> (v_item.batch_id::text)) = 'object' then jsonb_build_array(v_reserved_batches -> (v_item.batch_id::text))
+            when jsonb_typeof(v_reserved_batches -> (v_item.batch_id::text)) = 'number' then jsonb_build_array(jsonb_build_object('qty', (v_reserved_batches -> (v_item.batch_id::text))))
+            else '[]'::jsonb
+          end
+        ) as x;
+
+        select greatest(coalesce(b.remaining_qty, 0) - coalesce(v_batch_reserved, 0), 0)
+        into v_free
+        from public.v_food_batch_balances b
+        where b.item_id::text = v_item.item_id
+          and b.batch_id = v_item.batch_id
+          and b.warehouse_id = v_from_warehouse;
+
+        if coalesce(v_free, 0) + 1e-9 < v_item.quantity then
+          raise exception 'Insufficient non-reserved batch stock for item % batch % in source warehouse', v_item.item_id, v_item.batch_id;
+        end if;
+
+        insert into public.inventory_movements (
+          id, item_id, movement_type, quantity, unit_cost, total_cost,
+          reference_table, reference_id, occurred_at, created_by, created_at, warehouse_id, data, batch_id
+        )
+        values (
+          gen_random_uuid(),
+          v_item.item_id,
+          'adjust_out',
+          v_item.quantity,
+          v_unit_cost,
+          v_unit_cost * v_item.quantity,
+          'warehouse_transfers',
+          p_transfer_id::text,
+          v_transfer_date::timestamptz,
+          auth.uid(),
+          now(),
+          v_from_warehouse,
+          jsonb_build_object('warehouseId', v_from_warehouse, 'toWarehouseId', v_to_warehouse, 'batchId', v_item.batch_id),
+          v_item.batch_id
+        )
+        returning id into v_movement_out;
+
+        insert into public.inventory_movements (
+          id, item_id, movement_type, quantity, unit_cost, total_cost,
+          reference_table, reference_id, occurred_at, created_by, created_at, warehouse_id, data, batch_id
+        )
+        values (
+          gen_random_uuid(),
+          v_item.item_id,
+          'adjust_in',
+          v_item.quantity,
+          v_unit_cost,
+          v_unit_cost * v_item.quantity,
+          'warehouse_transfers',
+          p_transfer_id::text,
+          v_transfer_date::timestamptz,
+          auth.uid(),
+          now(),
+          v_to_warehouse,
+          jsonb_build_object('warehouseId', v_to_warehouse, 'fromWarehouseId', v_from_warehouse, 'batchId', v_item.batch_id),
+          v_item.batch_id
+        )
+        returning id into v_movement_in;
+      else
+        for v_batch in
+          select
+            b.batch_id,
+            b.expiry_date,
+            b.remaining_qty
+          from public.v_food_batch_balances b
+          where b.item_id::text = v_item.item_id
+            and b.warehouse_id = v_from_warehouse
+            and b.batch_id is not null
+            and b.expiry_date is not null
+            and b.expiry_date >= current_date
+            and coalesce(b.remaining_qty, 0) > 0
+          order by b.expiry_date asc, b.batch_id asc
+        loop
+          if v_remaining <= 0 then
+            exit;
+          end if;
+
+          select
+            coalesce(sum(coalesce(nullif(x->>'qty','')::numeric, 0)), 0)
+          into v_batch_reserved
+          from jsonb_array_elements(
+            case
+              when jsonb_typeof(v_reserved_batches -> (v_batch.batch_id::text)) = 'array' then (v_reserved_batches -> (v_batch.batch_id::text))
+              when jsonb_typeof(v_reserved_batches -> (v_batch.batch_id::text)) = 'object' then jsonb_build_array(v_reserved_batches -> (v_batch.batch_id::text))
+              when jsonb_typeof(v_reserved_batches -> (v_batch.batch_id::text)) = 'number' then jsonb_build_array(jsonb_build_object('qty', (v_reserved_batches -> (v_batch.batch_id::text))))
+              else '[]'::jsonb
+            end
+          ) as x;
+
+          v_free := greatest(coalesce(v_batch.remaining_qty, 0) - coalesce(v_batch_reserved, 0), 0);
+          v_alloc := least(v_remaining, v_free);
+          if v_alloc <= 0 then
+            continue;
+          end if;
+
+          select im.unit_cost
+          into v_unit_cost
+          from public.inventory_movements im
+          where im.batch_id = v_batch.batch_id
+            and im.movement_type = 'purchase_in'
+          order by im.occurred_at asc
+          limit 1;
+
+          v_unit_cost := coalesce(v_unit_cost, v_sm_from.avg_cost, 0);
+
+          insert into public.inventory_movements (
+            id, item_id, movement_type, quantity, unit_cost, total_cost,
+            reference_table, reference_id, occurred_at, created_by, created_at, warehouse_id, data, batch_id
+          )
+          values (
+            gen_random_uuid(),
+            v_item.item_id,
+            'adjust_out',
+            v_alloc,
+            v_unit_cost,
+            v_unit_cost * v_alloc,
+            'warehouse_transfers',
+            p_transfer_id::text,
+            v_transfer_date::timestamptz,
+            auth.uid(),
+            now(),
+            v_from_warehouse,
+            jsonb_build_object('warehouseId', v_from_warehouse, 'toWarehouseId', v_to_warehouse, 'batchId', v_batch.batch_id),
+            v_batch.batch_id
+          )
+          returning id into v_movement_out;
+
+          insert into public.inventory_movements (
+            id, item_id, movement_type, quantity, unit_cost, total_cost,
+            reference_table, reference_id, occurred_at, created_by, created_at, warehouse_id, data, batch_id
+          )
+          values (
+            gen_random_uuid(),
+            v_item.item_id,
+            'adjust_in',
+            v_alloc,
+            v_unit_cost,
+            v_unit_cost * v_alloc,
+            'warehouse_transfers',
+            p_transfer_id::text,
+            v_transfer_date::timestamptz,
+            auth.uid(),
+            now(),
+            v_to_warehouse,
+            jsonb_build_object('warehouseId', v_to_warehouse, 'fromWarehouseId', v_from_warehouse, 'batchId', v_batch.batch_id),
+            v_batch.batch_id
+          )
+          returning id into v_movement_in;
+
+          v_remaining := v_remaining - v_alloc;
+        end loop;
+
+        if v_remaining > 0 then
+          raise exception 'Insufficient non-expired non-reserved batch stock for item % in source warehouse', v_item.item_id;
+        end if;
+      end if;
+    end if;
     
     -- تحديث الكمية المنقولة
     UPDATE public.warehouse_transfer_items

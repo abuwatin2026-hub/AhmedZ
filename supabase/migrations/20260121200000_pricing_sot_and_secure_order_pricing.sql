@@ -153,6 +153,7 @@ declare
     v_currency_val_per_point numeric;
     v_points_per_currency numeric;
     v_coupon_record record;
+    v_coupon_updated int;
     v_stock_items jsonb := '[]'::jsonb;
     v_item_name_ar text;
     v_item_name_en text;
@@ -300,10 +301,6 @@ begin
             if (v_coupon_record.data->>'minOrderAmount') is not null and v_subtotal < (v_coupon_record.data->>'minOrderAmount')::numeric then
                 raise exception 'Order amount too low for coupon';
             end if;
-            if (v_coupon_record.data->>'usageLimit') is not null and
-               coalesce((v_coupon_record.data->>'usageCount')::int, 0) >= (v_coupon_record.data->>'usageLimit')::int then
-                raise exception 'Coupon usage limit reached';
-            end if;
             
             if (v_coupon_record.data->>'type') = 'percentage' then
                 v_discount_amount := v_subtotal * ((v_coupon_record.data->>'value')::numeric / 100);
@@ -316,9 +313,27 @@ begin
             
             v_discount_amount := least(v_discount_amount, v_subtotal);
             
+            v_coupon_updated := null;
             update public.coupons
-            set data = jsonb_set(data, '{usageCount}', (coalesce((data->>'usageCount')::int, 0) + 1)::text::jsonb)
-            where id = v_coupon_record.id;
+            set data = jsonb_set(
+              data,
+              '{usageCount}',
+              to_jsonb(coalesce(nullif(data->>'usageCount','')::int, 0) + 1),
+              true
+            )
+            where id = v_coupon_record.id
+              and (
+                case
+                  when nullif(data->>'usageLimit','') is null then true
+                  when (data->>'usageLimit') ~ '^[0-9]+$' then coalesce(nullif(data->>'usageCount','')::int, 0) < (data->>'usageLimit')::int
+                  else true
+                end
+              )
+            returning 1 into v_coupon_updated;
+
+            if v_coupon_updated is null then
+              raise exception 'Coupon usage limit reached';
+            end if;
         else
             v_discount_amount := 0;
         end if;

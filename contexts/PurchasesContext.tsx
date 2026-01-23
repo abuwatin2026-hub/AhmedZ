@@ -96,25 +96,30 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return msg.includes('duplicate') || msg.includes('unique');
   };
 
-  const generatePurchaseOrderReferenceNumber = async (normalizedDate: string) => {
-    if (!supabase) throw new Error('Supabase غير مهيأ.');
-    const dateKey = normalizedDate.replace(/-/g, '');
-    const prefix = `PO-${dateKey}-`;
-    const { data, error } = await supabase
-      .from('purchase_orders')
-      .select('reference_number')
-      .like('reference_number', `${prefix}%`)
-      .order('reference_number', { ascending: false })
-      .limit(1);
-
-    if (error) throw error;
-
-    const lastRef = typeof data?.[0]?.reference_number === 'string' ? data?.[0]?.reference_number : '';
-    const match = lastRef ? lastRef.match(new RegExp(`^${prefix}(\\d{4})$`)) : null;
-    const lastSeq = match ? Number(match[1]) : 0;
-    const nextSeq = Number.isFinite(lastSeq) && lastSeq > 0 ? lastSeq + 1 : 1;
-    return `${prefix}${String(nextSeq).padStart(4, '0')}`;
-  };
+  const updateMenuItemDates = useCallback(async (items: Array<{ itemId: string; productionDate?: string; expiryDate?: string }>) => {
+      if (!supabase) return;
+      const metaUpdates = items.filter(i => i.productionDate || i.expiryDate);
+      if (metaUpdates.length === 0) return;
+      await Promise.all(metaUpdates.map(async (i) => {
+          const { data: row, error: loadErr } = await supabase
+              .from('menu_items')
+              .select('id,data')
+              .eq('id', i.itemId)
+              .maybeSingle();
+          if (loadErr) return;
+          if (!row) return;
+          const current = row.data as any;
+          const next = {
+              ...current,
+              productionDate: (i.productionDate ?? current?.productionDate ?? current?.harvestDate),
+              expiryDate: i.expiryDate ?? current?.expiryDate,
+          };
+          await supabase
+              .from('menu_items')
+              .update({ data: next })
+              .eq('id', row.id);
+      }));
+  }, [supabase]);
 
   const fetchSuppliers = useCallback(async (opts?: { silent?: boolean }) => {
       if (!supabase) return;
@@ -338,10 +343,13 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         try {
           setError(null);
           const providedRef = typeof referenceNumber === 'string' ? referenceNumber.trim() : '';
+          if (!providedRef) {
+            throw new Error('رقم فاتورة المورد مطلوب.');
+          }
 
           let lastInsertError: unknown = null;
           let orderData: any | null = null;
-          let currentRef = providedRef || (await generatePurchaseOrderReferenceNumber(normalizedDate));
+          let currentRef = providedRef;
 
           for (let attempt = 0; attempt < 5; attempt += 1) {
             try {
@@ -365,10 +373,7 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               break;
             } catch (err) {
               lastInsertError = err;
-              if (!providedRef && isUniqueViolation(err)) {
-                currentRef = await generatePurchaseOrderReferenceNumber(normalizedDate);
-                continue;
-              }
+              if (isUniqueViolation(err)) throw err;
               throw err;
             }
           }
@@ -411,6 +416,7 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                   p_occurred_at: new Date(`${normalizedDate}T00:00:00.000Z`).toISOString()
               });
               if (receiveError) throw receiveError;
+              await updateMenuItemDates(items);
           }
 
           await fetchPurchaseOrders({ silent: false });
@@ -491,28 +497,7 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               p_occurred_at: occurredAt ? new Date(occurredAt).toISOString() : new Date().toISOString()
           });
           if (error) throw error;
-          const metaUpdates = items.filter(i => i.productionDate || i.expiryDate);
-          if (metaUpdates.length > 0) {
-              await Promise.all(metaUpdates.map(async (i) => {
-                  const { data: row, error: loadErr } = await supabase
-                      .from('menu_items')
-                      .select('id,data')
-                      .eq('id', i.itemId)
-                      .maybeSingle();
-                  if (loadErr) return;
-                  if (!row) return;
-                  const current = row.data as any;
-                  const next = {
-                      ...current,
-                      productionDate: (i.productionDate ?? current?.productionDate ?? current?.harvestDate),
-                      expiryDate: i.expiryDate ?? current?.expiryDate,
-                  };
-                  await supabase
-                      .from('menu_items')
-                      .update({ data: next })
-                      .eq('id', row.id);
-              }));
-          }
+          await updateMenuItemDates(items);
           await fetchPurchaseOrders();
         } catch (err) {
           throw new Error(localizeSupabaseError(err));
