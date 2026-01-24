@@ -269,6 +269,10 @@ export interface CartItem extends MenuItem {
   cartItemId: string;
   lineDiscountType?: 'amount' | 'percent';
   lineDiscountValue?: number;
+  lineType?: 'menu' | 'promotion';
+  promotionId?: string;
+  promotionLineId?: string;
+  promotionSnapshot?: PromotionApplicationSnapshot;
   // New fields for weight-based products
   weight?: number; // Weight in kg or grams (if unitType is weight-based)
   unit?: UnitType; // Unit type for this cart item
@@ -539,6 +543,62 @@ export interface Coupon {
   isActive: boolean;
 }
 
+export interface PromotionItem {
+  id?: string;
+  itemId: string;
+  quantity: number;
+  sortOrder?: number;
+}
+
+export type PromotionDiscountMode = 'fixed_total' | 'percent_off';
+
+export interface Promotion {
+  id: string;
+  name: string;
+  startAt: string;
+  endAt: string;
+  isActive: boolean;
+  discountMode: PromotionDiscountMode;
+  fixedTotal?: number;
+  percentOff?: number;
+  displayOriginalTotal?: number;
+  maxUses?: number;
+  exclusiveWithCoupon?: boolean;
+  requiresApproval?: boolean;
+  approvalStatus?: 'pending' | 'approved' | 'rejected';
+  approvalRequestId?: string | null;
+  items: PromotionItem[];
+}
+
+export interface PromotionApplicationSnapshot {
+  promotionId: string;
+  name: string;
+  startAt: string;
+  endAt: string;
+  bundleQty: number;
+  displayOriginalTotal?: number | null;
+  computedOriginalTotal: number;
+  finalTotal: number;
+  promotionExpense: number;
+  items: Array<{
+    itemId: string;
+    quantity: number;
+    unitPrice: number;
+    grossTotal: number;
+  }>;
+  revenueAllocation: Array<{
+    itemId: string;
+    quantity: number;
+    unitPrice: number;
+    grossTotal: number;
+    allocatedRevenue: number;
+    allocatedRevenuePct: number;
+  }>;
+  warehouseId: string;
+  customerId?: string | null;
+  appliedAt: string;
+}
+
 export interface Ad {
   id: string;
   title: LocalizedString;
@@ -738,6 +798,7 @@ export type AdminPermission =
   | 'ads.manage'
   | 'customers.manage'
   | 'coupons.manage'
+  | 'promotions.manage'
   | 'reviews.manage'
   | 'stock.manage'
   | 'prices.manage'
@@ -774,6 +835,7 @@ export const ADMIN_PERMISSION_DEFS: Array<{ key: AdminPermission; labelAr: strin
   { key: 'ads.manage', labelAr: 'إدارة الإعلانات' },
   { key: 'customers.manage', labelAr: 'إدارة العملاء' },
   { key: 'coupons.manage', labelAr: 'إدارة الكوبونات' },
+  { key: 'promotions.manage', labelAr: 'إدارة العروض' },
   { key: 'reviews.manage', labelAr: 'إدارة المراجعات' },
   { key: 'stock.manage', labelAr: 'إدارة المخزون' },
   { key: 'prices.manage', labelAr: 'إدارة الأسعار' },

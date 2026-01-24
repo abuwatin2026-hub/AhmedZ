@@ -43,6 +43,7 @@ const ManageAddonsScreen = lazy(() => import('./screens/admin/ManageAddonsScreen
 const ManageAdsScreen = lazy(() => import('./screens/admin/ManageAdsScreen'));
 const ManageCustomersScreen = lazy(() => import('./screens/admin/ManageCustomersScreen'));
 const ManageCouponsScreen = lazy(() => import('./screens/admin/ManageCouponsScreen'));
+const ManagePromotionsScreen = lazy(() => import('./screens/admin/ManagePromotionsScreen'));
 const ManageChallengesScreen = lazy(() => import('./screens/admin/ManageChallengesScreen'));
 const ManageReviewsScreen = lazy(() => import('./screens/admin/ManageReviewsScreen'));
 const ManageStockScreen = lazy(() => import('./screens/admin/ManageStockScreen'));
@@ -269,6 +270,7 @@ const App: React.FC = () => {
                 <Route path="customers" element={<AdminProtectedRoute permissions={['customers.manage']}><ManageCustomersScreen /></AdminProtectedRoute>} />
                 <Route path="challenges" element={<AdminProtectedRoute permissions={['challenges.manage']}><ManageChallengesScreen /></AdminProtectedRoute>} />
                 <Route path="coupons" element={<AdminProtectedRoute permissions={['coupons.manage']}><ManageCouponsScreen /></AdminProtectedRoute>} />
+                <Route path="promotions" element={<AdminProtectedRoute permissions={['promotions.manage']}><ManagePromotionsScreen /></AdminProtectedRoute>} />
                 <Route path="reviews" element={<AdminProtectedRoute permissions={['reviews.manage']}><ManageReviewsScreen /></AdminProtectedRoute>} />
                 <Route path="stock" element={<AdminProtectedRoute permissions={['stock.manage']}><ManageStockScreen /></AdminProtectedRoute>} />
                 <Route path="wastage" element={<AdminProtectedRoute permissions={['stock.manage']}><WastageScreen /></AdminProtectedRoute>} />

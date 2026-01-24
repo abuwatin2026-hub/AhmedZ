@@ -12,6 +12,8 @@ import OrderAgainItemCard from '../components/OrderAgainItemCard';
 import OrderAgainItemCardSkeleton from '../components/OrderAgainItemCardSkeleton';
 import AdCarousel from '../components/AdCarousel';
 import YemeniPattern from '../components/YemeniPattern';
+import { usePromotions } from '../contexts/PromotionContext';
+import { useCart } from '../contexts/CartContext';
 
 const normalizeCategoryKey = (value: unknown) => {
   const raw = typeof value === 'string' ? value.trim() : '';
@@ -25,6 +27,8 @@ const HomeScreen: React.FC = () => {
   const { userOrders, loading: ordersLoading } = useOrders();
   const { isAuthenticated } = useUserAuth();
   const { categories: categoryDefs, getCategoryLabel } = useItemMeta();
+  const { activePromotions } = usePromotions();
+  const { addPromotionToCart } = useCart();
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -86,6 +90,50 @@ const HomeScreen: React.FC = () => {
       <div className="relative w-full mt-0 md:-mt-12 animate-fade-in z-0">
         <AdCarousel onCategorySelect={(category) => setSelectedCategory(normalizeCategoryKey(category) || 'all')} />
       </div>
+
+      {activePromotions.length > 0 && (
+        <section className="container mx-auto max-w-screen-2xl px-3 sm:px-6 lg:px-8 animate-fade-in-up">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-2xl font-extrabold text-gray-800 dark:text-white">العروض الحالية</h2>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {activePromotions.map((p) => {
+              const original = typeof p.displayOriginalTotal === 'number' && p.displayOriginalTotal > 0 ? p.displayOriginalTotal : p.computedOriginalTotal;
+              const endAt = new Date(p.endAt).getTime();
+              const now = Date.now();
+              const remainingMs = Math.max(0, endAt - now);
+              const remainingMin = Math.floor(remainingMs / 60000);
+              const hours = Math.floor(remainingMin / 60);
+              const minutes = remainingMin % 60;
+              const countdown = remainingMs > 0 ? `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}` : '00:00';
+              return (
+                <button
+                  key={p.promotionId}
+                  onClick={() => void addPromotionToCart({ promotionId: p.promotionId, bundleQty: 1 })}
+                  className="text-right bg-white dark:bg-gray-900 border border-gold-500/20 dark:border-gold-500/10 rounded-2xl p-4 shadow-md hover:shadow-lg transition-shadow"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-lg font-bold text-gray-900 dark:text-white truncate">{p.name}</div>
+                      <div className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+                        <span className="line-through text-gray-400 dark:text-gray-500">{original.toFixed(2)} ر.ي</span>
+                        <span className="mx-2">→</span>
+                        <span className="text-red-600 dark:text-red-400 font-extrabold">{Number(p.finalTotal || 0).toFixed(2)} ر.ي</span>
+                      </div>
+                    </div>
+                    <div className="shrink-0 text-xs font-bold px-3 py-1 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200">
+                      {countdown}
+                    </div>
+                  </div>
+                  <div className="mt-3 text-xs text-gray-500 dark:text-gray-400">
+                    اضغط للإضافة إلى السلة
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       {/* Search and Filter Section */}
       <section className="container mx-auto max-w-screen-2xl px-3 sm:px-6 lg:px-8 mt-2 md:-mt-28 relative z-10 animate-fade-in-up">

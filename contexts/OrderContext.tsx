@@ -20,7 +20,10 @@ interface OrderContextType {
   loading: boolean;
   addOrder: (orderData: Omit<Order, 'id' | 'createdAt' | 'status' | 'userId' | 'pointsEarned'>) => Promise<Order>;
   createInStoreSale: (input: {
-    lines: Array<{ menuItemId: string; quantity?: number; weight?: number; selectedAddons?: Record<string, number> }>;
+    lines: Array<
+      | { menuItemId: string; quantity?: number; weight?: number; selectedAddons?: Record<string, number> }
+      | { promotionId: string; bundleQty?: number; promotionLineId?: string; promotionSnapshot?: any }
+    >;
     customerName?: string;
     phoneNumber?: string;
     notes?: string;
@@ -44,7 +47,10 @@ interface OrderContextType {
     }>;
   }) => Promise<Order>;
   createInStorePendingOrder: (input: {
-    lines: Array<{ menuItemId: string; quantity?: number; weight?: number; selectedAddons?: Record<string, number> }>;
+    lines: Array<
+      | { menuItemId: string; quantity?: number; weight?: number; selectedAddons?: Record<string, number> }
+      | { promotionId: string; bundleQty?: number; promotionLineId?: string; promotionSnapshot?: any }
+    >;
     discountType?: 'amount' | 'percent';
     discountValue?: number;
     customerName?: string;
@@ -739,19 +745,27 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const supabase = getSupabaseClient();
     if (!supabase) throw new Error('Supabase غير مهيأ.');
 
-    const simplifiedItems = orderData.items.map(item => {
-        const addonsSimple: Record<string, number> = {};
-        if (item.selectedAddons) {
-            Object.entries(item.selectedAddons).forEach(([key, val]) => {
-                if (val.quantity > 0) addonsSimple[key] = val.quantity;
-            });
-        }
+    const simplifiedItems = orderData.items.map((item: any) => {
+      if (item?.lineType === 'promotion' || item?.promotionId || item?.promotionSnapshot?.promotionId) {
         return {
-            itemId: item.id,
-            quantity: item.quantity,
-            weight: item.weight,
-            selectedAddons: addonsSimple
+          lineType: 'promotion',
+          promotionId: String(item.promotionId || item.promotionSnapshot?.promotionId || item.id),
+          bundleQty: Number(item.quantity) || 1,
+          cartItemId: String(item.cartItemId || crypto.randomUUID()),
         };
+      }
+      const addonsSimple: Record<string, number> = {};
+      if (item.selectedAddons) {
+        Object.entries(item.selectedAddons).forEach(([key, val]: any) => {
+          if (val?.quantity > 0) addonsSimple[key] = val.quantity;
+        });
+      }
+      return {
+        itemId: item.id,
+        quantity: item.quantity,
+        weight: item.weight,
+        selectedAddons: addonsSimple,
+      };
     });
 
     const rpcPayload = {
@@ -885,7 +899,10 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   const createInStoreSale = async (input: {
-    lines: Array<{ menuItemId: string; quantity?: number; weight?: number; selectedAddons?: Record<string, number> }>;
+    lines: Array<
+      | { menuItemId: string; quantity?: number; weight?: number; selectedAddons?: Record<string, number> }
+      | { promotionId: string; bundleQty?: number; promotionLineId?: string; promotionSnapshot?: any }
+    >;
     customerName?: string;
     phoneNumber?: string;
     notes?: string;
@@ -930,28 +947,41 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       throw new Error('طريقة الدفع غير مفعلة في الإعدادات.');
     }
 
-    const normalizedLines = input.lines
-      .map((l) => ({
-        menuItemId: l.menuItemId,
+    const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
+    const rawLines = Array.isArray(input.lines) ? input.lines : [];
+    const normalizedMenuLines = rawLines
+      .filter((l: any) => typeof l?.menuItemId === 'string' && Boolean(l.menuItemId))
+      .map((l: any) => ({
+        menuItemId: String(l.menuItemId),
         quantity: typeof l.quantity === 'number' ? l.quantity : undefined,
         weight: typeof l.weight === 'number' ? l.weight : undefined,
         selectedAddons: l.selectedAddons || {},
-      }))
-      .filter((l) => Boolean(l.menuItemId));
+      }));
+    const normalizedPromoLines = rawLines
+      .filter((l: any) => typeof l?.promotionId === 'string' && Boolean(l.promotionId))
+      .map((l: any) => ({
+        promotionId: String(l.promotionId),
+        bundleQty: typeof l.bundleQty === 'number' ? l.bundleQty : undefined,
+        promotionLineId: typeof l.promotionLineId === 'string' ? l.promotionLineId : undefined,
+        promotionSnapshot: l.promotionSnapshot,
+      }));
 
-    if (!normalizedLines.length) {
+    if (!normalizedMenuLines.length && !normalizedPromoLines.length) {
       throw new Error('يجب إضافة صنف واحد على الأقل.');
     }
 
-    const menuItems = await Promise.all(normalizedLines.map((l) => loadMenuItemById(l.menuItemId)));
+    if (normalizedPromoLines.length > 0 && offline) {
+      throw new Error('لا يمكن إتمام بيع عرض بدون اتصال بالخادم.');
+    }
+
+    const menuItems = await Promise.all(normalizedMenuLines.map((l) => loadMenuItemById(l.menuItemId)));
     if (menuItems.some((m) => !m)) {
       throw new Error('تعذر تحميل بعض الأصناف.');
     }
 
     const nowIso = new Date().toISOString();
-    const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
     const warehouseId = sessionScope.requireScope().warehouseId;
-    let items: CartItem[] = normalizedLines.map((line, idx) => {
+    let items: CartItem[] = normalizedMenuLines.map((line, idx) => {
       const menuItem = menuItems[idx]!;
       const unitType = menuItem.unitType;
       const isWeightBased = unitType === 'kg' || unitType === 'gram';
@@ -961,8 +991,9 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       // Resolve addons
       const resolvedAddons: CartItem['selectedAddons'] = {};
       if (line.selectedAddons && menuItem.addons) {
-        Object.entries(line.selectedAddons).forEach(([addonId, qty]) => {
+        Object.entries(line.selectedAddons).forEach(([addonId, addonQty]) => {
           const addon = menuItem.addons?.find(addonDef => addonDef.id === addonId);
+          const qty = Number(addonQty) || 0;
           if (addon && qty > 0) {
             resolvedAddons[addonId] = { addon, quantity: qty };
           }
@@ -978,12 +1009,52 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       };
     });
 
+    if (normalizedPromoLines.length > 0) {
+      const rawDiscount = Number(input.discountValue) || 0;
+      if (rawDiscount > 0) {
+        throw new Error('لا يمكن تطبيق خصم يدوي على فاتورة تحتوي عرضاً.');
+      }
+
+      const promoItems: CartItem[] = normalizedPromoLines.map((line) => {
+        const snapshot = line.promotionSnapshot;
+        const bundleQty = Math.max(1, Number(line.bundleQty ?? snapshot?.bundleQty) || 1);
+        const finalTotal = Number(snapshot?.finalTotal) || 0;
+        if (!snapshot || !snapshot.promotionId || !Number.isFinite(finalTotal)) {
+          throw new Error('تعذر إتمام بيع العرض: يلزم تسعير العرض من الخادم قبل الإتمام.');
+        }
+        const perBundlePrice = bundleQty > 0 ? finalTotal / bundleQty : finalTotal;
+        const promotionLineId = line.promotionLineId || crypto.randomUUID();
+
+        const promoLine: CartItem = {
+          id: String(snapshot.promotionId),
+          name: { ar: String(snapshot.name || ''), en: String(snapshot.name || '') },
+          description: { ar: '', en: '' },
+          imageUrl: '',
+          category: 'promotion',
+          price: perBundlePrice,
+          unitType: 'bundle',
+          quantity: bundleQty,
+          selectedAddons: {},
+          cartItemId: crypto.randomUUID(),
+        } as any;
+
+        (promoLine as any).lineType = 'promotion';
+        (promoLine as any).promotionId = String(snapshot.promotionId);
+        (promoLine as any).promotionLineId = promotionLineId;
+        (promoLine as any).promotionSnapshot = snapshot;
+        return promoLine;
+      });
+
+      items = [...items, ...promoItems];
+    }
+
     if (items.some((i) => getRequestedItemQuantity(i) <= 0)) {
       throw new Error('الكمية/الوزن يجب أن يكون أكبر من صفر.');
     }
 
     if (!offline) {
-      await ensureSufficientStockForOrderItems(items, warehouseId);
+      const stockCheckItems = items.filter((it: any) => !(it?.lineType === 'promotion' || it?.promotionId));
+      await ensureSufficientStockForOrderItems(stockCheckItems, warehouseId);
     }
 
     let pricedItems: CartItem[] = items;
@@ -991,7 +1062,8 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       const supabaseForPricing = getSupabaseClient();
       if (!supabaseForPricing) throw new Error('Supabase غير مهيأ.');
 
-      pricedItems = await Promise.all(items.map(async (item) => {
+      pricedItems = await Promise.all(items.map(async (item: any) => {
+        if (item?.lineType === 'promotion' || item?.promotionId) return item as CartItem;
         const pricingQty = (item.unitType === 'kg' || item.unitType === 'gram')
           ? (item.weight || item.quantity)
           : item.quantity;
@@ -1180,6 +1252,13 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       address: 'داخل المحل',
     };
 
+    const promotionLines = (items as any[])
+      .filter((it) => it?.lineType === 'promotion' || it?.promotionId)
+      .map((it) => ({
+        ...(it.promotionSnapshot || {}),
+        promotionLineId: String(it.promotionLineId || crypto.randomUUID()),
+      }));
+
     const newOrder: Order = {
       id: crypto.randomUUID(),
       userId: adminUser?.id,
@@ -1187,6 +1266,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       warehouseId,
       offlineState: offline ? 'CREATED_OFFLINE' : undefined,
       items,
+      ...(promotionLines.length ? ({ promotionLines } as any) : {}),
       subtotal: computedSubtotal,
       deliveryFee: 0,
       deliveryZoneId: IN_STORE_DELIVERY_ZONE_ID,
@@ -1227,6 +1307,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     };
 
     const payloadItems = newOrder.items
+      .filter((item: any) => !(item?.lineType === 'promotion' || item?.promotionId))
       .map((item) => ({
         itemId: item.id,
         quantity: getRequestedItemQuantity(item),
@@ -1289,6 +1370,11 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     if (rpcError) {
       const offlineNow = typeof navigator !== 'undefined' && navigator.onLine === false;
       if (offlineNow || isAbortLikeError(rpcError)) {
+        const hasPromoLines =
+          Array.isArray((newOrder as any).promotionLines) && (newOrder as any).promotionLines.length > 0;
+        if (hasPromoLines) {
+          throw new Error('لا يمكن إتمام بيع عرض دون اتصال بالخادم. أعد المحاولة عند توفر الاتصال.');
+        }
         newOrder.offlineId = newOrder.id;
         newOrder.offlineState = 'CREATED_OFFLINE';
         newOrder.status = 'pending';
@@ -1381,7 +1467,10 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   const createInStorePendingOrder = async (input: {
-    lines: Array<{ menuItemId: string; quantity?: number; weight?: number; selectedAddons?: Record<string, number> }>;
+    lines: Array<
+      | { menuItemId: string; quantity?: number; weight?: number; selectedAddons?: Record<string, number> }
+      | { promotionId: string; bundleQty?: number; promotionLineId?: string; promotionSnapshot?: any }
+    >;
     discountType?: 'amount' | 'percent';
     discountValue?: number;
     customerName?: string;
@@ -1391,15 +1480,18 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     if (!isAdminAuthenticated || !canCreateInStoreSale()) {
       throw new Error('ليس لديك صلاحية تسجيل بيع حضوري.');
     }
+    if ((input.lines || []).some((l: any) => l?.promotionId)) {
+      throw new Error('لا يمكن إنشاء فاتورة معلقة تحتوي عرضاً.');
+    }
     const IN_STORE_DELIVERY_ZONE_ID = '11111111-1111-4111-8111-111111111111';
-    const normalizedLines = (input.lines || [])
-      .map((l) => ({
-        menuItemId: l.menuItemId,
+    const normalizedLines: Array<{ menuItemId: string; quantity?: number; weight?: number; selectedAddons: Record<string, number> }> = (input.lines || [])
+      .filter((l: any) => typeof l?.menuItemId === 'string' && Boolean(l.menuItemId))
+      .map((l: any) => ({
+        menuItemId: String(l.menuItemId),
         quantity: typeof l.quantity === 'number' ? l.quantity : undefined,
         weight: typeof l.weight === 'number' ? l.weight : undefined,
-        selectedAddons: l.selectedAddons || {},
-      }))
-      .filter((l) => Boolean(l.menuItemId));
+        selectedAddons: (l.selectedAddons && typeof l.selectedAddons === 'object') ? (l.selectedAddons as Record<string, number>) : {},
+      }));
     if (!normalizedLines.length) {
       throw new Error('يجب إضافة صنف واحد على الأقل.');
     }
@@ -1418,8 +1510,9 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       if (line.selectedAddons && menuItem.addons) {
         Object.entries(line.selectedAddons).forEach(([addonId, qty]) => {
           const addon = menuItem.addons?.find(addonDef => addonDef.id === addonId);
-          if (addon && qty > 0) {
-            resolvedAddons[addonId] = { addon, quantity: qty };
+          const q = Number(qty) || 0;
+          if (addon && q > 0) {
+            resolvedAddons[addonId] = { addon, quantity: q };
           }
         });
       }

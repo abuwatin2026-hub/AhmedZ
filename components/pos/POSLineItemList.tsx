@@ -42,12 +42,13 @@ const POSLineItemList: React.FC<Props> = ({ items, onUpdate, onRemove, onEditAdd
         <div className="text-center text-gray-500 dark:text-gray-300">لا توجد سطور بعد</div>
       )}
       {items.map((item, index) => {
+        const isPromotionLine = (item as any)?.lineType === 'promotion' || Boolean((item as any)?.promotionId);
         const isWeight = item.unitType === 'kg' || item.unitType === 'gram';
         const qty = isWeight ? item.weight || 0 : item.quantity;
         const isSelected = !!selectedCartItemId && item.cartItemId === selectedCartItemId;
-        const hasAddons = Array.isArray((item as any).addons) && (item as any).addons.length > 0;
+        const hasAddons = !isPromotionLine && Array.isArray((item as any).addons) && (item as any).addons.length > 0;
         const selectedAddonsCount = Object.values(item.selectedAddons || {}).reduce((sum, entry) => sum + (Number((entry as any)?.quantity) || 0), 0);
-        const addonsPrice = Object.values(item.selectedAddons || {}).reduce((sum, entry: any) => {
+        const addonsPrice = isPromotionLine ? 0 : Object.values(item.selectedAddons || {}).reduce((sum, entry: any) => {
           const unit = Number(entry?.addon?.price) || 0;
           const q = Number(entry?.quantity) || 0;
           return sum + (unit * q);
@@ -58,7 +59,7 @@ const POSLineItemList: React.FC<Props> = ({ items, onUpdate, onRemove, onEditAdd
           unitPrice = (Number(item.pricePerUnit) || 0) / 1000;
         }
         const lineTotal = (unitPrice + addonsPrice) * (Number(effectiveQty) || 0);
-        const unitLabel = item.unitType === 'kg' ? 'كغ' : item.unitType === 'gram' ? 'غ' : 'قطعة';
+        const unitLabel = isPromotionLine ? 'باقة' : (item.unitType === 'kg' ? 'كغ' : item.unitType === 'gram' ? 'غ' : 'قطعة');
         const rowNo = index + 1;
         return (
           <div
@@ -70,6 +71,11 @@ const POSLineItemList: React.FC<Props> = ({ items, onUpdate, onRemove, onEditAdd
               <div className="flex items-center gap-2">
                 <div className="text-xs font-mono text-gray-400">{rowNo}</div>
                 <div className={`font-bold dark:text-white truncate ${touchMode ? 'text-lg' : ''}`}>{item.name?.ar || item.name?.en || item.id}</div>
+                {isPromotionLine && (
+                  <div className="text-[11px] px-2 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 dark:bg-indigo-900/20 dark:text-indigo-200 dark:border-indigo-900">
+                    عرض
+                  </div>
+                )}
                 <div className="text-[11px] px-2 py-1 rounded-full border dark:border-gray-700 text-gray-600 dark:text-gray-300">
                   {isWeight ? 'وزن' : 'كمية'}: {Number(qty || 0)} {unitLabel}
                 </div>
@@ -78,7 +84,9 @@ const POSLineItemList: React.FC<Props> = ({ items, onUpdate, onRemove, onEditAdd
                 <span>{unitPrice.toFixed(2)}</span>
                 {addonsPrice > 0 && <span>+ إضافات {addonsPrice.toFixed(2)}</span>}
                 <span className="font-semibold text-indigo-600 dark:text-indigo-300">= {lineTotal.toFixed(2)}</span>
-                <span className="text-[11px] text-gray-500 dark:text-gray-400">متاح: {Number((item as any).availableStock || 0)} • محجوز: {Number((item as any).reservedQuantity || 0)}</span>
+                {!isPromotionLine && (
+                  <span className="text-[11px] text-gray-500 dark:text-gray-400">متاح: {Number((item as any).availableStock || 0)} • محجوز: {Number((item as any).reservedQuantity || 0)}</span>
+                )}
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -91,7 +99,7 @@ const POSLineItemList: React.FC<Props> = ({ items, onUpdate, onRemove, onEditAdd
                   إضافات{selectedAddonsCount > 0 ? ` (${selectedAddonsCount})` : ''}
                 </button>
               )}
-              {isWeight ? (
+              {isWeight && !isPromotionLine ? (
                 <input
                   type="number"
                   step="0.01"
@@ -100,7 +108,7 @@ const POSLineItemList: React.FC<Props> = ({ items, onUpdate, onRemove, onEditAdd
                   className={`border rounded-xl dark:bg-gray-700 dark:border-gray-600 ${touchMode ? 'w-36 p-4 text-lg' : 'w-28 p-3 text-base'}`}
                 />
                 ) : null}
-                {isWeight ? (
+                {isWeight && !isPromotionLine ? (
                   <button
                     type="button"
                     onClick={() => openKeypad(item.cartItemId, 'weight', Number(qty || 0))}
@@ -113,6 +121,7 @@ const POSLineItemList: React.FC<Props> = ({ items, onUpdate, onRemove, onEditAdd
                   <button
                     onClick={() => onUpdate(item.cartItemId, { quantity: Math.max(0, item.quantity - 1) })}
                     className={`rounded-xl border dark:border-gray-600 font-bold ${touchMode ? 'px-6 py-4 text-2xl' : 'px-4 py-3 text-lg'}`}
+                    disabled={isPromotionLine}
                   >
                     -
                   </button>
@@ -120,6 +129,7 @@ const POSLineItemList: React.FC<Props> = ({ items, onUpdate, onRemove, onEditAdd
                   <button
                     onClick={() => onUpdate(item.cartItemId, { quantity: item.quantity + 1 })}
                     className={`rounded-xl border dark:border-gray-600 font-bold ${touchMode ? 'px-6 py-4 text-2xl' : 'px-4 py-3 text-lg'}`}
+                    disabled={isPromotionLine}
                   >
                     +
                   </button>
@@ -127,6 +137,7 @@ const POSLineItemList: React.FC<Props> = ({ items, onUpdate, onRemove, onEditAdd
                     type="button"
                     onClick={() => openKeypad(item.cartItemId, 'qty', Number(qty || 0))}
                     className={`rounded-xl border dark:border-gray-600 text-sm font-semibold ${touchMode ? 'px-5 py-4' : 'px-4 py-3'}`}
+                    disabled={isPromotionLine}
                   >
                     لوحة
                   </button>

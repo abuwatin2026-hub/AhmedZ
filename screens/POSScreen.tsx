@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { CartItem, Customer, MenuItem } from '../types';
 import { useToast } from '../contexts/ToastContext';
@@ -14,6 +14,8 @@ import POSLineItemList from '../components/pos/POSLineItemList';
 import POSTotals from '../components/pos/POSTotals';
 import POSPaymentPanel from '../components/pos/POSPaymentPanel';
 import ConfirmationModal from '../components/admin/ConfirmationModal';
+import { usePromotions } from '../contexts/PromotionContext';
+import { useSessionScope } from '../contexts/SessionScopeContext';
 
 const POSScreen: React.FC = () => {
   const { showNotification } = useToast();
@@ -22,6 +24,8 @@ const POSScreen: React.FC = () => {
   const { currentShift } = useCashShift();
   const { customers, fetchCustomers } = useUserAuth();
   const { settings } = useSettings();
+  const { activePromotions, refreshActivePromotions, applyPromotionToCart } = usePromotions();
+  const sessionScope = useSessionScope();
   const [items, setItems] = useState<CartItem[]>([]);
   const [discountType, setDiscountType] = useState<'amount' | 'percent'>('amount');
   const [discountValue, setDiscountValue] = useState<number>(0);
@@ -35,6 +39,9 @@ const POSScreen: React.FC = () => {
   const [autoOpenInvoice, setAutoOpenInvoice] = useState(true);
   const [addonsCartItemId, setAddonsCartItemId] = useState<string | null>(null);
   const [addonsDraft, setAddonsDraft] = useState<Record<string, number>>({});
+  const [promotionPickerOpen, setPromotionPickerOpen] = useState(false);
+  const [promotionBundleQty, setPromotionBundleQty] = useState<number>(1);
+  const [promotionBusy, setPromotionBusy] = useState(false);
   const [pendingFilter, setPendingFilter] = useState('');
   const searchInputRef = useRef<HTMLInputElement>(null);
   const pendingFilterRef = useRef<HTMLInputElement>(null);
@@ -70,6 +77,19 @@ const POSScreen: React.FC = () => {
   };
 
   const [draftInvoice, setDraftInvoice] = useState<DraftInvoice | null>(null);
+
+  const isPromotionLine = useCallback((item: CartItem) => {
+    return (item as any)?.lineType === 'promotion' || Boolean((item as any)?.promotionId);
+  }, []);
+
+  const hasPromotionLines = useMemo(() => {
+    return items.some((i) => isPromotionLine(i));
+  }, [isPromotionLine, items]);
+
+  useEffect(() => {
+    if (!hasPromotionLines) return;
+    if (Number(discountValue) > 0) setDiscountValue(0);
+  }, [discountValue, hasPromotionLines]);
 
   useEffect(() => {
     try {
@@ -177,6 +197,7 @@ const POSScreen: React.FC = () => {
   }, [items]);
 
   const getPricingQty = (item: CartItem) => {
+    if (isPromotionLine(item)) return Number(item.quantity) || 0;
     const isWeight = item.unitType === 'kg' || item.unitType === 'gram';
     return isWeight ? (Number(item.weight) || Number(item.quantity) || 0) : (Number(item.quantity) || 0);
   };
@@ -184,10 +205,13 @@ const POSScreen: React.FC = () => {
   const pricingSignature = useMemo(() => {
     if (!items.length) return '';
     return items
-      .map((i) => `${i.id}:${i.unitType || ''}:${getPricingQty(i)}`)
+      .map((i) => {
+        if (isPromotionLine(i)) return `promo:${(i as any).promotionId || i.id}:${getPricingQty(i)}`;
+        return `${i.id}:${i.unitType || ''}:${getPricingQty(i)}`;
+      })
       .sort()
       .join('|');
-  }, [items]);
+  }, [getPricingQty, isPromotionLine, items]);
 
   useEffect(() => {
     if (pendingOrderId) return;
@@ -205,6 +229,10 @@ const POSScreen: React.FC = () => {
     if (!supabase) {
       let missing = false;
       const next = items.map((item) => {
+        if (isPromotionLine(item)) {
+          missing = true;
+          return item;
+        }
         const pricingQty = getPricingQty(item);
         const key = `${item.id}:${item.unitType || ''}:${pricingQty}`;
         const cached = pricingCacheRef.current.get(key);
@@ -237,7 +265,8 @@ const POSScreen: React.FC = () => {
     const run = async () => {
       setPricingBusy(true);
       try {
-        const results = await Promise.all(items.map(async (item) => {
+        const pricingItems = items.filter((it) => !isPromotionLine(it));
+        const results = await Promise.all(pricingItems.map(async (item) => {
           const pricingQty = getPricingQty(item);
           const key = `${item.id}:${item.unitType || ''}:${pricingQty}`;
           const cached = pricingCacheRef.current.get(key);
@@ -256,6 +285,7 @@ const POSScreen: React.FC = () => {
         }));
         if (pricingRunIdRef.current !== runId) return;
         const next = items.map((item) => {
+          if (isPromotionLine(item)) return item;
           const pricingQty = getPricingQty(item);
           const key = `${item.id}:${item.unitType || ''}:${pricingQty}`;
           const priced = results.find((r) => r.key === key);
@@ -305,6 +335,7 @@ const POSScreen: React.FC = () => {
       selectedAddons: {},
       cartItemId: crypto.randomUUID(),
       unit: item.unitType || 'piece',
+      lineType: 'menu',
     };
     setItems(prev => [cartItem, ...prev]);
     setSelectedCartItemId(cartItem.cartItemId);
@@ -315,6 +346,7 @@ const POSScreen: React.FC = () => {
     setItems(prev => {
       const updated = prev.map(i => {
         if (i.cartItemId !== cartItemId) return i;
+        if (isPromotionLine(i)) return i;
         const isWeight = i.unitType === 'kg' || i.unitType === 'gram';
         const nextQty = isWeight ? 1 : Number(next.quantity ?? i.quantity);
         const nextWeight = isWeight ? Number(next.weight ?? i.weight) : undefined;
@@ -430,6 +462,82 @@ const POSScreen: React.FC = () => {
     };
   }, [addonsCartItemId, items, openAddons, pendingOrderId, removeLine, selectedCartItemId, updateLine]);
 
+  const openPromotionPicker = () => {
+    if (pendingOrderId) return;
+    const online = typeof navigator !== 'undefined' && navigator.onLine !== false;
+    if (!online) {
+      showNotification('لا يمكن إضافة عروض بدون اتصال بالخادم.', 'error');
+      return;
+    }
+    let warehouseId: string;
+    try {
+      warehouseId = sessionScope.requireScope().warehouseId;
+    } catch (e) {
+      showNotification(e instanceof Error ? e.message : 'تعذر تحديد مستودع الجلسة.', 'error');
+      return;
+    }
+    setPromotionBundleQty(1);
+    setPromotionPickerOpen(true);
+    void refreshActivePromotions({ customerId: selectedCustomerId, warehouseId });
+  };
+
+  const addPromotionLine = async (promotionId: string) => {
+    if (pendingOrderId) return;
+    const online = typeof navigator !== 'undefined' && navigator.onLine !== false;
+    if (!online) {
+      showNotification('لا يمكن إضافة عروض بدون اتصال بالخادم.', 'error');
+      return;
+    }
+    let warehouseId: string;
+    try {
+      warehouseId = sessionScope.requireScope().warehouseId;
+    } catch (e) {
+      showNotification(e instanceof Error ? e.message : 'تعذر تحديد مستودع الجلسة.', 'error');
+      return;
+    }
+    setPromotionBusy(true);
+    try {
+      const bundleQty = Math.max(1, Math.floor(Number(promotionBundleQty) || 1));
+      const snapshot = await applyPromotionToCart({
+        promotionId,
+        bundleQty,
+        customerId: selectedCustomerId,
+        warehouseId,
+        couponCode: null,
+      });
+      const perBundle = bundleQty > 0 ? Number(snapshot.finalTotal || 0) / bundleQty : Number(snapshot.finalTotal || 0);
+      const promoLine: CartItem = {
+        id: String(snapshot.promotionId),
+        name: { ar: `عرض: ${String(snapshot.name || '')}`, en: `Promotion: ${String(snapshot.name || '')}` },
+        description: { ar: '', en: '' },
+        imageUrl: '',
+        category: 'promotion',
+        price: perBundle,
+        unitType: 'bundle',
+        quantity: bundleQty,
+        selectedAddons: {},
+        cartItemId: crypto.randomUUID(),
+        unit: 'bundle',
+        lineType: 'promotion',
+        promotionId: String(snapshot.promotionId),
+        promotionLineId: crypto.randomUUID(),
+        promotionSnapshot: snapshot,
+      };
+      (promoLine as any)._pricedByRpc = true;
+      setItems((prev) => [promoLine, ...prev]);
+      setSelectedCartItemId(promoLine.cartItemId);
+      setDiscountType('amount');
+      setDiscountValue(0);
+      setPromotionPickerOpen(false);
+      focusSearch();
+    } catch (e) {
+      const msg = localizeSupabaseError(e) || (e instanceof Error ? e.message : 'تعذر إضافة العرض.');
+      showNotification(msg, 'error');
+    } finally {
+      setPromotionBusy(false);
+    }
+  };
+
   const confirmAddons = () => {
     if (!addonsCartItemId) return;
     setItems(prev => prev.map(it => {
@@ -485,6 +593,10 @@ const POSScreen: React.FC = () => {
   const handleHold = () => {
     if (items.length === 0) return;
     if (pendingOrderId) return;
+    if (hasPromotionLines) {
+      showNotification('لا يمكن تعليق فاتورة تحتوي عروض.', 'error');
+      return;
+    }
     if (pricingBusy || !pricingReady) {
       showNotification('لا يمكن تعليق الفاتورة قبل تأكيد التسعير من الخادم.', 'error');
       return;
@@ -492,7 +604,8 @@ const POSScreen: React.FC = () => {
     const lines = items.map(i => {
       const isWeight = i.unitType === 'kg' || i.unitType === 'gram';
       const addons: Record<string, number> = {};
-      Object.entries(i.selectedAddons || {}).forEach(([id, { quantity }]) => {
+      Object.entries(i.selectedAddons || {}).forEach(([id, entry]) => {
+        const quantity = Number((entry as any)?.quantity) || 0;
         if (quantity > 0) addons[id] = quantity;
       });
       return {
@@ -552,7 +665,11 @@ const POSScreen: React.FC = () => {
 
   const pendingTickets = useMemo(() => {
     const list = (orders || [])
-      .filter(o => o && o.status === 'pending' && (o as any).orderSource === 'in_store')
+      .filter(o => {
+        if (!o || o.status !== 'pending' || (o as any).orderSource !== 'in_store') return false;
+        const promoLines = (o as any).promotionLines;
+        return !(Array.isArray(promoLines) && promoLines.length > 0);
+      })
       .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
     return list;
   }, [orders]);
@@ -659,10 +776,19 @@ const POSScreen: React.FC = () => {
     if (!hasCash && !currentShift) {
       showNotification('تحذير: لا توجد وردية مفتوحة. الدفع غير النقدي مسموح.', 'info');
     }
-    const lines = items.map(i => {
+    const lines = items.map((i: any) => {
+      if (isPromotionLine(i)) {
+        return {
+          promotionId: String(i.promotionId || i.id),
+          bundleQty: Number(i.quantity) || 1,
+          promotionLineId: i.promotionLineId,
+          promotionSnapshot: i.promotionSnapshot,
+        };
+      }
       const isWeight = i.unitType === 'kg' || i.unitType === 'gram';
       const addons: Record<string, number> = {};
-      Object.entries(i.selectedAddons || {}).forEach(([id, { quantity }]) => {
+      Object.entries(i.selectedAddons || {}).forEach(([id, entry]) => {
+        const quantity = Number((entry as any)?.quantity) || 0;
         if (quantity > 0) addons[id] = quantity;
       });
       return {
@@ -706,6 +832,10 @@ const POSScreen: React.FC = () => {
       });
     } else {
       if (discountAmount > 0) {
+        if (hasPromotionLines) {
+          showNotification('لا يمكن طلب موافقة خصم لفاتورة تحتوي عروض.', 'error');
+          return;
+        }
         createInStorePendingOrder({
           lines,
           discountType,
@@ -822,6 +952,14 @@ const POSScreen: React.FC = () => {
         >
           فاتورة جديدة
         </button>
+        <button
+          type="button"
+          onClick={openPromotionPicker}
+          disabled={Boolean(pendingOrderId)}
+          className="px-4 py-3 rounded-xl border dark:border-gray-700 font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          العروض
+        </button>
         {pendingOrderId && draftInvoice && (
           <button
             type="button"
@@ -871,7 +1009,7 @@ const POSScreen: React.FC = () => {
                   value={discountType}
                   onChange={e => setDiscountType(e.target.value as 'amount' | 'percent')}
                   className={`${touchMode ? 'p-4 text-lg' : 'p-2'} border rounded-lg dark:bg-gray-700 dark:border-gray-600`}
-                  disabled={Boolean(pendingOrderId)}
+                  disabled={Boolean(pendingOrderId) || hasPromotionLines}
                 >
                   <option value="amount">خصم مبلغ</option>
                   <option value="percent">خصم نسبة</option>
@@ -883,7 +1021,7 @@ const POSScreen: React.FC = () => {
                   onChange={e => setDiscountValue(Number(e.target.value) || 0)}
                   className={`flex-1 border rounded-lg dark:bg-gray-700 dark:border-gray-600 ${touchMode ? 'p-4 text-lg' : 'p-2'}`}
                   placeholder={discountType === 'percent' ? '0 - 100' : '0.00'}
-                  disabled={Boolean(pendingOrderId)}
+                  disabled={Boolean(pendingOrderId) || hasPromotionLines}
                 />
               </div>
               <POSTotals subtotal={subtotal} discountAmount={discountAmount} total={total} />
@@ -1155,6 +1293,76 @@ const POSScreen: React.FC = () => {
           );
         })()}
       </ConfirmationModal>
+      {promotionPickerOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-2xl rounded-2xl bg-white dark:bg-gray-800 shadow-xl border dark:border-gray-700 p-4">
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <div className="font-bold dark:text-white">العروض المتاحة</div>
+              <button
+                type="button"
+                onClick={() => setPromotionPickerOpen(false)}
+                className="px-3 py-2 rounded-lg border dark:border-gray-700 font-semibold"
+                disabled={promotionBusy}
+              >
+                إغلاق
+              </button>
+            </div>
+            <div className="flex items-center gap-2 mb-3">
+              <div className="text-sm text-gray-600 dark:text-gray-300">عدد الباقات</div>
+              <input
+                type="number"
+                min={1}
+                step={1}
+                value={promotionBundleQty}
+                onChange={(e) => setPromotionBundleQty(Math.max(1, Math.floor(Number(e.target.value) || 1)))}
+                className="w-32 p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600"
+                disabled={promotionBusy}
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  let warehouseId: string;
+                  try {
+                    warehouseId = sessionScope.requireScope().warehouseId;
+                  } catch (e) {
+                    showNotification(e instanceof Error ? e.message : 'تعذر تحديد مستودع الجلسة.', 'error');
+                    return;
+                  }
+                  void refreshActivePromotions({ customerId: selectedCustomerId, warehouseId });
+                }}
+                className="px-3 py-2 rounded-lg border dark:border-gray-700 font-semibold"
+                disabled={promotionBusy}
+              >
+                تحديث
+              </button>
+            </div>
+            {activePromotions.length === 0 ? (
+              <div className="text-sm text-gray-600 dark:text-gray-300">لا توجد عروض نشطة حالياً.</div>
+            ) : (
+              <div className="space-y-2 max-h-[60vh] overflow-y-auto">
+                {activePromotions.map((p) => (
+                  <div key={p.promotionId} className="p-3 border rounded-xl dark:border-gray-700 flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="font-semibold truncate dark:text-white">{p.name}</div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">
+                        {Number(p.finalTotal || 0).toFixed(2)} ر.ي
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void addPromotionLine(p.promotionId)}
+                      disabled={promotionBusy}
+                      className="px-4 py-2 rounded-lg bg-primary-500 text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      إضافة
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

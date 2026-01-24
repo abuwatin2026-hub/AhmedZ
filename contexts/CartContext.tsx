@@ -2,6 +2,9 @@ import React, { createContext, useContext, useState, ReactNode, useMemo, useCall
 import type { CartItem, Coupon } from '../types';
 import { useCoupons } from './CouponContext';
 import { useToast } from './ToastContext';
+import { usePromotions } from './PromotionContext';
+import { getSupabaseClient } from '../supabase';
+import { localizeSupabaseError } from '../utils/errorUtils';
 
 
 
@@ -12,6 +15,7 @@ import { useToast } from './ToastContext';
 interface CartContextType {
   cartItems: CartItem[];
   addToCart: (item: CartItem) => void;
+  addPromotionToCart: (input: { promotionId: string; bundleQty: number }) => Promise<void>;
   removeFromCart: (cartItemId: string) => void;
   updateQuantity: (cartItemId: string, quantity: number) => void;
   getCartSubtotal: () => number;
@@ -33,11 +37,65 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const { validateCoupon } = useCoupons();
   const { showNotification } = useToast();
+  const { applyPromotionToCart } = usePromotions();
 
 
   const addToCart = (item: CartItem) => {
     setCartItems(prevItems => [...prevItems, item]);
   };
+
+  const addPromotionToCart = useCallback(async (input: { promotionId: string; bundleQty: number }) => {
+    const isOnline = typeof navigator !== 'undefined' && navigator.onLine !== false;
+    const supabase = isOnline ? getSupabaseClient() : null;
+    if (!supabase) {
+      showNotification('لا يمكن إضافة عرض بدون اتصال بالخادم.', 'error');
+      return;
+    }
+
+    try {
+      if (appliedCoupon) {
+        setAppliedCoupon(null);
+      }
+
+      const snapshot = await applyPromotionToCart({
+        promotionId: input.promotionId,
+        bundleQty: Number(input.bundleQty) || 1,
+        customerId: null,
+        warehouseId: null,
+        couponCode: null,
+      });
+
+      const bundleQty = Math.max(1, Number(snapshot.bundleQty) || 1);
+      const lineUnitPrice = bundleQty > 0 ? (Number(snapshot.finalTotal) || 0) / bundleQty : (Number(snapshot.finalTotal) || 0);
+
+      const promotionLineId = crypto.randomUUID();
+      const promoLine: CartItem = {
+        id: snapshot.promotionId,
+        name: { ar: snapshot.name, en: snapshot.name },
+        description: { ar: '', en: '' },
+        imageUrl: '',
+        category: 'promotion',
+        price: lineUnitPrice,
+        unitType: 'bundle',
+        quantity: bundleQty,
+        selectedAddons: {},
+        cartItemId: crypto.randomUUID(),
+        ...(snapshot.displayOriginalTotal ? { referralDiscount: undefined } : {}),
+      } as any;
+
+      (promoLine as any).lineType = 'promotion';
+      (promoLine as any).promotionId = snapshot.promotionId;
+      (promoLine as any).promotionLineId = promotionLineId;
+      (promoLine as any).promotionSnapshot = snapshot;
+      (promoLine as any).originalTotal = snapshot.displayOriginalTotal ?? snapshot.computedOriginalTotal;
+      (promoLine as any).finalTotal = snapshot.finalTotal;
+
+      setCartItems(prev => [...prev, promoLine]);
+      showNotification('تمت إضافة العرض إلى السلة.', 'success');
+    } catch (err: any) {
+      showNotification(localizeSupabaseError(err) || err?.message || 'تعذر إضافة العرض', 'error');
+    }
+  }, [applyPromotionToCart, appliedCoupon, showNotification]);
 
   const removeFromCart = (cartItemId: string) => {
     setCartItems(prevItems => prevItems.filter(item => item.cartItemId !== cartItemId));
@@ -115,6 +173,12 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }, [getCartSubtotal, discountAmount, deliveryFee]);
 
   const applyCoupon = (code: string) => {
+    const hasPromotions = cartItems.some((it: any) => it?.lineType === 'promotion' || it?.promotionId);
+    if (hasPromotions) {
+      showNotification('لا يمكن دمج الكوبون مع العروض.', 'error');
+      setAppliedCoupon(null);
+      return;
+    }
     const coupon = validateCoupon(code);
     if (coupon) {
       // Validate Min Order Amount
@@ -145,6 +209,7 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     <CartContext.Provider value={{
       cartItems,
       addToCart,
+      addPromotionToCart,
       removeFromCart,
       updateQuantity,
       getCartSubtotal,

@@ -50,8 +50,8 @@ export const MenuProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       } catch {}
 
       const selectCols = isSlow
-        ? 'id, name, barcode, price, base_unit, is_food, expiry_required, sellable, status, category, unit_type, data'
-        : 'id, name, barcode, price, base_unit, is_food, expiry_required, sellable, category, is_featured, unit_type, freshness_level, status, cost_price, buying_price, transport_cost, supply_tax_cost, data';
+        ? 'id, name, barcode, price, base_unit, is_food, expiry_required, sellable, status, category, data'
+        : 'id, name, barcode, price, base_unit, is_food, expiry_required, sellable, category, is_featured, freshness_level, status, cost_price, buying_price, transport_cost, supply_tax_cost, data';
 
       const source = isStaff ? 'menu_items' : 'v_sellable_products';
       const { data: rows, error: rowsError } = await supabase
@@ -109,7 +109,7 @@ export const MenuProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           const mergedStatus = typeof row?.status === 'string' ? row.status : item.status;
           const mergedUnitType = typeof row?.base_unit === 'string'
             ? row.base_unit
-            : (typeof row?.unit_type === 'string' ? row.unit_type : item.unitType);
+            : item.unitType;
           const mergedFreshness = typeof row?.freshness_level === 'string' ? row.freshness_level : item.freshnessLevel;
           const mergedIsFeatured = typeof row?.is_featured === 'boolean' ? row.is_featured : Boolean(item.isFeatured ?? false);
           const normalizedCategory = normalizeCategoryKey(mergedCategory) || String(mergedCategory || '');

@@ -10,6 +10,7 @@ import { OrderProvider } from './OrderContext';
 import { UserAuthProvider } from './UserAuthContext';
 import { ReviewProvider } from './ReviewContext';
 import { CouponProvider } from './CouponContext';
+import { PromotionProvider } from './PromotionContext';
 import { AddonProvider } from './AddonContext';
 import { AdProvider } from './AdContext';
 import { ChallengeProvider } from './ChallengeContext';
@@ -46,27 +47,29 @@ export const AppProviders: React.FC<{ children: React.ReactNode }> = ({ children
                                                             <ChallengeProvider>
                                                                 <OrderProvider>
                                                                     <CouponProvider>
-                                                                        <CartProvider>
-                                                                            <DeliveryZoneProvider>
-                                                                                <AdProvider>
-                                                                                    <AddonProvider>
-                                                                                        <PriceProvider>
-                                                                                            <StockProvider>
-                                                                                                <MenuProvider>
-                                                                                                    <ItemMetaProvider>
-                                                                                                        <ImportProvider>
-                                                                                                            <SupplierEnhancementProvider>
-                                                                                                                {children}
-                                                                                                            </SupplierEnhancementProvider>
-                                                                                                        </ImportProvider>
-                                                                                                    </ItemMetaProvider>
-                                                                                                </MenuProvider>
-                                                                                            </StockProvider>
-                                                                                        </PriceProvider>
-                                                                                    </AddonProvider>
-                                                                                </AdProvider>
-                                                                            </DeliveryZoneProvider>
-                                                                        </CartProvider>
+                                                                        <PromotionProvider>
+                                                                            <CartProvider>
+                                                                                <DeliveryZoneProvider>
+                                                                                    <AdProvider>
+                                                                                        <AddonProvider>
+                                                                                            <PriceProvider>
+                                                                                                <StockProvider>
+                                                                                                    <MenuProvider>
+                                                                                                        <ItemMetaProvider>
+                                                                                                            <ImportProvider>
+                                                                                                                <SupplierEnhancementProvider>
+                                                                                                                    {children}
+                                                                                                                </SupplierEnhancementProvider>
+                                                                                                            </ImportProvider>
+                                                                                                        </ItemMetaProvider>
+                                                                                                    </MenuProvider>
+                                                                                                </StockProvider>
+                                                                                            </PriceProvider>
+                                                                                        </AddonProvider>
+                                                                                    </AdProvider>
+                                                                                </DeliveryZoneProvider>
+                                                                            </CartProvider>
+                                                                        </PromotionProvider>
                                                                     </CouponProvider>
                                                                 </OrderProvider>
                                                             </ChallengeProvider>
