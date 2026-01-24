@@ -411,7 +411,14 @@ const ItemFormModal: React.FC<ItemFormModalProps> = ({ isOpen, onClose, onSave, 
                     </button>
                   )}
                 </div>
-                <select name="unitType" id="unitType" value={item.unitType || 'kg'} onChange={handleChange} className="mt-1 w-full p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600">
+                <select
+                  name="unitType"
+                  id="unitType"
+                  value={item.unitType || 'kg'}
+                  onChange={handleChange}
+                  className="mt-1 w-full p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600"
+                  disabled={Boolean(itemToEdit) && hasReceipts}
+                >
                   {unitOptions.map(unit => (
                     <option key={unit} value={unit}>
                       {getUnitLabel(unit as UnitType, language as 'ar' | 'en')}

@@ -25,12 +25,14 @@ import { SystemAuditProvider } from './SystemAuditContext';
 import { WarehouseProvider } from './WarehouseContext';
 import { PricingProvider } from './PricingContext';
 import { SupplierEnhancementProvider } from './SupplierEnhancementContext';
+import { SessionScopeProvider } from './SessionScopeContext';
 
 export const AppProviders: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     return (
         <SettingsProvider>
             <ToastProvider>
                 <AuthProvider>
+                    <SessionScopeProvider>
                     <UserAuthProvider>
                         <NotificationSettingsProvider>
                             <NotificationProvider>
@@ -78,6 +80,7 @@ export const AppProviders: React.FC<{ children: React.ReactNode }> = ({ children
                             </NotificationProvider>
                         </NotificationSettingsProvider>
                     </UserAuthProvider>
+                    </SessionScopeProvider>
                 </AuthProvider>
             </ToastProvider>
         </SettingsProvider>

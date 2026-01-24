@@ -563,6 +563,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     userId: string,
     updates: Partial<Pick<AdminUser, 'username' | 'fullName' | 'email' | 'phoneNumber' | 'avatarUrl' | 'role' | 'permissions'>>
   ) => {
+    ensurePermission('adminUsers.manage');
     if (!supabase) throw new Error('Supabase غير مهيأ.');
     const { data: existing, error: existingError } = await supabase
       .from('admin_users')
@@ -597,6 +598,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const setAdminUserActive = async (userId: string, isActive: boolean) => {
+    ensurePermission('adminUsers.manage');
     if (!supabase) throw new Error('Supabase غير مهيأ.');
     const { data: existing, error: existingError } = await supabase
       .from('admin_users')

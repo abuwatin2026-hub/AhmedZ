@@ -743,6 +743,7 @@ export type AdminPermission =
   | 'prices.manage'
   | 'reports.view'
   | 'settings.manage'
+  | 'approvals.manage'
   | 'adminUsers.manage'
   | 'challenges.manage'
   | 'expenses.manage'
@@ -778,6 +779,7 @@ export const ADMIN_PERMISSION_DEFS: Array<{ key: AdminPermission; labelAr: strin
   { key: 'prices.manage', labelAr: 'إدارة الأسعار' },
   { key: 'reports.view', labelAr: 'عرض التقارير' },
   { key: 'settings.manage', labelAr: 'إدارة الإعدادات' },
+  { key: 'approvals.manage', labelAr: 'إدارة الموافقات' },
   { key: 'adminUsers.manage', labelAr: 'إدارة مستخدمي لوحة التحكم' },
   { key: 'challenges.manage', labelAr: 'إدارة التحديات' },
   { key: 'expenses.manage', labelAr: 'إدارة المصاريف' },

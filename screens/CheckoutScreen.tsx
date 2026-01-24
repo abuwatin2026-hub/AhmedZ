@@ -700,11 +700,11 @@ const CheckoutScreen: React.FC = () => {
 
 
     return (
-        <div className="max-w-screen-xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 sm:p-8 animate-fade-in">
-                <div className="flex justify-between items-center mb-6">
+        <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-4 sm:p-6 lg:p-8 animate-fade-in">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
                     <h1 className="text-3xl font-bold dark:text-white">إتمام الطلب</h1>
-                    <button onClick={() => navigate('/cart')} className="text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-gold-500 dark:hover:text-gold-400 transition-colors flex items-center space-x-2 rtl:space-x-reverse">
+                    <button onClick={() => navigate('/cart')} className="text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-gold-500 dark:hover:text-gold-400 transition-colors inline-flex items-center space-x-2 rtl:space-x-reverse">
                         <BackArrowIcon className="h-4 w-4" />
                         <span>العودة للسلة</span>
                     </button>

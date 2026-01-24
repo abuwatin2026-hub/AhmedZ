@@ -6,6 +6,8 @@ import { useOrders } from '../contexts/OrderContext';
 import { useCashShift } from '../contexts/CashShiftContext';
 import { useUserAuth } from '../contexts/UserAuthContext';
 import { useSettings } from '../contexts/SettingsContext';
+import { getSupabaseClient } from '../supabase';
+import { isAbortLikeError, localizeSupabaseError } from '../utils/errorUtils';
 import POSHeaderShiftStatus from '../components/pos/POSHeaderShiftStatus';
 import POSItemSearch from '../components/pos/POSItemSearch';
 import POSLineItemList from '../components/pos/POSLineItemList';
@@ -45,6 +47,10 @@ const POSScreen: React.FC = () => {
       return false;
     }
   });
+  const pricingCacheRef = useRef<Map<string, { unitPrice: number; unitPricePerKg?: number }>>(new Map());
+  const pricingRunIdRef = useRef(0);
+  const [pricingBusy, setPricingBusy] = useState(false);
+  const [pricingReady, setPricingReady] = useState(true);
   const [isPortrait, setIsPortrait] = useState<boolean>(() => {
     try {
       return window.matchMedia && window.matchMedia('(orientation: portrait)').matches;
@@ -169,6 +175,121 @@ const POSScreen: React.FC = () => {
       return items[0].cartItemId;
     });
   }, [items]);
+
+  const getPricingQty = (item: CartItem) => {
+    const isWeight = item.unitType === 'kg' || item.unitType === 'gram';
+    return isWeight ? (Number(item.weight) || Number(item.quantity) || 0) : (Number(item.quantity) || 0);
+  };
+
+  const pricingSignature = useMemo(() => {
+    if (!items.length) return '';
+    return items
+      .map((i) => `${i.id}:${i.unitType || ''}:${getPricingQty(i)}`)
+      .sort()
+      .join('|');
+  }, [items]);
+
+  useEffect(() => {
+    if (pendingOrderId) return;
+    if (!items.length) {
+      setPricingBusy(false);
+      setPricingReady(true);
+      return;
+    }
+    const runId = pricingRunIdRef.current + 1;
+    pricingRunIdRef.current = runId;
+
+    const isOnline = typeof navigator !== 'undefined' && navigator.onLine !== false;
+    const supabase = isOnline ? getSupabaseClient() : null;
+
+    if (!supabase) {
+      let missing = false;
+      const next = items.map((item) => {
+        const pricingQty = getPricingQty(item);
+        const key = `${item.id}:${item.unitType || ''}:${pricingQty}`;
+        const cached = pricingCacheRef.current.get(key);
+        if (!cached) {
+          missing = true;
+          return item;
+        }
+        const nextItem: any = { ...item, price: cached.unitPrice, _pricedByRpc: true, _pricingKey: key };
+        if (item.unitType === 'gram') {
+          nextItem.pricePerUnit = cached.unitPricePerKg ?? (cached.unitPrice * 1000);
+        }
+        return nextItem as CartItem;
+      });
+      setPricingReady(!missing);
+      setPricingBusy(false);
+      setItems((prev) => {
+        if (prev.length !== next.length) return next;
+        for (let i = 0; i < prev.length; i++) {
+          if (prev[i].cartItemId !== next[i].cartItemId) return next;
+          if (prev[i].price !== next[i].price) return next;
+          if ((prev[i] as any)._pricedByRpc !== (next[i] as any)._pricedByRpc) return next;
+          if ((prev[i] as any)._pricingKey !== (next[i] as any)._pricingKey) return next;
+          if (prev[i].pricePerUnit !== next[i].pricePerUnit) return next;
+        }
+        return prev;
+      });
+      return;
+    }
+
+    const run = async () => {
+      setPricingBusy(true);
+      try {
+        const results = await Promise.all(items.map(async (item) => {
+          const pricingQty = getPricingQty(item);
+          const key = `${item.id}:${item.unitType || ''}:${pricingQty}`;
+          const cached = pricingCacheRef.current.get(key);
+          if (cached) return { key, itemId: item.id, unitType: item.unitType, unitPrice: cached.unitPrice, unitPricePerKg: cached.unitPricePerKg };
+          const { data, error } = await supabase.rpc('get_item_price_with_discount', {
+            p_item_id: item.id,
+            p_customer_id: null,
+            p_quantity: pricingQty,
+          });
+          if (error) throw error;
+          const unitPrice = Number(data);
+          if (!Number.isFinite(unitPrice) || unitPrice < 0) throw new Error('تعذر احتساب السعر.');
+          const unitPricePerKg = item.unitType === 'gram' ? unitPrice * 1000 : undefined;
+          pricingCacheRef.current.set(key, { unitPrice, unitPricePerKg });
+          return { key, itemId: item.id, unitType: item.unitType, unitPrice, unitPricePerKg };
+        }));
+        if (pricingRunIdRef.current !== runId) return;
+        const next = items.map((item) => {
+          const pricingQty = getPricingQty(item);
+          const key = `${item.id}:${item.unitType || ''}:${pricingQty}`;
+          const priced = results.find((r) => r.key === key);
+          if (!priced) return item;
+          const nextItem: any = { ...item, price: priced.unitPrice, _pricedByRpc: true, _pricingKey: key };
+          if (item.unitType === 'gram') {
+            nextItem.pricePerUnit = priced.unitPricePerKg;
+          }
+          return nextItem as CartItem;
+        });
+        setItems((prev) => {
+          if (prev.length !== next.length) return next;
+          for (let i = 0; i < prev.length; i++) {
+            if (prev[i].cartItemId !== next[i].cartItemId) return next;
+            if (prev[i].price !== next[i].price) return next;
+            if ((prev[i] as any)._pricedByRpc !== (next[i] as any)._pricedByRpc) return next;
+            if ((prev[i] as any)._pricingKey !== (next[i] as any)._pricingKey) return next;
+            if (prev[i].pricePerUnit !== next[i].pricePerUnit) return next;
+          }
+          return prev;
+        });
+        setPricingReady(true);
+      } catch (e) {
+        if (pricingRunIdRef.current !== runId) return;
+        if (isAbortLikeError(e)) return;
+        setPricingReady(false);
+        showNotification(localizeSupabaseError(e) || 'تعذر تسعير الأصناف من الخادم.', 'error');
+      } finally {
+        if (pricingRunIdRef.current === runId) setPricingBusy(false);
+      }
+    };
+
+    void run();
+  }, [pendingOrderId, pricingSignature, showNotification]);
 
   const addLine = (item: MenuItem, input: { quantity?: number; weight?: number }) => {
     if (pendingOrderId) return;
@@ -364,6 +485,10 @@ const POSScreen: React.FC = () => {
   const handleHold = () => {
     if (items.length === 0) return;
     if (pendingOrderId) return;
+    if (pricingBusy || !pricingReady) {
+      showNotification('لا يمكن تعليق الفاتورة قبل تأكيد التسعير من الخادم.', 'error');
+      return;
+    }
     const lines = items.map(i => {
       const isWeight = i.unitType === 'kg' || i.unitType === 'gram';
       const addons: Record<string, number> = {};
@@ -580,6 +705,52 @@ const POSScreen: React.FC = () => {
         showNotification(msg, 'error');
       });
     } else {
+      if (discountAmount > 0) {
+        createInStorePendingOrder({
+          lines,
+          discountType,
+          discountValue,
+          customerName: customerName.trim() || undefined,
+          phoneNumber: phoneNumber.trim() || undefined,
+          notes: notes.trim() || undefined,
+        }).then(async (order) => {
+          const supabase = getSupabaseClient();
+          if (!supabase) throw new Error('Supabase غير مهيأ.');
+          const { data: reqId, error: reqErr } = await supabase.rpc('create_approval_request', {
+            p_target_table: 'orders',
+            p_target_id: order.id,
+            p_request_type: 'discount',
+            p_amount: discountAmount,
+            p_payload: {
+              discountType,
+              discountValue,
+              subtotal,
+              discountAmount,
+              total,
+            },
+          });
+          if (reqErr) throw reqErr;
+          const approvalId = typeof reqId === 'string' ? reqId : String(reqId || '');
+          if (!approvalId) throw new Error('تعذر إنشاء طلب موافقة الخصم.');
+          const { error: updateErr } = await supabase
+            .from('orders')
+            .update({
+              discount_requires_approval: true,
+              discount_approval_status: 'pending',
+              discount_approval_request_id: approvalId,
+            })
+            .eq('id', order.id);
+          if (updateErr) throw updateErr;
+          setPendingOrderId(order.id);
+          setPendingSelectedId(order.id);
+          showNotification('تم تعليق الفاتورة وطلب موافقة الخصم. اعتمد الطلب من شاشة الموافقات ثم أكمل الدفع.', 'info');
+          focusSearch();
+        }).catch(err => {
+          const msg = err instanceof Error ? err.message : 'فشل طلب موافقة الخصم';
+          showNotification(msg, 'error');
+        });
+        return;
+      }
       createInStoreSale({
         lines,
         discountType,
@@ -720,7 +891,7 @@ const POSScreen: React.FC = () => {
             <div className={`bg-white dark:bg-gray-800 rounded-xl shadow-lg ${touchMode ? 'p-6' : 'p-4'}`}>
               <POSPaymentPanel
                 total={total}
-                canFinalize={items.length > 0}
+                canFinalize={items.length > 0 && pricingReady && !pricingBusy}
                 onHold={handleHold}
                 onFinalize={handleFinalize}
                 pendingOrderId={pendingOrderId}

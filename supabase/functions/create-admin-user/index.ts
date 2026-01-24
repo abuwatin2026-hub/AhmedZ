@@ -136,6 +136,37 @@ serve(async (req) => {
             )
         }
 
+        const { data: creatorRow, error: creatorErr } = await supabaseClient
+            .from('admin_users')
+            .select('auth_user_id, role, is_active, company_id, branch_id, warehouse_id')
+            .eq('auth_user_id', authUser.id)
+            .maybeSingle()
+
+        if (creatorErr) {
+            console.error('Creator lookup failed:', creatorErr?.message || creatorErr);
+            return new Response(
+                JSON.stringify({ error: 'تعذر التحقق من صلاحيات منشئ المستخدم.' }),
+                { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
+        }
+
+        if (!creatorRow?.is_active || !creatorRow?.role || !['owner', 'manager'].includes(String(creatorRow.role))) {
+            return new Response(
+                JSON.stringify({ error: 'ليس لديك صلاحية إنشاء مستخدمين.' }),
+                { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
+        }
+
+        const creatorCompanyId = creatorRow?.company_id ?? null
+        const creatorBranchId = creatorRow?.branch_id ?? null
+        const creatorWarehouseId = creatorRow?.warehouse_id ?? null
+        if (!creatorCompanyId || !creatorBranchId || !creatorWarehouseId) {
+            return new Response(
+                JSON.stringify({ error: 'نطاق جلسة منشئ المستخدم غير مكتمل. يجب تعيين الشركة/الفرع/المستودع.' }),
+                { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
+        }
+
         // 1. Create User in Supabase Auth
         const { data: userData, error: userError } = await supabaseClient.auth.admin.createUser({
             email: normalizedEmail,
@@ -172,6 +203,9 @@ serve(async (req) => {
                 phone_number: normalizedPhoneNumber,
                 role: normalizedRole,
                 permissions: normalizedPermissions,
+                company_id: creatorCompanyId,
+                branch_id: creatorBranchId,
+                warehouse_id: creatorWarehouseId,
                 is_active: true,
             })
 

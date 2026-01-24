@@ -314,6 +314,15 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const deleteSupplier = async (id: string) => {
         if (!supabase) return;
         try {
+          // فحص مراجع مانعة قبل الحذف: أوامر شراء مرتبطة بالمورد
+          const { count: poCount, error: poErr } = await supabase
+            .from('purchase_orders')
+            .select('id', { count: 'exact', head: true })
+            .eq('supplier_id', id);
+          if (poErr) throw poErr;
+          if (typeof poCount === 'number' && poCount > 0) {
+            throw new Error('لا يمكن حذف المورد: توجد أوامر شراء مرتبطة بهذا المورد.');
+          }
           const { error } = await supabase.from('suppliers').delete().eq('id', id);
           if (error) throw error;
           await fetchSuppliers();

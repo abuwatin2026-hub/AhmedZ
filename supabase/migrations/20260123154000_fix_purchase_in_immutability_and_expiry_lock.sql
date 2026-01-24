@@ -179,15 +179,28 @@ end;
 $$;
 
 drop trigger if exists trg_inventory_movements_purchase_in_sync_batch_balances on public.inventory_movements;
-create trigger trg_inventory_movements_purchase_in_sync_batch_balances
-after insert or update or delete
+drop trigger if exists trg_inventory_movements_purchase_in_sync_batch_balances_ins on public.inventory_movements;
+drop trigger if exists trg_inventory_movements_purchase_in_sync_batch_balances_del on public.inventory_movements;
+
+create trigger trg_inventory_movements_purchase_in_sync_batch_balances_ins
+after insert
 on public.inventory_movements
 for each row
-when (
-  (tg_op = 'INSERT' and new.movement_type = 'purchase_in')
-  or (tg_op = 'UPDATE' and (old.movement_type = 'purchase_in' or new.movement_type = 'purchase_in'))
-  or (tg_op = 'DELETE' and old.movement_type = 'purchase_in')
-)
+when (new.movement_type = 'purchase_in')
+execute function public.trg_inventory_movements_purchase_in_sync_batch_balances();
+
+create trigger trg_inventory_movements_purchase_in_sync_batch_balances
+after update
+on public.inventory_movements
+for each row
+when (old.movement_type = 'purchase_in' or new.movement_type = 'purchase_in')
+execute function public.trg_inventory_movements_purchase_in_sync_batch_balances();
+
+create trigger trg_inventory_movements_purchase_in_sync_batch_balances_del
+after delete
+on public.inventory_movements
+for each row
+when (old.movement_type = 'purchase_in')
 execute function public.trg_inventory_movements_purchase_in_sync_batch_balances();
 
 create or replace function public.trg_batch_balances_expiry_immutable()

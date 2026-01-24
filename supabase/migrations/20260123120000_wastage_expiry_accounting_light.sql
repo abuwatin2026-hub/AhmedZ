@@ -39,8 +39,8 @@ with check (public.is_admin());
 create or replace function public.record_wastage_light(
   p_item_id uuid,
   p_warehouse_id uuid,
-  p_batch_id uuid default null,
   p_quantity numeric,
+  p_batch_id uuid default null,
   p_unit text default 'piece',
   p_reason text default null,
   p_occurred_at timestamptz default now()
@@ -136,8 +136,8 @@ begin
           jsonb_build_object('itemId', p_item_id, 'warehouseId', p_warehouse_id, 'batchId', p_batch_id, 'quantity', p_quantity, 'unitCost', v_unit_cost));
 end;
 $$;
-revoke all on function public.record_wastage_light(uuid, uuid, uuid, numeric, text, text, timestamptz) from public;
-grant execute on function public.record_wastage_light(uuid, uuid, uuid, numeric, text, text, timestamptz) to anon, authenticated;
+revoke all on function public.record_wastage_light(uuid, uuid, numeric, uuid, text, text, timestamptz) from public;
+grant execute on function public.record_wastage_light(uuid, uuid, numeric, uuid, text, text, timestamptz) to anon, authenticated;
 
 -- 4) RPC: process_expiry_light (batch-level FEFO expiry to wastage)
 create or replace function public.process_expiry_light(

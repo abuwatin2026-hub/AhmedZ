@@ -122,8 +122,16 @@ for each row
 execute function public.trg_inventory_movements_purchase_in_defaults();
 
 drop trigger if exists trg_inventory_movements_purchase_in_sync_batch_balances on public.inventory_movements;
+drop trigger if exists trg_inventory_movements_purchase_in_sync_batch_balances_ins on public.inventory_movements;
+create trigger trg_inventory_movements_purchase_in_sync_batch_balances_ins
+after insert
+on public.inventory_movements
+for each row
+when (new.movement_type = 'purchase_in')
+execute function public.trg_inventory_movements_purchase_in_sync_batch_balances();
+
 create trigger trg_inventory_movements_purchase_in_sync_batch_balances
-after insert or update of movement_type, batch_id, item_id, warehouse_id, quantity, data
+after update of movement_type, batch_id, item_id, warehouse_id, quantity, data
 on public.inventory_movements
 for each row
 when (new.movement_type = 'purchase_in' or old.movement_type = 'purchase_in')

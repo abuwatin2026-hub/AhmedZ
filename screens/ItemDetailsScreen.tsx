@@ -157,7 +157,7 @@ const ItemDetailsScreen: React.FC = () => {
   const isValidDate = (d: any) => d && !isNaN(new Date(d).getTime());
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-4 sm:p-6 lg:p-8 animate-fade-in-up space-y-8">
         <button onClick={() => navigate(-1)} className="text-gold-500 hover:text-primary-600 dark:hover:text-gold-400 font-semibold flex items-center space-x-2 rtl:space-x-reverse">
           <BackArrowIcon />

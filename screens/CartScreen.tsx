@@ -105,14 +105,16 @@ const CartScreen: React.FC = () => {
 
     if (cartItems.length === 0) {
         return (
-            <div className="text-center p-8 bg-white dark:bg-gray-900 rounded-xl shadow-xl animate-fade-in-up border-2 border-gold-500/30 relative">
-                <div className="absolute top-0 left-0 w-16 h-16 border-t-2 border-l-2 border-gold-500"></div>
-                <div className="absolute top-0 right-0 w-16 h-16 border-t-2 border-r-2 border-gold-500"></div>
-                <h2 className="text-2xl font-bold bg-gold-gradient bg-clip-text text-transparent">{'سلتك فارغة'}</h2>
-                <p className="text-gray-500 dark:text-gray-400 mt-2">{'لم تقم بإضافة أي أصناف للسلة بعد.'}</p>
-                <Link to="/" className="mt-6 inline-block bg-red-gradient text-white font-bold py-3 px-8 rounded-lg shadow-red hover:shadow-red-lg transition-all transform hover:scale-105">
-                    {'تصفح القائمة'}
-                </Link>
+            <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+                <div className="max-w-xl mx-auto text-center p-8 bg-white dark:bg-gray-900 rounded-xl shadow-xl animate-fade-in-up border-2 border-gold-500/30 relative">
+                    <div className="absolute top-0 left-0 w-16 h-16 border-t-2 border-l-2 border-gold-500"></div>
+                    <div className="absolute top-0 right-0 w-16 h-16 border-t-2 border-r-2 border-gold-500"></div>
+                    <h2 className="text-2xl font-bold bg-gold-gradient bg-clip-text text-transparent">{'سلتك فارغة'}</h2>
+                    <p className="text-gray-500 dark:text-gray-400 mt-2">{'لم تقم بإضافة أي أصناف للسلة بعد.'}</p>
+                    <Link to="/" className="mt-6 inline-block bg-red-gradient text-white font-bold py-3 px-8 rounded-lg shadow-red hover:shadow-red-lg transition-all transform hover:scale-105">
+                        {'تصفح القائمة'}
+                    </Link>
+                </div>
             </div>
         );
     }
@@ -121,7 +123,7 @@ const CartScreen: React.FC = () => {
     const total = getCartTotal();
 
     return (
-        <div className="max-w-screen-xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
             <div className="animate-fade-in-up">
                 <h1 className="text-3xl font-bold mb-6 dark:text-white">{'سلة المشتريات'}</h1>
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">

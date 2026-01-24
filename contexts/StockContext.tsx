@@ -3,6 +3,7 @@ import type { MenuItem, StockManagement } from '../types';
 import { useToast } from './ToastContext';
 import { useSettings } from './SettingsContext';
 import { useAuth } from './AuthContext';
+import { useSessionScope } from './SessionScopeContext';
 import { getSupabaseClient } from '../supabase';
 import { logger } from '../utils/logger';
 import { isAbortLikeError, localizeSupabaseError } from '../utils/errorUtils';
@@ -29,6 +30,7 @@ export const StockProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const { showNotification } = useToast();
     const { t, language } = useSettings();
     const { isAuthenticated, hasPermission } = useAuth();
+    const sessionScope = useSessionScope();
 
     const toStockFromRow = (row: any): StockManagement | undefined => {
         const itemId = typeof row?.item_id === 'string' ? row.item_id : undefined;
@@ -287,12 +289,7 @@ export const StockProvider: React.FC<{ children: ReactNode }> = ({ children }) =
                 const byData = typeof orderRow?.data?.warehouseId === 'string' ? orderRow?.data?.warehouseId : undefined;
                 const candidate = byCol || byData;
                 if (candidate) return candidate;
-                const { data: whRows } = await supabase.from('warehouses').select('id,code,is_active').eq('is_active', true).order('code', { ascending: true });
-                const main = (whRows || []).find((w: any) => String(w?.code).toUpperCase() === 'MAIN');
-                const first = (whRows || [])[0];
-                const resolved = String((main || first)?.id || '');
-                if (!resolved) throw new Error(language === 'ar' ? 'تعذر تحديد المخزن الافتراضي.' : 'Unable to resolve default warehouse.');
-                return resolved;
+                return sessionScope.requireScope().warehouseId;
             };
             const warehouseId = await resolveWarehouseId();
 
@@ -331,12 +328,7 @@ export const StockProvider: React.FC<{ children: ReactNode }> = ({ children }) =
                 const byData = typeof orderRow?.data?.warehouseId === 'string' ? orderRow?.data?.warehouseId : undefined;
                 const candidate = byCol || byData;
                 if (candidate) return candidate;
-                const { data: whRows } = await supabase.from('warehouses').select('id,code,is_active').eq('is_active', true).order('code', { ascending: true });
-                const main = (whRows || []).find((w: any) => String(w?.code).toUpperCase() === 'MAIN');
-                const first = (whRows || [])[0];
-                const resolved = String((main || first)?.id || '');
-                if (!resolved) throw new Error(language === 'ar' ? 'تعذر تحديد المخزن الافتراضي.' : 'Unable to resolve default warehouse.');
-                return resolved;
+                return sessionScope.requireScope().warehouseId;
              };
              const warehouseId = await resolveWarehouseId();
 

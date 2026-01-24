@@ -38,6 +38,7 @@ const DownloadAppScreen: React.FC = () => {
     const [isNativeApp, setIsNativeApp] = useState(false);
     const [shareFeedback, setShareFeedback] = useState<string | null>(null);
     const [shareErrorHint, setShareErrorHint] = useState<string | null>(null);
+    const [apkSizeBytes, setApkSizeBytes] = useState<number | null>(null);
 
     const DEFAULT_APK_FILENAME = 'caty-latest.apk';
     // Use absolute URL for version check when in native app to reach the server
@@ -86,6 +87,21 @@ const DownloadAppScreen: React.FC = () => {
 
         void run();
     }, []);
+
+    useEffect(() => {
+        const fetchSize = async () => {
+            setApkSizeBytes(null);
+            if (!downloadUrl) return;
+            try {
+                const res = await fetch(`${downloadUrl}?t=${Date.now()}`, { method: 'HEAD', cache: 'no-store' });
+                const len = res.headers.get('content-length');
+                const n = len ? Number(len) : NaN;
+                if (Number.isFinite(n) && n > 0) setApkSizeBytes(n);
+            } catch {
+            }
+        };
+        void fetchSize();
+    }, [downloadUrl]);
 
     const handleDownload = async () => {
         if (!downloadUrl) return;
@@ -179,6 +195,13 @@ const DownloadAppScreen: React.FC = () => {
     };
 
     const latestVersion = latestInfo?.version || '—';
+    const formatBytes = (n: number) => {
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB'];
+        const i = Math.min(Math.floor(Math.log(n) / Math.log(k)), sizes.length - 1);
+        const val = n / Math.pow(k, i);
+        return `${val.toFixed(i === 0 ? 0 : 1)} ${sizes[i]}`;
+    };
     const shouldShowUpdate =
         isNativeApp &&
         ((latestInfo?.versionCode != null && currentVersionCode != null && latestInfo.versionCode > currentVersionCode) ||
@@ -249,6 +272,16 @@ const DownloadAppScreen: React.FC = () => {
                                         <AndroidIcon className="w-4 h-4 mr-1 rtl:ml-1" /> Android
                                     </span>
                                 </div>
+                                {apkSizeBytes != null && (
+                                    <div className="flex items-center justify-between mt-2">
+                                        <span className="text-sm text-gray-500 dark:text-gray-400">
+                                            {'حجم الملف'}
+                                        </span>
+                                        <span className="font-mono font-bold text-gray-800 dark:text-gray-200">
+                                            {formatBytes(apkSizeBytes)}
+                                        </span>
+                                    </div>
+                                )}
                             </div>
 
                             <button

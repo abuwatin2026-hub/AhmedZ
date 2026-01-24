@@ -310,6 +310,16 @@ export const MenuProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const supabase = getSupabaseClient();
     if (supabase) {
       try {
+        const { data: stockRows, error: stockErr } = await supabase
+          .from('stock_management')
+          .select('id, available_quantity, reserved_quantity')
+          .eq('item_id', itemId)
+          .limit(50);
+        if (stockErr) throw stockErr;
+        const hasAnyQty = (stockRows || []).some((r: any) => (Number(r?.available_quantity) || 0) > 0 || (Number(r?.reserved_quantity) || 0) > 0);
+        if (hasAnyQty) {
+          throw new Error('لا يمكن أرشفة الصنف: توجد كميات متاحة/محجوزة في المخزون.');
+        }
         const { error } = await supabase
           .from('menu_items')
           .update({ status: 'archived' })

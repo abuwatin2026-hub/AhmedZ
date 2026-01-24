@@ -23,6 +23,15 @@ export const isAbortLikeError = (error: unknown): boolean => {
 export const localizeError = (message: string): string => {
   const raw = message.trim().toLowerCase();
   if (!raw) return 'فشل العملية.';
+  if (
+    /^batch_expired$/i.test(message.trim()) ||
+    /^batch_blocked$/i.test(message.trim()) ||
+    /insufficient reserved stock for item/i.test(message) ||
+    /insufficient batch remaining/i.test(message) ||
+    /insufficient non-reserved batch remaining/i.test(message)
+  ) {
+    return message;
+  }
   if (raw === 'unknown' || raw === 'unknown error' || raw === 'an unknown error has occurred') return 'حدث خطأ غير متوقع.';
   if (raw.includes('timeout') || raw.includes('timed out') || raw.includes('request timed out')) return 'انتهت مهلة الاتصال بالخادم. تحقق من الإنترنت ثم أعد المحاولة.';
   if (raw.includes('there is no unique or exclusion constraint matching the on conflict specification')) {

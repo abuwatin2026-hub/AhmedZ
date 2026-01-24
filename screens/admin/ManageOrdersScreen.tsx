@@ -542,13 +542,14 @@ const ManageOrdersScreen: React.FC = () => {
                     cashReceived: p.method === 'cash' ? (p.cashReceived > 0 ? p.cashReceived : undefined) : undefined,
                 })),
             });
+            const isQueued = Boolean((order as any).offlineState) || order.status !== 'delivered';
             showNotification(
                 language === 'ar'
-                    ? `تم تسجيل البيع الحضوري #${order.id.slice(-6).toUpperCase()}`
-                    : `In-store sale created #${order.id.slice(-6).toUpperCase()}`,
-                'success'
+                    ? (isQueued ? `تم إرسال البيع للمزامنة #${order.id.slice(-6).toUpperCase()}` : `تم تسجيل البيع الحضوري #${order.id.slice(-6).toUpperCase()}`)
+                    : (isQueued ? `Sale queued for sync #${order.id.slice(-6).toUpperCase()}` : `In-store sale created #${order.id.slice(-6).toUpperCase()}`),
+                isQueued ? 'info' : 'success'
             );
-            if (inStoreAutoOpenInvoice) {
+            if (inStoreAutoOpenInvoice && !isQueued) {
                 navigate(`/admin/invoice/${order.id}`);
             }
             setIsInStoreSaleOpen(false);

@@ -839,6 +839,16 @@ const FinancialReports: React.FC = () => {
       return;
     }
     try {
+      const { data: header, error: headerError } = await supabase
+        .from('journal_entries')
+        .select('id, created_by')
+        .eq('id', entryId)
+        .maybeSingle();
+      if (headerError) throw headerError;
+      const createdBy = (header as any)?.created_by ? String((header as any).created_by) : '';
+      if (createdBy && user?.id && createdBy === user.id) {
+        throw new Error('لا يمكن اعتماد قيد أنشأته أنت.');
+      }
       const { error } = await supabase.rpc('approve_journal_entry', { p_entry_id: entryId });
       if (error) throw error;
       showNotification('تم اعتماد القيد.', 'success');
@@ -848,7 +858,7 @@ const FinancialReports: React.FC = () => {
     } catch (err: any) {
       showNotification(err?.message || 'تعذر اعتماد القيد.', 'error');
     }
-  }, [canApproveAccounting, loadCashFlow, loadDraftManualEntries, loadStatements, showNotification, supabase]);
+  }, [canApproveAccounting, loadCashFlow, loadDraftManualEntries, loadStatements, showNotification, supabase, user?.id]);
 
   const voidEntry = useCallback(async (entryId: string) => {
     if (!supabase) return;

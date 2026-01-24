@@ -136,6 +136,7 @@ const navLinks: Array<{ to: string; label: string; icon: React.ReactNode; permis
   { to: 'shift-reports', label: 'تقارير الورديات', icon: <Icons.ClockIcon />, permission: 'reports.view' },
   { to: 'profile', label: 'الملف الشخصي', icon: <Icons.ProfileIcon />, permission: 'profile.view' },
   { to: 'settings', label: 'الإعدادات', icon: <Icons.SettingsIcon />, permission: 'settings.manage' },
+  { to: 'approvals', label: 'الموافقات', icon: <Icons.ListIcon />, permission: 'approvals.manage' },
   { to: 'audit', label: 'سجل النظام', icon: <Icons.ListIcon />, permission: 'settings.manage' },
   { to: 'database', label: 'قاعدة البيانات', icon: <Icons.ListIcon />, permission: 'settings.manage' },
 ];
@@ -172,6 +173,7 @@ const routePermissions: Record<string, AdminPermission> = {
   'shift-reports': 'reports.view',
   'profile': 'profile.view',
   'settings': 'settings.manage',
+  'approvals': 'approvals.manage',
   'audit': 'settings.manage',
   'database': 'settings.manage',
 };

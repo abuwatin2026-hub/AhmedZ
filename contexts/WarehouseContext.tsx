@@ -216,6 +216,15 @@ export const WarehouseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     if (stockData && stockData.length > 0) {
       throw new Error('لا يمكن حذف مخزن يحتوي على مخزون');
     }
+    // Check if warehouse has any inventory movements
+    const { count: movCount, error: movError } = await supabase
+      .from('inventory_movements')
+      .select('id', { count: 'exact', head: true })
+      .eq('warehouse_id', id);
+    if (movError) throw movError;
+    if ((typeof movCount === 'number' ? movCount : 0) > 0) {
+      throw new Error('لا يمكن حذف مخزن مرتبط بحركات مخزون.');
+    }
 
     const { error: deleteError } = await supabase
       .from('warehouses')
