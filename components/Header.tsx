@@ -6,6 +6,7 @@ import { useUserAuth } from '../contexts/UserAuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useNotification } from '../contexts/NotificationContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useSettings } from '../contexts/SettingsContext';
 import { useNavigate } from 'react-router-dom';
 import { AdminIcon, CartIcon, InfoIcon, LogoutIcon, MoonIcon, ProfileIcon, ReceiptIcon, SunIcon, UserIcon, DownloadIcon } from './icons';
 import Logo from './Logo';
@@ -226,11 +227,14 @@ const Header: React.FC = () => {
     const { userOrders } = useOrders();
     const { isAuthenticated: isUserAuthenticated } = useUserAuth();
     const { theme, toggleTheme } = useTheme();
+    const { settings, language } = useSettings();
     const location = useLocation();
     const cartCount = getCartCount();
 
     const isHomePage = location.pathname === '/';
     const hasActiveOrders = userOrders.some(o => o.status !== 'delivered');
+    const storeName = settings.cafeteriaName?.[language] || settings.cafeteriaName?.ar || settings.cafeteriaName?.en;
+    const storeNameEn = settings.cafeteriaName?.en;
 
 
     return (
@@ -240,9 +244,24 @@ const Header: React.FC = () => {
                 <YemeniPattern type="zigzag" color="gold" />
             </div>
 
-            <div className="container mx-auto max-w-screen-2xl px-4 sm:px-6 lg:px-8 py-3 flex justify-between items-center">
-                <Link to="/" className="hover:scale-105 transition-transform flex-shrink-0">
-                    <Logo size="md" variant="full" />
+            <div className="container mx-auto max-w-screen-2xl px-4 sm:px-6 lg:px-8 py-3 grid grid-cols-[1fr_auto] items-center gap-3">
+                <Link to="/" className="hover:scale-105 transition-transform min-w-0">
+                    <span className="md:hidden flex items-center gap-2 min-w-0">
+                        <Logo size="sm" variant="icon" className="shrink-0" />
+                        <span className="min-w-0 flex flex-col leading-tight">
+                            <span className="text-[11px] font-black text-primary-500 whitespace-normal break-words">
+                                {storeName}
+                            </span>
+                            {storeNameEn && (
+                                <span className="text-[10px] text-gray-600 dark:text-gray-400 font-english whitespace-normal break-words">
+                                    {storeNameEn}
+                                </span>
+                            )}
+                        </span>
+                    </span>
+                    <span className="hidden md:inline-flex">
+                        <Logo size="md" variant="full" />
+                    </span>
                 </Link>
 
                 <div className="flex items-center space-x-3 rtl:space-x-reverse">

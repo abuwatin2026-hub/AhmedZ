@@ -416,6 +416,7 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
   }, []);
 
   const updateSettings = async (newSettings: AppSettings) => {
+    const previous = settings;
     const merged = mergeSettings(defaultSettings, newSettings);
     setSettings(merged);
     const record: PersistedAppSettings = {
@@ -427,14 +428,16 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
       updatedAt: new Date().toISOString(),
     };
     const supabase = getSupabaseClient();
-    if (supabase) {
-      try {
-        await supabase
-          .from('app_settings')
-          .upsert({ id: record.id, data: { id: 'app', settings: record.settings, updatedAt: record.updatedAt } }, { onConflict: 'id' });
-      } catch (error) {
-        logger.error(localizeSupabaseError(error));
-      }
+    if (!supabase) {
+      setSettings(previous);
+      throw new Error('Supabase غير مهيأ.');
+    }
+    const { error } = await supabase
+      .from('app_settings')
+      .upsert({ id: record.id, data: { id: 'app', settings: record.settings, updatedAt: record.updatedAt } }, { onConflict: 'id' });
+    if (error) {
+      setSettings(previous);
+      throw new Error(localizeSupabaseError(error));
     }
   };
 

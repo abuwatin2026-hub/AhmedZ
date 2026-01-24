@@ -4,8 +4,8 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 
 // https://vitejs.dev/config/
-export default defineConfig(({ mode }) => ({
-  base: mode === 'capacitor' ? './' : '/',
+export default defineConfig(({ mode, command }) => ({
+  base: command === 'build' ? './' : (mode === 'capacitor' ? './' : '/'),
   plugins: [
     react(),
     {

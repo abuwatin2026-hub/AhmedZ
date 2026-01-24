@@ -103,7 +103,7 @@ const HomeScreen: React.FC = () => {
 
           <div className="space-y-4 relative z-10">
             <SearchBar searchTerm={searchTerm} onSearchChange={setSearchTerm} />
-            <div className="sm:overflow-visible overflow-x-auto no-scrollbar -mx-1 sm:mx-0">
+            <div className="sm:overflow-visible overflow-x-auto no-scrollbar mx-0">
               <div className="flex justify-start sm:justify-center gap-2 sm:gap-3 pt-2 px-1">
                 {categories.map((category) => (
                   <button

@@ -550,16 +550,27 @@ const SettingsScreen: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
-    await updateSettings(formState);
-    setIsSaving(false);
-    showNotification('تم حفظ الإعدادات بنجاح!', 'success');
+    try {
+      await updateSettings(formState);
+      showNotification('تم حفظ الإعدادات بنجاح!', 'success');
+    } catch (err: any) {
+      showNotification(err?.message || 'فشل حفظ الإعدادات.', 'error');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleMaintenanceToggleInstant = async (enabled: boolean) => {
     setIsMaintenanceSaving(true);
     const next = { ...formState, maintenanceEnabled: enabled, maintenanceMessage: formState.maintenanceMessage || 'نُجري صيانة مؤقتًا، الرجاء المحاولة لاحقًا.' };
     setFormState(next);
-    await updateSettings(next);
+    try {
+      await updateSettings(next);
+    } catch (err: any) {
+      showNotification(err?.message || 'فشل تطبيق وضع الصيانة.', 'error');
+      setIsMaintenanceSaving(false);
+      return;
+    }
     try {
       const supabase = getSupabaseClient();
       if (supabase) {
