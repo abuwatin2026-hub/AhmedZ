@@ -522,7 +522,7 @@ const SalesReports: React.FC = () => {
 
             <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-md flex flex-col md:flex-row gap-4 items-center">
                 <div className="flex items-center gap-2">
-                    <label htmlFor="startDate">من:</label>
+                    <label htmlFor="startDate" title="فلتر التاريخ يعتمد على: تاريخ إصدار الفاتورة إن وُجد، وإلا paid_at ثم delivered_at ثم created_at.">من:</label>
                     <input
                         type="date"
                         id="startDate"
@@ -535,7 +535,7 @@ const SalesReports: React.FC = () => {
                     />
                 </div>
                 <div className="flex items-center gap-2">
-                    <label htmlFor="endDate">إلى:</label>
+                    <label htmlFor="endDate" title="فلتر التاريخ يعتمد على: تاريخ إصدار الفاتورة إن وُجد، وإلا paid_at ثم delivered_at ثم created_at.">إلى:</label>
                     <input
                         type="date"
                         id="endDate"
@@ -562,7 +562,7 @@ const SalesReports: React.FC = () => {
                     </select>
                 </div>
                 <div className="flex items-center gap-2">
-                    <label htmlFor="invoiceOnly">فواتير فقط</label>
+                    <label htmlFor="invoiceOnly" title="عند التفعيل: يعتمد التقرير فقط على invoiceSnapshot (الفواتير المصدرة) بدل بيانات الطلب قبل الإصدار.">فواتير فقط</label>
                     <input
                         id="invoiceOnly"
                         type="checkbox"
@@ -570,6 +570,9 @@ const SalesReports: React.FC = () => {
                         onChange={(e) => setInvoiceOnly(e.target.checked)}
                         className="h-4 w-4"
                     />
+                </div>
+                <div className="text-xs text-gray-500 dark:text-gray-400 md:ml-auto">
+                    تاريخ التقرير: invoice_date → paid_at → delivered_at → created_at
                 </div>
                 <div className="flex gap-2 flex-wrap justify-center">
                     <button type="button" onClick={() => applyPreset('today')} className={`px-3 py-2 rounded-lg text-sm font-semibold border ${rangePreset === 'today' ? 'bg-orange-500 text-white border-orange-500' : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600'}`}>اليوم</button>

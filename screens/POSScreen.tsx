@@ -47,13 +47,7 @@ const POSScreen: React.FC = () => {
   const pendingFilterRef = useRef<HTMLInputElement>(null);
   const [selectedCartItemId, setSelectedCartItemId] = useState<string | null>(null);
   const [pendingSelectedId, setPendingSelectedId] = useState<string | null>(null);
-  const [touchMode, setTouchMode] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem('pos_touch_mode') === '1';
-    } catch {
-      return false;
-    }
-  });
+  const [touchMode, setTouchMode] = useState<boolean>(false);
   const pricingCacheRef = useRef<Map<string, { unitPrice: number; unitPricePerKg?: number }>>(new Map());
   const pricingRunIdRef = useRef(0);
   const [pricingBusy, setPricingBusy] = useState(false);
@@ -91,11 +85,6 @@ const POSScreen: React.FC = () => {
     if (Number(discountValue) > 0) setDiscountValue(0);
   }, [discountValue, hasPromotionLines]);
 
-  useEffect(() => {
-    try {
-      localStorage.setItem('pos_touch_mode', touchMode ? '1' : '0');
-    } catch {}
-  }, [touchMode]);
 
   useEffect(() => {
     void fetchCustomers();

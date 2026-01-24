@@ -6,9 +6,10 @@ import { computeCartItemPricing } from '../utils/orderUtils';
 interface InvoiceProps {
   order: Order;
   settings: AppSettings;
+  audit?: any;
 }
 
-const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings }, ref) => {
+const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, audit }, ref) => {
     const lang = 'ar';
     const { getDeliveryZoneById } = useDeliveryZones();
     const invoiceSnapshot = order.invoiceSnapshot;
@@ -162,6 +163,45 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings }, r
                              <div className="flex justify-between items-center text-green-600">
                                 <span>الخصم</span>
                                 <span className="font-mono">- {(invoiceOrder.discountAmount || 0).toFixed(2)} ج.م</span>
+                            </div>
+                        )}
+                        {audit && (audit.discountType || audit.journalEntryId || (Array.isArray(audit.promotions) && audit.promotions.length > 0)) && (
+                            <div className="mt-3 p-3 bg-gray-50 rounded-lg border border-gray-200 text-xs text-gray-700 space-y-1">
+                                {audit.discountType && (
+                                    <div className="flex justify-between gap-2">
+                                        <span className="font-semibold">نوع الخصم</span>
+                                        <span dir="ltr">{String(audit.discountType)}</span>
+                                    </div>
+                                )}
+                                {Array.isArray(audit.promotions) && audit.promotions.length > 0 && (
+                                    <div className="space-y-1">
+                                        <div className="font-semibold">العروض</div>
+                                        {audit.promotions.map((p: any, idx: number) => (
+                                            <div key={`${p?.promotionId || idx}`} className="flex justify-between gap-2">
+                                                <span className="truncate">{String(p?.promotionName || '—')}</span>
+                                                <span className="font-mono" dir="ltr">
+                                                    {String(p?.promotionId || '').slice(-8)}
+                                                    {p?.approvalRequestId ? ` • APR-${String(p.approvalRequestId).slice(-8)}` : ''}
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                                {audit.discountType === 'Manual Discount' && audit.manualDiscountApprovalRequestId && (
+                                    <div className="flex justify-between gap-2">
+                                        <span className="font-semibold">موافقة الخصم</span>
+                                        <span className="font-mono" dir="ltr">
+                                            APR-{String(audit.manualDiscountApprovalRequestId).slice(-8)}
+                                            {audit.manualDiscountApprovalStatus ? ` • ${String(audit.manualDiscountApprovalStatus)}` : ''}
+                                        </span>
+                                    </div>
+                                )}
+                                {audit.journalEntryId && (
+                                    <div className="flex justify-between gap-2">
+                                        <span className="font-semibold">قيد اليومية</span>
+                                        <span className="font-mono" dir="ltr">JE-{String(audit.journalEntryId).slice(-8)}</span>
+                                    </div>
+                                )}
                             </div>
                         )}
                         <div className="border-t-2 border-gray-200"></div>

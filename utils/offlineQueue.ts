@@ -178,6 +178,23 @@ export const processQueue = async (): Promise<{ processed: number; remaining: nu
     for (const t of tasks) {
       try {
         if (t.kind === 'rpc') {
+          if (t.name === 'sync_offline_pos_sale') {
+            const offlineId = String((t.args as any)?.p_offline_id || '');
+            const orderId = String((t.args as any)?.p_order_id || '');
+            const warehouseId = String((t.args as any)?.p_warehouse_id || '');
+            if (offlineId && orderId && warehouseId) {
+              const meta = readPosOrders().find((o) => o.offlineId === offlineId);
+              const createdAtIso = meta?.createdAt ? new Date(meta.createdAt).toISOString() : new Date().toISOString();
+              try {
+                await supabase.rpc('register_pos_offline_sale_created', {
+                  p_offline_id: offlineId,
+                  p_order_id: orderId,
+                  p_created_at: createdAtIso,
+                  p_warehouse_id: warehouseId,
+                });
+              } catch {}
+            }
+          }
           const { data, error } = await supabase.rpc(t.name, t.args);
           if (error) throw error;
           if (t.name === 'sync_offline_pos_sale' && data && typeof data === 'object') {
@@ -188,11 +205,19 @@ export const processQueue = async (): Promise<{ processed: number; remaining: nu
                 setOfflinePosOrderState(offlineId, 'DELIVERED');
               } else if (status === 'CONFLICT') {
                 setOfflinePosOrderState(offlineId, 'CONFLICT', String((data as any).error || ''));
+              } else if (status === 'REQUIRES_RECONCILIATION') {
+                const reqId = String((data as any).approvalRequestId || '');
+                const msg = reqId ? `يتطلب اعتماد تسوية: ${reqId}` : 'يتطلب اعتماد تسوية';
+                setOfflinePosOrderState(offlineId, 'CONFLICT', msg);
               } else if (status === 'FAILED') {
                 setOfflinePosOrderState(offlineId, 'FAILED', String((data as any).error || ''));
               } else if (status === 'SYNCED') {
                 setOfflinePosOrderState(offlineId, 'SYNCED');
               }
+            }
+            if (status === 'REQUIRES_RECONCILIATION') {
+              processed += 1;
+              continue;
             }
           }
         } else {

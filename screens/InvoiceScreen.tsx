@@ -11,6 +11,7 @@ import PrintableInvoice from '../components/admin/PrintableInvoice';
 import { Capacitor } from '@capacitor/core';
 import PageLoader from '../components/PageLoader';
 import { useSettings } from '../contexts/SettingsContext';
+import { getSupabaseClient } from '../supabase';
 
 
 const InvoiceScreen: React.FC = () => {
@@ -23,9 +24,35 @@ const InvoiceScreen: React.FC = () => {
     const invoiceRef = useRef<HTMLDivElement>(null);
     const [isSharing, setIsSharing] = useState(false);
     const [isPrinting, setIsPrinting] = useState(false);
+    const [invoiceAudit, setInvoiceAudit] = useState<any>(null);
     const { settings, language } = useSettings();
     const storeName = (settings.cafeteriaName?.[language] || settings.cafeteriaName?.ar || settings.cafeteriaName?.en || '').trim();
     const safeStoreSlug = storeName.replace(/\s+/g, '-');
+
+    useEffect(() => {
+        if (!order?.id) {
+            setInvoiceAudit(null);
+            return;
+        }
+        const supabase = getSupabaseClient();
+        if (!supabase) {
+            setInvoiceAudit(null);
+            return;
+        }
+        let cancelled = false;
+        (async () => {
+            try {
+                const { data, error } = await supabase.rpc('get_invoice_audit', { p_order_id: order.id });
+                if (error) throw error;
+                if (!cancelled) setInvoiceAudit(data || null);
+            } catch {
+                if (!cancelled) setInvoiceAudit(null);
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [order?.id]);
 
     const handleSharePdf = async () => {
         if (!order) return;
@@ -45,6 +72,7 @@ const InvoiceScreen: React.FC = () => {
             const thermalHtml = renderToString(
                 <PrintableInvoice
                     order={order}
+                    audit={invoiceAudit}
                     language="ar"
                     cafeteriaName={storeName}
                     cafeteriaPhone={settings.contactNumber || ''}
@@ -133,6 +161,7 @@ const InvoiceScreen: React.FC = () => {
         const content = renderToString(
             <PrintableInvoice
                 order={order}
+                audit={invoiceAudit}
                 language="ar"
                 cafeteriaName={storeName}
                 cafeteriaPhone={settings.contactNumber || ''}
@@ -229,7 +258,7 @@ const InvoiceScreen: React.FC = () => {
                 </div>
             </div>
 
-            <Invoice ref={invoiceRef} order={order} settings={settings as any} />
+            <Invoice ref={invoiceRef} order={order} settings={settings as any} audit={invoiceAudit} />
         </div>
     );
 };

@@ -32,6 +32,7 @@ type IncomeBreakdown = {
   netRevenue: number;
   cogs: number;
   shrinkage: number;
+  promotionExpense: number;
   operatingExpenses: number;
   grossProfit: number;
   netProfitDerived: number;
@@ -116,6 +117,56 @@ type APDocumentRow = {
   paid: number;
   outstanding: number;
   reference_number?: string | null;
+};
+
+type PromotionPerformanceRow = {
+  promotion_id: string;
+  promotion_name: string;
+  usage_count: number;
+  bundles_sold: number;
+  gross_before_promo: number;
+  net_after_promo: number;
+  promotion_expense: number;
+};
+
+type PromotionUsageDrillRow = {
+  promotion_usage_id: string;
+  order_id: string;
+  invoice_number: string | null;
+  channel: string | null;
+  created_at: string;
+  computed_original_total: number;
+  final_total: number;
+  promotion_expense: number;
+  journal_entry_id: string | null;
+};
+
+type PromotionExpenseDrillRow = {
+  entry_date: string;
+  journal_entry_id: string;
+  order_id: string;
+  invoice_number: string | null;
+  debit: number;
+  credit: number;
+  amount: number;
+  promotion_usage_ids: string[];
+  promotion_ids: string[];
+};
+
+type OfflineReconciliationRow = {
+  offline_id: string;
+  order_id: string;
+  warehouse_id: string | null;
+  state: string;
+  created_by: string | null;
+  created_at: string;
+  synced_at: string | null;
+  updated_at: string;
+  last_error: string | null;
+  reconciliation_status: string;
+  reconciliation_approval_request_id: string | null;
+  reconciled_by: string | null;
+  reconciled_at: string | null;
 };
 
 type FinancialReportFilters = {
@@ -396,10 +447,11 @@ const FinancialReports: React.FC = () => {
     const netRevenue = revenue + discounts + returns;
     const cogs = sumExpense((code) => code === '5010');
     const shrinkage = sumExpense((code) => code === '5020');
-    const operatingExpenses = sumExpense((code) => code !== '5010' && code !== '5020');
+    const promotionExpense = sumExpense((code) => code === '6150');
+    const operatingExpenses = sumExpense((code) => code !== '5010' && code !== '5020' && code !== '6150');
     const grossProfit = netRevenue - cogs - shrinkage;
-    const netProfitDerived = grossProfit - operatingExpenses + otherIncome;
-    return { revenue, discounts, returns, otherIncome, netRevenue, cogs, shrinkage, operatingExpenses, grossProfit, netProfitDerived };
+    const netProfitDerived = grossProfit - operatingExpenses - promotionExpense + otherIncome;
+    return { revenue, discounts, returns, otherIncome, netRevenue, cogs, shrinkage, promotionExpense, operatingExpenses, grossProfit, netProfitDerived };
   }, [trialBalance]);
   const [compareIncome, setCompareIncome] = useState(false);
   const [compareBalance, setCompareBalance] = useState(false);
@@ -483,6 +535,28 @@ const FinancialReports: React.FC = () => {
     aging: null,
     periods: null,
   });
+
+  const promoExpensePolicyText = useMemo(() => {
+    return [
+      'سياسة محاسبية:',
+      'تُسجّل خصومات العروض الترويجية كمصروف مستقل (Promotion Expense) بدل خصمها من إيراد الصنف.',
+      'الهدف هو الحفاظ على “إيراد الصنف الحقيقي” بدون تعديل، مع إظهار تكلفة التسويق كمصروف واضح وقابل للتدقيق.',
+    ].join(' ');
+  }, []);
+
+  const [promotionExpenseDrillOpen, setPromotionExpenseDrillOpen] = useState(false);
+  const [promotionExpenseDrillLoading, setPromotionExpenseDrillLoading] = useState(false);
+  const [promotionExpenseDrillRows, setPromotionExpenseDrillRows] = useState<PromotionExpenseDrillRow[]>([]);
+
+  const [promotionPerformanceLoading, setPromotionPerformanceLoading] = useState(false);
+  const [promotionPerformanceRows, setPromotionPerformanceRows] = useState<PromotionPerformanceRow[]>([]);
+  const [promotionDrillOpen, setPromotionDrillOpen] = useState<{ promotionId: string; name: string } | null>(null);
+  const [promotionDrillLoading, setPromotionDrillLoading] = useState(false);
+  const [promotionDrillRows, setPromotionDrillRows] = useState<PromotionUsageDrillRow[]>([]);
+
+  const [offlineReconciliationLoading, setOfflineReconciliationLoading] = useState(false);
+  const [offlineReconciliationState, setOfflineReconciliationState] = useState<string>('');
+  const [offlineReconciliationRows, setOfflineReconciliationRows] = useState<OfflineReconciliationRow[]>([]);
 
   const isBusy = useMemo(() => Object.values(loading).some(Boolean), [loading]);
 
@@ -619,6 +693,137 @@ const FinancialReports: React.FC = () => {
       setLoadingKey('statements', false);
     }
   }, [appliedFilters.asOfDate, periodRangeParams, setLoadingKey, showNotification, supabase]);
+
+  const getEffectiveStartEnd = useCallback(() => {
+    if (appliedFilters.startDate && appliedFilters.endDate) {
+      return { start: appliedFilters.startDate, end: appliedFilters.endDate };
+    }
+    const { start, end } = getMonthRange(new Date());
+    return { start, end };
+  }, [appliedFilters.endDate, appliedFilters.startDate]);
+
+  const loadPromotionExpenseDrilldown = useCallback(async () => {
+    if (!supabase) return;
+    const { start, end } = getEffectiveStartEnd();
+    setPromotionExpenseDrillLoading(true);
+    try {
+      const { data, error } = await supabase.rpc('get_promotion_expense_drilldown', {
+        p_start_date: start,
+        p_end_date: end,
+        p_min_amount: 0,
+      });
+      if (error) throw error;
+      setPromotionExpenseDrillRows(((data as any[]) || []).map((r) => ({
+        entry_date: String(r.entry_date),
+        journal_entry_id: String(r.journal_entry_id),
+        order_id: String(r.order_id),
+        invoice_number: r.invoice_number ? String(r.invoice_number) : null,
+        debit: Number(r.debit) || 0,
+        credit: Number(r.credit) || 0,
+        amount: Number(r.amount) || 0,
+        promotion_usage_ids: Array.isArray(r.promotion_usage_ids) ? r.promotion_usage_ids.map((x: any) => String(x)) : [],
+        promotion_ids: Array.isArray(r.promotion_ids) ? r.promotion_ids.map((x: any) => String(x)) : [],
+      })));
+      setPromotionExpenseDrillOpen(true);
+    } catch (err: any) {
+      showNotification(err?.message || 'تعذر تحميل تفاصيل مصروف العروض', 'error');
+      setPromotionExpenseDrillRows([]);
+      setPromotionExpenseDrillOpen(true);
+    } finally {
+      setPromotionExpenseDrillLoading(false);
+    }
+  }, [getEffectiveStartEnd, showNotification, supabase]);
+
+  const loadPromotionPerformance = useCallback(async () => {
+    if (!supabase) return;
+    const { start, end } = getEffectiveStartEnd();
+    setPromotionPerformanceLoading(true);
+    try {
+      const { data, error } = await supabase.rpc('get_promotion_performance', {
+        p_start_date: start,
+        p_end_date: end,
+        p_promotion_id: null,
+      });
+      if (error) throw error;
+      setPromotionPerformanceRows(((data as any[]) || []).map((r) => ({
+        promotion_id: String(r.promotion_id),
+        promotion_name: String(r.promotion_name),
+        usage_count: Number(r.usage_count) || 0,
+        bundles_sold: Number(r.bundles_sold) || 0,
+        gross_before_promo: Number(r.gross_before_promo) || 0,
+        net_after_promo: Number(r.net_after_promo) || 0,
+        promotion_expense: Number(r.promotion_expense) || 0,
+      })));
+    } catch (err: any) {
+      showNotification(err?.message || 'تعذر تحميل تقرير العروض', 'error');
+      setPromotionPerformanceRows([]);
+    } finally {
+      setPromotionPerformanceLoading(false);
+    }
+  }, [getEffectiveStartEnd, showNotification, supabase]);
+
+  const openPromotionDrilldown = useCallback(async (promotionId: string, name: string) => {
+    if (!supabase) return;
+    const { start, end } = getEffectiveStartEnd();
+    setPromotionDrillOpen({ promotionId, name });
+    setPromotionDrillLoading(true);
+    try {
+      const { data, error } = await supabase.rpc('get_promotion_usage_drilldown', {
+        p_promotion_id: promotionId,
+        p_start_date: start,
+        p_end_date: end,
+      });
+      if (error) throw error;
+      setPromotionDrillRows(((data as any[]) || []).map((r) => ({
+        promotion_usage_id: String(r.promotion_usage_id),
+        order_id: String(r.order_id),
+        invoice_number: r.invoice_number ? String(r.invoice_number) : null,
+        channel: r.channel ? String(r.channel) : null,
+        created_at: String(r.created_at),
+        computed_original_total: Number(r.computed_original_total) || 0,
+        final_total: Number(r.final_total) || 0,
+        promotion_expense: Number(r.promotion_expense) || 0,
+        journal_entry_id: r.journal_entry_id ? String(r.journal_entry_id) : null,
+      })));
+    } catch (err: any) {
+      showNotification(err?.message || 'تعذر تحميل تفاصيل العرض', 'error');
+      setPromotionDrillRows([]);
+    } finally {
+      setPromotionDrillLoading(false);
+    }
+  }, [getEffectiveStartEnd, showNotification, supabase]);
+
+  const loadOfflineReconciliation = useCallback(async () => {
+    if (!supabase) return;
+    setOfflineReconciliationLoading(true);
+    try {
+      const { data, error } = await supabase.rpc('get_pos_offline_sales_dashboard', {
+        p_state: offlineReconciliationState ? offlineReconciliationState : null,
+        p_limit: 200,
+      });
+      if (error) throw error;
+      setOfflineReconciliationRows(((data as any[]) || []).map((r) => ({
+        offline_id: String(r.offline_id),
+        order_id: String(r.order_id),
+        warehouse_id: r.warehouse_id ? String(r.warehouse_id) : null,
+        state: String(r.state),
+        created_by: r.created_by ? String(r.created_by) : null,
+        created_at: String(r.created_at),
+        synced_at: r.synced_at ? String(r.synced_at) : null,
+        updated_at: String(r.updated_at),
+        last_error: typeof r.last_error === 'string' ? r.last_error : null,
+        reconciliation_status: String(r.reconciliation_status || 'NONE'),
+        reconciliation_approval_request_id: r.reconciliation_approval_request_id ? String(r.reconciliation_approval_request_id) : null,
+        reconciled_by: r.reconciled_by ? String(r.reconciled_by) : null,
+        reconciled_at: r.reconciled_at ? String(r.reconciled_at) : null,
+      })));
+    } catch (err: any) {
+      showNotification(err?.message || 'تعذر تحميل تسوية الأوفلاين', 'error');
+      setOfflineReconciliationRows([]);
+    } finally {
+      setOfflineReconciliationLoading(false);
+    }
+  }, [offlineReconciliationState, showNotification, supabase]);
 
   const loadStatementsComparison = useCallback(async () => {
     if (!supabase) return;
@@ -1097,7 +1302,9 @@ const FinancialReports: React.FC = () => {
     void loadCashFlow();
     void loadAging();
     void loadPeriods();
-  }, [appliedFilters, loadAging, loadCashFlow, loadPeriods, loadStatements]);
+    void loadPromotionPerformance();
+    void loadOfflineReconciliation();
+  }, [appliedFilters, loadAging, loadCashFlow, loadOfflineReconciliation, loadPeriods, loadPromotionPerformance, loadStatements]);
 
   useEffect(() => {
     void loadAccounts();
@@ -1541,6 +1748,156 @@ const FinancialReports: React.FC = () => {
           </div>
         </div>
       )}
+      {promotionExpenseDrillOpen && (
+        <div className="fixed inset-0 z-50">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setPromotionExpenseDrillOpen(false)} />
+          <div className="absolute inset-0 flex items-center justify-center p-4">
+            <div className="w-full max-w-4xl bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+              <div className="flex items-center justify-between gap-3 p-4 border-b border-gray-100 dark:border-gray-700">
+                <div className="min-w-0">
+                  <div className="text-lg font-bold dark:text-white truncate">تفاصيل مصروف العروض (6150)</div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    الرابط: قائمة الدخل → دفتر الأستاذ → القيد
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAccountCode('6150');
+                      void loadLedgerFor('6150');
+                      ledgerSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                      setPromotionExpenseDrillOpen(false);
+                    }}
+                    className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 font-semibold hover:bg-gray-50 dark:hover:bg-gray-700"
+                  >
+                    فتح دفتر الأستاذ
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPromotionExpenseDrillOpen(false)}
+                    className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 font-semibold hover:bg-gray-50 dark:hover:bg-gray-700"
+                  >
+                    إغلاق
+                  </button>
+                </div>
+              </div>
+              <div className="p-4">
+                {promotionExpenseDrillLoading && <div className="py-8 text-center text-gray-500 dark:text-gray-400 font-semibold">جاري التحميل...</div>}
+                {!promotionExpenseDrillLoading && (
+                  <div className="overflow-auto max-h-[70vh]">
+                    <table className="min-w-full text-sm">
+                      <thead className="text-gray-500 dark:text-gray-400">
+                        <tr className="border-b dark:border-gray-700">
+                          <th className="py-2 px-3 text-right border-l dark:border-gray-700">التاريخ</th>
+                          <th className="py-2 px-3 text-right border-l dark:border-gray-700">الفاتورة</th>
+                          <th className="py-2 px-3 text-right border-l dark:border-gray-700">المبلغ</th>
+                          <th className="py-2 px-3 text-right border-l dark:border-gray-700">الطلب</th>
+                          <th className="py-2 px-3 text-right border-l dark:border-gray-700">القيد</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {promotionExpenseDrillRows.map((r) => (
+                          <tr key={`${r.journal_entry_id}-${r.order_id}`} className="border-b dark:border-gray-700">
+                            <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">{formatDateInput(r.entry_date)}</td>
+                            <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">{r.invoice_number ? r.invoice_number : '—'}</td>
+                            <td className="py-2 px-3 font-bold dark:text-white border-l dark:border-gray-700" dir="ltr">{formatMoney(r.amount)}</td>
+                            <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">#{shortRef(r.order_id, 8)}</td>
+                            <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700">
+                              <button
+                                type="button"
+                                onClick={() => void openEntryModal(r.journal_entry_id)}
+                                className="px-2 py-1 rounded-md bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900 text-xs font-semibold"
+                                dir="ltr"
+                              >
+                                #{shortRef(r.journal_entry_id, 8)}
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                        {promotionExpenseDrillRows.length === 0 && (
+                          <tr><td colSpan={5} className="py-8 text-center text-gray-500 dark:text-gray-400">لا توجد بيانات</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {promotionDrillOpen && (
+        <div className="fixed inset-0 z-50">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setPromotionDrillOpen(null)} />
+          <div className="absolute inset-0 flex items-center justify-center p-4">
+            <div className="w-full max-w-5xl bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+              <div className="flex items-center justify-between gap-3 p-4 border-b border-gray-100 dark:border-gray-700">
+                <div className="min-w-0">
+                  <div className="text-lg font-bold dark:text-white truncate">تفاصيل العرض</div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate" dir="ltr">
+                    {promotionDrillOpen.name} · {promotionDrillOpen.promotionId}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPromotionDrillOpen(null)}
+                  className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 font-semibold hover:bg-gray-50 dark:hover:bg-gray-700"
+                >
+                  إغلاق
+                </button>
+              </div>
+              <div className="p-4">
+                {promotionDrillLoading && <div className="py-8 text-center text-gray-500 dark:text-gray-400 font-semibold">جاري التحميل...</div>}
+                {!promotionDrillLoading && (
+                  <div className="overflow-auto max-h-[70vh]">
+                    <table className="min-w-full text-sm">
+                      <thead className="text-gray-500 dark:text-gray-400">
+                        <tr className="border-b dark:border-gray-700">
+                          <th className="py-2 px-3 text-right border-l dark:border-gray-700">التاريخ</th>
+                          <th className="py-2 px-3 text-right border-l dark:border-gray-700">الفاتورة</th>
+                          <th className="py-2 px-3 text-right border-l dark:border-gray-700">قبل</th>
+                          <th className="py-2 px-3 text-right border-l dark:border-gray-700">بعد</th>
+                          <th className="py-2 px-3 text-right border-l dark:border-gray-700">تكلفة العرض</th>
+                          <th className="py-2 px-3 text-right border-l dark:border-gray-700">القيد</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {promotionDrillRows.map((r) => (
+                          <tr key={r.promotion_usage_id} className="border-b dark:border-gray-700">
+                            <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">{formatDateInput(r.created_at)}</td>
+                            <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">{r.invoice_number ? r.invoice_number : `#${shortRef(r.order_id, 8)}`}</td>
+                            <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">{formatMoney(r.computed_original_total)}</td>
+                            <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">{formatMoney(r.final_total)}</td>
+                            <td className="py-2 px-3 font-bold dark:text-white border-l dark:border-gray-700" dir="ltr">{formatMoney(r.promotion_expense)}</td>
+                            <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700">
+                              {r.journal_entry_id ? (
+                                <button
+                                  type="button"
+                                  onClick={() => void openEntryModal(r.journal_entry_id as string)}
+                                  className="px-2 py-1 rounded-md bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900 text-xs font-semibold"
+                                  dir="ltr"
+                                >
+                                  #{shortRef(r.journal_entry_id, 8)}
+                                </button>
+                              ) : (
+                                '—'
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                        {promotionDrillRows.length === 0 && (
+                          <tr><td colSpan={6} className="py-8 text-center text-gray-500 dark:text-gray-400">لا توجد بيانات</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       {arDetailsOpen.open && (
         <div className="fixed inset-0 z-50">
           <div className="absolute inset-0 bg-black/50" onClick={() => setArDetailsOpen({ open: false, customerId: '', title: '' })} />
@@ -1877,15 +2234,15 @@ const FinancialReports: React.FC = () => {
         </div>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
           <div>
-            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-200">من</label>
+            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-200" title="في المحاسبة: الفترة تُطبّق على تاريخ القيد (journal_entries.entry_date) وتقارير GL/P&L.">من</label>
             <input value={draftFilters.startDate} onChange={(e) => setDraftFilters((prev) => ({ ...prev, startDate: e.target.value }))} type="date" className="mt-1 w-full px-3 py-2 rounded-lg border dark:border-gray-700 bg-white dark:bg-gray-900" />
           </div>
           <div>
-            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-200">إلى</label>
+            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-200" title="في المحاسبة: الفترة تُطبّق على تاريخ القيد (journal_entries.entry_date) وتقارير GL/P&L.">إلى</label>
             <input value={draftFilters.endDate} onChange={(e) => setDraftFilters((prev) => ({ ...prev, endDate: e.target.value }))} type="date" className="mt-1 w-full px-3 py-2 rounded-lg border dark:border-gray-700 bg-white dark:bg-gray-900" />
           </div>
           <div>
-            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-200">كما في</label>
+            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-200" title="كما في: تاريخ مرجعي للميزانية العمومية/ميزان المراجعة/أعمار الذمم.">كما في</label>
             <input value={draftFilters.asOfDate} onChange={(e) => setDraftFilters((prev) => ({ ...prev, asOfDate: e.target.value }))} type="date" className="mt-1 w-full px-3 py-2 rounded-lg border dark:border-gray-700 bg-white dark:bg-gray-900" />
           </div>
           <div>
@@ -1909,6 +2266,9 @@ const FinancialReports: React.FC = () => {
         )}
         <div className="text-xs text-gray-500 dark:text-gray-400">
           الفترة المطبقة: <span dir="ltr">{appliedFilters.startDate || '—'}</span> → <span dir="ltr">{appliedFilters.endDate || '—'}</span> | كما في: <span dir="ltr">{appliedFilters.asOfDate || '—'}</span>
+        </div>
+        <div className="text-xs text-gray-500 dark:text-gray-400">
+          تعريف التواريخ: من/إلى = entry_date للقيود · كما في = لقطة الميزانية/الذمم
         </div>
       </div>
 
@@ -1970,7 +2330,8 @@ const FinancialReports: React.FC = () => {
                     ['صافي الإيرادات', breakdown.netRevenue],
                     ['تكلفة البضاعة المباعة (COGS)', breakdown.cogs],
                     ['هالك/نقص المخزون', breakdown.shrinkage],
-                    ['مصروفات تشغيلية', breakdown.operatingExpenses],
+                    ['مصروف العروض الترويجية (Promotion Expense)', breakdown.promotionExpense],
+                    ['مصروفات تشغيلية (بدون العروض)', breakdown.operatingExpenses],
                     ['مجمل الربح', breakdown.grossProfit],
                     ['صافي الربح (مشتق)', breakdown.netProfitDerived],
                   ];
@@ -2073,17 +2434,238 @@ const FinancialReports: React.FC = () => {
                   <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">{formatMoney(breakdown.shrinkage)}</td>
                 </tr>
                 <tr className="border-b dark:border-gray-700">
+                  <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700">
+                    <div className="flex items-center justify-between gap-2">
+                      <span>مصروف العروض الترويجية (Promotion Expense)</span>
+                      <button
+                        type="button"
+                        onClick={() => void loadPromotionExpenseDrilldown()}
+                        disabled={promotionExpenseDrillLoading}
+                        className="px-2 py-0.5 rounded-md border border-gray-200 dark:border-gray-700 text-xs font-semibold text-gray-700 dark:text-gray-200 disabled:opacity-60"
+                        title="تفاصيل القيود المرتبطة بحساب مصروف العروض"
+                      >
+                        تفاصيل
+                      </button>
+                    </div>
+                  </td>
+                  <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">{formatMoney(breakdown.promotionExpense)}</td>
+                </tr>
+                <tr className="border-b dark:border-gray-700">
                   <td className="py-2 px-3 font-semibold dark:text-white border-l dark:border-gray-700">مجمل الربح</td>
                   <td className="py-2 px-3 font-semibold dark:text-white border-l dark:border-gray-700" dir="ltr">{formatMoney(breakdown.grossProfit)}</td>
                 </tr>
                 <tr className="border-b dark:border-gray-700">
-                  <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700">مصروفات تشغيلية</td>
+                  <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700">مصروفات تشغيلية (بدون العروض)</td>
                   <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">{formatMoney(breakdown.operatingExpenses)}</td>
                 </tr>
                 <tr>
                   <td className="py-2 px-3 font-bold dark:text-white border-l dark:border-gray-700">صافي الربح (مشتق)</td>
                   <td className="py-2 px-3 font-bold dark:text-white border-l dark:border-gray-700" dir="ltr">{formatMoney(breakdown.netProfitDerived)}</td>
                 </tr>
+              </tbody>
+            </table>
+          </div>
+          <div className="mt-3 text-xs text-gray-600 dark:text-gray-300">
+            {promoExpensePolicyText}
+          </div>
+        </div>
+        <div id="card-promotions" className="bg-white dark:bg-gray-800 rounded-xl shadow p-4">
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <div className="text-sm text-gray-500 dark:text-gray-400">تقرير أثر العروض (Promotion Impact)</div>
+              <div className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                الفترة: {appliedFilters.startDate && appliedFilters.endDate ? `${appliedFilters.startDate} → ${appliedFilters.endDate}` : 'الشهر الحالي'}
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => void loadPromotionPerformance()}
+                disabled={promotionPerformanceLoading}
+                className="px-2.5 py-1 rounded-lg border border-gray-200 dark:border-gray-700 text-xs font-semibold text-gray-700 dark:text-gray-200 disabled:opacity-60"
+              >
+                تحديث
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const headers = ['promotion_id', 'promotion_name', 'usage_count', 'bundles_sold', 'gross_before_promo', 'net_after_promo', 'promotion_expense'];
+                  const rows = promotionPerformanceRows.map((r) => ([
+                    r.promotion_id,
+                    r.promotion_name,
+                    r.usage_count,
+                    r.bundles_sold,
+                    r.gross_before_promo,
+                    r.net_after_promo,
+                    r.promotion_expense,
+                  ]));
+                  void exportToXlsx(
+                    headers,
+                    rows,
+                    `promotion_impact_${appliedFilters.startDate || 'month'}_${appliedFilters.endDate || 'month'}.xlsx`,
+                    { sheetName: 'Promotion Impact', currencyColumns: [4, 5, 6], currencyFormat: '#,##0.00' }
+                  );
+                }}
+                disabled={promotionPerformanceRows.length === 0}
+                className="px-2.5 py-1 rounded-lg border border-gray-200 dark:border-gray-700 text-xs font-semibold text-gray-700 dark:text-gray-200 disabled:opacity-60"
+              >
+                Excel
+              </button>
+            </div>
+          </div>
+          <div className="mt-3 overflow-auto">
+            <table className="min-w-full text-sm">
+              <thead className="text-gray-500 dark:text-gray-400">
+                <tr className="border-b dark:border-gray-700">
+                  <th className="py-2 px-3 text-right border-l dark:border-gray-700">العرض</th>
+                  <th className="py-2 px-3 text-right border-l dark:border-gray-700">عدد الاستخدام</th>
+                  <th className="py-2 px-3 text-right border-l dark:border-gray-700">Bundles</th>
+                  <th className="py-2 px-3 text-right border-l dark:border-gray-700">قبل</th>
+                  <th className="py-2 px-3 text-right border-l dark:border-gray-700">بعد</th>
+                  <th className="py-2 px-3 text-right border-l dark:border-gray-700">تكلفة</th>
+                  <th className="py-2 px-3 text-right border-l dark:border-gray-700">تفاصيل</th>
+                </tr>
+              </thead>
+              <tbody>
+                {promotionPerformanceRows.map((r) => (
+                  <tr key={r.promotion_id} className="border-b dark:border-gray-700">
+                    <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700">
+                      <div className="font-semibold">{r.promotion_name}</div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400" dir="ltr">{shortRef(r.promotion_id, 8)}</div>
+                    </td>
+                    <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">{Number(r.usage_count || 0).toLocaleString('en-US')}</td>
+                    <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">{Number(r.bundles_sold || 0).toLocaleString('en-US')}</td>
+                    <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">{formatMoney(r.gross_before_promo)}</td>
+                    <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">{formatMoney(r.net_after_promo)}</td>
+                    <td className="py-2 px-3 font-bold dark:text-white border-l dark:border-gray-700" dir="ltr">{formatMoney(r.promotion_expense)}</td>
+                    <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700">
+                      <button
+                        type="button"
+                        onClick={() => void openPromotionDrilldown(r.promotion_id, r.promotion_name)}
+                        className="px-2 py-1 rounded-md bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900 text-xs font-semibold"
+                      >
+                        Drill-down
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {!promotionPerformanceLoading && promotionPerformanceRows.length === 0 && (
+                  <tr><td colSpan={7} className="py-8 text-center text-gray-500 dark:text-gray-400">لا توجد بيانات</td></tr>
+                )}
+                {promotionPerformanceLoading && (
+                  <tr><td colSpan={7} className="py-8 text-center text-gray-500 dark:text-gray-400">جاري التحميل...</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <div className="mt-3 text-xs text-gray-600 dark:text-gray-300">
+            {promoExpensePolicyText}
+          </div>
+        </div>
+        <div id="card-offline" className="bg-white dark:bg-gray-800 rounded-xl shadow p-4">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <div className="text-sm text-gray-500 dark:text-gray-400">لوحة تسوية أوفلاين POS</div>
+              <div className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                تمنع إعادة ترحيل حالات CONFLICT/FAILED بدون اعتماد تسوية
+              </div>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <select
+                value={offlineReconciliationState}
+                onChange={(e) => setOfflineReconciliationState(e.target.value)}
+                className="px-2.5 py-1 rounded-lg border border-gray-200 dark:border-gray-700 text-xs font-semibold bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200"
+                title="فلترة حسب حالة عملية الأوفلاين"
+              >
+                <option value="">الكل</option>
+                <option value="CREATED_OFFLINE">CREATED_OFFLINE</option>
+                <option value="SYNCED">SYNCED</option>
+                <option value="DELIVERED">DELIVERED</option>
+                <option value="CONFLICT">CONFLICT</option>
+                <option value="FAILED">FAILED</option>
+              </select>
+              <button
+                type="button"
+                onClick={() => void loadOfflineReconciliation()}
+                disabled={offlineReconciliationLoading}
+                className="px-2.5 py-1 rounded-lg border border-gray-200 dark:border-gray-700 text-xs font-semibold text-gray-700 dark:text-gray-200 disabled:opacity-60"
+              >
+                تحديث
+              </button>
+            </div>
+          </div>
+          <div className="mt-3 overflow-auto">
+            <table className="min-w-full text-sm">
+              <thead className="text-gray-500 dark:text-gray-400">
+                <tr className="border-b dark:border-gray-700">
+                  <th className="py-2 px-3 text-right border-l dark:border-gray-700">Offline ID</th>
+                  <th className="py-2 px-3 text-right border-l dark:border-gray-700">الحالة</th>
+                  <th className="py-2 px-3 text-right border-l dark:border-gray-700">الإنشاء</th>
+                  <th className="py-2 px-3 text-right border-l dark:border-gray-700">المزامنة</th>
+                  <th className="py-2 px-3 text-right border-l dark:border-gray-700">المنشئ</th>
+                  <th className="py-2 px-3 text-right border-l dark:border-gray-700">اعتماد</th>
+                  <th className="py-2 px-3 text-right border-l dark:border-gray-700">إجراء</th>
+                </tr>
+              </thead>
+              <tbody>
+                {offlineReconciliationRows.map((r) => {
+                  const canRequest = (r.state === 'CONFLICT' || r.state === 'FAILED') && r.reconciliation_status !== 'APPROVED';
+                  return (
+                    <tr key={r.offline_id} className="border-b dark:border-gray-700">
+                      <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700 font-mono" dir="ltr">{r.offline_id}</td>
+                      <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700 font-semibold" dir="ltr">{r.state}</td>
+                      <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">{formatDateInput(r.created_at)}</td>
+                      <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">{r.synced_at ? formatDateInput(r.synced_at) : '—'}</td>
+                      <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">{r.created_by ? shortRef(r.created_by, 8) : '—'}</td>
+                      <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700">
+                        <div className="flex flex-col gap-1">
+                          <div className="font-semibold" dir="ltr">{r.reconciliation_status}</div>
+                          {r.reconciliation_approval_request_id ? (
+                            <div className="text-xs text-gray-500 dark:text-gray-400" dir="ltr">#{shortRef(r.reconciliation_approval_request_id, 8)}</div>
+                          ) : null}
+                        </div>
+                      </td>
+                      <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700">
+                        <button
+                          type="button"
+                          disabled={!canRequest}
+                          onClick={() => {
+                            const reason = window.prompt('سبب طلب اعتماد تسوية الأوفلاين (اختياري):', r.last_error || '') || '';
+                            void (async () => {
+                              if (!supabase) return;
+                              try {
+                                const { data, error } = await supabase.rpc('request_offline_reconciliation', {
+                                  p_offline_id: r.offline_id,
+                                  p_reason: reason ? reason : null,
+                                });
+                                if (error) throw error;
+                                const status = String((data as any)?.status || '');
+                                const reqId = String((data as any)?.approvalRequestId || '');
+                                if (status === 'PENDING' && reqId) {
+                                  showNotification(`تم إرسال طلب اعتماد: #${shortRef(reqId, 8)}`, 'success');
+                                } else {
+                                  showNotification('تم تحديث حالة التسوية', 'success');
+                                }
+                                await loadOfflineReconciliation();
+                              } catch (err: any) {
+                                showNotification(err?.message || 'تعذر إرسال طلب الاعتماد', 'error');
+                              }
+                            })();
+                          }}
+                          className="px-2 py-1 rounded-md bg-indigo-600 text-white text-xs font-semibold disabled:opacity-50"
+                        >
+                          طلب اعتماد
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {!offlineReconciliationLoading && offlineReconciliationRows.length === 0 && (
+                  <tr><td colSpan={7} className="py-8 text-center text-gray-500 dark:text-gray-400">لا توجد بيانات</td></tr>
+                )}
+                {offlineReconciliationLoading && (
+                  <tr><td colSpan={7} className="py-8 text-center text-gray-500 dark:text-gray-400">جاري التحميل...</td></tr>
+                )}
               </tbody>
             </table>
           </div>

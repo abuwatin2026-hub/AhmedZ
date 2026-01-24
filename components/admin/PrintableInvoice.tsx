@@ -59,6 +59,7 @@ interface PrintableInvoiceProps {
     thermal?: boolean;
     isCopy?: boolean;
     copyNumber?: number;
+    audit?: any;
 }
 
 const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
@@ -72,6 +73,7 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
     thermal = false,
     isCopy = false,
     copyNumber,
+    audit,
 }) => {
     const invoiceSnapshot = order.invoiceSnapshot;
     const invoiceOrder = invoiceSnapshot
@@ -292,6 +294,51 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                         <span className="font-bold">{language === 'ar' ? 'كوبون الخصم:' : 'Coupon:'}</span>
                         <span>{invoiceOrder.appliedCouponCode}</span>
+                    </div>
+                )}
+                {audit && (audit.discountType || audit.journalEntryId || (Array.isArray(audit.promotions) && audit.promotions.length > 0)) && (
+                    <div style={{ marginTop: '8px', borderTop: '1px dashed #000', paddingTop: '6px', fontSize: thermal ? '10px' : '12px' }}>
+                        <div style={{ fontWeight: 700, marginBottom: '4px' }}>{language === 'ar' ? 'تفاصيل التدقيق' : 'Audit Details'}</div>
+                        {audit.discountType && (
+                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px' }}>
+                                <span>{language === 'ar' ? 'نوع الخصم' : 'Discount Type'}</span>
+                                <span style={{ fontWeight: 700 }} dir="ltr">{String(audit.discountType)}</span>
+                            </div>
+                        )}
+                        {Array.isArray(audit.promotions) && audit.promotions.length > 0 && (
+                            <div style={{ marginTop: '4px' }}>
+                                <div style={{ fontWeight: 700 }}>{language === 'ar' ? 'العروض' : 'Promotions'}</div>
+                                {audit.promotions.map((p: any, idx: number) => {
+                                    const promoName = String(p?.promotionName || '—');
+                                    const promoId = String(p?.promotionId || '');
+                                    const approvalId = String(p?.approvalRequestId || '');
+                                    return (
+                                        <div key={`${promoId || idx}`} style={{ display: 'flex', justifyContent: 'space-between', gap: '10px' }}>
+                                            <span>{promoName}</span>
+                                            <span style={{ fontFamily: 'monospace' }} dir="ltr">
+                                                {promoId ? promoId.slice(-8) : '—'}
+                                                {approvalId ? ` • APR-${approvalId.slice(-8)}` : ''}
+                                            </span>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                        {audit.discountType === 'Manual Discount' && audit.manualDiscountApprovalRequestId && (
+                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', marginTop: '4px' }}>
+                                <span>{language === 'ar' ? 'موافقة الخصم' : 'Discount Approval'}</span>
+                                <span style={{ fontFamily: 'monospace' }} dir="ltr">
+                                    APR-{String(audit.manualDiscountApprovalRequestId).slice(-8)}
+                                    {audit.manualDiscountApprovalStatus ? ` • ${String(audit.manualDiscountApprovalStatus)}` : ''}
+                                </span>
+                            </div>
+                        )}
+                        {audit.journalEntryId && (
+                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', marginTop: '4px' }}>
+                                <span>{language === 'ar' ? 'قيد اليومية' : 'Journal Entry'}</span>
+                                <span style={{ fontFamily: 'monospace', fontWeight: 700 }} dir="ltr">JE-{String(audit.journalEntryId).slice(-8)}</span>
+                            </div>
+                        )}
                     </div>
                 )}
             </div>
