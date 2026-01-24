@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">أحمد زنقاح</string>
-    <string name="title_activity_main">أحمد زنقاح</string>
-    <string name="package_name">com.caty.app</string>
-    <string name="custom_url_scheme">com.caty.app</string>
+    <string name="app_name">مؤسسة أحمد زنقاح</string>
+    <string name="title_activity_main">مؤسسة أحمد زنقاح</string>
+    <string name="package_name">com.ahmedzangah.app</string>
+    <string name="custom_url_scheme">com.ahmedzangah.app</string>
 </resources>

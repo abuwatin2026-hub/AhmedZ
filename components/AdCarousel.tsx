@@ -72,7 +72,7 @@ const AdCarousel: React.FC<AdCarouselProps> = ({ onCategorySelect }) => {
     };
 
     if (loading) {
-        return <div className="w-full aspect-[1/1] md:aspect-[16/9] bg-gray-300 dark:bg-gray-700 animate-pulse"></div>;
+        return <div className="w-full aspect-[4/3] md:aspect-[16/9] bg-gray-300 dark:bg-gray-700 animate-pulse"></div>;
     }
     
     if (activeAds.length === 0) {
@@ -81,7 +81,7 @@ const AdCarousel: React.FC<AdCarouselProps> = ({ onCategorySelect }) => {
 
     return (
         <div className="relative w-full">
-            <div className="relative aspect-[1/1] md:aspect-[16/9] overflow-hidden bg-gray-200 dark:bg-gray-800">
+            <div className="relative aspect-[4/3] md:aspect-[16/9] overflow-hidden bg-gray-200 dark:bg-gray-800">
                 {activeAds.map((ad, index) => (
                     <div 
                         key={ad.id} 

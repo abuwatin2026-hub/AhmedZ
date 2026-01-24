@@ -83,44 +83,46 @@ const HomeScreen: React.FC = () => {
 
   return (
     <div className="space-y-12">
-      <div className="relative w-full -mt-8 md:-mt-12 animate-fade-in z-0">
+      <div className="relative w-full mt-0 md:-mt-12 animate-fade-in z-0">
         <AdCarousel onCategorySelect={(category) => setSelectedCategory(normalizeCategoryKey(category) || 'all')} />
       </div>
 
       {/* Search and Filter Section */}
-      <section className="container mx-auto max-w-screen-2xl px-4 sm:px-6 lg:px-8 -mt-24 md:-mt-28 relative z-10 animate-fade-in-up">
-        <div className="bg-white dark:bg-gray-900 p-6 sm:p-8 rounded-2xl shadow-2xl border-2 border-gold-500/30 relative overflow-hidden">
+      <section className="container mx-auto max-w-screen-2xl px-3 sm:px-6 lg:px-8 mt-2 md:-mt-28 relative z-10 animate-fade-in-up">
+        <div className="bg-white dark:bg-gray-900 p-3 sm:p-6 rounded-2xl shadow-2xl border-2 border-gold-500/30 relative overflow-hidden">
           {/* Decorative corners */}
-          <div className="absolute top-0 left-0 w-16 h-16 border-t-2 border-l-2 border-gold-500"></div>
-          <div className="absolute top-0 right-0 w-16 h-16 border-t-2 border-r-2 border-gold-500"></div>
-          <div className="absolute bottom-0 left-0 w-16 h-16 border-b-2 border-l-2 border-gold-500"></div>
-          <div className="absolute bottom-0 right-0 w-16 h-16 border-b-2 border-r-2 border-gold-500"></div>
+          <div className="hidden md:block absolute top-0 left-0 w-16 h-16 border-t-2 border-l-2 border-gold-500"></div>
+          <div className="hidden md:block absolute top-0 right-0 w-16 h-16 border-t-2 border-r-2 border-gold-500"></div>
+          <div className="hidden md:block absolute bottom-0 left-0 w-16 h-16 border-b-2 border-l-2 border-gold-500"></div>
+          <div className="hidden md:block absolute bottom-0 right-0 w-16 h-16 border-b-2 border-r-2 border-gold-500"></div>
 
           {/* Top zigzag pattern */}
-          <div className="absolute top-0 left-0 right-0">
+          <div className="hidden md:block absolute top-0 left-0 right-0">
             <YemeniPattern type="zigzag" color="gold" />
           </div>
 
           <div className="space-y-4 relative z-10">
             <SearchBar searchTerm={searchTerm} onSearchChange={setSearchTerm} />
-            <div className="flex justify-center flex-wrap gap-3 pt-2">
-              {categories.map((category) => (
-                <button
-                  key={category}
-                  onClick={() => setSelectedCategory(category)}
-                  className={`px-6 py-2.5 rounded-full font-bold text-sm transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gold-500 dark:focus:ring-offset-gray-900 ${selectedCategory === category
-                      ? 'bg-red-gradient text-white shadow-red scale-105 animate-glow'
-                      : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gold-50 dark:hover:bg-gray-700 border-2 border-gold-500/20 hover:border-gold-500/50'
-                    }`}
-                >
-                  {category === 'all' ? 'الكل' : getCategoryLabel(category, 'ar')}
-                </button>
-              ))}
+            <div className="sm:overflow-visible overflow-x-auto no-scrollbar -mx-1 sm:mx-0">
+              <div className="flex justify-start sm:justify-center gap-2 sm:gap-3 pt-2 px-1">
+                {categories.map((category) => (
+                  <button
+                    key={category}
+                    onClick={() => setSelectedCategory(category)}
+                    className={`px-4 sm:px-6 py-2 sm:py-2.5 rounded-full font-bold text-sm transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gold-500 dark:focus:ring-offset-gray-900 ${selectedCategory === category
+                        ? 'bg-red-gradient text-white shadow-red scale-105 animate-glow'
+                        : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gold-50 dark:hover:bg-gray-700 border-2 border-gold-500/20 hover:border-gold-500/50'
+                      }`}
+                  >
+                    {category === 'all' ? 'الكل' : getCategoryLabel(category, 'ar')}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
           {/* Bottom zigzag pattern */}
-          <div className="absolute bottom-0 left-0 right-0">
+          <div className="hidden md:block absolute bottom-0 left-0 right-0">
             <YemeniPattern type="zigzag" color="gold" />
           </div>
         </div>
@@ -153,9 +155,9 @@ const HomeScreen: React.FC = () => {
 
       {(menuLoading || featuredItems.length > 0) && (
         <section id="featured-items-section" className="animate-fade-in-up" style={{ animationDelay: '100ms' }}>
-          <div className="container mx-auto max-w-screen-2xl px-4 sm:px-6 lg:px-8">
+          <div className="container mx-auto max-w-screen-2xl px-3 sm:px-6 lg:px-8">
             <h2 className="text-3xl font-bold bg-gold-gradient bg-clip-text text-transparent mb-6 border-r-4 rtl:border-r-0 rtl:border-l-4 border-gold-500 pr-3 rtl:pr-0 rtl:pl-3">{'الأصناف المميزة'}</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
               {menuLoading ? (
                 <>
                   <FeaturedMenuItemCardSkeleton />
@@ -174,9 +176,9 @@ const HomeScreen: React.FC = () => {
       )}
 
       <section className="animate-fade-in-up" style={{ animationDelay: '200ms' }}>
-        <div className="container mx-auto max-w-screen-2xl px-4 sm:px-6 lg:px-8">
+        <div className="container mx-auto max-w-screen-2xl px-3 sm:px-6 lg:px-8">
           <div className="text-center relative">
-            <h2 className="text-4xl font-extrabold bg-red-gradient bg-clip-text text-transparent">
+            <h2 className="text-2xl sm:text-3xl md:text-4xl font-extrabold bg-red-gradient bg-clip-text text-transparent">
               منتجاتنا الغذائية
             </h2>
             <div className="flex items-center justify-center gap-4 mt-2">
@@ -189,7 +191,7 @@ const HomeScreen: React.FC = () => {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 mt-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6 mt-6 sm:mt-8">
             {menuLoading ? (
               Array.from({ length: 8 }).map((_, index) => <MenuItemCardSkeleton key={index} />)
             ) : (
@@ -200,7 +202,7 @@ const HomeScreen: React.FC = () => {
           </div>
 
           {!menuLoading && filteredItems.length === 0 && (
-            <div className="text-center py-16 col-span-full">
+            <div className="text-center py-12 sm:py-16 col-span-full">
               <p className="text-xl font-semibold text-gray-700 dark:text-gray-300">{'لا توجد أصناف تطابق بحثك.'}</p>
               <p className="text-gray-500 dark:text-gray-400 mt-2">{'جرب البحث بكلمة أخرى أو تغيير الفئة.'}</p>
             </div>

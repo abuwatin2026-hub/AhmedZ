@@ -39,12 +39,13 @@ const DownloadAppScreen: React.FC = () => {
     const [shareFeedback, setShareFeedback] = useState<string | null>(null);
     const [shareErrorHint, setShareErrorHint] = useState<string | null>(null);
     const [apkSizeBytes, setApkSizeBytes] = useState<number | null>(null);
+    const androidDownloadEnabled = false;
 
-    const DEFAULT_APK_FILENAME = 'caty-latest.apk';
+    const DEFAULT_APK_FILENAME = 'ahmed-zangah-latest.apk';
     // Use absolute URL for version check when in native app to reach the server
     const getBaseUrl = () => {
         if (Capacitor.isNativePlatform()) {
-            return 'https://caty-app.pages.dev/'; // Replace with your actual production URL
+            return 'https://ahmed-zangah.pages.dev/'; // Production URL
         }
         return import.meta.env.BASE_URL;
     };
@@ -284,24 +285,30 @@ const DownloadAppScreen: React.FC = () => {
                                 )}
                             </div>
 
-                            <button
-                                onClick={handleDownload}
-                                disabled={loading || !downloadUrl}
-                                className="w-full flex items-center justify-center gap-3 py-4 px-6 bg-gradient-to-r from-green-600 to-green-500 text-white rounded-xl shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
-                            >
-                                {loading ? (
-                                    <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                                ) : (
-                                    <>
-                                        <DownloadIcon className="w-6 h-6 group-hover:animate-bounce" />
-                                        <span className="text-lg font-bold">
-                                            {shouldShowUpdate
-                                                ? 'تحديث'
-                                                : 'تحميل APK'}
-                                        </span>
-                                    </>
-                                )}
-                            </button>
+                            {androidDownloadEnabled ? (
+                                <button
+                                    onClick={handleDownload}
+                                    disabled={loading || !downloadUrl}
+                                    className="w-full flex items-center justify-center gap-3 py-4 px-6 bg-gradient-to-r from-green-600 to-green-500 text-white rounded-xl shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
+                                >
+                                    {loading ? (
+                                        <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                    ) : (
+                                        <>
+                                            <DownloadIcon className="w-6 h-6 group-hover:animate-bounce" />
+                                            <span className="text-lg font-bold">
+                                                {shouldShowUpdate ? 'تحديث' : 'تحميل APK'}
+                                            </span>
+                                        </>
+                                    )}
+                                </button>
+                            ) : (
+                                <div className="w-full flex items-center justify-center gap-3 py-4 px-6 bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl">
+                                    <span className="text-sm font-bold">
+                                        {'التحميل غير متاح حالياً'}
+                                    </span>
+                                </div>
+                            )}
 
                             <p className="mt-4 text-xs text-gray-500 dark:text-gray-400 text-center">
                                 {'تأكد من تفعيل "تثبيت من مصادر غير معروفة" في إعدادات هاتفك'}

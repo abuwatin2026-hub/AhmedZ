@@ -44,6 +44,17 @@
       }
     </script>
 
+    <!-- Ensure HashRouter has a default hash route -->
+    <script>
+      (function() {
+        try {
+          if (!location.hash || location.hash === '#') {
+            location.hash = '/';
+          }
+        } catch {}
+      })();
+    </script>
+
     <!-- Vite entry point -->
     <script type="module" src="/index.tsx"></script>
 
