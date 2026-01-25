@@ -3,6 +3,7 @@ import { useSettings } from '../../../contexts/SettingsContext';
 import { useToast } from '../../../contexts/ToastContext';
 import { useDeliveryZones } from '../../../contexts/DeliveryZoneContext';
 import { exportToXlsx, sharePdf } from '../../../utils/export';
+import { buildPdfBrandOptions, buildXlsxBrandOptions } from '../../../utils/branding';
 import HorizontalBarChart from '../../../components/admin/charts/HorizontalBarChart';
 import { getSupabaseClient } from '../../../supabase';
 import { localizeSupabaseError } from '../../../utils/errorUtils';
@@ -655,7 +656,7 @@ const ProductReports: React.FC = () => {
             headers,
             rows,
             `product_report_${startDate || 'all'}_to_${endDate || 'all'}.xlsx`,
-            { sheetName: 'Products', currencyColumns: [3, 4, 5, 9], currencyFormat: '#,##0.00' }
+            { sheetName: 'Products', currencyColumns: [3, 4, 5, 9], currencyFormat: '#,##0.00', ...buildXlsxBrandOptions(settings, 'المنتجات', headers.length, { periodText: `الفترة: ${startDate || '—'} → ${endDate || '—'}` }) }
         );
         if (success) {
             showNotification(`تم حفظ التقرير في مجلد المستندات`, 'success');
@@ -670,12 +671,7 @@ const ProductReports: React.FC = () => {
             'print-area',
             'تقرير المنتجات',
             `product_report_${startDate || 'all'}_to_${endDate || 'all'}.pdf`,
-            {
-                headerTitle: settings.cafeteriaName?.ar || 'تقارير',
-                headerSubtitle: 'تقرير المنتجات',
-                logoUrl: settings.logoUrl || '',
-                footerText: `${settings.address || ''} • ${settings.contactNumber || ''}`,
-            }
+            buildPdfBrandOptions(settings, 'تقرير المنتجات', { pageNumbers: true })
         );
         if (success) {
             showNotification('تم حفظ التقرير في مجلد المستندات', 'success');

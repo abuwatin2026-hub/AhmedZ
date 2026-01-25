@@ -16,6 +16,9 @@ export const sharePdf = async (
         headerHeight?: number;
         footerHeight?: number;
         logoUrl?: string;
+        accentColor?: string;
+        brandLines?: string[];
+        pageNumbers?: boolean;
     }
 ): Promise<boolean> => {
     const element = document.getElementById(elementId);
@@ -26,6 +29,23 @@ export const sharePdf = async (
             import('jspdf'),
             import('html2canvas'),
         ]);
+        const hexToRgb = (hex?: string): { r: number; g: number; b: number } | null => {
+            if (!hex) return null;
+            const h = hex.trim().replace(/^#/, '');
+            if (!/^[0-9a-fA-F]{6}$/.test(h)) return null;
+            return { r: parseInt(h.slice(0, 2), 16), g: parseInt(h.slice(2, 4), 16), b: parseInt(h.slice(4, 6), 16) };
+        };
+        const textOn = (rgb: { r: number; g: number; b: number } | null): 'light' | 'dark' => {
+            if (!rgb) return 'dark';
+            const srgb = [rgb.r / 255, rgb.g / 255, rgb.b / 255].map(v => v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4));
+            const L = 0.2126 * srgb[0] + 0.7152 * srgb[1] + 0.0722 * srgb[2];
+            return L > 0.45 ? 'dark' : 'light';
+        };
+        const accent = hexToRgb(options?.accentColor);
+        const brandFooter = [
+            options?.footerText || '',
+            ...(options?.brandLines || []),
+        ].filter(Boolean).join(' • ');
         const prepareLogoData = async (src?: string): Promise<{ data: string; format: 'PNG' | 'JPEG'; width: number; height: number } | null> => {
             if (!src) return null;
             try {
@@ -61,7 +81,7 @@ export const sharePdf = async (
         const usePx = options?.unit ? options.unit === 'px' : isMobile;
         const headerTitle = options?.headerTitle ?? '';
         const headerSubtitle = options?.headerSubtitle ?? title;
-        const footerText = options?.footerText ?? `تم الإنشاء: ${new Date().toLocaleString('en-US')}`;
+        const footerText = brandFooter || `تم الإنشاء: ${new Date().toLocaleString('en-US')}`;
         const canvas = await html2canvas(element, { scale });
         const imgData = canvas.toDataURL('image/png');
 
@@ -75,6 +95,12 @@ export const sharePdf = async (
             const pageWidth = pdf.internal.pageSize.getWidth();
             const pageHeight = pdf.internal.pageSize.getHeight();
             let headerTop = 8;
+            if (accent) {
+                pdf.setFillColor(accent.r, accent.g, accent.b);
+                pdf.rect(0, 0, pageWidth, headerPx, 'F');
+            }
+            const tonePx = textOn(accent) === 'light' ? { r: 255, g: 255, b: 255 } : { r: 30, g: 41, b: 59 };
+            pdf.setTextColor(tonePx.r, tonePx.g, tonePx.b);
             if (logo) {
                 const lw = Math.min(logo.width, Math.round(pageWidth * 0.18));
                 const lh = logo.height;
@@ -91,9 +117,12 @@ export const sharePdf = async (
                 pdf.setFontSize(11);
                 pdf.text(headerSubtitle, pageWidth / 2, subtitleY, { align: 'center' as any });
             }
+            pdf.setTextColor(0, 0, 0);
             pdf.addImage(imgData, 'PNG', 0, headerPx, pageWidth, pageHeight - headerPx - footerPx);
             pdf.setFontSize(10);
-            pdf.text(footerText, pageWidth / 2, pageHeight - 8, { align: 'center' as any });
+            const pageLabelPx = options?.pageNumbers ? `الصفحة 1 من 1` : '';
+            const footerLinePx = [footerText, pageLabelPx].filter(Boolean).join(' • ');
+            pdf.text(footerLinePx, pageWidth / 2, pageHeight - 8, { align: 'center' as any });
             dataUri = pdf.output('datauristring');
         } else {
             const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
@@ -127,6 +156,12 @@ export const sharePdf = async (
                 const leftPad = 8;
                 const titleYmm = Math.min(6, headerMm - 4);
                 const subtitleYmm = Math.min(10, headerMm - 1);
+                if (accent) {
+                    pdf.setFillColor(accent.r, accent.g, accent.b);
+                    pdf.rect(0, 0, pageWidth, headerMm, 'F');
+                }
+                const toneMm = textOn(accent) === 'light' ? { r: 255, g: 255, b: 255 } : { r: 30, g: 41, b: 59 };
+                pdf.setTextColor(toneMm.r, toneMm.g, toneMm.b);
                 if (logo) {
                     const mmRatio = mmPerPx;
                     const lwMm = Math.min(pageWidth * 0.18, logo.width * mmRatio);
@@ -141,10 +176,12 @@ export const sharePdf = async (
                     pdf.setFontSize(10);
                     pdf.text(headerSubtitle, pageWidth / 2, subtitleYmm, { align: 'center' as any });
                 }
+                pdf.setTextColor(0, 0, 0);
                 pdf.addImage(sliceData, 'PNG', 0, headerMm, imgWidth, (sliceHeightPx * mmPerPx));
                 pdf.setFontSize(9);
-                const pageLabel = `الصفحة ${currentPage} من ${totalPages}`;
-                pdf.text(`${footerText} • ${pageLabel}`, pageWidth / 2, pageHeight - 4, { align: 'center' as any });
+                const pageLabel = options?.pageNumbers ? `الصفحة ${currentPage} من ${totalPages}` : '';
+                const footerLine = [footerText, pageLabel].filter(Boolean).join(' • ');
+                pdf.text(footerLine, pageWidth / 2, pageHeight - 4, { align: 'center' as any });
                 offsetPx += sliceHeightPx;
                 currentPage += 1;
                 if (offsetPx < imgDataPxHeight) pdf.addPage();
@@ -261,6 +298,8 @@ export const exportToXlsx = async (
         sanitizeNumbers?: boolean;
         currencyColumns?: number[];
         currencyFormat?: string;
+        preludeRows?: (string | number)[][];
+        accentColor?: string;
     }
 ): Promise<boolean> => {
     try {
@@ -280,10 +319,17 @@ export const exportToXlsx = async (
                 })
             )
             : rows;
-        const data: (string | number)[][] = [headers, ...sanitizedRows];
+        const data: (string | number)[][] = [
+            ...(options?.preludeRows || []),
+            headers,
+            ...sanitizedRows
+        ];
 
         const workbook = new ExcelJS.Workbook();
         const worksheet = workbook.addWorksheet(options?.sheetName || 'Report');
+        if (options?.preludeRows && options.preludeRows.length) {
+            for (const row of options.preludeRows) worksheet.addRow(row);
+        }
         worksheet.addRow(headers);
         for (const row of sanitizedRows) worksheet.addRow(row);
 
@@ -291,7 +337,20 @@ export const exportToXlsx = async (
         const rowCount = data.length;
         const defaultNumFmt = options?.numberFormat || '#,##0.00';
         const defaultIntFmt = options?.integerFormat || '#,##0';
-        for (let r = 2; r <= rowCount; r++) {
+        const headerRowIndex = (options?.preludeRows?.length || 0) + 1;
+        const headerRow = worksheet.getRow(headerRowIndex);
+        headerRow.font = { bold: true };
+        if (options?.accentColor) {
+            headerRow.eachCell((cell: any) => {
+                cell.fill = {
+                    type: 'pattern',
+                    pattern: 'solid',
+                    fgColor: { argb: (options!.accentColor || '').replace('#', '') }
+                };
+                cell.font = { color: { argb: 'FFFFFFFF' }, bold: true };
+            });
+        }
+        for (let r = headerRowIndex + 1; r <= rowCount; r++) {
             const row = worksheet.getRow(r);
             for (let c = 1; c <= colCount; c++) {
                 const cell = row.getCell(c);
@@ -304,7 +363,7 @@ export const exportToXlsx = async (
         if (options?.currencyColumns && options.currencyColumns.length) {
             const curFmt = options.currencyFormat || '#,##0.00';
             const set = new Set(options.currencyColumns.map(n => Math.max(0, Math.floor(n))));
-            for (let r = 2; r <= rowCount; r++) {
+            for (let r = headerRowIndex + 1; r <= rowCount; r++) {
                 const row = worksheet.getRow(r);
                 for (const c0 of set) {
                     const c = c0 + 1;
@@ -319,8 +378,8 @@ export const exportToXlsx = async (
         }
         if (options?.autoFilter ?? true) {
             worksheet.autoFilter = {
-                from: { row: 1, column: 1 },
-                to: { row: Math.max(1, rowCount), column: Math.max(1, colCount) },
+                from: { row: headerRowIndex, column: 1 },
+                to: { row: Math.max(headerRowIndex, rowCount), column: Math.max(1, colCount) },
             };
         }
         if (options?.columnWidths && options.columnWidths.length) {

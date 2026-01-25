@@ -5,6 +5,7 @@ import type { CashShift, Order } from '../../types';
 import * as Icons from '../../components/icons';
 import { useAuth } from '../../contexts/AuthContext';
 import { exportToXlsx, sharePdf } from '../../utils/export';
+import { buildPdfBrandOptions, buildXlsxBrandOptions } from '../../utils/branding';
 import { getInvoiceOrderView } from '../../utils/orderUtils';
 import { useSettings } from '../../contexts/SettingsContext';
 
@@ -1036,12 +1037,7 @@ const ShiftReportsScreen: React.FC = () => {
                                                         id,
                                                         'تقرير الوردية',
                                                         `shift-${reportShiftId}.pdf`,
-                                                        {
-                                                            headerTitle: settings.cafeteriaName?.ar || 'تقارير',
-                                                            headerSubtitle: 'تقرير الوردية',
-                                                            logoUrl: settings.logoUrl || '',
-                                                            footerText: `${settings.address || ''} • ${settings.contactNumber || ''}`,
-                                                        }
+                                                        buildPdfBrandOptions(settings, 'تقرير الوردية', { pageNumbers: true })
                                                     );
                                                 }}
                                                 className="px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
@@ -1072,11 +1068,11 @@ const ShiftReportsScreen: React.FC = () => {
                                                         ['عدد العمليات', reportComputed.paymentsCount],
                                                         ['مرتجعات غير مرتبطة', reportMissingRefunds.toFixed(2)],
                                                     ];
-                                                await exportToXlsx(
+                                                    await exportToXlsx(
                                                     ['البند', 'القيمة'],
                                                     rows,
                                                     `shift-${reportShiftId}-summary.xlsx`,
-                                                    { sheetName: 'Shift Summary', currencyColumns: [1], currencyFormat: '#,##0.00' }
+                                                    { sheetName: 'Shift Summary', currencyColumns: [1], currencyFormat: '#,##0.00', ...buildXlsxBrandOptions(settings, 'الوردية', 2, { periodText: `التاريخ: ${new Date().toLocaleDateString('ar-SA')}` }) }
                                                 );
                                                 }}
                                                 className="px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
@@ -1111,7 +1107,17 @@ const ShiftReportsScreen: React.FC = () => {
                                                         ['طريقة الدفع', 'المتوقع', 'المعدود', 'الفرق'],
                                                         rows,
                                                         `shift-${reportShiftId}-tenders.xlsx`,
-                                                        { sheetName: 'Shift Tenders', currencyColumns: [1, 2, 3], currencyFormat: '#,##0.00' }
+                                                        { 
+                                                            sheetName: 'Shift Tenders', 
+                                                            currencyColumns: [1, 2, 3], 
+                                                            currencyFormat: '#,##0.00',
+                                                            preludeRows: [
+                                                                [settings.cafeteriaName?.ar || settings.cafeteriaName?.en || '', ''],
+                                                                ['تقرير: تسوية طرق الدفع', ''],
+                                                                [`التاريخ: ${new Date().toLocaleDateString('ar-SA')}`, '']
+                                                            ],
+                                                            accentColor: settings.brandColors?.primary || '#2F2B7C'
+                                                        }
                                                     );
                                                 }}
                                                 className="px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
@@ -1134,7 +1140,17 @@ const ShiftReportsScreen: React.FC = () => {
                                                         headers,
                                                         rows,
                                                         `shift-${reportShiftId}-payments.xlsx`,
-                                                        { sheetName: 'Shift Payments', currencyColumns: [3], currencyFormat: '#,##0.00' }
+                                                        { 
+                                                            sheetName: 'Shift Payments', 
+                                                            currencyColumns: [3], 
+                                                            currencyFormat: '#,##0.00',
+                                                            preludeRows: [
+                                                                [settings.cafeteriaName?.ar || settings.cafeteriaName?.en || '', '','','','', ''],
+                                                                ['تقرير: عمليات الوردية','','','','',''],
+                                                                [`التاريخ: ${new Date().toLocaleDateString('ar-SA')}`,'','','','','']
+                                                            ],
+                                                            accentColor: settings.brandColors?.primary || '#2F2B7C'
+                                                        }
                                                     );
                                                 }}
                                                 className="px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"

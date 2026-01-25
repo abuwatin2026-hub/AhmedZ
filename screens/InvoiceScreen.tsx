@@ -4,6 +4,7 @@ import { useOrders } from '../contexts/OrderContext';
 import { useToast } from '../contexts/ToastContext';
 import Invoice from '../components/Invoice';
 import { sharePdf } from '../utils/export';
+import { buildPdfBrandOptions } from '../utils/branding';
 import { BackArrowIcon, ShareIcon, PrinterIcon } from '../components/icons';
 import { printContent } from '../utils/printUtils';
 import { renderToString } from 'react-dom/server';
@@ -90,7 +91,7 @@ const InvoiceScreen: React.FC = () => {
                 containerId,
                 `${'فاتورة'} ${order.id.slice(-6).toUpperCase()}`,
                 `Invoice-${safeStoreSlug}-${order.id.slice(-6).toUpperCase()}.pdf`,
-                { unit: 'px', scale: 1.5 }
+                { unit: 'px', scale: 1.5, ...buildPdfBrandOptions(settings, `فاتورة #${order.id.slice(-6).toUpperCase()}`, { pageNumbers: false }) }
             );
             document.body.removeChild(container);
         } else {
@@ -98,18 +99,7 @@ const InvoiceScreen: React.FC = () => {
                 'print-area',
                 `${'فاتورة'} ${order.id.slice(-6).toUpperCase()}`,
                 `Invoice-${safeStoreSlug}-${order.id.slice(-6).toUpperCase()}.pdf`,
-                {
-                    headerTitle: storeName,
-                    headerSubtitle: `فاتورة #${order.id.slice(-6).toUpperCase()}`,
-                    footerText: [
-                        settings.address || '',
-                        settings.contactNumber || '',
-                        settings.taxSettings?.taxNumber ? `الرقم الضريبي: ${settings.taxSettings.taxNumber}` : ''
-                    ].filter(Boolean).join(' • '),
-                    headerHeight: 40,
-                    footerHeight: 24,
-                    logoUrl: settings.logoUrl || ''
-                }
+                { ...buildPdfBrandOptions(settings, `فاتورة #${order.id.slice(-6).toUpperCase()}`, { pageNumbers: false }) }
             );
         }
         if (success) {
@@ -135,18 +125,7 @@ const InvoiceScreen: React.FC = () => {
                 'print-area',
                 `${'فاتورة'} ${order.id.slice(-6).toUpperCase()}`,
                 `Invoice-${safeStoreSlug}-${order.id.slice(-6).toUpperCase()}.pdf`,
-                {
-                    headerTitle: storeName,
-                    headerSubtitle: `فاتورة #${order.id.slice(-6).toUpperCase()}`,
-                    footerText: [
-                        settings.address || '',
-                        settings.contactNumber || '',
-                        settings.taxSettings?.taxNumber ? `الرقم الضريبي: ${settings.taxSettings.taxNumber}` : ''
-                    ].filter(Boolean).join(' • '),
-                    headerHeight: 40,
-                    footerHeight: 24,
-                    logoUrl: settings.logoUrl || ''
-                }
+                { ...buildPdfBrandOptions(settings, `فاتورة #${order.id.slice(-6).toUpperCase()}`, { pageNumbers: false }) }
             ).then((success) => {
                 if (success) {
                     showNotification('اختر "طباعة" من خيارات المشاركة إذا كانت متاحة', 'success');

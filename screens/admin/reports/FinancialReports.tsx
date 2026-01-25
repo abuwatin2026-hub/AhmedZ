@@ -3,6 +3,7 @@ import { getSupabaseClient } from '../../../supabase';
 import { useToast } from '../../../contexts/ToastContext';
 import { useAuth } from '../../../contexts/AuthContext';
 import { sharePdf, exportToXlsx } from '../../../utils/export';
+import { buildPdfBrandOptions, buildXlsxBrandOptions } from '../../../utils/branding';
 import { printContent } from '../../../utils/printUtils';
 import { CostCenter } from '../../../types';
 import { useSettings } from '../../../contexts/SettingsContext';
@@ -1518,7 +1519,17 @@ const FinancialReports: React.FC = () => {
       headers,
       data,
       `ledger_${accountCode}_${appliedFilters.startDate || 'all'}_${appliedFilters.endDate || 'all'}.xlsx`,
-      { sheetName: 'Ledger', currencyColumns: [6, 7, 8, 9], currencyFormat: '#,##0.00' }
+      { 
+        sheetName: 'Ledger', 
+        currencyColumns: [6, 7, 8, 9], 
+        currencyFormat: '#,##0.00',
+        preludeRows: [
+          [settings.cafeteriaName?.ar || settings.cafeteriaName?.en || '', '', '', '', '', '', '', '', '', ''],
+          ['تقرير: دفتر الأستاذ','','','','','','','','',''],
+          [`الفترة: ${appliedFilters.startDate || '—'} → ${appliedFilters.endDate || '—'}`,'','','','','','','','','']
+        ],
+        accentColor: settings.brandColors?.primary || '#2F2B7C'
+      }
     );
   }, [accountCode, appliedFilters.endDate, appliedFilters.startDate]);
 
@@ -1734,7 +1745,12 @@ const FinancialReports: React.FC = () => {
                   onClick={() => {
                     const headers = ['الفترة', 'صافي الربح'];
                     const rows = incomeTrend.map((r) => [r.label, r.value]);
-                    void exportToXlsx(headers, rows, `income_trend_${appliedFilters.startDate || 'all'}_${appliedFilters.endDate || 'all'}.xlsx`, { sheetName: 'Net Profit Trend', currencyColumns: [1], currencyFormat: '#,##0.00' });
+                    void exportToXlsx(
+                      headers, 
+                      rows, 
+                      `income_trend_${appliedFilters.startDate || 'all'}_${appliedFilters.endDate || 'all'}.xlsx`, 
+                      { sheetName: 'Net Profit Trend', currencyColumns: [1], currencyFormat: '#,##0.00', ...buildXlsxBrandOptions(settings, 'اتجاه صافي الربح', headers.length, { periodText: `الفترة: ${appliedFilters.startDate || '—'} → ${appliedFilters.endDate || '—'}` }) }
+                    );
                   }}
                   className="px-2.5 py-1 rounded-lg border border-gray-200 dark:border-gray-700 text-xs font-semibold text-gray-700 dark:text-gray-200"
                 >
@@ -1924,7 +1940,17 @@ const FinancialReports: React.FC = () => {
                         headers,
                         rows,
                         `ar_details_${appliedFilters.asOfDate || 'asof'}.xlsx`,
-                        { sheetName: 'AR Details', currencyColumns: [2, 3, 4], currencyFormat: '#,##0.00' }
+                        { 
+                          sheetName: 'AR Details', 
+                          currencyColumns: [2, 3, 4], 
+                          currencyFormat: '#,##0.00',
+                          preludeRows: [
+                            [settings.cafeteriaName?.ar || settings.cafeteriaName?.en || '', '','','',''],
+                            ['تقرير: تفاصيل ذمم العملاء','','','',''],
+                            [`كما في: ${appliedFilters.asOfDate || '—'}`,'','','','']
+                          ],
+                          accentColor: settings.brandColors?.primary || '#2F2B7C'
+                        }
                       );
                     }}
                     className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 font-semibold hover:bg-gray-50 dark:hover:bg-gray-700"
@@ -1996,7 +2022,17 @@ const FinancialReports: React.FC = () => {
                         headers,
                         rows,
                         `ap_details_${appliedFilters.asOfDate || 'asof'}.xlsx`,
-                        { sheetName: 'AP Details', currencyColumns: [2, 3, 4], currencyFormat: '#,##0.00' }
+                        { 
+                          sheetName: 'AP Details', 
+                          currencyColumns: [2, 3, 4], 
+                          currencyFormat: '#,##0.00',
+                          preludeRows: [
+                            [settings.cafeteriaName?.ar || settings.cafeteriaName?.en || '', '','','',''],
+                            ['تقرير: تفاصيل ذمم الموردين','','','',''],
+                            [`كما في: ${appliedFilters.asOfDate || '—'}`,'','','','']
+                          ],
+                          accentColor: settings.brandColors?.primary || '#2F2B7C'
+                        }
                       );
                     }}
                     className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 font-semibold hover:bg-gray-50 dark:hover:bg-gray-700"
@@ -2144,12 +2180,7 @@ const FinancialReports: React.FC = () => {
               'header-summary',
               'ملخص التقارير',
               `financial_summary_${appliedFilters.startDate || 'all'}_${appliedFilters.endDate || 'all'}`,
-              {
-                headerTitle: settings.cafeteriaName?.ar || 'تقارير',
-                headerSubtitle: 'ملخص التقارير',
-                logoUrl: settings.logoUrl || '',
-                footerText: `${settings.address || ''} • ${settings.contactNumber || ''}`,
-              }
+              buildPdfBrandOptions(settings, 'ملخص التقارير', { pageNumbers: true })
             )}
             className="px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 font-semibold"
             title="تصدير ملخص الهيدر إلى PDF"
@@ -2311,7 +2342,7 @@ const FinancialReports: React.FC = () => {
                     headers,
                     rows,
                     `income_statement_${appliedFilters.startDate || 'all'}_${appliedFilters.endDate || 'all'}.xlsx`,
-                    { sheetName: 'Income Statement', currencyColumns: [0, 1, 2], currencyFormat: '#,##0.00' }
+                    { sheetName: 'Income Statement', currencyColumns: [0, 1, 2], currencyFormat: '#,##0.00', ...buildXlsxBrandOptions(settings, 'قائمة الدخل', headers.length, { periodText: `الفترة: ${appliedFilters.startDate || '—'} → ${appliedFilters.endDate || '—'}` }) }
                   );
                 }}
                 className="px-2.5 py-1 rounded-lg border border-gray-200 dark:border-gray-700 text-xs font-semibold text-gray-700 dark:text-gray-200"
@@ -2339,7 +2370,7 @@ const FinancialReports: React.FC = () => {
                     headers,
                     rows,
                     `income_breakdown_${appliedFilters.startDate || 'all'}_${appliedFilters.endDate || 'all'}.xlsx`,
-                    { sheetName: 'Income Breakdown', currencyColumns: [1], currencyFormat: '#,##0.00' }
+                    { sheetName: 'Income Breakdown', currencyColumns: [1], currencyFormat: '#,##0.00', ...buildXlsxBrandOptions(settings, 'تحليل قائمة الدخل', headers.length, { periodText: `الفترة: ${appliedFilters.startDate || '—'} → ${appliedFilters.endDate || '—'}` }) }
                   );
                 }}
                 className="px-2.5 py-1 rounded-lg border border-gray-200 dark:border-gray-700 text-xs font-semibold text-gray-700 dark:text-gray-200"
@@ -2352,12 +2383,7 @@ const FinancialReports: React.FC = () => {
                   'card-income',
                   'قائمة الدخل',
                   `income_${appliedFilters.startDate || 'all'}_${appliedFilters.endDate || 'all'}`,
-                  {
-                    headerTitle: settings.cafeteriaName?.ar || 'تقارير',
-                    headerSubtitle: 'قائمة الدخل',
-                    logoUrl: settings.logoUrl || '',
-                    footerText: `${settings.address || ''} • ${settings.contactNumber || ''}`,
-                  }
+                  buildPdfBrandOptions(settings, 'قائمة الدخل', { pageNumbers: true })
                 )}
                 className="px-2.5 py-1 rounded-lg border border-gray-200 dark:border-gray-700 text-xs font-semibold text-gray-700 dark:text-gray-200"
               >
@@ -2716,7 +2742,7 @@ const FinancialReports: React.FC = () => {
                     headers,
                     rows,
                     `balance_sheet_${appliedFilters.asOfDate || 'asof'}.xlsx`,
-                    { sheetName: 'Balance Sheet', currencyColumns: [0, 1, 2], currencyFormat: '#,##0.00' }
+                    { sheetName: 'Balance Sheet', currencyColumns: [0, 1, 2], currencyFormat: '#,##0.00', ...buildXlsxBrandOptions(settings, 'الميزانية العمومية', headers.length, { periodText: `كما في: ${appliedFilters.asOfDate || '—'}` }) }
                   );
                 }}
                 className="px-2.5 py-1 rounded-lg border border-gray-200 dark:border-gray-700 text-xs font-semibold text-gray-700 dark:text-gray-200"
@@ -2729,12 +2755,7 @@ const FinancialReports: React.FC = () => {
                   'card-balance',
                   'الميزانية العمومية',
                   `balance_sheet_${appliedFilters.asOfDate || 'asof'}`,
-                  {
-                    headerTitle: settings.cafeteriaName?.ar || 'تقارير',
-                    headerSubtitle: 'الميزانية العمومية',
-                    logoUrl: settings.logoUrl || '',
-                    footerText: `${settings.address || ''} • ${settings.contactNumber || ''}`,
-                  }
+                  buildPdfBrandOptions(settings, 'الميزانية العمومية', { pageNumbers: true })
                 )}
                 className="px-2.5 py-1 rounded-lg border border-gray-200 dark:border-gray-700 text-xs font-semibold text-gray-700 dark:text-gray-200"
               >
@@ -2819,7 +2840,12 @@ const FinancialReports: React.FC = () => {
                   headerTitle: settings.cafeteriaName?.ar || 'تقارير',
                   headerSubtitle: 'قائمة التدفقات النقدية',
                   logoUrl: settings.logoUrl || '',
-                  footerText: `${settings.address || ''} • ${settings.contactNumber || ''}`,
+                    footerText: `${settings.address || ''} • ${settings.contactNumber || ''}`,
+                    accentColor: settings.brandColors?.primary || '#2F2B7C',
+                    brandLines: [
+                      settings.taxSettings?.taxNumber ? `الرقم الضريبي: ${settings.taxSettings.taxNumber}` : ''
+                    ],
+                    pageNumbers: true
                 }
               )}
               className="px-2.5 py-1 rounded-lg border border-gray-200 dark:border-gray-700 text-xs font-semibold text-gray-700 dark:text-gray-200"

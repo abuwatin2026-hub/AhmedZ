@@ -7,6 +7,8 @@ import ConfirmationModal from '../../components/admin/ConfirmationModal';
 import { EditIcon, TrashIcon } from '../../components/icons';
 import Spinner from '../../components/Spinner';
 import { exportToXlsx } from '../../utils/export';
+import { buildXlsxBrandOptions } from '../../utils/branding';
+import { useSettings } from '../../contexts/SettingsContext';
 import { useItemMeta } from '../../contexts/ItemMetaContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useStock } from '../../contexts/StockContext';
@@ -71,6 +73,7 @@ const ManageItemsScreen: React.FC = () => {
   const { menuItems, addMenuItem, updateMenuItem, deleteMenuItem, loading } = useMenu();
   const { showNotification } = useToast();
   const { hasPermission } = useAuth();
+  const { settings } = useSettings();
   const { initializeStockForItem, updateStock } = useStock();
   const language = 'ar';
   const {
@@ -534,7 +537,12 @@ const ManageItemsScreen: React.FC = () => {
     });
 
     const filename = `expiry_report_${formatDateOnly(new Date())}.xlsx`;
-    const success = await exportToXlsx(headers, rows, filename);
+    const success = await exportToXlsx(
+      headers, 
+      rows, 
+      filename,
+      { sheetName: 'Expiry Report', ...buildXlsxBrandOptions(settings, 'صلاحية الأصناف', headers.length, { periodText: `التاريخ: ${new Date().toLocaleDateString('ar-SA')}` }) }
+    );
     if (success) {
       showNotification(language === 'ar' ? 'تم حفظ التقرير في مجلد المستندات' : 'Report saved to Documents folder', 'success');
     } else {

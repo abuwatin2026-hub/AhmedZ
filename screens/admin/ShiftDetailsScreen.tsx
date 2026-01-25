@@ -6,6 +6,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useCashShift } from '../../contexts/CashShiftContext';
 import { localizeSupabaseError } from '../../utils/errorUtils';
 import { exportToXlsx, sharePdf } from '../../utils/export';
+import { buildPdfBrandOptions, buildXlsxBrandOptions } from '../../utils/branding';
 import { getInvoiceOrderView } from '../../utils/orderUtils';
 import type { Order } from '../../types';
 import { useSettings } from '../../contexts/SettingsContext';
@@ -419,12 +420,7 @@ const ShiftDetailsScreen: React.FC = () => {
               reportElementId,
               'تقرير الوردية',
               `shift-${shift.id}.pdf`,
-              {
-                headerTitle: settings.cafeteriaName?.ar || 'تقارير',
-                headerSubtitle: 'تقرير الوردية',
-                logoUrl: settings.logoUrl || '',
-                footerText: `${settings.address || ''} • ${settings.contactNumber || ''}`,
-              }
+              buildPdfBrandOptions(settings, 'تقرير الوردية', { pageNumbers: true })
             );
           }}
           className="px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
@@ -478,7 +474,12 @@ const ShiftDetailsScreen: React.FC = () => {
                   `expected=${exp.toFixed(2)} counted=${counted === null ? '' : counted.toFixed(2)} diff=${diff === null ? '' : diff.toFixed(2)}`
                 ]);
               }
-              await exportToXlsx(['القسم', 'البند', 'القيمة'], sectionRows, `shift-${shift.id}-summary.xlsx`);
+              await exportToXlsx(
+                ['القسم', 'البند', 'القيمة'], 
+                sectionRows, 
+                `shift-${shift.id}-summary.xlsx`,
+                { sheetName: 'Shift Summary', ...buildXlsxBrandOptions(settings, 'الوردية', 3, { periodText: `التاريخ: ${new Date().toLocaleDateString('ar-SA')}` }) }
+              );
             }}
             className="px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
           >
@@ -497,7 +498,12 @@ const ShiftDetailsScreen: React.FC = () => {
                 paymentDetails(p),
                 p.reference_table ? `${p.reference_table}${p.reference_id ? `:${String(p.reference_id).slice(-6).toUpperCase()}` : ''}` : '-',
               ]));
-              await exportToXlsx(headers, rows, `shift-${shift.id}-payments.xlsx`);
+              await exportToXlsx(
+                headers, 
+                rows, 
+                `shift-${shift.id}-payments.xlsx`,
+                { sheetName: 'Shift Payments', currencyColumns: [3], currencyFormat: '#,##0.00', ...buildXlsxBrandOptions(settings, 'عمليات الوردية', headers.length, { periodText: `التاريخ: ${new Date().toLocaleDateString('ar-SA')}` }) }
+              );
             }}
             className="px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
           >

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useToast } from '../../../contexts/ToastContext';
 import { useDeliveryZones } from '../../../contexts/DeliveryZoneContext';
 import { exportToXlsx, sharePdf } from '../../../utils/export';
+import { buildPdfBrandOptions, buildXlsxBrandOptions } from '../../../utils/branding';
 import BarChart from '../../../components/admin/charts/BarChart';
 import HorizontalBarChart from '../../../components/admin/charts/HorizontalBarChart';
 import LineChart from '../../../components/admin/charts/LineChart';
@@ -484,7 +485,7 @@ const SalesReports: React.FC = () => {
             headers,
             rows,
             `sales_report_${startDate || 'all'}_to_${endDate || 'all'}.xlsx`,
-            { sheetName: 'Sales', currencyColumns: [3], currencyFormat: '#,##0.00' }
+            { sheetName: 'Sales', currencyColumns: [3], currencyFormat: '#,##0.00', ...buildXlsxBrandOptions(settings, 'المبيعات', headers.length, { periodText: `الفترة: ${startDate || '—'} → ${endDate || '—'}` }) }
         );
         if (success) {
             showNotification(`تم حفظ التقرير في مجلد المستندات`, 'success');
@@ -499,12 +500,7 @@ const SalesReports: React.FC = () => {
             'print-area',
             'تقرير المبيعات',
             `sales_report_${startDate || 'all'}_to_${endDate || 'all'}.pdf`,
-            {
-                headerTitle: settings.cafeteriaName?.ar || 'تقارير',
-                headerSubtitle: 'تقرير المبيعات',
-                logoUrl: settings.logoUrl || '',
-                footerText: `${settings.address || ''} • ${settings.contactNumber || ''}`,
-            }
+            buildPdfBrandOptions(settings, 'تقرير المبيعات', { pageNumbers: true })
         );
         if (success) {
             showNotification('تم حفظ التقرير في مجلد المستندات', 'success');

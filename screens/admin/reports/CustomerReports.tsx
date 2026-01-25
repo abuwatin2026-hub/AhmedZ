@@ -3,6 +3,7 @@ import { useOrders } from '../../../contexts/OrderContext';
 import { useUserAuth } from '../../../contexts/UserAuthContext';
 import { useToast } from '../../../contexts/ToastContext';
 import { exportToXlsx, sharePdf } from '../../../utils/export';
+import { buildPdfBrandOptions, buildXlsxBrandOptions } from '../../../utils/branding';
 import HorizontalBarChart from '../../../components/admin/charts/HorizontalBarChart';
 import { getInvoiceOrderView } from '../../../utils/orderUtils';
 import { useSettings } from '../../../contexts/SettingsContext';
@@ -144,7 +145,7 @@ const CustomerReports: React.FC = () => {
             headers,
             rows,
             `customer_report_${new Date().toISOString().split('T')[0]}.xlsx`,
-            { sheetName: 'Customers', currencyColumns: [5, 6], currencyFormat: '#,##0.00' }
+            { sheetName: 'Customers', currencyColumns: [5, 6], currencyFormat: '#,##0.00', ...buildXlsxBrandOptions(settings, 'العملاء', headers.length, { periodText: `الفترة: ${startDate || '—'} → ${endDate || '—'}` }) }
         );
         if (success) {
             showNotification(`تم حفظ التقرير في مجلد المستندات`, 'success');
@@ -159,12 +160,7 @@ const CustomerReports: React.FC = () => {
             'print-area',
             'تقرير العملاء',
             `customer_report_${new Date().toISOString().split('T')[0]}.pdf`,
-            {
-                headerTitle: settings.cafeteriaName?.ar || 'تقارير',
-                headerSubtitle: 'تقرير العملاء',
-                logoUrl: settings.logoUrl || '',
-                footerText: `${settings.address || ''} • ${settings.contactNumber || ''}`,
-            }
+            buildPdfBrandOptions(settings, 'تقرير العملاء', { pageNumbers: true })
         );
         if (success) {
             showNotification('تم حفظ التقرير في مجلد المستندات', 'success');

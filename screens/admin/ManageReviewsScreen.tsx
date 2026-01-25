@@ -8,6 +8,7 @@ import ConfirmationModal from '../../components/admin/ConfirmationModal';
 import { TrashIcon } from '../../components/icons';
 import Spinner from '../../components/Spinner';
 import { exportToXlsx, sharePdf } from '../../utils/export';
+import { buildPdfBrandOptions, buildXlsxBrandOptions } from '../../utils/branding';
 import { useSettings } from '../../contexts/SettingsContext';
 
 const ManageReviewsScreen: React.FC = () => {
@@ -72,7 +73,12 @@ const ManageReviewsScreen: React.FC = () => {
                 new Date(r.createdAt).toLocaleDateString('ar-SA'),
             ];
         });
-        const success = await exportToXlsx(headers, rows, `reviews_report_${new Date().toISOString().split('T')[0]}.xlsx`);
+        const success = await exportToXlsx(
+            headers, 
+            rows, 
+            `reviews_report_${new Date().toISOString().split('T')[0]}.xlsx`,
+            { sheetName: 'Reviews', ...buildXlsxBrandOptions(settings, 'التقييمات', headers.length, { periodText: `التاريخ: ${new Date().toLocaleDateString('ar-SA')}` }) }
+        );
         if(success) {
             showNotification(`تم حفظ التقرير في مجلد المستندات`, 'success');
         } else {
@@ -86,12 +92,7 @@ const ManageReviewsScreen: React.FC = () => {
             'print-area',
             'إدارة التقييمات',
             `reviews_report_${new Date().toISOString().split('T')[0]}.pdf`,
-            {
-                headerTitle: settings.cafeteriaName?.ar || 'تقارير',
-                headerSubtitle: 'إدارة التقييمات',
-                logoUrl: settings.logoUrl || '',
-                footerText: `${settings.address || ''} • ${settings.contactNumber || ''}`,
-            }
+            buildPdfBrandOptions(settings, 'إدارة التقييمات', { pageNumbers: true })
         );
         if (success) {
             showNotification('تم حفظ التقرير في مجلد المستندات', 'success');
