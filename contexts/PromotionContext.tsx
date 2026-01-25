@@ -75,6 +75,7 @@ export const PromotionProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       setAdminPromotions(list.map((row) => ({
         id: String(row.id),
         name: String(row.name || ''),
+        imageUrl: typeof row.image_url === 'string' ? row.image_url : (row.data?.imageUrl || undefined),
         startAt: String(row.start_at || row.startAt || ''),
         endAt: String(row.end_at || row.endAt || ''),
         isActive: Boolean(row.is_active ?? row.isActive),
@@ -110,6 +111,7 @@ export const PromotionProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       p_promotion: {
         id: input.promotion.id ?? null,
         name: input.promotion.name,
+        imageUrl: (input.promotion as any).imageUrl ?? null,
         startAt: input.promotion.startAt,
         endAt: input.promotion.endAt,
         discountMode: input.promotion.discountMode,
@@ -118,7 +120,10 @@ export const PromotionProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         displayOriginalTotal: input.promotion.displayOriginalTotal ?? null,
         maxUses: input.promotion.maxUses ?? null,
         exclusiveWithCoupon: input.promotion.exclusiveWithCoupon ?? true,
-        data: (input.promotion as any).data ?? {},
+        data: {
+          ...(typeof (input.promotion as any).data === 'object' ? (input.promotion as any).data : {}),
+          imageUrl: (input.promotion as any).imageUrl ?? undefined,
+        },
       },
       p_items: input.items.map((it) => ({
         itemId: it.itemId,

@@ -1,6 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import type { Promotion, PromotionDiscountMode, PromotionItem } from '../../types';
 import { useMenu } from '../../contexts/MenuContext';
+import ImageUploader from '../ImageUploader';
+import { useAds } from '../../contexts/AdContext';
+import { useToast } from '../../contexts/ToastContext';
+import { useItemMeta } from '../../contexts/ItemMetaContext';
+import { useSettings } from '../../contexts/SettingsContext';
 
 type PromotionDraft = Omit<Promotion, 'id' | 'items'> & { id?: string; items: PromotionItem[] };
 
@@ -30,6 +35,7 @@ const PromotionFormModal: React.FC<PromotionFormModalProps> = ({ isOpen, onClose
   const getInitial = (): PromotionDraft => ({
     id: undefined,
     name: '',
+    imageUrl: '',
     startAt: new Date().toISOString(),
     endAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
     isActive: false,
@@ -47,6 +53,18 @@ const PromotionFormModal: React.FC<PromotionFormModalProps> = ({ isOpen, onClose
 
   const [draft, setDraft] = useState<PromotionDraft>(getInitial);
   const [activateOnSave, setActivateOnSave] = useState(false);
+  const [isAdWizardOpen, setIsAdWizardOpen] = useState(false);
+  const [isCreatingAd, setIsCreatingAd] = useState(false);
+  const [adTitleAr, setAdTitleAr] = useState('');
+  const [adTitleEn, setAdTitleEn] = useState('');
+  const [adSubtitleAr, setAdSubtitleAr] = useState('');
+  const [adSubtitleEn, setAdSubtitleEn] = useState('');
+  const [adActionType, setAdActionType] = useState<'none' | 'item' | 'category' | 'promotion'>('none');
+  const [adActionTarget, setAdActionTarget] = useState<string>('');
+  const { addAd } = useAds();
+  const { showNotification } = useToast();
+  const { categories: categoryDefs, getCategoryLabel } = useItemMeta();
+  const { language } = useSettings();
 
   useEffect(() => {
     if (!isOpen) return;
@@ -54,6 +72,7 @@ const PromotionFormModal: React.FC<PromotionFormModalProps> = ({ isOpen, onClose
       setDraft({
         id: promotionToEdit.id,
         name: promotionToEdit.name || '',
+        imageUrl: promotionToEdit.imageUrl || '',
         startAt: promotionToEdit.startAt,
         endAt: promotionToEdit.endAt,
         isActive: promotionToEdit.isActive,
@@ -142,6 +161,47 @@ const PromotionFormModal: React.FC<PromotionFormModalProps> = ({ isOpen, onClose
                 className="mt-1 w-full p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600"
               />
             </div>
+            <div className="flex flex-col items-start">
+              <ImageUploader
+                value={draft.imageUrl || ''}
+                onChange={(base64) => setDraft((prev) => ({ ...prev, imageUrl: base64 }))}
+                label="صورة العرض (اختياري)"
+                maxSizeMB={4}
+                maxWidth={1000}
+                maxHeight={1000}
+                className="w-full"
+              />
+              <div className="mt-3">
+                <button
+                  type="button"
+                  disabled={!draft.imageUrl}
+                  onClick={() => {
+                    const itemIds = (draft.items || []).map(it => it.itemId);
+                    const itemsInPromo = sortedMenuItems.filter(mi => itemIds.includes(mi.id));
+                    const catSet = new Set(itemsInPromo.map(mi => mi.category).filter(Boolean));
+                    const cats = Array.from(catSet);
+                    setAdTitleAr(draft.name || '');
+                    setAdSubtitleAr('عرض ترويجي');
+                    setAdTitleEn('');
+                    setAdSubtitleEn('');
+                    if ((draft.items || []).length === 1 && itemsInPromo.length === 1) {
+                      setAdActionType('item');
+                      setAdActionTarget(itemsInPromo[0].id);
+                    } else if (cats.length === 1) {
+                      setAdActionType('category');
+                      setAdActionTarget(cats[0] || '');
+                    } else {
+                      setAdActionType('none');
+                      setAdActionTarget('');
+                    }
+                    setIsAdWizardOpen(true);
+                  }}
+                  className={`px-3 py-2 rounded-md text-sm font-semibold ${draft.imageUrl ? 'bg-primary-600 text-white hover:bg-primary-700' : 'bg-gray-300 text-gray-600 cursor-not-allowed'}`}
+                >
+                  إنشاء إعلان من الصورة
+                </button>
+              </div>
+            </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
@@ -215,6 +275,157 @@ const PromotionFormModal: React.FC<PromotionFormModalProps> = ({ isOpen, onClose
                 />
               </div>
             </div>
+            {isAdWizardOpen && (
+              <div className="mt-4 border rounded-lg p-4 dark:border-gray-700 space-y-3">
+                <div className="font-bold dark:text-white">إنشاء إعلان مرتبط</div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">عنوان الإعلان (AR)</label>
+                    <input
+                      type="text"
+                      value={adTitleAr}
+                      onChange={(e) => setAdTitleAr(e.target.value)}
+                      className="mt-1 w-full p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">عنوان الإعلان (EN)</label>
+                    <input
+                      type="text"
+                      value={adTitleEn}
+                      onChange={(e) => setAdTitleEn(e.target.value)}
+                      className="mt-1 w-full p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">نص فرعي (AR)</label>
+                    <input
+                      type="text"
+                      value={adSubtitleAr}
+                      onChange={(e) => setAdSubtitleAr(e.target.value)}
+                      className="mt-1 w-full p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">نص فرعي (EN)</label>
+                    <input
+                      type="text"
+                      value={adSubtitleEn}
+                      onChange={(e) => setAdSubtitleEn(e.target.value)}
+                      className="mt-1 w-full p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">نوع الربط</label>
+                    <select
+                      value={adActionType}
+                      onChange={(e) => {
+                        const v = e.target.value as 'none' | 'item' | 'category' | 'promotion';
+                        setAdActionType(v);
+                        setAdActionTarget('');
+                        if (v === 'promotion' && draft.id) {
+                          setAdActionTarget(String(draft.id));
+                        }
+                      }}
+                      className="mt-1 w-full p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600"
+                    >
+                      <option value="none">بدون إجراء</option>
+                      <option value="item">صنف محدد</option>
+                      <option value="category">فئة محددة</option>
+                      <option value="promotion" disabled={!draft.id}>عرض</option>
+                    </select>
+                  </div>
+                  {adActionType === 'item' && (
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">اختر الصنف</label>
+                      <select
+                        value={adActionTarget}
+                        onChange={(e) => setAdActionTarget(e.target.value)}
+                        className="mt-1 w-full p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600"
+                      >
+                        <option value="">اختيار</option>
+                        {(draft.items || []).map((it, idx) => {
+                          const mi = sortedMenuItems.find(m => m.id === it.itemId);
+                          const label = mi?.name?.[language] || mi?.name?.ar || mi?.name?.en || it.itemId;
+                          return <option key={`${it.itemId}:${idx}`} value={it.itemId}>{label}</option>;
+                        })}
+                      </select>
+                    </div>
+                  )}
+                  {adActionType === 'category' && (
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">اختر الفئة</label>
+                      <select
+                        value={adActionTarget}
+                        onChange={(e) => setAdActionTarget(e.target.value)}
+                        className="mt-1 w-full p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600"
+                      >
+                        <option value="">اختيار</option>
+                        {Array.from(new Set((draft.items || []).map(it => {
+                          const mi = sortedMenuItems.find(m => m.id === it.itemId);
+                          return mi?.category || '';
+                        }).filter(Boolean))).map(catKey => (
+                          <option key={catKey} value={catKey}>
+                            {getCategoryLabel(catKey, language as 'ar' | 'en')}
+                          </option>
+                        ))}
+                        {Array.from(new Set(categoryDefs.filter(c => c.isActive).map(c => c.key))).map(catKey => (
+                          <option key={`all-${catKey}`} value={catKey}>
+                            {getCategoryLabel(catKey, language as 'ar' | 'en')}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                  {adActionType === 'promotion' && (
+                    <div className="md:col-span-2">
+                      <div className="text-sm text-gray-600 dark:text-gray-400">
+                        سيتم ربط الإعلان بهذا العرض. {draft.id ? `المعرف: ${draft.id}` : 'احفظ العرض أولاً للحصول على معرف.'}
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsAdWizardOpen(false)}
+                    className="py-2 px-4 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300"
+                  >
+                    إلغاء
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isCreatingAd || !draft.imageUrl || (adActionType !== 'none' && !adActionTarget)}
+                    onClick={async () => {
+                      setIsCreatingAd(true);
+                      try {
+                        await addAd({
+                          title: { ar: adTitleAr, en: adTitleEn || undefined },
+                          subtitle: { ar: adSubtitleAr, en: adSubtitleEn || undefined },
+                          imageUrl: draft.imageUrl || '',
+                          actionType: adActionType,
+                          actionTarget: adActionType === 'none' ? undefined : (adActionTarget || undefined),
+                          status: 'active',
+                        });
+                        setIsAdWizardOpen(false);
+                        showNotification('تم إنشاء إعلان مرتبط بالصورة.', 'success');
+                      } catch (err: any) {
+                        showNotification(err?.message || 'تعذر إنشاء الإعلان', 'error');
+                      } finally {
+                        setIsCreatingAd(false);
+                      }
+                    }}
+                    className="py-2 px-4 bg-primary-600 text-white rounded-md hover:bg-primary-700 disabled:bg-primary-400"
+                  >
+                    إنشاء الإعلان
+                  </button>
+                </div>
+              </div>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>

@@ -55,6 +55,7 @@ const ManageAdsScreen: React.FC = () => {
       case 'link': return 'رابط خارجي';
       case 'category': return 'فئة';
       case 'item': return 'منتج';
+      case 'promotion': return 'عرض';
       default: return type;
     }
   };

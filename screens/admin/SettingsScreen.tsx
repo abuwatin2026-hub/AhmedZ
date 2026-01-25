@@ -1,9 +1,22 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useToast } from '../../contexts/ToastContext';
 import { AppSettings, LoyaltyTier, Bank, TransferRecipient } from '../../types';
 import { getSupabaseClient } from '../../supabase';
 import NumberInput from '../../components/NumberInput';
+import { useMenu } from '../../contexts/MenuContext';
+import { useDeliveryZones } from '../../contexts/DeliveryZoneContext';
+import { useItemMeta } from '../../contexts/ItemMetaContext';
+import { usePurchases } from '../../contexts/PurchasesContext';
+import { useWarehouses } from '../../contexts/WarehouseContext';
+import { usePromotions } from '../../contexts/PromotionContext';
+import { useCoupons } from '../../contexts/CouponContext';
+import { useAds } from '../../contexts/AdContext';
+import { useCashShift } from '../../contexts/CashShiftContext';
+import { usePricing } from '../../contexts/PricingContext';
+import { useAuth } from '../../contexts/AuthContext';
+import * as Icons from '../../components/icons';
+import { Link } from 'react-router-dom';
 
 const SettingsScreen: React.FC = () => {
   const { settings, updateSettings } = useSettings();
@@ -65,6 +78,223 @@ const SettingsScreen: React.FC = () => {
   useEffect(() => {
     setFormState(settings);
   }, [settings]);
+
+  const { menuItems } = useMenu();
+  const { deliveryZones } = useDeliveryZones();
+  const { categories, unitTypes } = useItemMeta();
+  const { suppliers } = usePurchases();
+  const { warehouses } = useWarehouses();
+  const { adminPromotions } = usePromotions();
+  const { coupons } = useCoupons();
+  const { ads } = useAds();
+  const { currentShift } = useCashShift();
+  const { priceTiers, specialPrices } = usePricing();
+  const { hasPermission } = useAuth();
+
+  const checklist = useMemo(() => {
+    const nameOk = Boolean((settings.cafeteriaName?.ar || settings.cafeteriaName?.en || '').trim());
+    const contactOk = Boolean((settings.contactNumber || '').trim());
+    const addressOk = Boolean((settings.address || '').trim());
+    const storeBasicsOk = nameOk && contactOk && addressOk;
+
+    const anyPaymentEnabled = Boolean(settings.paymentMethods.cash || settings.paymentMethods.kuraimi || settings.paymentMethods.network);
+    const kuraimiOk = !settings.paymentMethods.kuraimi || (banks.length > 0);
+    const networkOk = !settings.paymentMethods.network || (transferRecipients.length > 0);
+    const paymentsOk = anyPaymentEnabled && kuraimiOk && networkOk;
+    const paymentsDetail = paymentsOk
+      ? 'مكتمل'
+      : (!anyPaymentEnabled
+          ? 'فعّل طريقة دفع'
+          : (!kuraimiOk
+              ? 'أضف بنك للكريمي'
+              : !networkOk
+                ? 'أضف مستلماً للشبكة'
+                : ''));
+
+    const zonesActiveCount = deliveryZones.filter(z => z.isActive).length;
+    const zonesOk = zonesActiveCount > 0;
+
+    const metaOk = (categories.length > 0) && (unitTypes.length > 0);
+    const suppliersOk = suppliers.length > 0;
+    const itemsOk = menuItems.length > 0;
+    const warehousesOk = warehouses.length > 0;
+
+    const accountingRequiredKeys = ['sales', 'inventory', 'cogs', 'cash'];
+    const accountingConfigured = accountingRequiredKeys.every(k => Boolean((settings.accounting_accounts as any)?.[k]));
+    const loyaltyEnabled = Boolean(settings.loyaltySettings.enabled);
+    const loyaltyConfigured = !loyaltyEnabled || (
+      Number(settings.loyaltySettings.pointsPerCurrencyUnit) > 0 &&
+      Number(settings.loyaltySettings.currencyValuePerPoint) > 0
+    );
+    const promotionsOk = adminPromotions.some(p => Boolean(p.isActive));
+    const couponsOk = coupons.length > 0;
+    const adsOk = ads.length > 0;
+    const posFlags = settings.posFlags || { barcodeScanEnabled: false, autoPrintThermalEnabled: false, thermalCopies: 0 };
+    const posReady = Boolean(posFlags.barcodeScanEnabled) && Boolean(posFlags.autoPrintThermalEnabled) && Number(posFlags.thermalCopies) >= 1 && Boolean(currentShift) && hasPermission('orders.createInStore');
+    const posDetail = `باركود: ${posFlags.barcodeScanEnabled ? 'مفعل' : 'غير مفعل'}، طباعة: ${posFlags.autoPrintThermalEnabled ? 'مفعّلة' : 'غير مفعّلة'}، نسخ: ${Number(posFlags.thermalCopies) || 0}، وردية: ${currentShift ? 'مفتوحة' : 'غير مفتوحة'}، صلاحية البيع الحضوري: ${hasPermission('orders.createInStore') ? 'موجودة' : 'غير موجودة'}`;
+    const taxEnabled = Boolean(settings.taxSettings?.enabled);
+    const vatOk = !taxEnabled || (Number(settings.taxSettings?.rate) > 0 && Boolean(settings.taxSettings?.taxNumber));
+    const vatDetail = vatOk ? 'مكتمل' : 'أكمل نسبة الضريبة والرقم الضريبي';
+    const maintenanceOk = !Boolean(settings.maintenanceEnabled);
+    const advPricingOk = (priceTiers.length > 0) || (specialPrices.length > 0);
+    const approvalsOk = hasPermission('approvals.manage');
+    const accountingViewOk = hasPermission('accounting.view');
+
+    return [
+      {
+        key: 'store',
+        ok: storeBasicsOk,
+        title: 'بيانات المتجر الأساسية',
+        detail: storeBasicsOk ? 'مكتمل' : 'اسم/رقم تواصل/عنوان مطلوبة',
+        actionText: 'فتح البيانات',
+        to: '/admin/settings',
+      },
+      {
+        key: 'payments',
+        ok: paymentsOk,
+        title: 'طرق الدفع',
+        detail: paymentsDetail,
+        actionText: 'إدارة الدفع',
+        to: '/admin/settings',
+      },
+      {
+        key: 'zones',
+        ok: zonesOk,
+        title: 'مناطق التوصيل',
+        detail: zonesOk ? 'مكتمل' : 'أضف منطقة توصيل فعّالة',
+        actionText: 'إدارة المناطق',
+        to: '/admin/delivery-zones',
+      },
+      {
+        key: 'meta',
+        ok: metaOk,
+        title: 'إعدادات الميتا (فئات/وحدات)',
+        detail: metaOk ? 'مكتمل' : 'أضف فئات ووحدات قياس',
+        actionText: 'إدارة الأصناف',
+        to: '/admin/items',
+      },
+      {
+        key: 'suppliers',
+        ok: suppliersOk,
+        title: 'الموردون',
+        detail: suppliersOk ? 'مكتمل' : 'أضف موردًا واحدًا على الأقل',
+        actionText: 'إدارة الموردين',
+        to: '/admin/suppliers',
+      },
+      {
+        key: 'warehouses',
+        ok: warehousesOk,
+        title: 'المستودعات',
+        detail: warehousesOk ? 'مكتمل' : 'أضف مستودعًا واحدًا على الأقل',
+        actionText: 'إدارة المستودعات',
+        to: '/admin/warehouses',
+      },
+      {
+        key: 'items',
+        ok: itemsOk,
+        title: 'الأصناف للبيع',
+        detail: itemsOk ? 'مكتمل' : 'أضف صنفًا واحدًا على الأقل',
+        actionText: 'إدارة الأصناف',
+        to: '/admin/items',
+      },
+      {
+        key: 'accounting',
+        ok: accountingConfigured,
+        title: 'إعداد الحسابات المحاسبية',
+        detail: accountingConfigured ? 'مكتمل' : 'عيّن حسابات رئيسية (مبيعات/مخزون/COGS/نقدية)',
+        actionText: 'إعداد الحسابات',
+        to: '/admin/settings',
+      },
+      {
+        key: 'loyalty',
+        ok: loyaltyConfigured,
+        title: 'برنامج الولاء',
+        detail: loyaltyConfigured ? 'مكتمل' : 'أكمل إعداد النقاط وقيمة النقطة',
+        actionText: 'إعدادات الولاء',
+        to: '/admin/settings',
+      },
+      {
+        key: 'promotions',
+        ok: promotionsOk,
+        title: 'العروض الترويجية',
+        detail: promotionsOk ? 'مكتمل' : 'أضف عرضًا أو فعّل عرضًا',
+        actionText: 'إدارة العروض',
+        to: '/admin/promotions',
+      },
+      {
+        key: 'coupons',
+        ok: couponsOk,
+        title: 'الكوبونات',
+        detail: couponsOk ? 'مكتمل' : 'أضف كوبون خصم',
+        actionText: 'إدارة الكوبونات',
+        to: '/admin/coupons',
+      },
+      {
+        key: 'ads',
+        ok: adsOk,
+        title: 'الإعلانات',
+        detail: adsOk ? 'مكتمل' : 'أضف إعلانًا نشطًا لشريط العروض',
+        actionText: 'إدارة الإعلانات',
+        to: '/admin/ads',
+      },
+      {
+        key: 'vat',
+        ok: vatOk,
+        title: 'الضريبة (VAT)',
+        detail: vatDetail,
+        actionText: 'إعدادات الضريبة',
+        to: '/admin/settings',
+      },
+      {
+        key: 'maintenance',
+        ok: maintenanceOk,
+        title: 'وضع الصيانة',
+        detail: maintenanceOk ? 'مكتمل' : 'أوقف وضع الصيانة قبل الإطلاق',
+        actionText: 'حالة النظام',
+        to: '/admin/settings',
+      },
+      {
+        key: 'advanced-pricing',
+        ok: advPricingOk,
+        title: 'التسعير المتقدم (شرائح/أسعار خاصة)',
+        detail: advPricingOk ? 'مكتمل' : 'اختياري: أضف شرائح أو أسعار خاصة',
+        actionText: 'إدارة التسعير',
+        to: '/admin/price-tiers',
+      },
+      {
+        key: 'approvals',
+        ok: approvalsOk,
+        title: 'جاهزية الموافقات',
+        detail: approvalsOk ? 'مكتمل' : 'امنح صلاحية إدارة الموافقات لمدير واحد على الأقل',
+        actionText: 'إدارة المستخدمين',
+        to: '/admin/profile',
+      },
+      {
+        key: 'financial-reports',
+        ok: accountingViewOk && accountingConfigured,
+        title: 'جاهزية التقارير المالية',
+        detail: accountingViewOk && accountingConfigured ? 'مكتمل' : 'عيّن حسابات رئيسية وتأكد من صلاحية عرض المحاسبة',
+        actionText: 'إعداد الحسابات',
+        to: '/admin/settings',
+      },
+      {
+        key: 'period-close',
+        ok: hasPermission('accounting.periods.close'),
+        title: 'جاهزية إقفال الفترة المحاسبية',
+        detail: hasPermission('accounting.periods.close') ? 'مكتمل' : 'امنح صلاحية إقفال الفترات للمحاسب/المالك',
+        actionText: 'إدارة المستخدمين',
+        to: '/admin/profile',
+      },
+      {
+        key: 'pos',
+        ok: posReady,
+        title: 'جاهزية نقطة البيع (POS)',
+        detail: posReady ? 'مكتمل' : posDetail,
+        actionText: 'فتح POS',
+        to: '/pos',
+      },
+    ];
+  }, [settings, banks.length, transferRecipients.length, deliveryZones, categories.length, unitTypes.length, suppliers.length, menuItems.length, warehouses.length, adminPromotions, coupons.length, ads.length, currentShift, priceTiers.length, specialPrices.length, hasPermission]);
 
   useEffect(() => {
     let mounted = true;
@@ -603,6 +833,33 @@ const SettingsScreen: React.FC = () => {
   return (
     <div className="animate-fade-in space-y-8">
       <h1 className="text-3xl font-bold dark:text-white">الإعدادات العامة</h1>
+
+      <section className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6">
+        <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4 border-r-4 rtl:border-l-4 rtl:border-r-0 border-gold-500 pr-4 rtl:pr-0 rtl:pl-4">
+          قائمة تحقق بدء التشغيل
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {checklist.map(item => (
+            <div key={item.key} className="p-4 rounded-lg border dark:border-gray-700 flex items-start gap-3">
+              <div className={`p-2 rounded-full ${item.ok ? 'bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-300' : 'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-300'}`}>
+                {item.ok ? <Icons.Check className="h-5 w-5" /> : <Icons.X className="h-5 w-5" />}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="font-bold text-gray-900 dark:text-white">{item.title}</div>
+                <div className="text-xs text-gray-600 dark:text-gray-300 mt-1">{item.detail}</div>
+              </div>
+              <div>
+                <Link to={item.to} className="px-3 py-2 rounded-md bg-primary-500 text-white text-xs font-semibold hover:bg-primary-600 transition">
+                  {item.actionText}
+                </Link>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="mt-4 text-xs text-gray-500 dark:text-gray-400">
+          يُنصح بإتمام البنود الحمراء قبل البدء الفعلي باستقبال الطلبات.
+        </div>
+      </section>
 
       <form onSubmit={handleSubmit} className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-8 space-y-8">
 

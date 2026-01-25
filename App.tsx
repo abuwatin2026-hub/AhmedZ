@@ -32,6 +32,7 @@ const InvoiceScreen = lazy(() => import('./screens/InvoiceScreen'));
 const DownloadAppScreen = lazy(() => import('./screens/DownloadAppScreen'));
 const HelpCenterScreen = lazy(() => import('./screens/HelpCenterScreen'));
 const POSScreen = lazy(() => import('./screens/POSScreen'));
+const PromotionDetailsScreen = lazy(() => import('./screens/PromotionDetailsScreen'));
 
 // Lazy load admin screens
 const AdminLoginScreen = lazy(() => import('./screens/admin/AdminLoginScreen'));
@@ -244,6 +245,7 @@ const App: React.FC = () => {
               <Route path="/" element={<CustomerLayout />}>
                 <Route index element={<HomeScreen />} />
                 <Route path="item/:id" element={<ItemDetailsScreen />} />
+                <Route path="promotion/:id" element={<PromotionDetailsScreen />} />
                 <Route path="cart" element={<CartScreen />} />
                 <Route path="login" element={<LoginScreen />} />
                 <Route path="otp" element={<OtpScreen />} />

@@ -68,6 +68,8 @@ const AdCarousel: React.FC<AdCarouselProps> = ({ onCategorySelect }) => {
             onCategorySelect(ad.actionTarget);
             const menuSection = document.getElementById('featured-items-section');
             menuSection?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        } else if (ad.actionType === 'promotion' && ad.actionTarget) {
+            navigate(`/promotion/${ad.actionTarget}`);
         }
     };
 

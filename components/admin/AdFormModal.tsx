@@ -3,6 +3,7 @@ import { Ad } from '../../types';
 import { useMenu } from '../../contexts/MenuContext';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useItemMeta } from '../../contexts/ItemMetaContext';
+import { usePromotions } from '../../contexts/PromotionContext';
 import { translateArToEn } from '../../utils/translations';
 
 interface AdFormModalProps {
@@ -17,6 +18,7 @@ const AdFormModal: React.FC<AdFormModalProps> = ({ isOpen, onClose, onSave, adTo
   const { menuItems } = useMenu();
   const { t, language } = useSettings();
   const { categories: categoryDefs, getCategoryLabel } = useItemMeta();
+  const { adminPromotions } = usePromotions();
 
   const getInitialFormState = (): Omit<Ad, 'id' | 'order'> => ({
     title: { ar: '', en: '' },
@@ -153,6 +155,7 @@ const AdFormModal: React.FC<AdFormModalProps> = ({ isOpen, onClose, onSave, adTo
                         <option value="none">{t('none')}</option>
                         <option value="item">{t('navigateToItem')}</option>
                         <option value="category">{t('navigateToCategory')}</option>
+                        <option value="promotion">انتقال إلى العرض</option>
                     </select>
                 </div>
                 <div>
@@ -167,6 +170,12 @@ const AdFormModal: React.FC<AdFormModalProps> = ({ isOpen, onClose, onSave, adTo
                         <select name="actionTarget" id="actionTarget" value={ad.actionTarget || ''} onChange={handleChange} className="mt-1 w-full p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600">
                              <option value="">{t('selectACategory')}</option>
                             {categories.map(cat => <option key={cat} value={cat}>{getCategoryLabel(cat, language as 'ar' | 'en')}</option>)}
+                        </select>
+                    )}
+                    {ad.actionType === 'promotion' && (
+                        <select name="actionTarget" id="actionTarget" value={ad.actionTarget || ''} onChange={handleChange} className="mt-1 w-full p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600">
+                            <option value="">اختر عرضًا</option>
+                            {adminPromotions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                         </select>
                     )}
                     {ad.actionType === 'none' && (

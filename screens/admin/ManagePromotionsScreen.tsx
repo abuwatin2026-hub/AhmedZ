@@ -46,7 +46,14 @@ const ManagePromotionsScreen: React.FC = () => {
   const handleSave = async (input: { promotion: any; activate: boolean }) => {
     setIsProcessing(true);
     try {
-      const res = await savePromotion({ promotion: input.promotion, items: input.promotion.items || [], activate: input.activate });
+      const res = await savePromotion({
+        promotion: {
+          ...input.promotion,
+          data: { imageUrl: input.promotion.imageUrl || undefined },
+        },
+        items: input.promotion.items || [],
+        activate: input.activate,
+      });
       if (res.approvalStatus === 'pending') {
         showNotification('تم إرسال طلب موافقة لتفعيل العرض.', 'info');
       } else {
@@ -92,6 +99,7 @@ const ManagePromotionsScreen: React.FC = () => {
           <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
             <thead className="bg-gray-50 dark:bg-gray-700">
               <tr>
+                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">الصورة</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">الاسم</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">الفترة</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">الحالة</th>
@@ -102,6 +110,9 @@ const ManagePromotionsScreen: React.FC = () => {
             <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
               {rows.map((p) => (
                 <tr key={p.id}>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    {p.imageUrl ? <img src={p.imageUrl} alt={p.name} className="w-24 h-16 object-cover rounded-md" /> : <span className="text-xs text-gray-400">بدون صورة</span>}
+                  </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white font-semibold">{p.name}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-300">
                     <div>{formatDateTime(p.startAt)}</div>

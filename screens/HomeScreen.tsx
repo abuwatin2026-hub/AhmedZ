@@ -13,7 +13,7 @@ import OrderAgainItemCardSkeleton from '../components/OrderAgainItemCardSkeleton
 import AdCarousel from '../components/AdCarousel';
 import YemeniPattern from '../components/YemeniPattern';
 import { usePromotions } from '../contexts/PromotionContext';
-import { useCart } from '../contexts/CartContext';
+// removed unused import
 
 const normalizeCategoryKey = (value: unknown) => {
   const raw = typeof value === 'string' ? value.trim() : '';
@@ -28,7 +28,6 @@ const HomeScreen: React.FC = () => {
   const { isAuthenticated } = useUserAuth();
   const { categories: categoryDefs, getCategoryLabel } = useItemMeta();
   const { activePromotions } = usePromotions();
-  const { addPromotionToCart } = useCart();
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -109,24 +108,47 @@ const HomeScreen: React.FC = () => {
               return (
                 <button
                   key={p.promotionId}
-                  onClick={() => void addPromotionToCart({ promotionId: p.promotionId, bundleQty: 1 })}
+                  onClick={() => window.location.hash = `#/promotion/${p.promotionId}`}
                   className="text-right bg-white dark:bg-gray-900 border border-gold-500/20 dark:border-gold-500/10 rounded-2xl p-4 shadow-md hover:shadow-lg transition-shadow"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="text-lg font-bold text-gray-900 dark:text-white truncate">{p.name}</div>
+                      <div className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-gray-600 dark:text-gray-300">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M12 8a1 1 0 011 1v3.382l2.724 1.636a1 1 0 11-1.048 1.704l-3.5-2.1A1 1 0 0111 13V9a1 1 0 011-1zm0-6a10 10 0 100 20 10 10 0 000-20z" />
+                        </svg>
+                        <span>{countdown}</span>
+                      </div>
                       <div className="mt-1 text-sm text-gray-600 dark:text-gray-300">
                         <span className="line-through text-gray-400 dark:text-gray-500">{original.toFixed(2)} ر.ي</span>
                         <span className="mx-2">→</span>
                         <span className="text-red-600 dark:text-red-400 font-extrabold">{Number(p.finalTotal || 0).toFixed(2)} ر.ي</span>
                       </div>
+                      {Array.isArray(p.items) && p.items.length > 0 && (
+                        <div className="mt-3 flex items-center gap-2">
+                          {p.items.slice(0, 6).map((it, idx) => {
+                            const mi = menuItems.find(m => String(m.id) === String(it.itemId));
+                            const img = mi?.imageUrl || '';
+                            const title = mi?.name?.ar || mi?.name?.en || String(it.itemId);
+                            return (
+                              <div key={`${it.itemId}:${idx}`} className="relative w-10 h-10 rounded-md overflow-hidden border border-gray-200 dark:border-gray-700">
+                                {img ? <img src={img} alt={title} className="w-full h-full object-cover" /> : <div className="w-full h-full bg-gray-200 dark:bg-gray-700"></div>}
+                                <span className="absolute top-0 right-0 px-1 py-0.5 bg-black/70 text-white text-[10px] rounded-bl">
+                                  ×{Number(it.quantity || 0)}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                     <div className="shrink-0 text-xs font-bold px-3 py-1 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200">
                       {countdown}
                     </div>
                   </div>
                   <div className="mt-3 text-xs text-gray-500 dark:text-gray-400">
-                    اضغط للإضافة إلى السلة
+                    اضغط لعرض تفاصيل العرض
                   </div>
                 </button>
               );

@@ -555,6 +555,7 @@ export type PromotionDiscountMode = 'fixed_total' | 'percent_off';
 export interface Promotion {
   id: string;
   name: string;
+  imageUrl?: string;
   startAt: string;
   endAt: string;
   isActive: boolean;
@@ -604,7 +605,7 @@ export interface Ad {
   title: LocalizedString;
   subtitle: LocalizedString;
   imageUrl: string;
-  actionType: 'none' | 'item' | 'category';
+  actionType: 'none' | 'item' | 'category' | 'promotion';
   actionTarget?: string; // Will hold item ID or category name
   order: number;
   status: 'active' | 'inactive';
