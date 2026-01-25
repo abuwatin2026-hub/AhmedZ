@@ -1,5 +1,5 @@
 {
-  "name": "ahmed-zangah-app",
+  "name": "ahmed-zenkah-trading",
   "version": "1.0.0",
   "description": "نظام مبيعات وإدارة لمؤسسة أحمد زنقاح للتجارة والتوكيلات.",
   "private": true,
@@ -10,12 +10,12 @@
     "build:capacitor": "node --max-old-space-size=8192 ./node_modules/vite/bin/vite.js build --mode capacitor",
     "typecheck": "node --max-old-space-size=8192 ./node_modules/typescript/bin/tsc --noEmit",
     "preview": "vite preview",
-    "deploy:pages": "npm run build && npx wrangler pages deploy dist --project-name ahmed-zangah",
+    "deploy:pages": "npm run build && npx wrangler pages deploy dist --project-name ahmed-zenkah-trading",
     "search": "node scripts/code-search.mjs",
     "sync": "npm run build:capacitor && node scripts/prepare-native-dist.mjs && npx capacitor sync android && node scripts/restore-web-dist.mjs && node scripts/verify-native-sync.mjs",
     "open": "npx capacitor open android",
     "assets": "capacitor-assets generate",
-    "apk:publish": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"New-Item -ItemType Directory -Force -Path .\\public\\downloads | Out-Null; Copy-Item -Force -Path .\\android\\app\\build\\outputs\\apk\\release\\app-release.apk -Destination .\\public\\downloads\\ahmed-zangah-latest.apk\"",
+    "apk:publish": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"New-Item -ItemType Directory -Force -Path .\\public\\downloads | Out-Null; Copy-Item -Force -Path .\\android\\app\\build\\outputs\\apk\\release\\app-release.apk -Destination .\\public\\downloads\\ahmed-zenkah-trading-latest.apk\"",
     "db:link": "supabase link",
     "db:pull": "supabase db pull",
     "db:push": "supabase db push",
@@ -59,6 +59,6 @@
     "vite": "^7.0.0"
   },
   "overrides": {
-    "tar": "7.5.6"
+    "tar": "6.2.1"
   }
 }

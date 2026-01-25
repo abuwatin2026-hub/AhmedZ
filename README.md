@@ -42,12 +42,7 @@ npm run db:push
 
 - الهدف: نسخ احتياطي يومي/أسبوعي للمخطط والبيانات.
 - خيار 1 (PostgreSQL قياسي مع pg_dump):
-  - متغير اتصال قاعدة البيانات (مثال): `DATABASE_URL=postgres://user:pass@host:5432/db`
-  - أمر النسخ الاحتياطي:
-    ```bash
-    set DATABASE_URL=postgres://user:pass@host:5432/db
-    pg_dump --format=custom --file "backups/db_$(date +%F).dump" "%DATABASE_URL%"
-    ```
+  - نفّذ pg_dump من بيئة تشغيل آمنة تملك بيانات الاتصال.
 - خيار 2 (Supabase مُدار):
   - استخدم أدوات Supabase الرسمية أو لوحات التحكم لضبط النسخ الاحتياطي التلقائي.
   - يمكن أيضاً جدولة `supabase db pull` أو التصدير حسب السياسات المتاحة.

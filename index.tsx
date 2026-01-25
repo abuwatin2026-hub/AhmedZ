@@ -22,7 +22,7 @@ const ensureFreshApp = async () => {
     }
   };
 
-  const stored = safeGet('caty_app_version');
+  const stored = safeGet('azta_app_version');
   const url = `${import.meta.env.BASE_URL}version.json?t=${Date.now()}`;
   const controller = new AbortController();
   const timeoutId = window.setTimeout(() => controller.abort(), 4000);
@@ -35,7 +35,7 @@ const ensureFreshApp = async () => {
   const next = String(data.versionCode ?? data.version ?? '');
   if (!next) return;
   if (stored && stored === next) return;
-  if (!safeSet('caty_app_version', next)) return;
+  if (!safeSet('azta_app_version', next)) return;
 
   const hasSw = typeof navigator !== 'undefined' && 'serviceWorker' in navigator;
   const hasCaches = typeof caches !== 'undefined';

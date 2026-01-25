@@ -7,6 +7,7 @@ import { FileOpener } from '@capacitor-community/file-opener';
 import { AndroidIcon, AppleIcon, DownloadIcon, ShareIcon } from '../components/icons';
 import Logo from '../components/Logo';
 import { useSettings } from '../contexts/SettingsContext';
+import { AZTA_IDENTITY } from '../config/identity';
 
 type LatestApkInfo = {
     version?: string;
@@ -39,19 +40,20 @@ const DownloadAppScreen: React.FC = () => {
     const [shareFeedback, setShareFeedback] = useState<string | null>(null);
     const [shareErrorHint, setShareErrorHint] = useState<string | null>(null);
     const [apkSizeBytes, setApkSizeBytes] = useState<number | null>(null);
-    const androidDownloadEnabled = false;
+    const [apkAvailable, setApkAvailable] = useState<boolean>(false);
+    const [apkAvailabilityChecked, setApkAvailabilityChecked] = useState<boolean>(false);
 
-    const DEFAULT_APK_FILENAME = 'ahmed-zangah-latest.apk';
-    // Use absolute URL for version check when in native app to reach the server
-    const getBaseUrl = () => {
-        if (Capacitor.isNativePlatform()) {
-            return 'https://ahmed-zangah.pages.dev/'; // Production URL
-        }
-        return import.meta.env.BASE_URL;
+    const DEFAULT_APK_FILENAME = (import.meta.env.VITE_APP_ANDROID_APK_FILENAME as string | undefined) || AZTA_IDENTITY.android.latestApkFilename;
+    const getPublicOriginBaseUrl = () => {
+        const raw = ((import.meta.env.VITE_APP_PUBLIC_ORIGIN as string | undefined) || '').trim();
+        if (!raw) return '';
+        return raw.endsWith('/') ? raw : `${raw}/`;
     };
 
-    const baseUrl = getBaseUrl();
-    const versionJsonUrl = `${baseUrl}version.json`;
+    const baseUrl = Capacitor.isNativePlatform()
+        ? getPublicOriginBaseUrl()
+        : (typeof window !== 'undefined' ? new URL(import.meta.env.BASE_URL, window.location.origin).toString() : import.meta.env.BASE_URL);
+    const versionJsonUrl = baseUrl ? `${baseUrl}version.json` : '';
 
     useEffect(() => {
         const run = async () => {
@@ -64,6 +66,12 @@ const DownloadAppScreen: React.FC = () => {
                     setCurrentVersion(info.version ?? null);
                     const buildNumber = Number(info.build);
                     setCurrentVersionCode(Number.isFinite(buildNumber) ? buildNumber : null);
+                    if (!baseUrl) {
+                        setDownloadUrl(null);
+                        setLatestInfo(null);
+                        setShareErrorHint('إعداد رابط التحديث غير مكتمل. عيّن VITE_APP_PUBLIC_ORIGIN في وضع capacitor/production.');
+                        return;
+                    }
                 }
             } catch {
                 setIsNativeApp(false);
@@ -92,13 +100,22 @@ const DownloadAppScreen: React.FC = () => {
     useEffect(() => {
         const fetchSize = async () => {
             setApkSizeBytes(null);
+            setApkAvailable(false);
+            setApkAvailabilityChecked(false);
             if (!downloadUrl) return;
             try {
                 const res = await fetch(`${downloadUrl}?t=${Date.now()}`, { method: 'HEAD', cache: 'no-store' });
+                setApkAvailabilityChecked(true);
+                if (!res.ok) {
+                    setApkAvailable(false);
+                    return;
+                }
+                setApkAvailable(true);
                 const len = res.headers.get('content-length');
                 const n = len ? Number(len) : NaN;
                 if (Number.isFinite(n) && n > 0) setApkSizeBytes(n);
             } catch {
+                setApkAvailabilityChecked(true);
             }
         };
         void fetchSize();
@@ -213,6 +230,9 @@ const DownloadAppScreen: React.FC = () => {
         /iPad|iPhone|iPod/i.test(userAgent) ||
         (typeof navigator !== 'undefined' && navigator.platform === 'MacIntel' && typeof navigator.maxTouchPoints === 'number' && navigator.maxTouchPoints > 1);
     const isSafari = /Safari/i.test(userAgent) && !/CriOS|FxiOS|EdgiOS|OPiOS|DuckDuckGo/i.test(userAgent);
+    const downloadButtonText = !apkAvailabilityChecked
+        ? 'جاري التحقق...'
+        : (apkAvailable ? (shouldShowUpdate ? 'تحديث' : 'تحميل APK') : 'التحميل غير متاح حالياً');
 
     return (
         <div className="min-h-[calc(100vh-theme(space.32))] flex flex-col items-center justify-center p-4 animate-fade-in">
@@ -285,30 +305,22 @@ const DownloadAppScreen: React.FC = () => {
                                 )}
                             </div>
 
-                            {androidDownloadEnabled ? (
-                                <button
-                                    onClick={handleDownload}
-                                    disabled={loading || !downloadUrl}
-                                    className="w-full flex items-center justify-center gap-3 py-4 px-6 bg-gradient-to-r from-green-600 to-green-500 text-white rounded-xl shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
-                                >
-                                    {loading ? (
-                                        <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                                    ) : (
-                                        <>
-                                            <DownloadIcon className="w-6 h-6 group-hover:animate-bounce" />
-                                            <span className="text-lg font-bold">
-                                                {shouldShowUpdate ? 'تحديث' : 'تحميل APK'}
-                                            </span>
-                                        </>
-                                    )}
-                                </button>
-                            ) : (
-                                <div className="w-full flex items-center justify-center gap-3 py-4 px-6 bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl">
-                                    <span className="text-sm font-bold">
-                                        {'التحميل غير متاح حالياً'}
-                                    </span>
-                                </div>
-                            )}
+                            <button
+                                onClick={handleDownload}
+                                disabled={loading || !downloadUrl || !apkAvailable}
+                                className="w-full flex items-center justify-center gap-3 py-4 px-6 bg-gradient-to-r from-green-600 to-green-500 text-white rounded-xl shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
+                            >
+                                {loading ? (
+                                    <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                ) : (
+                                    <>
+                                        <DownloadIcon className="w-6 h-6 group-hover:animate-bounce" />
+                                        <span className="text-lg font-bold">
+                                            {downloadButtonText}
+                                        </span>
+                                    </>
+                                )}
+                            </button>
 
                             <p className="mt-4 text-xs text-gray-500 dark:text-gray-400 text-center">
                                 {'تأكد من تفعيل "تثبيت من مصادر غير معروفة" في إعدادات هاتفك'}

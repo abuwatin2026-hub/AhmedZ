@@ -3,7 +3,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
 function getAllowedOrigin(origin: string | null): string {
-    const raw = (Deno.env.get('CATY_ALLOWED_ORIGINS') || '').trim();
+    const raw = (Deno.env.get('AZTA_ALLOWED_ORIGINS') || '').trim();
     if (!origin) {
         if (!raw) return '*';
         const first = raw.split(',').map(s => s.trim()).filter(Boolean)[0];
@@ -58,11 +58,11 @@ serve(async (req) => {
     }
 
     try {
-        const supabaseUrl = Deno.env.get('CATY_SUPABASE_URL') ?? Deno.env.get('SUPABASE_URL') ?? ''
-        const serviceRoleKey = Deno.env.get('CATY_SUPABASE_SERVICE_ROLE_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+        const supabaseUrl = (Deno.env.get('AZTA_SUPABASE_URL') ?? '').trim()
+        const serviceRoleKey = (Deno.env.get('AZTA_SUPABASE_SERVICE_ROLE_KEY') ?? '').trim()
         if (!supabaseUrl || !serviceRoleKey) {
             return new Response(
-                JSON.stringify({ error: 'إعدادات الدالة غير مكتملة (CATY_SUPABASE_URL / CATY_SUPABASE_SERVICE_ROLE_KEY).' }),
+                JSON.stringify({ error: 'إعدادات الدالة غير مكتملة (AZTA_SUPABASE_URL / AZTA_SUPABASE_SERVICE_ROLE_KEY).' }),
                 { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
             )
         }

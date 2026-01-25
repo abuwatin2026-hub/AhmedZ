@@ -5,6 +5,7 @@ import { logger } from '../utils/logger';
 import { localizeSupabaseError } from '../utils/errorUtils';
 import { translations } from '../utils/translations';
 import defaultLogoImage from '../resources/logo.jpg';
+import { AZTA_IDENTITY } from '../config/identity';
 
 // Minimal TranslationKeys type to satisfy the hook signature
 type TranslationKeys = string;
@@ -126,7 +127,7 @@ const applyPalette = (paletteName: 'primary' | 'gold' | 'mint', baseHex: string)
 };
 
 const defaultSettings: AppSettings = {
-  cafeteriaName: { ar: 'مؤسسة أحمد زنقاح للتجارة والتوكيلات', en: 'Ahmed Zangah Trading & Agencies Est' },
+  cafeteriaName: { ar: AZTA_IDENTITY.tradeNameAr, en: AZTA_IDENTITY.tradeNameEn },
   logoUrl: defaultLogoImage,
   contactNumber: '967782681999',
   address: 'مأرب، اليمن',

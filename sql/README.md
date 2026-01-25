@@ -8,8 +8,8 @@
 
 **الملفات الموصى بتشغيلها**
 
-- [20251227000000_init.sql](file:///d:/caty/supabase/migrations/20251227000000_init.sql)
-- [20251231000000_atomic_stock_rpc.sql](file:///d:/caty/supabase/migrations/20251231000000_atomic_stock_rpc.sql)
+- [20251227000000_init.sql](file:///d:/AhmedZ/supabase/migrations/20251227000000_init.sql)
+- [20251231000000_atomic_stock_rpc.sql](file:///d:/AhmedZ/supabase/migrations/20251231000000_atomic_stock_rpc.sql)
 
 **ملفات مؤرشفة (لا تُشغّل إلا عند الحاجة ومع معرفة أثرها)**
 

@@ -3,3 +3,6 @@
 
 /service-worker.js
   Cache-Control: no-store
+
+/downloads/*
+  Cache-Control: no-store

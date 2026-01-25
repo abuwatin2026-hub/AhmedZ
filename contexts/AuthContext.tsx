@@ -44,14 +44,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const normalizeUsername = (value: string) => value.trim();
   const makeServiceEmail = (value: string) => {
     const raw = (value || '').trim();
-    if (!raw) return `user-${Date.now()}@azt-system.local`;
+    if (!raw) return `user-${Date.now()}@azta.local`;
     if (raw.includes('@')) return raw.toLowerCase();
     const ascii = raw.normalize('NFKD').replace(/[^\x00-\x7F]/g, '');
     let slug = ascii.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').replace(/\.{2,}/g, '.').replace(/-+/g, '-').toLowerCase();
     if (!slug || slug === '.' || slug === '-') slug = `user-${Date.now()}`;
     if (slug.length > 64) slug = slug.slice(0, 64).replace(/[-.]+$/, '');
     if (!slug) slug = `user-${Date.now()}`;
-    return `${slug}@azt-system.local`;
+    return `${slug}@azta.local`;
   };
   const supabase = useMemo(() => getSupabaseClient(), []);
   const authProvider: 'supabase' = 'supabase';

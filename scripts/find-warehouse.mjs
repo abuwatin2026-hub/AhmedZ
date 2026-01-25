@@ -1,7 +1,12 @@
 import { createClient } from '@supabase/supabase-js';
 
-const SUPABASE_URL = 'https://bvkxohvxzhwqsmbgowwd.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ2a3hvaHZ4emh3cXNtYmdvd3dkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY4NTI0MjIsImV4cCI6MjA4MjQyODQyMn0.W0zSrxdszZaps-z7Le4Ykkp8J3DhLVblrE7uG42tfyY';
+const SUPABASE_URL = (process.env.AZTA_SUPABASE_URL || '').trim();
+const SUPABASE_KEY = (process.env.AZTA_SUPABASE_ANON_KEY || '').trim();
+
+if (!SUPABASE_URL || !SUPABASE_KEY) {
+  console.error('Missing AZTA_SUPABASE_URL / AZTA_SUPABASE_ANON_KEY');
+  process.exit(1);
+}
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 async function main() {

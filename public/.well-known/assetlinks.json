@@ -1,0 +1,9 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "com.azta.ahmedzenkahtrading",
+    "sha256_cert_fingerprints":
+    ["36:31:AC:26:20:63:AE:BD:2B:3E:8E:DE:9E:83:73:E6:4E:65:82:7A:AD:86:E0:A7:6B:18:49:80:62:BA:4A:6B"]
+  }
+}]

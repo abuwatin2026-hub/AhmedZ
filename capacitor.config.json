@@ -1,6 +1,6 @@
 {
-  "appId": "com.ahmedzangah.app",
-  "appName": "مؤسسة أحمد زنقاح",
+  "appId": "com.azta.ahmedzenkahtrading",
+  "appName": "مؤسسة أحمد زنقاح للتجارة والتوكيلات",
   "webDir": "dist",
   "bundledWebRuntime": false,
   "android": {

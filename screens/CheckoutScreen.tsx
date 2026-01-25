@@ -723,7 +723,7 @@ const CheckoutScreen: React.FC = () => {
                                     </div>
                                     <div>
                                         <label htmlFor="phoneNumber" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">رقم الهاتف</label>
-                                        <TextInput id="phoneNumber" name="phoneNumber" type="tel" value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} placeholder="05xxxxxxxx" icon={<PhoneIcon />} required />
+                                        <TextInput id="phoneNumber" name="phoneNumber" type="tel" value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} placeholder="771234567" icon={<PhoneIcon />} required />
                                     </div>
                                 </div>
                                 <div className="space-y-4">

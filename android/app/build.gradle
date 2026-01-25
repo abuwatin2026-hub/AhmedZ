@@ -1,22 +1,25 @@
 apply plugin: 'com.android.application'
 
 android {
-    namespace "com.ahmedzangah.app"
+    namespace "com.azta.ahmedzenkahtrading"
     compileSdk rootProject.ext.compileSdkVersion
     signingConfigs {
         release {
-            def userHome = System.getenv("USERPROFILE") ?: System.getProperty("user.home")
-            def debugKeystore = file("${userHome}/.android/debug.keystore")
-            if (debugKeystore.exists()) {
-                storeFile debugKeystore
-                storePassword "android"
-                keyAlias "androiddebugkey"
-                keyPassword "android"
+            def storeFilePath = (System.getenv("AZTA_RELEASE_STORE_FILE") ?: "").trim()
+            def storePasswordEnv = (System.getenv("AZTA_RELEASE_STORE_PASSWORD") ?: "").trim()
+            def keyAliasEnv = (System.getenv("AZTA_RELEASE_KEY_ALIAS") ?: "").trim()
+            def keyPasswordEnv = (System.getenv("AZTA_RELEASE_KEY_PASSWORD") ?: "").trim()
+
+            if (storeFilePath && storePasswordEnv && keyAliasEnv && keyPasswordEnv) {
+                storeFile file(storeFilePath)
+                storePassword storePasswordEnv
+                keyAlias keyAliasEnv
+                keyPassword keyPasswordEnv
             }
         }
     }
     defaultConfig {
-        applicationId "com.ahmedzangah.app"
+        applicationId "com.azta.ahmedzenkahtrading"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
@@ -37,7 +40,9 @@ android {
         release {
             minifyEnabled true
             shrinkResources true
-            signingConfig signingConfigs.release
+            if (signingConfigs.release?.storeFile != null) {
+                signingConfig signingConfigs.release
+            }
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }

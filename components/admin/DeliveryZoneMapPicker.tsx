@@ -95,7 +95,7 @@ const DeliveryZoneMapPicker: React.FC<DeliveryZoneMapPickerProps> = ({ center, r
                                 value={lat}
                                 onChange={(e) => handleCoordinateChange(e.target.value, lng, rad)}
                                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white ltr"
-                                placeholder="15.XXXXXX"
+                                placeholder="15.123456"
                                 dir="ltr"
                             />
                         </div>
@@ -109,7 +109,7 @@ const DeliveryZoneMapPicker: React.FC<DeliveryZoneMapPickerProps> = ({ center, r
                                 value={lng}
                                 onChange={(e) => handleCoordinateChange(lat, e.target.value, rad)}
                                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white ltr"
-                                placeholder="44.XXXXXX"
+                                placeholder="44.123456"
                                 dir="ltr"
                             />
                         </div>

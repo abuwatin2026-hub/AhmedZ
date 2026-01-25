@@ -1,5 +1,5 @@
--- ملف: full_schema_caty.sql
--- الوصف: إنشاء كافة الجداول والصلاحيات لتطبيق Caty على Supabase
+-- ملف: full_schema.sql
+-- الوصف: إنشاء كافة الجداول والصلاحيات لنظام AZTA على Supabase
 -- تعليمات الاستخدام:
 -- 1. اذهب إلى Supabase Dashboard -> SQL Editor
 -- 2. انسخ محتوى هذا الملف بالكامل
@@ -287,14 +287,3 @@ create policy "Admin Upload Menu Images" on storage.objects for insert with chec
 -- ==========================================
 -- 6. خطوة ما بعد التنفيذ (يدوية)
 -- ==========================================
-/*
-بعد تشغيل هذا السكربت بنجاح:
-1. اذهب إلى Authentication -> Users
-2. أنشئ مستخدم جديد (admin@caty.com)
-3. انسخ الـ User UID الخاص به
-4. نفذ الاستعلام التالي (استبدل YOUR_UID_HERE):
-
-insert into public.admin_users (auth_user_id, username, full_name, role, permissions, is_active, email)
-values 
-  ('YOUR_UID_HERE', 'admin', 'المالك', 'owner', array['dashboard.view', 'profile.view', 'orders.view', 'items.manage', 'settings.manage'], true, 'admin@caty.com');
-*/

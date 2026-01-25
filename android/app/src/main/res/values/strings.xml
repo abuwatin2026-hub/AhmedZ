@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">مؤسسة أحمد زنقاح</string>
-    <string name="title_activity_main">مؤسسة أحمد زنقاح</string>
-    <string name="package_name">com.ahmedzangah.app</string>
-    <string name="custom_url_scheme">com.ahmedzangah.app</string>
+    <string name="app_name">مؤسسة أحمد زنقاح للتجارة والتوكيلات</string>
+    <string name="title_activity_main">مؤسسة أحمد زنقاح للتجارة والتوكيلات</string>
+    <string name="package_name">com.azta.ahmedzenkahtrading</string>
+    <string name="custom_url_scheme">com.azta.ahmedzenkahtrading</string>
 </resources>

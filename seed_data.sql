@@ -182,7 +182,7 @@ on conflict (id) do nothing;
 insert into public.app_settings (id, data)
 values
   ('app', '{
-    "cafeteriaName": { "ar": "مؤسسة أحمد زنقاح للتجارة والتوكيلات", "en": "Ahmed Zangah Trading & Agencies Est" },
+    "cafeteriaName": { "ar": "مؤسسة أحمد زنقاح للتجارة والتوكيلات", "en": "Ahmed Zenkah Trading & Agencies Est" },
     "logoUrl": "/logo.jpg",
     "contactNumber": "967782681999",
     "address": "مأرب، اليمن",
