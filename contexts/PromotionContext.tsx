@@ -38,6 +38,11 @@ export const PromotionProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     } catch (err) {
       const isOffline = typeof navigator !== 'undefined' && navigator.onLine === false;
       if (isOffline || isAbortLikeError(err)) return;
+      const raw = String((err as any)?.message || '').toLowerCase().trim();
+      if (raw.includes('not authenticated') || raw.includes('invalid jwt') || raw.includes('jwt')) {
+        setActivePromotions([]);
+        return;
+      }
       const msg = localizeSupabaseError(err);
       if (msg && import.meta.env.DEV) console.error(msg);
     }
@@ -98,6 +103,11 @@ export const PromotionProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     } catch (err) {
       const isOffline = typeof navigator !== 'undefined' && navigator.onLine === false;
       if (isOffline || isAbortLikeError(err)) return;
+      const raw = String((err as any)?.message || '').toLowerCase().trim();
+      if (raw.includes('not authenticated') || raw.includes('invalid jwt') || raw.includes('jwt')) {
+        setAdminPromotions([]);
+        return;
+      }
       const msg = localizeSupabaseError(err);
       if (msg && import.meta.env.DEV) console.error(msg);
     }

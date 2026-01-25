@@ -192,6 +192,7 @@ export interface MenuItem {
   name: LocalizedString;
   description: LocalizedString;
   barcode?: string;
+  sellable?: boolean;
   price: number; // Price per unit (per kg, per piece, etc.)
   imageUrl: string;
   category: string;

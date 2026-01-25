@@ -1115,7 +1115,7 @@ const PurchaseOrderScreen: React.FC = () => {
                                     disabled={loading}
                                     className="bg-green-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-green-700 shadow-lg"
                                 >
-                                    {loading ? 'جاري الحفظ...' : 'حفظ واستلام المخزون'}
+                                    {loading ? 'جاري الحفظ...' : (receiveOnCreate ? 'حفظ واستلام المخزون' : 'حفظ فقط')}
                                 </button>
                             </div>
                         </form>

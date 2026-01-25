@@ -10,7 +10,7 @@
     "build:capacitor": "node --max-old-space-size=8192 ./node_modules/vite/bin/vite.js build --mode capacitor",
     "typecheck": "node --max-old-space-size=8192 ./node_modules/typescript/bin/tsc --noEmit",
     "preview": "vite preview",
-    "deploy:pages": "npm run build && npx wrangler pages deploy dist --project-name ahmed-zenkah-trading",
+    "deploy:pages": "npm run build && npx wrangler pages deploy dist --project-name ahmedzangah",
     "search": "node scripts/code-search.mjs",
     "sync": "npm run build:capacitor && node scripts/prepare-native-dist.mjs && npx capacitor sync android && node scripts/restore-web-dist.mjs && node scripts/verify-native-sync.mjs",
     "open": "npx capacitor open android",

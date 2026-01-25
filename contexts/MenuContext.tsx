@@ -49,14 +49,17 @@ export const MenuProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         isStaff = Boolean(staffFlag);
       } catch {}
 
-      const selectCols = isSlow
-        ? 'id, name, barcode, price, base_unit, is_food, expiry_required, sellable, status, category, data'
-        : 'id, name, barcode, price, base_unit, is_food, expiry_required, sellable, category, is_featured, freshness_level, status, cost_price, buying_price, transport_cost, supply_tax_cost, data';
-
       const source = isStaff ? 'menu_items' : 'v_sellable_products';
+      const selectCols = isStaff
+        ? (isSlow
+          ? 'id, name, barcode, price, base_unit, is_food, expiry_required, sellable, status, category, data'
+          : 'id, name, barcode, price, base_unit, is_food, expiry_required, sellable, category, is_featured, freshness_level, status, cost_price, buying_price, transport_cost, supply_tax_cost, data')
+        : (isSlow
+          ? 'id, name, barcode, price, base_unit, is_food, expiry_required, sellable, status, category, data, available_quantity'
+          : 'id, name, barcode, price, base_unit, is_food, expiry_required, sellable, category, is_featured, freshness_level, status, data, available_quantity');
       const { data: rows, error: rowsError } = await supabase
         .from(source)
-        .select(isStaff ? selectCols : `${selectCols}, available_quantity`);
+        .select(selectCols);
       if (rowsError) throw rowsError;
       const ids = (rows || []).map((r: any) => (typeof r?.id === 'string' ? r.id : null)).filter(Boolean) as string[];
       let stockMap: Record<string, { available_quantity?: number; reserved_quantity?: number }> = {};

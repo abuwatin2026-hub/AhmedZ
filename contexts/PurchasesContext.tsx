@@ -355,6 +355,21 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           if (!providedRef) {
             throw new Error('رقم فاتورة المورد مطلوب.');
           }
+          if (receiveNow) {
+            const { error: whErr } = await supabase.rpc('_resolve_default_warehouse_id');
+            if (whErr) throw whErr;
+          }
+
+          const { data: existingByRef, error: refErr } = await supabase
+            .from('purchase_orders')
+            .select('id')
+            .eq('reference_number', providedRef)
+            .limit(1)
+            .maybeSingle();
+          if (refErr) throw refErr;
+          if (existingByRef?.id) {
+            throw new Error('رقم فاتورة المورد مستخدم بالفعل.');
+          }
 
           let lastInsertError: unknown = null;
           let orderData: any | null = null;
@@ -495,6 +510,8 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     ) => {
         if (!supabase || !user) return;
         try {
+          const { error: whErr } = await supabase.rpc('_resolve_default_warehouse_id');
+          if (whErr) throw whErr;
           const { error } = await supabase.rpc('receive_purchase_order_partial', {
               p_order_id: purchaseOrderId,
               p_items: items.map(i => ({

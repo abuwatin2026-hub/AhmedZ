@@ -8,12 +8,15 @@ import { Plus, X, DollarSign, ArrowLeft } from '../../components/icons';
 const ImportShipmentDetailsScreen: React.FC = () => {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
-    const { getShipmentDetails, updateShipment, addShipmentItem, deleteShipmentItem, addExpense, deleteExpense, calculateLandedCost } = useImport();
+    const { getShipmentDetails, addShipment, updateShipment, addShipmentItem, deleteShipmentItem, addExpense, deleteExpense, calculateLandedCost } = useImport();
     const { menuItems } = useMenu();
 
     const [shipment, setShipment] = useState<ImportShipment | null>(null);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<'items' | 'expenses'>('items');
+    const isCreateMode = id === 'new' || !id;
+    const [draftReferenceNumber, setDraftReferenceNumber] = useState('');
+    const [draftStatus, setDraftStatus] = useState<ImportShipment['status']>('draft');
 
     // Form states for adding items
     const [showItemForm, setShowItemForm] = useState(false);
@@ -39,6 +42,11 @@ const ImportShipmentDetailsScreen: React.FC = () => {
     });
 
     useEffect(() => {
+        if (isCreateMode) {
+            setShipment(null);
+            setLoading(false);
+            return;
+        }
         loadShipment();
     }, [id]);
 
@@ -48,6 +56,24 @@ const ImportShipmentDetailsScreen: React.FC = () => {
         const data = await getShipmentDetails(id);
         setShipment(data);
         setLoading(false);
+    };
+
+    const handleCreateShipment = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!draftReferenceNumber.trim()) return;
+        setLoading(true);
+        const created = await addShipment({
+            referenceNumber: draftReferenceNumber.trim(),
+            status: draftStatus,
+            totalWeightKg: 0,
+            notes: '',
+            items: [],
+            expenses: [],
+        } as any);
+        setLoading(false);
+        if (created?.id) {
+            navigate(`/admin/import-shipments/${created.id}`);
+        }
     };
 
     const handleAddItem = async () => {
@@ -136,6 +162,68 @@ const ImportShipmentDetailsScreen: React.FC = () => {
 
     if (loading) {
         return <div className="flex items-center justify-center min-h-screen">جاري التحميل...</div>;
+    }
+
+    if (isCreateMode) {
+        return (
+            <div className="p-6 max-w-3xl mx-auto">
+                <button
+                    onClick={() => navigate('/admin/import-shipments')}
+                    className="flex items-center gap-2 text-blue-600 hover:underline mb-6"
+                >
+                    <ArrowLeft className="w-4 h-4" />
+                    العودة للشحنات
+                </button>
+
+                <h1 className="text-3xl font-bold mb-6">إنشاء شحنة</h1>
+
+                <form onSubmit={handleCreateShipment} className="bg-white border rounded-lg p-6 space-y-4">
+                    <div>
+                        <label className="block text-sm font-medium mb-1">رقم الشحنة</label>
+                        <input
+                            value={draftReferenceNumber}
+                            onChange={(e) => setDraftReferenceNumber(e.target.value)}
+                            className="w-full px-4 py-2 border rounded-lg"
+                            placeholder="مثال: BL-2026-001"
+                            required
+                        />
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium mb-1">الحالة</label>
+                        <select
+                            value={draftStatus}
+                            onChange={(e) => setDraftStatus(e.target.value as ImportShipment['status'])}
+                            className="w-full px-4 py-2 border rounded-lg"
+                        >
+                            <option value="draft">مسودة</option>
+                            <option value="ordered">تم الطلب</option>
+                            <option value="shipped">قيد الشحن</option>
+                            <option value="at_customs">في الجمارك</option>
+                            <option value="cleared">تم التخليص</option>
+                            <option value="delivered">تم التسليم</option>
+                            <option value="cancelled">ملغي</option>
+                        </select>
+                    </div>
+
+                    <div className="flex justify-end gap-2">
+                        <button
+                            type="button"
+                            onClick={() => navigate('/admin/import-shipments')}
+                            className="px-4 py-2 rounded-lg border"
+                        >
+                            إلغاء
+                        </button>
+                        <button
+                            type="submit"
+                            className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700"
+                        >
+                            إنشاء
+                        </button>
+                    </div>
+                </form>
+            </div>
+        );
     }
 
     if (!shipment) {
