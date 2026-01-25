@@ -111,6 +111,13 @@ const HomeScreen: React.FC = () => {
                   onClick={() => window.location.hash = `#/promotion/${p.promotionId}`}
                   className="text-right bg-white dark:bg-gray-900 border border-gold-500/20 dark:border-gold-500/10 rounded-2xl p-4 shadow-md hover:shadow-lg transition-shadow"
                 >
+                  {(p as any).imageUrl ? (
+                    <img
+                      src={(p as any).imageUrl}
+                      alt={p.name}
+                      className="w-full h-28 object-cover rounded-xl mb-3"
+                    />
+                  ) : null}
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="text-lg font-bold text-gray-900 dark:text-white truncate">{p.name}</div>

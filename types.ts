@@ -574,6 +574,7 @@ export interface Promotion {
 export interface PromotionApplicationSnapshot {
   promotionId: string;
   name: string;
+  imageUrl?: string | null;
   startAt: string;
   endAt: string;
   bundleQty: number;

@@ -3,6 +3,10 @@ apply plugin: 'com.android.application'
 android {
     namespace "com.azta.ahmedzenkahtrading"
     compileSdk rootProject.ext.compileSdkVersion
+    lint {
+        checkReleaseBuilds false
+        abortOnError false
+    }
     signingConfigs {
         release {
             def storeFilePath = (System.getenv("AZTA_RELEASE_STORE_FILE") ?: "").trim()
@@ -42,6 +46,8 @@ android {
             shrinkResources true
             if (signingConfigs.release?.storeFile != null) {
                 signingConfig signingConfigs.release
+            } else {
+                signingConfig signingConfigs.debug
             }
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

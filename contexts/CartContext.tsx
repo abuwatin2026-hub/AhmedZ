@@ -73,7 +73,7 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         id: snapshot.promotionId,
         name: { ar: snapshot.name, en: snapshot.name },
         description: { ar: '', en: '' },
-        imageUrl: '',
+        imageUrl: (snapshot as any)?.imageUrl || '',
         category: 'promotion',
         price: lineUnitPrice,
         unitType: 'bundle',
