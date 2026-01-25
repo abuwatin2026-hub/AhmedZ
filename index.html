@@ -33,9 +33,6 @@
           navigator.serviceWorker.getRegistrations().then(async regs => {
             if (!regs || regs.length === 0) return;
             await Promise.all(regs.map(reg => reg.unregister().catch(() => false)));
-            if (navigator.serviceWorker.controller) {
-              window.location.reload();
-            }
           }).catch(() => {});
         }
         if (typeof caches !== 'undefined') {

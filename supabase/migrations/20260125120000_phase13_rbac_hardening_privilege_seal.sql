@@ -1,3 +1,5 @@
+set app.allow_ledger_ddl = '1';
+
 revoke all on function public.post_payment(uuid) from public;
 revoke all on function public.post_inventory_movement(uuid) from public;
 revoke all on function public.post_order_delivery(uuid) from public;

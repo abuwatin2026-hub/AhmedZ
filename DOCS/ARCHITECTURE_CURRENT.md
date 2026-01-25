@@ -131,6 +131,10 @@ Analysis Contract (Enforcement)
 - RLS Compatibility للتدقيق بعد FORCE RLS:
   - ledger_audit_log: سياسة INSERT داخلية مضافة لضمان استمرار تريجرات التدقيق عند FORCE RLS.  
     المرجع: [20260125120000_phase13_rbac_hardening_privilege_seal.sql](file:///d:/AhmedZ/supabase/migrations/20260125120000_phase13_rbac_hardening_privilege_seal.sql) + [20260123280000_phase10_ledger_immutability_period_lock.sql](file:///d:/AhmedZ/supabase/migrations/20260123280000_phase10_ledger_immutability_period_lock.sql)
+ - محرك الترحيل المحاسبي (Dynamic Control Accounts):
+   - post_* تقرأ حسابات التحكم من app_settings.data→'accounting_accounts' بقيم افتراضية سليمة؛ لا استخدام لحسابات غير مُعرّفة، والفشل صريح عند غياب الحساب في الدليل.
+   - تجميد دوال الترحيل عبر حدث trg_freeze_posting_engine: يمنع CREATE/ALTER/DROP لـ post_* إلا عند ضبط app.posting_engine_upgrade='1' أثناء جلسات التحديث.
+   - المراجع: [20260123240000_phase8_accounting_hardening.sql](file:///d:/AhmedZ/supabase/migrations/20260123240000_phase8_accounting_hardening.sql#L178-L186) + [phase8_accounting_hardening.sql](file:///d:/AhmedZ/supabase/migrations/20260123240000_phase8_accounting_hardening.sql#L519-L556)
  
 ## توثيق النسخ (Superseded Logic)
 - المخزون/الحجز:

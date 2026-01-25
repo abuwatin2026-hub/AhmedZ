@@ -2202,6 +2202,17 @@ const FinancialReports: React.FC = () => {
         </div>
       </div>
 
+      <div className="bg-blue-50 dark:bg-blue-900/40 border border-blue-200 dark:border-blue-700 rounded-xl p-3 text-sm text-blue-800 dark:text-blue-200">
+        <div className="font-semibold mb-1">ملاحظة السياسة المحاسبية: حسابات الترحيل الآلي vs بقية الحسابات</div>
+        <ul className="list-disc rtl:list-disc ms-5 space-y-1">
+          <li>حسابات الترحيل الآلي (Control Accounts) تُعرّف في إعدادات التطبيق تحت accounting_accounts وتُستخدم حصريًا في دوال الترحيل الآلي: post_inventory_movement، post_order_delivery، post_payment.</li>
+          <li>هذه الحسابات تمثل نقاط الربط الأساسية (Inventory, COGS, AR, AP, Cash, Bank, Deposits, VAT…) وتُحمّل ديناميكيًا مع قيم افتراضية سليمة؛ لا تُستخدم حسابات غير مُعرّفة أو عشوائية.</li>
+          <li>بقية شجرة الحسابات تُستخدم بحرية للقيود اليدوية والمصاريف والإيرادات والتسويات دون الحاجة لإضافتها في accounting_accounts.</li>
+          <li>إضافة حساب جديد لا تتطلب تعديل إعدادات الترحيل الآلي؛ accounting_accounts ليست تمثيلًا كاملًا للدليل بل حسابات التحكم فقط.</li>
+          <li>أي قيد آلي يفشل صراحةً إذا كان الحساب المعيّن غير موجود في COA؛ لا يتم الترحيل إلى حساب بديل صامت.</li>
+        </ul>
+      </div>
+
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow p-4 space-y-4">
         <div className="flex flex-wrap gap-2">
           <button

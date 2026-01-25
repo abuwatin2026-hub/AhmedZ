@@ -1,3 +1,5 @@
+set app.posting_engine_upgrade = '1';
+
 create or replace function public.trg_block_system_journal_entry_mutation()
 returns trigger
 language plpgsql
@@ -152,6 +154,7 @@ declare
   v_gain uuid;
   v_vat_input uuid;
   v_supplier_tax_total numeric;
+  v_accounts jsonb;
 begin
   perform public._require_staff('accounting.post');
 
@@ -172,12 +175,14 @@ begin
     return;
   end if;
 
-  v_inventory := public.get_account_id_by_code('1410');
-  v_cogs := public.get_account_id_by_code('5010');
-  v_ap := public.get_account_id_by_code('2010');
-  v_shrinkage := public.get_account_id_by_code('5020');
-  v_gain := public.get_account_id_by_code('4021');
-  v_vat_input := public.get_account_id_by_code('1420');
+  select s.data->'accounting_accounts' into v_accounts from public.app_settings s where s.id = 'singleton';
+
+  v_inventory := public.get_account_id_by_code(coalesce(v_accounts->>'inventory','1410'));
+  v_cogs := public.get_account_id_by_code(coalesce(v_accounts->>'cogs','5010'));
+  v_ap := public.get_account_id_by_code(coalesce(v_accounts->>'ap','2010'));
+  v_shrinkage := public.get_account_id_by_code(coalesce(v_accounts->>'shrinkage','5020'));
+  v_gain := public.get_account_id_by_code(coalesce(v_accounts->>'gain','4021'));
+  v_vat_input := public.get_account_id_by_code(coalesce(v_accounts->>'vat_recoverable','1420'));
 
   v_supplier_tax_total := coalesce(nullif((v_mv.data->>'supplier_tax_total')::numeric, null), 0);
 
@@ -264,6 +269,7 @@ declare
   v_delivery_fee numeric;
   v_tax_amount numeric;
   v_items_revenue numeric;
+  v_accounts jsonb;
 begin
   perform public._require_staff('accounting.post');
 
@@ -285,11 +291,13 @@ begin
     return;
   end if;
 
-  v_ar := public.get_account_id_by_code('1200');
-  v_deposits := public.get_account_id_by_code('2050');
-  v_sales := public.get_account_id_by_code('4010');
-  v_delivery_income := public.get_account_id_by_code('4020');
-  v_vat_payable := public.get_account_id_by_code('2020');
+  select s.data->'accounting_accounts' into v_accounts from public.app_settings s where s.id = 'singleton';
+
+  v_ar := public.get_account_id_by_code(coalesce(v_accounts->>'ar','1200'));
+  v_deposits := public.get_account_id_by_code(coalesce(v_accounts->>'deposits','2050'));
+  v_sales := public.get_account_id_by_code(coalesce(v_accounts->>'sales','4010'));
+  v_delivery_income := public.get_account_id_by_code(coalesce(v_accounts->>'delivery_income','4020'));
+  v_vat_payable := public.get_account_id_by_code(coalesce(v_accounts->>'vat_payable','2020'));
 
   v_subtotal := coalesce(nullif((v_order.data->>'subtotal')::numeric, null), 0);
   v_discount_amount := coalesce(nullif((v_order.data->>'discountAmount')::numeric, null), 0);
@@ -380,6 +388,7 @@ declare
   v_ar uuid;
   v_deposits uuid;
   v_delivered_at timestamptz;
+  v_accounts jsonb;
 begin
   perform public._require_staff('accounting.post');
 
@@ -396,13 +405,15 @@ begin
     raise exception 'payment not found';
   end if;
 
-  v_cash := public.get_account_id_by_code('1010');
-  v_bank := public.get_account_id_by_code('1020');
-  v_sales := public.get_account_id_by_code('4010');
-  v_ap := public.get_account_id_by_code('2010');
-  v_expenses := public.get_account_id_by_code('6100');
-  v_ar := public.get_account_id_by_code('1200');
-  v_deposits := public.get_account_id_by_code('2050');
+  select s.data->'accounting_accounts' into v_accounts from public.app_settings s where s.id = 'singleton';
+
+  v_cash := public.get_account_id_by_code(coalesce(v_accounts->>'cash','1010'));
+  v_bank := public.get_account_id_by_code(coalesce(v_accounts->>'bank','1020'));
+  v_sales := public.get_account_id_by_code(coalesce(v_accounts->>'sales','4010'));
+  v_ap := public.get_account_id_by_code(coalesce(v_accounts->>'ap','2010'));
+  v_expenses := public.get_account_id_by_code(coalesce(v_accounts->>'expenses','6100'));
+  v_ar := public.get_account_id_by_code(coalesce(v_accounts->>'ar','1200'));
+  v_deposits := public.get_account_id_by_code(coalesce(v_accounts->>'deposits','2050'));
 
   if v_pay.method = 'cash' then
     v_debit_account := v_cash;
