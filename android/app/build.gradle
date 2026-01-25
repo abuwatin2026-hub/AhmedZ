@@ -7,18 +7,19 @@ android {
         checkReleaseBuilds false
         abortOnError false
     }
+    def releaseStoreFilePath = (System.getenv("AZTA_RELEASE_STORE_FILE") ?: "").trim()
+    def releaseStorePassword = (System.getenv("AZTA_RELEASE_STORE_PASSWORD") ?: "").trim()
+    def releaseKeyAlias = (System.getenv("AZTA_RELEASE_KEY_ALIAS") ?: "").trim()
+    def releaseKeyPassword = (System.getenv("AZTA_RELEASE_KEY_PASSWORD") ?: "").trim()
+    def hasReleaseSigning = releaseStoreFilePath && releaseStorePassword && releaseKeyAlias && releaseKeyPassword
+    def isReleaseTask = gradle.startParameter.taskNames.any { String.valueOf(it).toLowerCase().contains('release') }
     signingConfigs {
         release {
-            def storeFilePath = (System.getenv("AZTA_RELEASE_STORE_FILE") ?: "").trim()
-            def storePasswordEnv = (System.getenv("AZTA_RELEASE_STORE_PASSWORD") ?: "").trim()
-            def keyAliasEnv = (System.getenv("AZTA_RELEASE_KEY_ALIAS") ?: "").trim()
-            def keyPasswordEnv = (System.getenv("AZTA_RELEASE_KEY_PASSWORD") ?: "").trim()
-
-            if (storeFilePath && storePasswordEnv && keyAliasEnv && keyPasswordEnv) {
-                storeFile file(storeFilePath)
-                storePassword storePasswordEnv
-                keyAlias keyAliasEnv
-                keyPassword keyPasswordEnv
+            if (hasReleaseSigning) {
+                storeFile file(releaseStoreFilePath)
+                storePassword releaseStorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
             }
         }
     }
@@ -44,11 +45,10 @@ android {
         release {
             minifyEnabled true
             shrinkResources true
-            if (signingConfigs.release?.storeFile != null) {
-                signingConfig signingConfigs.release
-            } else {
-                signingConfig signingConfigs.debug
+            if (isReleaseTask && !hasReleaseSigning) {
+                throw new GradleException("Release signing is not configured. Set AZTA_RELEASE_STORE_FILE, AZTA_RELEASE_STORE_PASSWORD, AZTA_RELEASE_KEY_ALIAS, AZTA_RELEASE_KEY_PASSWORD.")
             }
+            signingConfig signingConfigs.release
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
