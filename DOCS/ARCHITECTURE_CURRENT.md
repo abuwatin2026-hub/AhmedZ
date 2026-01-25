@@ -15,6 +15,18 @@ Analysis Contract (Enforcement)
 - أي منطق قديم أو توقيعات سابقة تعتبر “Superseded” إن وُجد لها بديل أحدث في ملفات المهاجرات.
  
 ## الحالة النهائية الفعلية (Source of Truth)
+
+### الهوية والتوزيع (AZTA)
+- مصدر الحقيقة للهوية: [identity.ts](file:///d:/AhmedZ/config/identity.ts)
+- واجهة الإنتاج (URL): https://ahmedzangah.pages.dev/#/
+- أصل الويب (Origin) المطلوب للملفات الثابتة والتحديثات: https://ahmedzangah.pages.dev/
+- تطبيق Android:
+  - applicationId: com.azta.ahmedzenkahtrading
+  - ربط الروابط (App Links): /.well-known/assetlinks.json من مجلد public
+- التحديث/التوزيع:
+  - version.json و service-worker.js و downloads/* مضبوطة على no-store عبر headers
+  - صفحة التحميل تتحقق من توفر APK عبر HEAD ثم تفعّل زر التحميل عند توفره
+  - ملف التحميل الافتراضي: /downloads/ahmed-zenkah-trading-latest.apk
  
 ### التسعير (Pricing)
 - دالة السعر الزمنية المفعّلة الآن: get_item_price_with_discount(text p_item_id, uuid p_customer_id, numeric p_quantity)  
@@ -54,39 +66,39 @@ Analysis Contract (Enforcement)
 - المخطط (Schema):
   - الجدول الرئيسي: promotions  
     يحتوي على name, start_at, end_at, is_active, discount_mode ('fixed_total' | 'percent_off'), fixed_total, percent_off, display_original_total, max_uses, exclusive_with_coupon, requires_approval, approval_status, approval_request_id، مع قيود زمنية ومنع حالات غير صالحة.  
-    [20260124160000_promotion_engine_schema.sql](file:///d:/JOMLA/AhmedZ/supabase/migrations/20260124160000_promotion_engine_schema.sql#L4-L55)
+    [20260124160000_promotion_engine_schema.sql](file:///d:/AhmedZ/supabase/migrations/20260124160000_promotion_engine_schema.sql#L4-L55)
   - أصناف العرض: promotion_items  
     ربط فريد (promotion_id, item_id) وكميات وفرز، مع RLS للإدارة.  
-    [promotion_items](file:///d:/JOMLA/AhmedZ/supabase/migrations/20260124160000_promotion_engine_schema.sql#L60-L80)
+    [promotion_items](file:///d:/AhmedZ/supabase/migrations/20260124160000_promotion_engine_schema.sql#L60-L80)
   - تتبع الاستهلاك: promotion_usage  
     يسجل promotion_line_id لكل طلب/قناة/مستودع مع سنابشوت كامل.  
-    [promotion_usage](file:///d:/JOMLA/AhmedZ/supabase/migrations/20260124160000_promotion_engine_schema.sql#L84-L109)
+    [promotion_usage](file:///d:/AhmedZ/supabase/migrations/20260124160000_promotion_engine_schema.sql#L84-L109)
 - تراTriggers إنفاذ:
   - منع تعديل/حذف العرض بعد أول استخدام، ومنع إعادة التفعيل بعد الاستخدام:  
-    [trg_promotions_lock_after_usage](file:///d:/JOMLA/AhmedZ/supabase/migrations/20260124160000_promotion_engine_schema.sql#L110-L158)
-    [trg_promotion_items_lock_after_usage](file:///d:/JOMLA/AhmedZ/supabase/migrations/20260124160000_promotion_engine_schema.sql#L159-L183)
+    [trg_promotions_lock_after_usage](file:///d:/AhmedZ/supabase/migrations/20260124160000_promotion_engine_schema.sql#L110-L158)
+    [trg_promotion_items_lock_after_usage](file:///d:/AhmedZ/supabase/migrations/20260124160000_promotion_engine_schema.sql#L159-L183)
   - تفعيل العرض يتطلب موافقة وزمن صالح:  
-    [trg_promotions_enforce_active_window_and_approval](file:///d:/JOMLA/AhmedZ/supabase/migrations/20260124161700_promotions_enforce_activation_fix.sql#L1-L20)
+    [trg_promotions_enforce_active_window_and_approval](file:///d:/AhmedZ/supabase/migrations/20260124161700_promotions_enforce_activation_fix.sql#L1-L20)
   - صحة تسجيل الاستهلاك: نشاط، زمن، موافقة، وحد استخدام:  
-    [trg_promotion_usage_enforce_valid](file:///d:/JOMLA/AhmedZ/supabase/migrations/20260124160000_promotion_engine_schema.sql#L210-L255)
+    [trg_promotion_usage_enforce_valid](file:///d:/AhmedZ/supabase/migrations/20260124160000_promotion_engine_schema.sql#L210-L255)
 - واجهات RPC:
   - apply_promotion_to_cart(jsonb p_cart_payload, uuid p_promotion_id):  
     يتحقق من الموافقة والزمن وتعارض الكوبون، ويؤكد توافر المخزون/FEFO، ويعيد سنابشوت نهائي مع توزيع الإيراد وقيمة المصروف.  
-    [promotion_engine_rpc.sql](file:///d:/JOMLA/AhmedZ/supabase/migrations/20260124161000_promotion_engine_rpc.sql#L43-L249)
+    [promotion_engine_rpc.sql](file:///d:/AhmedZ/supabase/migrations/20260124161000_promotion_engine_rpc.sql#L43-L249)
   - _compute_promotion_snapshot(...)‎: نسخة معيارية داخلية للحساب.  
-    [promotion_engine_internal.sql](file:///d:/JOMLA/AhmedZ/supabase/migrations/20260124161500_promotion_engine_internal.sql#L1-L205)
+    [promotion_engine_internal.sql](file:///d:/AhmedZ/supabase/migrations/20260124161500_promotion_engine_internal.sql#L1-L205)
   - get_active_promotions(uuid p_customer_id, uuid p_warehouse_id): قوائم العروض الفعالة مع أسعارها الحالية.  
-    [promotion_public_rpcs.sql](file:///d:/JOMLA/AhmedZ/supabase/migrations/20260124162500_promotion_public_rpcs.sql#L100-L140)
+    [promotion_public_rpcs.sql](file:///d:/AhmedZ/supabase/migrations/20260124162500_promotion_public_rpcs.sql#L100-L140)
 - تكامل الطلبات:
   - إدراج سطر العرض في create_order_secure مع منع الدمج مع الكوبون/النقاط، وتجميع أصناف المخزون لحجز FEFO:  
-    [order_promotions_integration.sql](file:///d:/JOMLA/AhmedZ/supabase/migrations/20260124164000_order_promotions_integration.sql#L133-L177)
+    [order_promotions_integration.sql](file:///d:/AhmedZ/supabase/migrations/20260124164000_order_promotions_integration.sql#L133-L177)
   - تأكيد التسليم يعيد حساب سنابشوت العرض ضمن نطاق المستودع ويسجل الاستهلاك ويدمج الأصناف للخصم:  
-    [confirm_order_delivery_promo_snapshot_fix.sql](file:///d:/JOMLA/AhmedZ/supabase/migrations/20260124164500_confirm_order_delivery_promo_snapshot_fix.sql#L54-L101)
+    [confirm_order_delivery_promo_snapshot_fix.sql](file:///d:/AhmedZ/supabase/migrations/20260124164500_confirm_order_delivery_promo_snapshot_fix.sql#L54-L101)
   - حواجز على مستوى الطلب لمنع خصم مزدوج (كوبون/نقاط) عند وجود عروض:  
-    [orders_promotion_guards.sql](file:///d:/JOMLA/AhmedZ/supabase/migrations/20260124165500_orders_promotion_guards.sql#L1-L35)
+    [orders_promotion_guards.sql](file:///d:/AhmedZ/supabase/migrations/20260124165500_orders_promotion_guards.sql#L1-L35)
 - الـPOS أوفلاين:
   - منع مزامنة فواتير تحتوي عروض في وضع الأوفلاين:  
-    [pos_offline_promotions_guard.sql](file:///d:/JOMLA/AhmedZ/supabase/migrations/20260125110000_pos_offline_promotions_guard.sql#L46-L60)
+    [pos_offline_promotions_guard.sql](file:///d:/AhmedZ/supabase/migrations/20260125110000_pos_offline_promotions_guard.sql#L46-L60)
 
 ### العرض العام للبيع (View)
 - v_sellable_products (create or replace view)  
@@ -164,14 +176,14 @@ Analysis Contract (Enforcement)
 ### شفافية الفاتورة (Invoice → Promotion → Approval → Journal)
 - الواجهة: get_invoice_audit(uuid p_order_id) تعيد مسار التدقيق الكامل للفاتورة.
 - ترابط البيانات: رقم الفاتورة، نوع الخصم (عرض/خصم يدوي)، تفاصيل العرض/الاستهلاك/طلب الموافقة، ورقم قيد اليومية المرتبط بالتسليم.
-- المرجع: [20260125130000_remediation_hardening.sql#L1-L103](file:///d:/JOMLA/AhmedZ/supabase/migrations/20260125130000_remediation_hardening.sql#L1-L103)
+- المرجع: [20260125130000_remediation_hardening.sql#L1-L103](file:///d:/AhmedZ/supabase/migrations/20260125130000_remediation_hardening.sql#L1-L103)
 
 ### Drill-down المالي (P&L → GL → Journal)
 - مصروف العروض 6150: get_promotion_expense_drilldown(start,end,min) يعرض قيود اليومية المرتبطة بالمصروف مع ربط الطلب/الفاتورة/الاستهلاك.
 - استخدام العرض: get_promotion_usage_drilldown(promotion_id,start,end) يعرض كل حالات الاستهلاك مع ربط قيد اليومية عند التسليم.
 - المراجع:
-  - [get_promotion_expense_drilldown](file:///d:/JOMLA/AhmedZ/supabase/migrations/20260125130000_remediation_hardening.sql#L104-L176)
-  - [get_promotion_usage_drilldown](file:///d:/JOMLA/AhmedZ/supabase/migrations/20260125130000_remediation_hardening.sql#L177-L233)
+  - [get_promotion_expense_drilldown](file:///d:/AhmedZ/supabase/migrations/20260125130000_remediation_hardening.sql#L104-L176)
+  - [get_promotion_usage_drilldown](file:///d:/AhmedZ/supabase/migrations/20260125130000_remediation_hardening.sql#L177-L233)
 
 ### لوحة تسوية POS أوفلاين
 - مخطط التسوية: أعمدة reconciliation_status/approval_request_id/reconciled_by/reconciled_at/Note على pos_offline_sales مع قيد تحقق للحالات.
@@ -179,12 +191,12 @@ Analysis Contract (Enforcement)
 - مزامنة أوفلاين: sync_offline_pos_sale(...) يمنع العروض في الأوفلاين، ويعيد CONFLICT/FAILED عند نقص الحجز/انتهاء الدُفعات، ويتطلب موافقة قبل إعادة محاولة.
 - لوحة عرض: get_pos_offline_sales_dashboard(state?,limit?) لعرض الحالات وحالة التسوية.
 - المراجع:
-  - [قيد النوع وإعداد السياسة](file:///d:/JOMLA/AhmedZ/supabase/migrations/20260125130000_remediation_hardening.sql#L235-L261)
-  - [أعمدة التسوية والقيود](file:///d:/JOMLA/AhmedZ/supabase/migrations/20260125130000_remediation_hardening.sql#L264-L281)
-  - [مزامنة حالة الموافقة Trigger](file:///d:/JOMLA/AhmedZ/supabase/migrations/20260125130000_remediation_hardening.sql#L282-L320)
-  - [request_offline_reconciliation](file:///d:/JOMLA/AhmedZ/supabase/migrations/20260125130000_remediation_hardening.sql#L371-L449)
-  - [get_pos_offline_sales_dashboard](file:///d:/JOMLA/AhmedZ/supabase/migrations/20260125130000_remediation_hardening.sql#L451-L506)
-  - [sync_offline_pos_sale](file:///d:/JOMLA/AhmedZ/supabase/migrations/20260125130000_remediation_hardening.sql#L507-L684)
+  - [قيد النوع وإعداد السياسة](file:///d:/AhmedZ/supabase/migrations/20260125130000_remediation_hardening.sql#L235-L261)
+  - [أعمدة التسوية والقيود](file:///d:/AhmedZ/supabase/migrations/20260125130000_remediation_hardening.sql#L264-L281)
+  - [مزامنة حالة الموافقة Trigger](file:///d:/AhmedZ/supabase/migrations/20260125130000_remediation_hardening.sql#L282-L320)
+  - [request_offline_reconciliation](file:///d:/AhmedZ/supabase/migrations/20260125130000_remediation_hardening.sql#L371-L449)
+  - [get_pos_offline_sales_dashboard](file:///d:/AhmedZ/supabase/migrations/20260125130000_remediation_hardening.sql#L451-L506)
+  - [sync_offline_pos_sale](file:///d:/AhmedZ/supabase/migrations/20260125130000_remediation_hardening.sql#L507-L684)
 
 ### توحيد فلاتر التواريخ
 - توحيد startDate/endDate/asOfDate عبر تقارير المبيعات/العملاء/المنتجات/المالية لضمان نتائج متسقة في جميع الشاشات.
@@ -193,13 +205,13 @@ Analysis Contract (Enforcement)
 ### سياسة مصروف العروض (Promotion Expense)
 - تسجيل أثر العرض كمصروف تشغيل (6150) مرتبط بقيود التسليم، مع فصل صريح بين إجمالي الخصم ومصروف العرض.
 - رؤوس التقارير تعرض زر “تفاصيل” للـ Drill-down إلى القيود/الاستهلاك/الفواتير.
-- المراجع: [get_promotion_expense_drilldown](file:///d:/JOMLA/AhmedZ/supabase/migrations/20260125130000_remediation_hardening.sql#L104-L176)
+- المراجع: [get_promotion_expense_drilldown](file:///d:/AhmedZ/supabase/migrations/20260125130000_remediation_hardening.sql#L104-L176)
 
 ### خطة التراجع (Rollback Plan)
 - قبل أي تراجع: خذ نسخة احتياطية (Snapshot) من قاعدة البيانات.
   - Windows PowerShell:
     - إنشاء مجلد النسخ: New-Item -ItemType Directory -Path .\backups -Force
-    - تعيين متغير الاتصال: $env:DATABASE_URL = "postgres://USER:PASS@HOST:5432/DB"
+    - نفّذ pg_dump من بيئة تشغيل آمنة تملك بيانات الاتصال
     - تنفيذ النسخ: pg_dump --format=custom --file ("backups\\db_" + (Get-Date -Format 'yyyy-MM-dd') + ".dump") "$env:DATABASE_URL"
 - إيقاف مزامنة POS أوفلاين مؤقتًا وإبلاغ العمليات قبل التنفيذ.
 - خطوات التراجع لهذه الهجرة 20260125130000_remediation_hardening.sql:
