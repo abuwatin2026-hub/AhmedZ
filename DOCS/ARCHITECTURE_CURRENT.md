@@ -1,4 +1,4 @@
-Version: 2026-01-25
+Version: 2026-01-26
 Last validated against migrations up to: 20260125130000_remediation_hardening.sql
 
 Analysis Contract (Enforcement)
@@ -20,6 +20,7 @@ Analysis Contract (Enforcement)
 - مصدر الحقيقة للهوية: [identity.ts](file:///d:/AhmedZ/config/identity.ts)
 - واجهة الإنتاج (URL): https://ahmedzangah.pages.dev/#/
 - أصل الويب (Origin) المطلوب للملفات الثابتة والتحديثات: https://ahmedzangah.pages.dev/
+- مشروع Cloudflare Pages الإنتاجي: ahmedzangah (ahmedzangah.pages.dev)
 - تطبيق Android:
   - applicationId: com.azta.ahmedzenkahtrading
   - ربط الروابط (App Links): /.well-known/assetlinks.json من مجلد public
@@ -27,6 +28,9 @@ Analysis Contract (Enforcement)
   - version.json و service-worker.js و downloads/* مضبوطة على no-store عبر headers
   - صفحة التحميل تتحقق من توفر APK عبر HEAD ثم تفعّل زر التحميل عند توفره
   - ملف التحميل الافتراضي: /downloads/ahmed-zenkah-trading-latest.apk
+  - النسخة المنشورة حاليًا: versionName=1.0.1, versionCode=2
+  - شرط التحديث على Android: نفس packageName ونفس توقيع الـKeystore عبر كل الإصدارات
+  - بناء Release يتطلب تهيئة متغيرات التوقيع AZTA_RELEASE_* ويُفشل البناء عند غيابها لتجنب APK موقّع بـ debug
  
 ### التسعير (Pricing)
 - دالة السعر الزمنية المفعّلة الآن: get_item_price_with_discount(text p_item_id, uuid p_customer_id, numeric p_quantity)  
@@ -136,6 +140,19 @@ Analysis Contract (Enforcement)
    - تجميد دوال الترحيل عبر حدث trg_freeze_posting_engine: يمنع CREATE/ALTER/DROP لـ post_* إلا عند ضبط app.posting_engine_upgrade='1' أثناء جلسات التحديث.
    - المراجع: [20260123240000_phase8_accounting_hardening.sql](file:///d:/AhmedZ/supabase/migrations/20260123240000_phase8_accounting_hardening.sql#L178-L186) + [phase8_accounting_hardening.sql](file:///d:/AhmedZ/supabase/migrations/20260123240000_phase8_accounting_hardening.sql#L519-L556)
  
+### الفترات المحاسبية (Accounting Periods) — Enforcement & UX
+- Enforcement:
+  - إقفال الفترة يفرض منعًا تشغيليًا لأي إدراج/تعديل بقيود محاسبية بتاريخ يقع داخل نطاق الفترة المقفلة (entry_date ضمن [start_date, end_date]).
+  - الإنفاذ يتم على مستوى قاعدة البيانات عبر النسخة الأحدث من سياسات/تريجرات القفل، مع FORCE RLS على الجداول المحاسبية ذات الصلة لضمان عدم وجود مسارات التفاف.
+  - المراجع: [20260123280000_phase10_ledger_immutability_period_lock.sql](file:///d:/AhmedZ/supabase/migrations/20260123280000_phase10_ledger_immutability_period_lock.sql) + [20260125120000_phase13_rbac_hardening_privilege_seal.sql](file:///d:/AhmedZ/supabase/migrations/20260125120000_phase13_rbac_hardening_privilege_seal.sql)
+- UX Clarification (2026-01-26):
+  - فتح/بدء فترة محاسبية لا يغيّر سلوك التشغيل ولا يمنع البيع أو الشراء أو القيود؛ الغرض منها تعريف زمني للتقارير فقط.
+  - واجهة التقارير تُظهر شارات حالة محدثة: “مفتوحة (تعريفية فقط)” و“مقفلة (منع تشغيلي)” مع Tooltips توضيحية للأثر.
+  - زر “بدء فترة محاسبية” أصبح مصحوبًا بـ Tooltip يوضّح أنه لا يقيّد التشغيل؛ وإقفال الفترة يمر عبر نافذة تأكيد تحتوي تحذيرًا نهائيًا غير قابل للتراجع.
+  - رسائل الرفض بسبب الفترات المقفلة تُذكر السبب صراحةً عبر طبقة توطين الأخطاء (localizeSupabaseError).
+  - لا تغييرات على منطق الإقفال/التريجرات/سياسات RLS؛ التعديلات واجهة فقط.
+  - مراجع الواجهة: [FinancialReports.tsx](file:///d:/AhmedZ/screens/admin/reports/FinancialReports.tsx)، [errorUtils.ts](file:///d:/AhmedZ/utils/errorUtils.ts)
+
 ## توثيق النسخ (Superseded Logic)
 - المخزون/الحجز:
   - النسخ القديمة لـ reserve_stock_for_order بدون warehouse_id تم حذفها/إسقاطها في [20260121195000_enforce_warehouse_stock_rpc.sql](file:///d:/AhmedZ/supabase/migrations/20260121195000_enforce_warehouse_stock_rpc.sql)؛ النسخة المعتمدة تتطلب warehouse_id وتنفّذ FEFO مع قفل صفّي.

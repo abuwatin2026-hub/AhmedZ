@@ -40,6 +40,14 @@ export const localizeError = (message: string): string => {
   if (raw.includes('cash method requires an open cash shift')) {
     return 'يجب فتح وردية نقدية صالحة قبل تسجيل دفعة نقدية لهذا الطلب.';
   }
+  if (
+    raw.includes('closed period') ||
+    raw.includes('period is closed') ||
+    (raw.includes('accounting') && raw.includes('period') && (raw.includes('closed') || raw.includes('locked'))) ||
+    raw.includes('date within closed period')
+  ) {
+    return 'تم رفض العملية بسبب إقفال فترة محاسبية. لا يمكن إدراج أو تعديل قيود بتاريخ داخل فترة مقفلة.';
+  }
   if (raw.includes('paid amount exceeds total')) {
     return 'المبلغ المدفوع يتجاوز إجمالي الطلب. تحقق من الدفعات السابقة أو من قيمة الطلب.';
   }

@@ -8,6 +8,8 @@ import { printContent } from '../../../utils/printUtils';
 import { CostCenter } from '../../../types';
 import { useSettings } from '../../../contexts/SettingsContext';
 import LineChart from '../../../components/admin/charts/LineChart';
+import ConfirmationModal from '../../../components/admin/ConfirmationModal';
+import { localizeSupabaseError } from '../../../utils/errorUtils';
 
 type TrialBalanceRow = {
   account_code: string;
@@ -498,6 +500,9 @@ const FinancialReports: React.FC = () => {
   const [periods, setPeriods] = useState<AccountingPeriodRow[]>([]);
   const [showCreatePeriodModal, setShowCreatePeriodModal] = useState(false);
   const [newPeriod, setNewPeriod] = useState({ name: '', start_date: '', end_date: '' });
+  const [showClosePeriodModal, setShowClosePeriodModal] = useState(false);
+  const [closeTargetPeriodId, setCloseTargetPeriodId] = useState<string>('');
+  const [isConfirmingClose, setIsConfirmingClose] = useState(false);
 
   const [manualDate, setManualDate] = useState(defaultFilters.asOfDate);
   const [manualMemo, setManualMemo] = useState('');
@@ -1062,7 +1067,7 @@ const FinancialReports: React.FC = () => {
       await loadStatements();
       await loadCashFlow();
     } catch (err: any) {
-      showNotification(err?.message || 'تعذر اعتماد القيد.', 'error');
+      showNotification(localizeSupabaseError(err) || 'تعذر اعتماد القيد.', 'error');
     }
   }, [canApproveAccounting, loadCashFlow, loadDraftManualEntries, loadStatements, showNotification, supabase, user?.id]);
 
@@ -1082,7 +1087,7 @@ const FinancialReports: React.FC = () => {
       await loadCashFlow();
       closeEntryModal();
     } catch (err: any) {
-      showNotification(err?.message || 'تعذر عكس/إلغاء القيد.', 'error');
+      showNotification(localizeSupabaseError(err) || 'تعذر عكس/إلغاء القيد.', 'error');
     }
   }, [canVoidAccounting, closeEntryModal, loadCashFlow, loadStatements, showNotification, supabase]);
 
@@ -1553,7 +1558,7 @@ const FinancialReports: React.FC = () => {
       setNewPeriod({ name: '', start_date: '', end_date: '' });
       await loadPeriods();
     } catch (err: any) {
-      showNotification(err?.message || 'تعذر إنشاء الفترة', 'error');
+      showNotification(localizeSupabaseError(err) || 'تعذر إنشاء الفترة', 'error');
     } finally {
       setLoadingKey('creatingPeriod', false);
     }
@@ -1572,7 +1577,7 @@ const FinancialReports: React.FC = () => {
       showNotification('تم إقفال الفترة بنجاح', 'success');
       await loadPeriods();
     } catch (err: any) {
-      showNotification(err?.message || 'تعذر إقفال الفترة', 'error');
+      showNotification(localizeSupabaseError(err) || 'تعذر إقفال الفترة', 'error');
     } finally {
       setLoadingKey('closingPeriod', false);
     }
@@ -1620,7 +1625,7 @@ const FinancialReports: React.FC = () => {
         await openEntryModal(entryId);
       }
     } catch (err: any) {
-      showNotification(err?.message || 'تعذر إنشاء القيد', 'error');
+      showNotification(localizeSupabaseError(err) || 'تعذر إنشاء القيد', 'error');
     } finally {
       setLoadingKey('manualEntry', false);
     }
@@ -2912,8 +2917,9 @@ const FinancialReports: React.FC = () => {
                 type="button"
                 onClick={() => setShowCreatePeriodModal(true)}
                 className="px-2.5 py-1 rounded-lg border border-gray-200 dark:border-gray-700 text-xs font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700"
+                title="بدء فترة محاسبية لا يغيّر سلوك التشغيل ولا يمنع البيع أو الشراء أو القيود. الغرض منها التعريف الزمني للتقارير فقط."
               >
-                فترة جديدة
+                بدء فترة محاسبية
               </button>
             )}
           </div>
@@ -2931,14 +2937,14 @@ const FinancialReports: React.FC = () => {
                   <div className="text-xs text-gray-500 dark:text-gray-400" dir="ltr">{p.start_date} → {p.end_date}</div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className={`text-xs font-semibold px-2 py-1 rounded ${p.status === 'closed' ? 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200' : 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'}`}>
-                    {p.status === 'closed' ? 'مقفلة' : 'مفتوحة'}
+                  <span className={`text-xs font-semibold px-2 py-1 rounded ${p.status === 'closed' ? 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200' : 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'}`} title={p.status === 'closed' ? 'الفترة مقفلة تشغيليًا: يمنع إدراج/تعديل قيود بتاريخ داخل هذه الفترة.' : 'الفترة مفتوحة تعريفية فقط: لا تقيّد التشغيل ولا تمنع البيع أو الشراء أو القيود.'}>
+                    {p.status === 'closed' ? 'مقفلة (منع تشغيلي)' : 'مفتوحة (تعريفية فقط)'}
                   </span>
                   {user?.role === 'owner' && p.status !== 'closed' && (
                     <button
                       type="button"
                       disabled={loading.closingPeriod}
-                      onClick={() => void closePeriod(p.id)}
+                      onClick={() => { setCloseTargetPeriodId(p.id); setShowClosePeriodModal(true); }}
                       className="px-3 py-1 rounded-lg bg-red-600 text-white text-xs font-semibold disabled:opacity-60"
                     >
                       {loading.closingPeriod ? '...' : 'إقفال'}
@@ -2955,6 +2961,9 @@ const FinancialReports: React.FC = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg w-full max-w-md p-6">
             <h3 className="text-lg font-bold mb-4 dark:text-white">فترة محاسبية جديدة</h3>
+            <div className="text-xs text-gray-600 dark:text-gray-400 mb-3">
+              فتح/بدء فترة محاسبية لا يغيّر سلوك التشغيل ولا يمنع البيع أو الشراء أو القيود. الغرض منها هو التعريف الزمني للتقارير فقط. القيود تُفرض فقط عند إغلاق الفترات.
+            </div>
             <div className="space-y-3">
               <div>
                 <label className="block text-sm font-medium mb-1 dark:text-gray-200">اسم الفترة</label>
@@ -3003,6 +3012,39 @@ const FinancialReports: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {showClosePeriodModal && (
+        <ConfirmationModal
+          isOpen={showClosePeriodModal}
+          onClose={() => { if (!isConfirmingClose) { setShowClosePeriodModal(false); setCloseTargetPeriodId(''); } }}
+          onConfirm={async () => {
+            if (!closeTargetPeriodId || isConfirmingClose) return;
+            setIsConfirmingClose(true);
+            try {
+              await closePeriod(closeTargetPeriodId);
+              setShowClosePeriodModal(false);
+              setCloseTargetPeriodId('');
+            } catch (err: any) {
+              showNotification(localizeSupabaseError(err) || 'فشل إقفال الفترة', 'error');
+            } finally {
+              setIsConfirmingClose(false);
+            }
+          }}
+          title="تأكيد إقفال الفترة"
+          message=""
+          isConfirming={isConfirmingClose}
+          cancelText="إلغاء"
+          confirmText="تأكيد الإقفال"
+          confirmingText="جاري الإقفال..."
+          confirmButtonClassName="bg-red-600 hover:bg-red-700 disabled:bg-red-400"
+        >
+          <div className="space-y-3 text-sm text-gray-700 dark:text-gray-300">
+            <p>إغلاق الفترة يمنع أي تعديل أو إدراج بتاريخ يقع داخل هذه الفترة.</p>
+            <p>هذا المنع دائم ونهائي ولا يمكن التراجع عنه.</p>
+            <p>تأكد من مراجعة القيود والمدفوعات والمرتجعات والضرائب قبل الإقفال.</p>
+          </div>
+        </ConfirmationModal>
       )}
 
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow p-4">

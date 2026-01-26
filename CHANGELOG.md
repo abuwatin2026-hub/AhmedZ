@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## 2026-01-26 — تحسينات UX للفترات المحاسبية
+- توضيح أن فتح/بدء الفترة تعريف زمني للتقارير فقط ولا يقيّد التشغيل؛ تعديل نص زر “بدء فترة محاسبية” وإضافة Tooltip وشرح داخل نافذة إنشاء الفترة.
+- إضافة نافذة تأكيد قبل إقفال الفترة بصياغة تشغيلية واضحة وتحذير نهائي غير قابل للتراجع.
+- تحديث شارات الحالة للفترات إلى “مفتوحة (تعريفية فقط)” و“مقفلة (منع تشغيلي)” مع Tooltips توضيحية للأثر.
+- تحسين رسائل الأخطاء عند رفض العمليات داخل فترات مقفلة عبر localizeSupabaseError لذكر السبب صراحةً.
+- لا تغييرات على المنطق المحاسبي، التريجرات، أو سياسات RLS؛ تعديل واجهة فقط.
+- المراجع: [FinancialReports.tsx](file:///d:/AhmedZ/screens/admin/reports/FinancialReports.tsx)، [errorUtils.ts](file:///d:/AhmedZ/utils/errorUtils.ts)
+
 ## 2026-01-25 — Remediation & Hardening
 - اعتماد شفافية الفاتورة (Invoice → Promotion → Approval → Journal) عبر واجهة: get_invoice_audit  
   المرجع: [20260125130000_remediation_hardening.sql#L1-L103](file:///d:/AhmedZ/supabase/migrations/20260125130000_remediation_hardening.sql#L1-L103)
