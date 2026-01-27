@@ -4,6 +4,28 @@ import App from './App';
 import './index.css';
 import { AppProviders } from '@/contexts/AppProviders';
 
+if (typeof window !== 'undefined') {
+  const __origError = console.error;
+  console.error = (...args: any[]) => {
+    try {
+      const text = args.map(a => {
+        if (typeof a === 'string') return a;
+        const msg = (a && (a.message || a.toString && a.toString())) || '';
+        return String(msg);
+      }).join(' ').toLowerCase();
+      if (text.includes('net::err_aborted')) return;
+      if (text.includes('ide_webview_request_time')) return;
+    } catch {}
+    __origError(...args);
+  };
+  window.addEventListener('error', (ev: Event) => {
+    const msg = String((ev as any)?.message || '').toLowerCase();
+    if (msg.includes('net::err_aborted')) {
+      ev.preventDefault();
+    }
+  }, true);
+}
+
 const ensureFreshApp = async () => {
   if (import.meta.env.DEV) return;
   const safeGet = (key: string) => {

@@ -108,6 +108,7 @@ const PurchaseOrderScreen: React.FC = () => {
     const [returnRows, setReturnRows] = useState<ReceiveRow[]>([]);
     const [returnOccurredAt, setReturnOccurredAt] = useState<string>(getLocalDateTimeInputValue());
     const [returnReason, setReturnReason] = useState<string>('');
+    const [formErrors, setFormErrors] = useState<string[]>([]);
 
     // Helper to add a new row
     const addRow = () => {
@@ -257,52 +258,62 @@ const PurchaseOrderScreen: React.FC = () => {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
-            const validItems = orderItems.filter(i => i.itemId && i.quantity > 0);
-            if (validItems.length === 0) {
-                alert('الرجاء إضافة صنف واحد على الأقل.');
-                return;
-            }
-            if (!supplierId) {
-                alert('الرجاء اختيار المورد.');
-                return;
-            }
             const invoiceRef = typeof supplierInvoiceNumber === 'string' ? supplierInvoiceNumber.trim() : '';
-            if (!invoiceRef) {
-                alert('الرجاء إدخال رقم فاتورة المورد.');
+            const errors: string[] = [];
+            if (!supplierId) errors.push('المورد مطلوب');
+            if (!purchaseDate) errors.push('تاريخ الشراء مطلوب');
+            if (!invoiceRef) errors.push('رقم فاتورة المورد مطلوب');
+            if (orderItems.length === 0) errors.push('أضف صنف واحد على الأقل');
+            orderItems.forEach((row, idx) => {
+                const rowNo = idx + 1;
+                if (!row.itemId) errors.push(`سطر ${rowNo}: الصنف مطلوب`);
+                if (!Number.isFinite(row.quantity) || Number(row.quantity) <= 0) errors.push(`سطر ${rowNo}: الكمية مطلوبة`);
+                if (!Number.isFinite(row.unitCost) || Number(row.unitCost) < 0) errors.push(`سطر ${rowNo}: سعر الشراء مطلوب`);
+                const item = row.itemId ? getItemById(row.itemId) : null;
+                const exp = typeof row.expiryDate === 'string' ? row.expiryDate.trim() : '';
+                const hv = typeof row.productionDate === 'string' ? row.productionDate.trim() : '';
+                if (receiveOnCreate && item && item.category === 'food') {
+                    if (!exp) errors.push(`سطر ${rowNo}: تاريخ الانتهاء مطلوب للصنف الغذائي (${item.name.ar})`);
+                    else if (!isIsoDate(exp)) errors.push(`سطر ${rowNo}: صيغة تاريخ الانتهاء غير صحيحة (YYYY-MM-DD) للصنف (${item.name.ar})`);
+                }
+                if (hv && !isIsoDate(hv)) {
+                    const nm = item ? item.name.ar : (row.itemId || `سطر ${rowNo}`);
+                    errors.push(`سطر ${rowNo}: صيغة تاريخ الإنتاج غير صحيحة (YYYY-MM-DD) للصنف (${nm})`);
+                }
+            });
+            if (errors.length > 0) {
+                setFormErrors(errors);
                 return;
             }
-            if (receiveOnCreate) {
-                for (const row of validItems) {
-                    const item = getItemById(row.itemId);
-                    if (item && item.category === 'food') {
-                        const exp = typeof row.expiryDate === 'string' ? row.expiryDate.trim() : '';
-                        if (!exp) {
-                            alert(`يرجى إدخال تاريخ الانتهاء للصنف الغذائي: ${item.name.ar}`);
-                            return;
-                        }
-                        if (!isIsoDate(exp)) {
-                            alert(`صيغة تاريخ الانتهاء غير صحيحة (YYYY-MM-DD) للصنف: ${item.name.ar}`);
-                            return;
-                        }
-                    }
-                    const hv = typeof row.productionDate === 'string' ? row.productionDate.trim() : '';
-                    if (hv && !isIsoDate(hv)) {
-                        const nm = item ? item.name.ar : row.itemId;
-                        alert(`صيغة تاريخ الإنتاج غير صحيحة (YYYY-MM-DD) للصنف: ${nm}`);
-                        return;
-                    }
-                }
-            }
-
+            const validItems = orderItems.filter(i => i.itemId && i.quantity > 0);
             await createPurchaseOrder(supplierId, purchaseDate, validItems, receiveOnCreate, invoiceRef);
             setIsModalOpen(false);
             // Reset form
             setSupplierId('');
             setSupplierInvoiceNumber('');
             setOrderItems([]);
+            setFormErrors([]);
         } catch (error) {
             console.error(error);
             const message = error instanceof Error ? error.message : 'فشل إنشاء أمر الشراء.';
+            try {
+                const raw = String(message || '').toLowerCase();
+                if (/(missing|required|الحقول المطلوبة ناقصة)/i.test(raw)) {
+                    const hints: string[] = [
+                        `تفاصيل الخطأ: ${message}`,
+                        'تحقق من اختيار المورد',
+                        'تحقق من إدخال تاريخ الشراء',
+                        'تحقق من إدخال رقم فاتورة المورد',
+                        'تحقق من أن لكل سطر: الصنف والكمية وسعر الشراء',
+                    ];
+                    if (receiveOnCreate) {
+                        hints.push('للأصناف الغذائية عند الاستلام الآن: تاريخ الانتهاء بصيغة YYYY-MM-DD');
+                    }
+                    setFormErrors(hints);
+                    return;
+                }
+            } catch {
+            }
             alert(message);
         }
     };
@@ -614,6 +625,8 @@ const PurchaseOrderScreen: React.FC = () => {
                         const remainingRaw = total - paid;
                         const remaining = Math.max(0, remainingRaw);
                         const credit = Math.max(0, -remainingRaw);
+                        const totalQty = (order.items || []).reduce((sum: number, it: any) => sum + Number(it?.quantity || 0), 0);
+                        const linesCount = Number(order.itemsCount ?? (order.items || []).length ?? 0);
                         const canPay = order.status !== 'cancelled' && remainingRaw > 0;
                         const hasReceived = (order.items || []).some((it: any) => Number(it?.receivedQuantity || 0) > 0);
                         const canPurge = canDelete && order.status === 'draft' && paid <= 0 && !hasReceived;
@@ -666,6 +679,14 @@ const PurchaseOrderScreen: React.FC = () => {
                                     <div>
                                         <div className="text-gray-500 dark:text-gray-400">المتبقي</div>
                                         <div className="font-mono dark:text-gray-200">{remaining.toFixed(2)}</div>
+                                    </div>
+                                    <div>
+                                        <div className="text-gray-500 dark:text-gray-400">عدد الأصناف (سطور)</div>
+                                        <div className="font-mono dark:text-gray-200">{linesCount}</div>
+                                    </div>
+                                    <div>
+                                        <div className="text-gray-500 dark:text-gray-400">إجمالي الكميات</div>
+                                        <div className="font-mono dark:text-gray-200">{totalQty}</div>
                                     </div>
                                     {credit > 0 ? (
                                         <div className="col-span-2">
@@ -745,7 +766,7 @@ const PurchaseOrderScreen: React.FC = () => {
                             <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">رقم المرجع (فاتورة المورد)</th>
                             <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">المورد</th>
                             <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">التاريخ</th>
-                            <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">عدد الأصناف</th>
+                            <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">عدد الأصناف (سطور/كمية)</th>
                             <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">الإجمالي</th>
                             <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">المدفوع</th>
                             <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">المتبقي</th>
@@ -764,6 +785,7 @@ const PurchaseOrderScreen: React.FC = () => {
                                     const remainingRaw = total - paid;
                                     const remaining = Math.max(0, remainingRaw);
                                     const credit = Math.max(0, -remainingRaw);
+                                    const totalQty = (order.items || []).reduce((sum: number, it: any) => sum + Number(it?.quantity || 0), 0);
                                     const canPay = order.status !== 'cancelled' && remainingRaw > 0;
                                     const hasReceived = (order.items || []).some((it: any) => Number(it?.receivedQuantity || 0) > 0);
                                     const canPurge = canDelete && order.status === 'draft' && paid <= 0 && !hasReceived;
@@ -773,7 +795,7 @@ const PurchaseOrderScreen: React.FC = () => {
                                     <td className="p-4 font-mono text-sm dark:text-gray-300">{order.referenceNumber || '-'}</td>
                                     <td className="p-4 font-medium dark:text-white">{order.supplierName}</td>
                                     <td className="p-4 text-sm dark:text-gray-300">{formatPurchaseDate(order.purchaseDate)}</td>
-                                    <td className="p-4 text-sm dark:text-gray-300">{order.itemsCount}</td>
+                                    <td className="p-4 text-sm dark:text-gray-300 font-mono">{Number(order.itemsCount ?? 0)} / {totalQty}</td>
                                     <td className="p-4 font-bold text-primary-600 dark:text-primary-400">{order.totalAmount.toFixed(2)}</td>
                                     <td className="p-4 font-mono text-sm dark:text-gray-300">{paid.toFixed(2)}</td>
                                     <td className="p-4 font-mono text-sm dark:text-gray-300">{remaining.toFixed(2)}</td>
@@ -883,6 +905,19 @@ const PurchaseOrderScreen: React.FC = () => {
 
                         <form onSubmit={handleSubmit} className="flex-1 flex flex-col overflow-hidden">
                             <div className="p-6 overflow-y-auto flex-1 space-y-6">
+                                {formErrors.length > 0 && (
+                                    <div className="sticky top-0 z-10 mb-2 rounded-lg border border-red-200 bg-red-50 p-3 text-right text-sm text-red-700">
+                                        <div className="font-semibold mb-1">يرجى تصحيح العناصر التالية:</div>
+                                        <ul className="space-y-1 list-disc pr-5">
+                                            {formErrors.slice(0, 12).map((msg, i) => (
+                                                <li key={i}>{msg}</li>
+                                            ))}
+                                        </ul>
+                                        {formErrors.length > 12 ? (
+                                            <div className="mt-1">+ {formErrors.length - 12} أخرى</div>
+                                        ) : null}
+                                    </div>
+                                )}
                                 {/* Header Info */}
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                     <div>

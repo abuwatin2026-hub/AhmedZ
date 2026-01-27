@@ -96,6 +96,85 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return msg.includes('duplicate') || msg.includes('unique');
   };
 
+  const normalizeUomCode = (value: unknown) => {
+    const v = String(value ?? '').trim();
+    return v.length ? v : 'piece';
+  };
+
+  const ensureUomId = useCallback(async (codeRaw: unknown) => {
+    if (!supabase) throw new Error('Supabase غير مهيأ.');
+    const code = normalizeUomCode(codeRaw);
+    const { data: existing, error: existingErr } = await supabase
+      .from('uom')
+      .select('id')
+      .eq('code', code)
+      .maybeSingle();
+    if (existingErr) throw existingErr;
+    if (existing?.id) return String(existing.id);
+
+    try {
+      const { data: inserted, error: insertErr } = await supabase
+        .from('uom')
+        .insert([{ code, name: code }])
+        .select('id')
+        .single();
+      if (insertErr) throw insertErr;
+      return String(inserted.id);
+    } catch (err) {
+      if (isUniqueViolation(err)) {
+        const { data: after, error: afterErr } = await supabase
+          .from('uom')
+          .select('id')
+          .eq('code', code)
+          .maybeSingle();
+        if (afterErr) throw afterErr;
+        if (after?.id) return String(after.id);
+      }
+      throw err;
+    }
+  }, [supabase]);
+
+  const ensureItemUomRow = useCallback(async (itemId: string) => {
+    if (!supabase) throw new Error('Supabase غير مهيأ.');
+    const id = String(itemId || '').trim();
+    if (!id) throw new Error('معرف الصنف غير صالح.');
+
+    const { data: existingIU, error: existingIUErr } = await supabase
+      .from('item_uom')
+      .select('id')
+      .eq('item_id', id)
+      .maybeSingle();
+    if (existingIUErr) throw existingIUErr;
+    if (existingIU?.id) return;
+
+    const { data: itemRow, error: itemErr } = await supabase
+      .from('menu_items')
+      .select('id, base_unit, unit_type, data')
+      .eq('id', id)
+      .maybeSingle();
+    if (itemErr) throw itemErr;
+    if (!itemRow?.id) throw new Error('الصنف غير موجود.');
+
+    const dataObj: any = (itemRow as any).data || {};
+    const unit = normalizeUomCode(
+      (itemRow as any).base_unit ??
+      (itemRow as any).unit_type ??
+      dataObj?.baseUnit ??
+      dataObj?.unitType ??
+      dataObj?.base_unit
+    );
+    const uomId = await ensureUomId(unit);
+
+    try {
+      const { error: insertIUErr } = await supabase
+        .from('item_uom')
+        .insert([{ item_id: id, base_uom_id: uomId, purchase_uom_id: null, sales_uom_id: null }]);
+      if (insertIUErr) throw insertIUErr;
+    } catch (err) {
+      if (!isUniqueViolation(err)) throw err;
+    }
+  }, [ensureUomId, supabase]);
+
   const updateMenuItemDates = useCallback(async (items: Array<{ itemId: string; productionDate?: string; expiryDate?: string }>) => {
       if (!supabase) return;
       const metaUpdates = items.filter(i => i.productionDate || i.expiryDate);
@@ -355,6 +434,32 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           if (!providedRef) {
             throw new Error('رقم فاتورة المورد مطلوب.');
           }
+
+          let scopeWarehouseId: string | null = null;
+          let scopeBranchId: string | null = null;
+          let scopeCompanyId: string | null = null;
+          try {
+            const { data: scopeRows, error: scopeErr } = await supabase.rpc('get_admin_session_scope');
+            if (!scopeErr && Array.isArray(scopeRows) && scopeRows.length > 0) {
+              const row: any = scopeRows[0];
+              scopeWarehouseId = (row?.warehouse_id ?? row?.warehouseId ?? null) as any;
+              scopeBranchId = (row?.branch_id ?? row?.branchId ?? null) as any;
+              scopeCompanyId = (row?.company_id ?? row?.companyId ?? null) as any;
+            }
+          } catch {
+          }
+          if (!scopeWarehouseId) {
+            try {
+              const { data: wh, error: whErr } = await supabase.rpc('_resolve_default_admin_warehouse_id');
+              if (!whErr && wh) scopeWarehouseId = String(wh);
+            } catch {
+            }
+          }
+          if (!scopeWarehouseId) {
+            throw new Error('لا يوجد مستودع نشط. أضف مستودع (MAIN) ثم أعد المحاولة.');
+          }
+          const uniqueItemIds = Array.from(new Set(items.map(i => String(i.itemId || '').trim()).filter(Boolean)));
+          await Promise.all(uniqueItemIds.map(async (id) => ensureItemUomRow(id)));
           if (receiveNow) {
             const { error: whErr } = await supabase.rpc('_resolve_default_warehouse_id');
             if (whErr) throw whErr;
@@ -386,7 +491,10 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                   total_amount: totalAmount,
                   items_count: itemsCount,
                   created_by: user.id,
-                  status: 'draft'
+                  status: 'draft',
+                  warehouse_id: scopeWarehouseId,
+                  branch_id: scopeBranchId ?? undefined,
+                  company_id: scopeCompanyId ?? undefined,
                 }])
                 .select()
                 .single();
@@ -445,7 +553,15 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
           await fetchPurchaseOrders({ silent: false });
         } catch (err) {
-          throw new Error(localizeSupabaseError(err));
+          const localized = localizeSupabaseError(err);
+          const anyErr = err as any;
+          const rawMsg = typeof anyErr?.message === 'string' ? anyErr.message : '';
+          const rawCode = typeof anyErr?.code === 'string' ? anyErr.code : '';
+          if (import.meta.env.DEV && localized === 'الحقول المطلوبة ناقصة.' && rawMsg) {
+            const extra = `${rawCode ? `${rawCode}: ` : ''}${rawMsg}`.trim();
+            throw new Error(extra ? `${localized} (تفاصيل: ${extra})` : localized);
+          }
+          throw new Error(localized);
         }
     };
 
