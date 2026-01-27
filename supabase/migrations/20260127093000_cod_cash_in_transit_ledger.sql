@@ -14,6 +14,27 @@ BEGIN
   END IF;
 END $$;
 
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_type t
+    JOIN pg_enum e ON e.enumtypid = t.oid
+    WHERE t.typname = 'ledger_account_code'
+      AND e.enumlabel = 'Delivery_Income'
+  ) THEN
+    ALTER TYPE public.ledger_account_code ADD VALUE 'Delivery_Income';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_type t
+    JOIN pg_enum e ON e.enumtypid = t.oid
+    WHERE t.typname = 'ledger_account_code'
+      AND e.enumlabel = 'VAT_Payable'
+  ) THEN
+    ALTER TYPE public.ledger_account_code ADD VALUE 'VAT_Payable';
+  END IF;
+END $$;
 -- 2) Ledger tables (immutable)
 CREATE TABLE IF NOT EXISTS public.ledger_entries (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -253,7 +274,11 @@ SET search_path = public
 AS $$
 DECLARE
   v_order record;
+  v_data jsonb;
   v_amount numeric;
+  v_delivery_fee numeric;
+  v_tax_amount numeric;
+  v_items_revenue numeric;
   v_at timestamptz;
   v_entry_id uuid;
   v_balance numeric;
@@ -281,6 +306,12 @@ BEGIN
   END IF;
 
   v_at := coalesce(p_occurred_at, now());
+  v_data := coalesce(v_order.data, '{}'::jsonb);
+  v_delivery_fee := coalesce(nullif((v_data->'invoiceSnapshot'->>'deliveryFee')::numeric, null), coalesce(nullif((v_data->>'deliveryFee')::numeric, null), 0));
+  v_tax_amount := coalesce(nullif((v_data->'invoiceSnapshot'->>'taxAmount')::numeric, null), coalesce(nullif((v_data->>'taxAmount')::numeric, null), 0));
+  v_tax_amount := least(greatest(0, v_tax_amount), v_amount);
+  v_delivery_fee := least(greatest(0, v_delivery_fee), v_amount - v_tax_amount);
+  v_items_revenue := greatest(0, v_amount - v_delivery_fee - v_tax_amount);
 
   -- idempotent: one delivery entry per order
   SELECT le.id
@@ -304,13 +335,23 @@ BEGIN
     RETURNING id INTO v_entry_id;
 
     INSERT INTO public.ledger_lines(entry_id, account, debit, credit)
-    VALUES
-      -- Accrual recognition at delivery
-      (v_entry_id, 'Accounts_Receivable_COD', v_amount, 0),
-      (v_entry_id, 'Sales_Revenue', 0, v_amount),
-      -- Cash collected from customer but still outside cashbox
-      (v_entry_id, 'Cash_In_Transit', v_amount, 0),
-      (v_entry_id, 'Accounts_Receivable_COD', 0, v_amount);
+    VALUES (v_entry_id, 'Accounts_Receivable_COD', v_amount, 0);
+    IF v_items_revenue > 0 THEN
+      INSERT INTO public.ledger_lines(entry_id, account, debit, credit)
+      VALUES (v_entry_id, 'Sales_Revenue', 0, v_items_revenue);
+    END IF;
+    IF v_delivery_fee > 0 THEN
+      INSERT INTO public.ledger_lines(entry_id, account, debit, credit)
+      VALUES (v_entry_id, 'Delivery_Income', 0, v_delivery_fee);
+    END IF;
+    IF v_tax_amount > 0 THEN
+      INSERT INTO public.ledger_lines(entry_id, account, debit, credit)
+      VALUES (v_entry_id, 'VAT_Payable', 0, v_tax_amount);
+    END IF;
+    INSERT INTO public.ledger_lines(entry_id, account, debit, credit)
+    VALUES (v_entry_id, 'Cash_In_Transit', v_amount, 0);
+    INSERT INTO public.ledger_lines(entry_id, account, debit, credit)
+    VALUES (v_entry_id, 'Accounts_Receivable_COD', 0, v_amount);
   END IF;
 
   -- Driver wallet/receivable (cash in hand with driver)

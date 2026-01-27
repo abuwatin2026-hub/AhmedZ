@@ -1,5 +1,5 @@
 Version: 2026-01-27
-Last validated against migrations up to: 20260127095000_cod_batch_settlement.sql
+Last validated against migrations up to: 20260127104500_import_close_grant_restrict.sql
 
 Analysis Contract (Enforcement)
 - أي تحليل أو تصميم أو اقتراح تنفيذ لا يبدأ صراحةً من هذا الملف ARCHITECTURE_CURRENT يعتبر غير صالح.
@@ -132,6 +132,7 @@ Analysis Contract (Enforcement)
   - يُولّد COGS عبر inventory_movements وorder_item_cogs.
 - تأكيد التسليم: confirm_order_delivery(uuid p_order_id, jsonb p_items, jsonb p_updated_data, uuid p_warehouse_id)  
   الأحدث: نفس المهاجرة أعلاه؛ يستدعي الخصم ويُحدّث حالة الطلب “delivered”.
+Import Shipments Accounting Rule — Setting shipment status to delivered automatically applies landed cost to inventory and updates average cost for remaining stock. Historical COGS are not recalculated.
  
 ### محرك العروض (Promotions)
 - المخطط (Schema):

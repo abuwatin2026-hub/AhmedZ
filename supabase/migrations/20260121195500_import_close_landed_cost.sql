@@ -87,6 +87,22 @@ begin
       total_cost = (coalesce(v_im.quantity, 0) * v_item.landed_unit)
   where id = v_im.id;
 
+  -- Sync batch unit_cost for all related purchase_in batches of this shipment (not fully consumed)
+  update public.batches b
+  set unit_cost = v_item.landed_unit,
+      updated_at = now()
+  where b.item_id = v_item.item_id_text
+    and b.warehouse_id = new.destination_warehouse_id
+    and coalesce(b.quantity_consumed,0) < coalesce(b.quantity_received,0)
+    and exists (
+      select 1
+      from public.inventory_movements im2
+      where im2.batch_id = b.id
+        and im2.movement_type = 'purchase_in'
+        and im2.reference_table = 'purchase_receipts'
+        and (new.actual_arrival_date is null or im2.occurred_at >= new.actual_arrival_date)
+    );
+
     -- Recompute avg_cost using delta of this movement only
     v_avail := coalesce(v_sm.available_quantity, 0);
     if v_avail > 0 then
@@ -115,7 +131,7 @@ exception
 end;
 $$;
 revoke all on function public.trg_close_import_shipment() from public;
-grant execute on function public.trg_close_import_shipment() to anon, authenticated;
+grant execute on function public.trg_close_import_shipment() to service_role;
 
 drop trigger if exists trg_import_shipment_close on public.import_shipments;
 create trigger trg_import_shipment_close
