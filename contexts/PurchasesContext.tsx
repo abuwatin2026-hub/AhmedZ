@@ -221,7 +221,9 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       p_amount: amount,
       p_payload: { purchaseOrderId: orderId },
     } as any);
-    if (createErr) return null;
+    if (createErr) {
+      return null;
+    }
     return typeof reqId === 'string' ? reqId : null;
   }, [supabase]);
 
@@ -580,8 +582,12 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               if (receiveError) {
                 const msg = String((receiveError as any)?.message || '');
                 if (/purchase receipt requires approval/i.test(msg)) {
-                  await ensureApprovalRequest(orderId, 'receipt', totalAmount);
-                  throw new Error('تم إنشاء طلب موافقة للاستلام. يرجى اعتماده من قسم الموافقات ثم أعد المحاولة.');
+                  const reqId = await ensureApprovalRequest(orderId, 'receipt', totalAmount);
+                  if (reqId) {
+                    throw new Error('تم إنشاء طلب موافقة للاستلام. يرجى اعتماده من قسم الموافقات ثم أعد المحاولة.');
+                  } else {
+                    throw new Error('يتطلب الاستلام موافقة. تعذر إنشاء طلب الموافقة تلقائياً؛ يرجى إنشائه من قسم الموافقات ثم إعادة المحاولة.');
+                  }
                 }
                 throw receiveError;
               }
@@ -684,8 +690,12 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                 .eq('id', purchaseOrderId)
                 .maybeSingle();
               const amt = Number((poRow as any)?.total_amount || 0);
-              await ensureApprovalRequest(purchaseOrderId, 'receipt', amt);
-              throw new Error('يتطلب الاستلام موافقة. تم إنشاء طلب الموافقة، يرجى الاعتماد ثم إعادة المحاولة.');
+              const reqId = await ensureApprovalRequest(purchaseOrderId, 'receipt', amt);
+              if (reqId) {
+                throw new Error('يتطلب الاستلام موافقة. تم إنشاء طلب الموافقة، يرجى الاعتماد ثم إعادة المحاولة.');
+              } else {
+                throw new Error('يتطلب الاستلام موافقة. تعذر إنشاء طلب الموافقة تلقائياً؛ يرجى إنشائه من قسم الموافقات ثم إعادة المحاولة.');
+              }
             }
             throw error;
           }
