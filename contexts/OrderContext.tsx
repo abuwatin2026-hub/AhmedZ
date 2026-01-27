@@ -428,15 +428,16 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const isInvoiceEligible = useCallback((order: Order) => {
     if (order.status !== 'delivered') return false;
-    if (order.paymentMethod === 'cash') return Boolean(order.paidAt);
-    return Boolean(order.paidAt);
+    const isCod = order.paymentMethod === 'cash' && order.orderSource !== 'in_store' && Boolean(order.deliveryZoneId);
+    if (isCod) return Boolean(order.paidAt);
+    return true;
   }, []);
 
   const ensureInvoiceIssued = useCallback(async (order: Order, issuedAtIso?: string) => {
     if (order.invoiceIssuedAt && order.invoiceNumber) return;
     if (!isInvoiceEligible(order)) return;
 
-    const invoiceIssuedAt = order.invoiceIssuedAt || order.paidAt || issuedAtIso || order.deliveredAt || order.createdAt || new Date().toISOString();
+    const invoiceIssuedAt = order.invoiceIssuedAt || issuedAtIso || order.deliveredAt || order.createdAt || order.paidAt || new Date().toISOString();
     let invoiceNumber = order.invoiceNumber || '';
     try {
       const supabase = getSupabaseClient();
@@ -480,6 +481,13 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         invoicePrintCount,
         ...(snapshot ? { invoiceSnapshot: snapshot } : {}),
       };
+      try {
+        const supabase = getSupabaseClient();
+        const isCod = nextOrder.paymentMethod === 'cash' && nextOrder.orderSource !== 'in_store' && Boolean(nextOrder.deliveryZoneId);
+        if (supabase && !isCod) {
+          await supabase.rpc('post_invoice_issued', { p_order_id: nextOrder.id, p_issued_at: invoiceIssuedAt });
+        }
+      } catch {}
       await addOrderEvent({
         orderId: order.id,
         action: 'order.invoiceIssued',

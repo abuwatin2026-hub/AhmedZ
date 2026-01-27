@@ -180,3 +180,98 @@ $$;
 
 revoke all on function public.sync_offline_pos_sale(text, uuid, jsonb, jsonb, uuid, jsonb) from public;
 grant execute on function public.sync_offline_pos_sale(text, uuid, jsonb, jsonb, uuid, jsonb) to authenticated;
+
+create or replace function public.retry_offline_pos_sale(p_offline_id text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_sale record;
+  v_err text;
+  v_result jsonb;
+  v_i int := 0;
+  v_payment jsonb;
+begin
+  if p_offline_id is null or btrim(p_offline_id) = '' then
+    raise exception 'p_offline_id is required';
+  end if;
+
+  perform pg_advisory_xact_lock(hashtext(p_offline_id));
+
+  select *
+  into v_sale
+  from public.pos_offline_sales s
+  where s.offline_id = p_offline_id
+  for update;
+
+  if not found then
+    raise exception 'offline_sale_not_found';
+  end if;
+
+  if coalesce(v_sale.state, 'SYNCED') = 'DELIVERED' then
+    return jsonb_build_object('status','DELIVERED','orderId', v_sale.order_id::text, 'offlineId', p_offline_id);
+  end if;
+
+  begin
+    perform public.confirm_order_delivery(
+      v_sale.order_id,
+      coalesce(v_sale.payload->'items','[]'::jsonb),
+      coalesce(v_sale.payload, '{}'::jsonb),
+      coalesce(nullif(v_sale.payload->>'warehouseId','')::uuid, public._resolve_default_warehouse_id())
+    );
+  exception when others then
+    v_err := sqlerrm;
+    update public.pos_offline_sales
+    set state = case
+          when v_err ilike '%insufficient%' then 'CONFLICT'
+          when v_err ilike '%expired%' then 'CONFLICT'
+          when v_err ilike '%reservation%' then 'CONFLICT'
+          when v_err ilike '%delivery_driver_required%' then 'CONFLICT'
+          else 'FAILED'
+        end,
+        last_error = v_err,
+        updated_at = now()
+    where offline_id = p_offline_id;
+    update public.orders
+    set data = jsonb_set(coalesce(data, '{}'::jsonb), '{offlineState}', to_jsonb('CONFLICT'::text), true),
+        updated_at = now()
+    where id = v_sale.order_id;
+    return jsonb_build_object('status', 'CONFLICT', 'orderId', v_sale.order_id::text, 'offlineId', p_offline_id, 'error', v_err);
+  end;
+
+  for v_payment in
+    select value
+    from jsonb_array_elements(coalesce(v_sale.payload->'payments','[]'::jsonb))
+  loop
+    begin
+      perform public.record_order_payment(
+        v_sale.order_id,
+        coalesce(nullif(v_payment->>'amount','')::numeric, 0),
+        coalesce(nullif(v_payment->>'method',''), ''),
+        coalesce(nullif(v_payment->>'occurredAt','')::timestamptz, now()),
+        'offline:' || p_offline_id || ':retry:' || v_i::text
+      );
+    exception when others then
+      null;
+    end;
+    v_i := v_i + 1;
+  end loop;
+
+  update public.pos_offline_sales
+  set state = 'DELIVERED',
+      last_error = null,
+      updated_at = now()
+  where offline_id = p_offline_id;
+
+  update public.orders
+  set data = jsonb_set(coalesce(data, '{}'::jsonb), '{offlineState}', to_jsonb('DELIVERED'::text), true),
+      updated_at = now()
+  where id = v_sale.order_id;
+
+  v_result := jsonb_build_object('status', 'DELIVERED', 'orderId', v_sale.order_id::text, 'offlineId', p_offline_id);
+  return v_result;
+end;
+$$;
+grant execute on function public.retry_offline_pos_sale(text) to authenticated;

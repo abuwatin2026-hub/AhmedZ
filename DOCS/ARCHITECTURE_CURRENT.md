@@ -198,6 +198,12 @@ Analysis Contract (Enforcement)
     المرجع: [20260125120000_phase13_rbac_hardening_privilege_seal.sql](file:///d:/AhmedZ/supabase/migrations/20260125120000_phase13_rbac_hardening_privilege_seal.sql)
 - ختم تقارير القوائم المالية عبر Permission Guard (SECURITY DEFINER):
   - balances_as_of / profit_and_loss_by_range / cogs_reconciliation_by_range / assert_balance_sheet / assert_trial_balance_by_range: تتطلب service_role أو has_admin_permission('accounting.view').  
+
+### تسمية طرق الدفع التشغيلية (Binding)
+- cash = نقدي (صندوق)
+- network = بطاقات/مدفوعات إلكترونية (card/online)
+- kuraimi = بنك/تحويل (bank/bank_transfer)
+- تعتمد جميع المسارات الحالية على هذا الربط دون تغيير أي سلوك محاسبي.
     المرجع: [20260125120000_phase13_rbac_hardening_privilege_seal.sql](file:///d:/AhmedZ/supabase/migrations/20260125120000_phase13_rbac_hardening_privilege_seal.sql) + [20260123290000_phase11_financial_statements_integrity.sql](file:///d:/AhmedZ/supabase/migrations/20260123290000_phase11_financial_statements_integrity.sql)
 - RLS Compatibility للتدقيق بعد FORCE RLS:
   - ledger_audit_log: سياسة INSERT داخلية مضافة لضمان استمرار تريجرات التدقيق عند FORCE RLS.  
