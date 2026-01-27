@@ -200,6 +200,31 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       }));
   }, [supabase]);
 
+  const ensureApprovalRequest = useCallback(async (orderId: string, type: 'po' | 'receipt', amount: number) => {
+    if (!supabase) return null;
+    const { data: existingRows, error: existingErr } = await supabase
+      .from('approval_requests')
+      .select('id,status')
+      .eq('target_table', 'purchase_orders')
+      .eq('target_id', orderId)
+      .eq('request_type', type)
+      .in('status', ['pending', 'approved'] as any)
+      .limit(1);
+    if (!existingErr && Array.isArray(existingRows) && existingRows.length > 0) {
+      const row: any = existingRows[0];
+      return String(row.id);
+    }
+    const { data: reqId, error: createErr } = await supabase.rpc('create_approval_request', {
+      p_target_table: 'purchase_orders',
+      p_target_id: orderId,
+      p_request_type: type,
+      p_amount: amount,
+      p_payload: { purchaseOrderId: orderId },
+    } as any);
+    if (createErr) return null;
+    return typeof reqId === 'string' ? reqId : null;
+  }, [supabase]);
+
   const fetchSuppliers = useCallback(async (opts?: { silent?: boolean }) => {
       if (!supabase) return;
       try {
@@ -536,6 +561,11 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             throw itemsErr;
           }
 
+          await ensureApprovalRequest(orderId, 'po', totalAmount);
+          if (receiveNow) {
+            await ensureApprovalRequest(orderId, 'receipt', totalAmount);
+          }
+
           if (receiveNow) {
               const { error: receiveError } = await supabase.rpc('receive_purchase_order_partial', {
                   p_order_id: orderId,
@@ -547,7 +577,14 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                   })),
                   p_occurred_at: new Date(`${normalizedDate}T00:00:00.000Z`).toISOString()
               });
-              if (receiveError) throw receiveError;
+              if (receiveError) {
+                const msg = String((receiveError as any)?.message || '');
+                if (/purchase receipt requires approval/i.test(msg)) {
+                  await ensureApprovalRequest(orderId, 'receipt', totalAmount);
+                  throw new Error('تم إنشاء طلب موافقة للاستلام. يرجى اعتماده من قسم الموافقات ثم أعد المحاولة.');
+                }
+                throw receiveError;
+              }
               await updateMenuItemDates(items);
           }
 
@@ -638,7 +675,20 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               })),
               p_occurred_at: occurredAt ? new Date(occurredAt).toISOString() : new Date().toISOString()
           });
-          if (error) throw error;
+          if (error) {
+            const msg = String((error as any)?.message || '');
+            if (/purchase receipt requires approval/i.test(msg)) {
+              const { data: poRow } = await supabase
+                .from('purchase_orders')
+                .select('total_amount')
+                .eq('id', purchaseOrderId)
+                .maybeSingle();
+              const amt = Number((poRow as any)?.total_amount || 0);
+              await ensureApprovalRequest(purchaseOrderId, 'receipt', amt);
+              throw new Error('يتطلب الاستلام موافقة. تم إنشاء طلب الموافقة، يرجى الاعتماد ثم إعادة المحاولة.');
+            }
+            throw error;
+          }
           await updateMenuItemDates(items);
           await fetchPurchaseOrders();
         } catch (err) {
