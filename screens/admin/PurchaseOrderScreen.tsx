@@ -67,11 +67,11 @@ const PurchaseOrderScreen: React.FC = () => {
         if (typeof value !== 'string') return '-';
         const dateOnly = /^\d{4}-\d{2}-\d{2}$/;
         if (dateOnly.test(value)) {
-            return new Date(`${value}T00:00:00`).toLocaleDateString();
+            return new Date(`${value}T00:00:00`).toLocaleDateString('ar-EG-u-nu-latn');
         }
         const d = new Date(value);
         if (isNaN(d.getTime())) return value;
-        return d.toLocaleDateString();
+        return d.toLocaleDateString('ar-EG-u-nu-latn');
     };
 
     const activeMenuItems = useMemo(() => {
@@ -467,9 +467,9 @@ const PurchaseOrderScreen: React.FC = () => {
     }, [settings.paymentMethods]);
 
     const getPaymentMethodLabel = (method: string) => {
-        if (method === 'cash') return 'كاش';
-        if (method === 'kuraimi') return 'إيداع بنكي (كريمي)';
-        if (method === 'network') return 'شبكة/حوالة';
+        if (method === 'cash') return 'نقدًا';
+        if (method === 'kuraimi') return 'حسابات بنكية';
+        if (method === 'network') return 'حوالات';
         return method;
     };
 

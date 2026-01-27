@@ -10,7 +10,6 @@ interface CouponContextType {
   addCoupon: (coupon: Omit<Coupon, 'id'>) => Promise<void>;
   updateCoupon: (coupon: Coupon) => Promise<void>;
   deleteCoupon: (couponId: string) => Promise<void>;
-  incrementCouponUsage: (couponId: string) => Promise<void>;
 }
 
 const CouponContext = createContext<CouponContextType | undefined>(undefined);
@@ -104,26 +103,6 @@ export const CouponProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
     return coupon;
   };
-
-  const incrementCouponUsage = async (couponId: string) => {
-    const supabase = getSupabaseClient();
-    if (!supabase) return;
-    
-    // We need to implement atomic increment ideally, but for now we update JSONB
-    // Since coupon data is inside a JSONB column 'data', we need a more complex update or RPC.
-    // For MVP, we will fetch, increment in memory, and update.
-    // Warning: This is not race-condition safe.
-    
-    const coupon = coupons.find(c => c.id === couponId);
-    if (!coupon) return;
-
-    const updatedCoupon = {
-        ...coupon,
-        usageCount: (coupon.usageCount || 0) + 1
-    };
-
-    await updateCoupon(updatedCoupon);
-  };
   
   const addCoupon = async (couponData: Omit<Coupon, 'id'>) => {
     const newCoupon = { ...couponData, id: crypto.randomUUID() };
@@ -186,7 +165,7 @@ export const CouponProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
 
   return (
-    <CouponContext.Provider value={{ coupons, validateCoupon, addCoupon, updateCoupon, deleteCoupon, incrementCouponUsage }}>
+    <CouponContext.Provider value={{ coupons, validateCoupon, addCoupon, updateCoupon, deleteCoupon }}>
       {children}
     </CouponContext.Provider>
   );

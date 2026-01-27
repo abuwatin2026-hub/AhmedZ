@@ -92,7 +92,7 @@ const NotificationMenu: React.FC = () => {
                                         {note.title}
                                     </p>
                                     <span className="text-[10px] text-gray-400">
-                                        {new Date(note.createdAt).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })}
+                                        {new Date(note.createdAt).toLocaleTimeString('ar-SA-u-nu-latn', { hour: '2-digit', minute: '2-digit' })}
                                     </span>
                                 </div>
                                 <p className="text-xs text-gray-600 dark:text-gray-400 line-clamp-2">

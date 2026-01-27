@@ -57,6 +57,7 @@ interface PrintableInvoiceProps {
     logoUrl?: string;
     vatNumber?: string; // Added VAT Number
     thermal?: boolean;
+    thermalPaperWidth?: '58mm' | '80mm';
     isCopy?: boolean;
     copyNumber?: number;
     audit?: any;
@@ -71,6 +72,7 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
     logoUrl,
     vatNumber,
     thermal = false,
+    thermalPaperWidth = '58mm',
     isCopy = false,
     copyNumber,
     audit,
@@ -105,6 +107,14 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
     const resolvedVatNumber = vatNumber || '';
     const { getDeliveryZoneById } = useDeliveryZones();
     const deliveryZone = invoiceOrder.deliveryZoneId ? getDeliveryZoneById(invoiceOrder.deliveryZoneId) : undefined;
+    const resolvedThermalPaperWidth: '58mm' | '80mm' = thermalPaperWidth === '80mm' ? '80mm' : '58mm';
+
+    const numericCellStyle: React.CSSProperties = {
+        textAlign: 'right',
+        direction: 'ltr',
+        fontVariantNumeric: 'tabular-nums',
+        fontFeatureSettings: '"tnum"',
+    };
 
     // Generate ZATCA QR Code Data
     const qrData = generateZatcaTLV(
@@ -118,18 +128,18 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
     const getPaymentMethodText = (method: string) => {
         const methodMap: Record<string, string> = {
             cash: 'نقدًا',
-            kuraimi: 'إيداع بنكي',
-            network: 'شبكة/بطاقة',
-            card: 'شبكة/بطاقة',
-            bank: 'تحويل',
-            bank_transfer: 'تحويل',
+            kuraimi: 'حسابات بنكية',
+            network: 'حوالات',
+            card: 'حوالات',
+            bank: 'حسابات بنكية',
+            bank_transfer: 'حسابات بنكية',
             mixed: language === 'ar' ? 'متعدد' : 'Mixed',
         };
         return methodMap[method] || method;
     };
 
     return (
-        <div style={{ maxWidth: thermal ? '58mm' : '800px', width: thermal ? '58mm' : 'auto', margin: '0 auto', color: '#000', fontFamily: thermal ? 'Tahoma, Arial, sans-serif' : 'inherit', fontSize: thermal ? '12px' : '14px' }}>
+        <div style={{ maxWidth: thermal ? resolvedThermalPaperWidth : '800px', width: thermal ? resolvedThermalPaperWidth : 'auto', margin: '0 auto', color: '#000', fontFamily: thermal ? 'Tahoma, Arial, sans-serif' : 'inherit', fontSize: thermal ? '12px' : '14px' }}>
             {isCopy && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                     <div style={{ fontWeight: 700, color: '#b91c1c' }}>
@@ -185,9 +195,9 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
                     <tr>
                         <th style={{ width: thermal ? '24px' : '50px', borderBottom: '1px dashed #000', textAlign: 'center' }}>#</th>
                         <th style={{ borderBottom: '1px dashed #000', textAlign: 'left' }}>الصنف</th>
-                        <th style={{ width: thermal ? '60px' : '80px', borderBottom: '1px dashed #000', textAlign: 'center' }}>الكمية</th>
-                        <th style={{ width: thermal ? '70px' : '100px', borderBottom: '1px dashed #000', textAlign: 'left' }}>السعر</th>
-                        <th style={{ width: thermal ? '80px' : '100px', borderBottom: '1px dashed #000', textAlign: 'left' }}>المجموع</th>
+                        <th style={{ width: thermal ? '60px' : '80px', borderBottom: '1px dashed #000', ...numericCellStyle }}>الكمية</th>
+                        <th style={{ width: thermal ? '70px' : '100px', borderBottom: '1px dashed #000', ...numericCellStyle }}>السعر</th>
+                        <th style={{ width: thermal ? '80px' : '100px', borderBottom: '1px dashed #000', ...numericCellStyle }}>المجموع</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -213,9 +223,9 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
                                             </div>
                                         ) : null}
                                     </td>
-                                    <td style={{ textAlign: 'center' }}>{displayQty}</td>
-                                    <td style={{ textAlign: 'left' }}>{pricing.unitPrice.toFixed(2)}</td>
-                                    <td style={{ textAlign: 'left', fontWeight: 700 }}>{pricing.lineTotal.toFixed(2)}</td>
+                                    <td style={numericCellStyle}>{displayQty}</td>
+                                    <td style={numericCellStyle}>{pricing.unitPrice.toFixed(2)}</td>
+                                    <td style={{ ...numericCellStyle, fontWeight: 700 }}>{pricing.lineTotal.toFixed(2)}</td>
                                 </tr>
                             </React.Fragment>
                         );
@@ -226,25 +236,25 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
             <div style={{ marginLeft: 'auto', width: thermal ? '100%' : '300px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span>{language === 'ar' ? 'المجموع الفرعي:' : 'Subtotal:'}</span>
-                    <span>{invoiceOrder.subtotal.toFixed(2)} ر.ي</span>
+                    <span style={numericCellStyle}>{invoiceOrder.subtotal.toFixed(2)} ر.ي</span>
                 </div>
 
                 {invoiceOrder.discountAmount && invoiceOrder.discountAmount > 0 && (
                     <div style={{ display: 'flex', justifyContent: 'space-between', color: '#16a34a' }}>
                         <span>{language === 'ar' ? 'الخصم:' : 'Discount:'}</span>
-                        <span>- {invoiceOrder.discountAmount.toFixed(2)} ر.ي</span>
+                        <span style={numericCellStyle}>- {invoiceOrder.discountAmount.toFixed(2)} ر.ي</span>
                     </div>
                 )}
 
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span>{language === 'ar' ? 'رسوم التوصيل:' : 'Delivery fee:'}</span>
-                    <span>{(Number(invoiceOrder.deliveryFee) || 0).toFixed(2)} ر.ي</span>
+                    <span style={numericCellStyle}>{(Number(invoiceOrder.deliveryFee) || 0).toFixed(2)} ر.ي</span>
                 </div>
 
                 {invoiceOrder.taxAmount && invoiceOrder.taxAmount > 0 && (
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                         <span>{language === 'ar' ? `الضريبة (${invoiceOrder.taxRate || 0}%):` : `Tax (${invoiceOrder.taxRate || 0}%):`}</span>
-                        <span>{invoiceOrder.taxAmount.toFixed(2)} ر.ي</span>
+                        <span style={numericCellStyle}>{invoiceOrder.taxAmount.toFixed(2)} ر.ي</span>
                     </div>
                 )}
 
@@ -252,7 +262,7 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: thermal ? '14px' : '18px', padding: thermal ? '6px' : '10px' }}>
                     <span>{language === 'ar' ? 'الإجمالي:' : 'Total:'}</span>
-                    <span style={{ color: '#000' }}>{invoiceOrder.total.toFixed(2)} ر.ي</span>
+                    <span style={{ ...numericCellStyle, color: '#000' }}>{invoiceOrder.total.toFixed(2)} ر.ي</span>
                 </div>
             </div>
 
@@ -353,7 +363,10 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
             </div>
 
             <div className="mt-4 text-center" style={{ fontSize: thermal ? '9px' : '10px', color: '#999' }}>
-                <p>{language === 'ar' ? 'تم الطباعة' : 'Printed'}: {new Date().toLocaleString(language === 'ar' ? 'ar-EG' : 'en-US')}</p>
+                <p>{language === 'ar' ? 'تم الطباعة' : 'Printed'}: {new Date().toLocaleString(language === 'ar' ? 'ar-EG-u-nu-latn' : 'en-US')}</p>
+                {isCopy ? (
+                    <p style={{ marginTop: '4px', fontWeight: 700, color: '#b91c1c' }}>{language === 'ar' ? 'نسخة' : 'Copy'}</p>
+                ) : null}
             </div>
             
             <div style={{ textAlign: 'center', marginTop: '10px', display: 'flex', justifyContent: 'center' }}>

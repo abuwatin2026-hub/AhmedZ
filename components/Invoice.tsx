@@ -7,9 +7,15 @@ interface InvoiceProps {
   order: Order;
   settings: AppSettings;
   audit?: any;
+  branding?: {
+    name?: string;
+    address?: string;
+    contactNumber?: string;
+    logoUrl?: string;
+  };
 }
 
-const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, audit }, ref) => {
+const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, audit, branding }, ref) => {
     const lang = 'ar';
     const { getDeliveryZoneById } = useDeliveryZones();
     const invoiceSnapshot = order.invoiceSnapshot;
@@ -33,19 +39,22 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, aud
         }
         : order;
     const deliveryZone = invoiceOrder.deliveryZoneId ? getDeliveryZoneById(invoiceOrder.deliveryZoneId) : undefined;
-    const storeName = settings.cafeteriaName?.[lang] || settings.cafeteriaName?.ar || settings.cafeteriaName?.en || '';
+    const storeName = branding?.name || settings.cafeteriaName?.[lang] || settings.cafeteriaName?.ar || settings.cafeteriaName?.en || '';
+    const storeAddress = branding?.address ?? settings.address;
+    const storeContactNumber = branding?.contactNumber ?? settings.contactNumber;
+    const storeLogoUrl = branding?.logoUrl ?? settings.logoUrl;
     const isCopy = (invoiceOrder.invoicePrintCount || 0) > 0;
     const invoiceDate = invoiceOrder.invoiceIssuedAt || invoiceOrder.createdAt;
 
     const getPaymentMethodName = (method: string) => {
         const methods: Record<string, string> = {
-            'cash': 'كاش',
-            'network': 'شبكة/بطاقة',
-            'kuraimi': 'تحويل كريمي',
-            'card': 'شبكة/بطاقة',
-            'bank': 'تحويل كريمي',
-            'bank_transfer': 'تحويل كريمي',
-            'online': 'شبكة/بطاقة'
+            'cash': 'نقدًا',
+            'network': 'حوالات',
+            'kuraimi': 'حسابات بنكية',
+            'card': 'حوالات',
+            'bank': 'حسابات بنكية',
+            'bank_transfer': 'حسابات بنكية',
+            'online': 'حوالات'
         };
         return methods[method] || method;
     };
@@ -61,23 +70,28 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, aud
     };
 
     return (
-        <div ref={ref} className="bg-white p-8 md:p-12 shadow-lg" id="print-area">
+        <div ref={ref} className="bg-white p-8 md:p-12 shadow-lg relative overflow-hidden" id="print-area">
+            {isCopy && (
+                <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                    <div className="text-gray-300 font-black text-7xl md:text-8xl opacity-25 -rotate-12 select-none">نسخة</div>
+                </div>
+            )}
             {isCopy && (
                 <div className="mb-6 flex items-center justify-between">
                     <div className="font-bold text-red-700">نسخة</div>
                     <div className="text-xs text-gray-500">
                         {invoiceOrder.invoiceLastPrintedAt
-                            ? `آخر طباعة: ${new Date(invoiceOrder.invoiceLastPrintedAt).toLocaleString('ar-EG')}`
+                            ? `آخر طباعة: ${new Date(invoiceOrder.invoiceLastPrintedAt).toLocaleString('ar-EG-u-nu-latn')}`
                             : ''}
                     </div>
                 </div>
             )}
             <div className="grid grid-cols-2 gap-8 mb-12">
                 <div>
-                    {settings.logoUrl ? <img src={settings.logoUrl} alt={storeName} className="h-12 mb-4" /> : null}
+                    {storeLogoUrl ? <img src={storeLogoUrl} alt={storeName} className="h-12 mb-4" /> : null}
                     <h1 className="text-2xl font-bold text-gray-800">{storeName}</h1>
-                    <p className="text-gray-500 text-sm">{settings.address}</p>
-                    <p className="text-gray-500 text-sm">{settings.contactNumber}</p>
+                    <p className="text-gray-500 text-sm">{storeAddress}</p>
+                    <p className="text-gray-500 text-sm">{storeContactNumber}</p>
                 </div>
                 <div className="text-right">
                     <h2 className="text-3xl font-bold uppercase text-gray-700">فاتورة</h2>
@@ -85,7 +99,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, aud
                         رقم الفاتورة{' '}
                         <span className="font-mono">{invoiceOrder.invoiceNumber || `INV-${invoiceOrder.id.slice(-6).toUpperCase()}`}</span>
                     </p>
-                    <p className="text-gray-500">التاريخ: {new Date(invoiceDate).toLocaleDateString('ar-EG')}</p>
+                    <p className="text-gray-500">التاريخ: {new Date(invoiceDate).toLocaleDateString('ar-EG-u-nu-latn')}</p>
                 </div>
             </div>
 
@@ -215,6 +229,21 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, aud
 
             <div className="mt-16 text-center text-gray-500 text-sm">
                 <p>شكراً لتسوقكم من {storeName}</p>
+            </div>
+
+            <div className="mt-12 pt-6 border-t border-gray-200 grid grid-cols-1 md:grid-cols-3 gap-6 text-sm text-gray-700">
+                <div className="flex items-center justify-between md:justify-start md:gap-2">
+                    <span className="font-semibold text-gray-600">التاريخ:</span>
+                    <span className="font-mono" dir="ltr">{new Date(invoiceDate).toLocaleDateString('ar-EG-u-nu-latn')}</span>
+                </div>
+                <div className="space-y-2">
+                    <div className="font-semibold text-gray-600">التوقيع</div>
+                    <div className="h-10 border-b border-gray-300"></div>
+                </div>
+                <div className="space-y-2">
+                    <div className="font-semibold text-gray-600">الختم</div>
+                    <div className="h-10 border border-gray-300 rounded"></div>
+                </div>
             </div>
         </div>
     );

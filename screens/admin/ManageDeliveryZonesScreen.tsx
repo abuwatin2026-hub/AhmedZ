@@ -311,7 +311,7 @@ const ManageDeliveryZonesScreen: React.FC = () => {
                         <div className="flex flex-col gap-1">
                           <span title='إجمالي الطلبات'>📦 {zone.statistics.totalOrders}</span>
                           <span title='متوسط وقت التوصيل'>⏱️ {zone.statistics.averageDeliveryTime} دقيقة</span>
-                          <span title='إجمالي الإيرادات' className="text-green-600 dark:text-green-400 font-bold">💰 {zone.statistics.totalRevenue.toLocaleString()} ر.ي</span>
+                          <span title='إجمالي الإيرادات' className="text-green-600 dark:text-green-400 font-bold">💰 {zone.statistics.totalRevenue.toLocaleString('en-US')} ر.ي</span>
                         </div>
                       ) : (
                         <span className="italic text-gray-400">لا توجد بيانات</span>

@@ -212,12 +212,12 @@ const ItemDetailsScreen: React.FC = () => {
               <div className="mb-4 p-3 bg-green-50 dark:bg-green-900/20 rounded-lg text-sm">
                 {isValidDate((item as any).productionDate) && (
                   <p className="text-green-700 dark:text-green-400">
-                    {`تاريخ الإنتاج: ${new Date((item as any).productionDate!).toLocaleDateString('ar')}`}
+                    {`تاريخ الإنتاج: ${new Date((item as any).productionDate!).toLocaleDateString('ar-EG-u-nu-latn')}`}
                   </p>
                 )}
                 {isValidDate(item.expiryDate) && (
                   <p className="text-orange-700 dark:text-orange-400">
-                    {`ينتهي في: ${new Date(item.expiryDate!).toLocaleDateString('ar')}`}
+                    {`ينتهي في: ${new Date(item.expiryDate!).toLocaleDateString('ar-EG-u-nu-latn')}`}
                   </p>
                 )}
               </div>

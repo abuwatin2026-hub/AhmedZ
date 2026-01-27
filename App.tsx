@@ -64,6 +64,7 @@ const ApprovalsScreen = lazy(() => import('./screens/admin/ApprovalsScreen'));
 const PurchaseOrderScreen = lazy(() => import('./screens/admin/PurchaseOrderScreen'));
 const ShiftReportsScreen = lazy(() => import('./screens/admin/ShiftReportsScreen'));
 const ShiftDetailsScreen = lazy(() => import('./screens/admin/ShiftDetailsScreen'));
+const CODSettlementsScreen = lazy(() => import('./screens/admin/CODSettlementsScreen'));
 const SystemAuditScreen = lazy(() => import('./screens/admin/SystemAuditScreen'));
 const DatabaseExplorerScreen = lazy(() => import('./screens/admin/DatabaseExplorerScreen'));
 const WarehousesScreen = lazy(() => import('./screens/admin/WarehousesScreen'));
@@ -303,6 +304,7 @@ const App: React.FC = () => {
                 <Route path="database" element={<AdminProtectedRoute permissions={['settings.manage']}><DatabaseExplorerScreen /></AdminProtectedRoute>} />
                 <Route path="shift-reports" element={<AdminProtectedRoute permissions={['reports.view']}><ShiftReportsScreen /></AdminProtectedRoute>} />
                 <Route path="shift-reports/:shiftId" element={<AdminProtectedRoute permissions={['reports.view']}><ShiftDetailsScreen /></AdminProtectedRoute>} />
+                <Route path="cod-settlements" element={<AdminProtectedRoute permissions={['accounting.manage']}><CODSettlementsScreen /></AdminProtectedRoute>} />
                 <Route
                   path="my-shift"
                   element={

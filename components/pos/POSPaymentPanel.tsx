@@ -303,7 +303,7 @@ const POSPaymentPanel: React.FC<Props> = ({ total, canFinalize, onHold, onFinali
                 }}
               />
               <span className="font-semibold dark:text-white">
-                {m === 'cash' ? 'نقد' : m === 'kuraimi' ? 'كريمي' : 'شبكة'}
+                {m === 'cash' ? 'نقد' : m === 'kuraimi' ? 'حسابات بنكية' : 'حوالات'}
               </span>
             </label>
           ))
@@ -397,7 +397,7 @@ const POSPaymentPanel: React.FC<Props> = ({ total, canFinalize, onHold, onFinali
                         className={`w-full border rounded-lg dark:bg-gray-700 dark:border-gray-600 ${inputClass}`}
                       >
                         {methodsForRow.map(m => (
-                          <option key={m} value={m}>{m === 'cash' ? 'نقد' : m === 'kuraimi' ? 'كريمي' : 'شبكة'}</option>
+                          <option key={m} value={m}>{m === 'cash' ? 'نقد' : m === 'kuraimi' ? 'حسابات بنكية' : 'حوالات'}</option>
                         ))}
                       </select>
                     </div>

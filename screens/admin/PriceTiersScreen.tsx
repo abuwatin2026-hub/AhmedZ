@@ -290,7 +290,7 @@ const PriceTiersScreen: React.FC = () => {
                                                 </td>
                                                 <td className="py-3">{tier.minQuantity}</td>
                                                 <td className="py-3">{tier.maxQuantity || '∞'}</td>
-                                                <td className="py-3 font-medium">{tier.price.toLocaleString()} ر.ي</td>
+                                                <td className="py-3 font-medium">{tier.price.toLocaleString('en-US')} ر.ي</td>
                                                 <td className="py-3">{tier.discountPercentage ? `${tier.discountPercentage}%` : '-'}</td>
                                                 <td className="py-3">
                                                     {tier.isActive ? (

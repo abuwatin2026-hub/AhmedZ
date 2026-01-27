@@ -6,8 +6,21 @@
 /**
  * فتح نافذة الطباعة
  */
-export const printContent = (content: string, title: string = 'طباعة') => {
-    const html = `
+export const buildPrintHtml = (content: string, title: string = 'طباعة', options?: { page?: 'A4' | 'auto' }) => {
+    const page = options?.page || 'A4';
+    const pageCss = page === 'A4'
+        ? `
+          @page {
+            size: A4;
+            margin: 10mm;
+          }
+        `
+        : `
+          @page {
+            margin: 10mm;
+          }
+        `;
+    return `
     <!DOCTYPE html>
     <html dir="rtl" lang="ar">
     <head>
@@ -35,10 +48,7 @@ export const printContent = (content: string, title: string = 'طباعة') => {
           .no-print {
             display: none !important;
           }
-          
-          @page {
-            margin: 10mm;
-          }
+          ${pageCss}
         }
         
         table {
@@ -121,6 +131,10 @@ export const printContent = (content: string, title: string = 'طباعة') => {
     </body>
     </html>
   `;
+};
+
+export const printContent = (content: string, title: string = 'طباعة', options?: { page?: 'A4' | 'auto' }) => {
+    const html = buildPrintHtml(content, title, options);
 
     const openAndPrint = (targetWindow: Window) => {
         targetWindow.document.open();
@@ -190,7 +204,7 @@ export const printContent = (content: string, title: string = 'طباعة') => {
  */
 export const formatDateForPrint = (dateString: string): string => {
     const date = new Date(dateString);
-    return date.toLocaleDateString('ar-EG', {
+    return date.toLocaleDateString('ar-EG-u-nu-latn', {
         year: 'numeric',
         month: 'long',
         day: 'numeric',
@@ -204,7 +218,7 @@ export const formatDateForPrint = (dateString: string): string => {
  */
 export const formatTimeForPrint = (dateString: string): string => {
     const date = new Date(dateString);
-    return date.toLocaleTimeString('ar-EG', {
+    return date.toLocaleTimeString('ar-EG-u-nu-latn', {
         hour: '2-digit',
         minute: '2-digit',
     });
@@ -215,7 +229,7 @@ export const formatTimeForPrint = (dateString: string): string => {
  */
 export const formatDateOnly = (dateString: string): string => {
     const date = new Date(dateString);
-    return date.toLocaleDateString('ar-EG', {
+    return date.toLocaleDateString('ar-EG-u-nu-latn', {
         year: 'numeric',
         month: 'long',
         day: 'numeric',

@@ -180,7 +180,7 @@ const StockRow = ({ item, stock, getCategoryLabel, getUnitLabel, handleUpdateSto
                                                 </div>
                                             </div>
                                             <div className="shrink-0 text-gray-500 dark:text-gray-400" dir="ltr">
-                                                {new Date(b.occurredAt).toLocaleString('en-US')}
+                                                {new Date(b.occurredAt).toLocaleString('ar-EG-u-nu-latn')}
                                             </div>
                                         </div>
                                     </li>
@@ -228,7 +228,7 @@ const StockRow = ({ item, stock, getCategoryLabel, getUnitLabel, handleUpdateSto
                                                 </div>
                                             </div>
                                             <div className="shrink-0 text-gray-500 dark:text-gray-400" dir="ltr">
-                                                {new Date(h.date).toLocaleString('en-US')}
+                                                {new Date(h.date).toLocaleString('ar-EG-u-nu-latn')}
                                             </div>
                                         </div>
                                     </li>

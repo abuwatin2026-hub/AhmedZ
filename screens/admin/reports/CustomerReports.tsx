@@ -237,8 +237,8 @@ const CustomerReports: React.FC = () => {
                         </div>
                     </div>
                     <h2 className="text-2xl font-bold text-black">تقرير العملاء</h2>
-                    <p className="text-base text-black mt-1">التاريخ: {new Date().toLocaleDateString('en-US')}</p>
-                    <p className="text-xs text-black mt-1">تم الإنشاء: {new Date().toLocaleString('en-US')}</p>
+                    <p className="text-base text-black mt-1">التاريخ: {new Date().toLocaleDateString('ar-SA-u-nu-latn')}</p>
+                    <p className="text-xs text-black mt-1">تم الإنشاء: {new Date().toLocaleString('ar-SA-u-nu-latn')}</p>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">

@@ -151,7 +151,7 @@ const ManagePricesScreen: React.FC = () => {
                                                 {getUnitLabel(item.unitType as any, 'ar')}
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                                                {lastUpdate ? new Date(lastUpdate.date).toLocaleDateString('ar-SA') : '-'}
+                                                {lastUpdate ? new Date(lastUpdate.date).toLocaleDateString('ar-SA-u-nu-latn') : '-'}
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap">
                                                 <button
@@ -222,7 +222,7 @@ const ManagePricesScreen: React.FC = () => {
                                                                 {history.slice(0, 5).map((h: PriceHistory) => (
                                                                     <div key={h.id} className="flex items-center justify-between text-sm bg-white dark:bg-gray-800 p-2 rounded">
                                                                         <span className="text-gray-600 dark:text-gray-400">
-                                                                            {new Date(h.date).toLocaleString('ar-SA')}
+                                                                            {new Date(h.date).toLocaleString('ar-SA-u-nu-latn')}
                                                                         </span>
                                                                         <span className="font-bold text-gray-900 dark:text-white">
                                                                             {h.price.toFixed(2)} ر.ي

@@ -44,10 +44,10 @@ type PaymentRow = {
 const methodLabel = (method: string) => {
   const m = (method || '').toLowerCase();
   if (m === 'cash') return 'نقد';
-  if (m === 'network') return 'شبكة';
-  if (m === 'kuraimi') return 'حوالة/كريمي';
-  if (m === 'bank') return 'حوالة/كريمي';
-  if (m === 'card') return 'شبكة';
+  if (m === 'network') return 'حوالات';
+  if (m === 'kuraimi') return 'حسابات بنكية';
+  if (m === 'bank') return 'حسابات بنكية';
+  if (m === 'card') return 'حوالات';
   if (m === 'ar') return 'آجل';
   if (m === 'store_credit') return 'رصيد عميل';
   return method || '-';
@@ -408,7 +408,7 @@ const ShiftDetailsScreen: React.FC = () => {
           <div className="mt-1 text-sm text-gray-600 dark:text-gray-300">
             {cashierLabel || (shift.cashier_id ? shift.cashier_id.slice(0, 8) : '-')}{' '}
             <span className="mx-2">•</span>
-            {new Date(shift.opened_at).toLocaleString()}
+            {new Date(shift.opened_at).toLocaleString('ar-EG-u-nu-latn')}
           </div>
         </div>
         <div className="flex gap-2">
@@ -478,7 +478,7 @@ const ShiftDetailsScreen: React.FC = () => {
                 ['القسم', 'البند', 'القيمة'], 
                 sectionRows, 
                 `shift-${shift.id}-summary.xlsx`,
-                { sheetName: 'Shift Summary', ...buildXlsxBrandOptions(settings, 'الوردية', 3, { periodText: `التاريخ: ${new Date().toLocaleDateString('ar-SA')}` }) }
+                { sheetName: 'Shift Summary', ...buildXlsxBrandOptions(settings, 'الوردية', 3, { periodText: `التاريخ: ${new Date().toLocaleDateString('ar-SA-u-nu-latn')}` }) }
               );
             }}
             className="px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
@@ -502,7 +502,7 @@ const ShiftDetailsScreen: React.FC = () => {
                 headers, 
                 rows, 
                 `shift-${shift.id}-payments.xlsx`,
-                { sheetName: 'Shift Payments', currencyColumns: [3], currencyFormat: '#,##0.00', ...buildXlsxBrandOptions(settings, 'عمليات الوردية', headers.length, { periodText: `التاريخ: ${new Date().toLocaleDateString('ar-SA')}` }) }
+                { sheetName: 'Shift Payments', currencyColumns: [3], currencyFormat: '#,##0.00', ...buildXlsxBrandOptions(settings, 'عمليات الوردية', headers.length, { periodText: `التاريخ: ${new Date().toLocaleDateString('ar-SA-u-nu-latn')}` }) }
               );
             }}
             className="px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
@@ -771,7 +771,7 @@ const ShiftDetailsScreen: React.FC = () => {
                 payments.map((p) => (
                   <tr key={p.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                     <td className="p-4 text-sm font-mono dark:text-gray-300">
-                      {new Date(p.occurred_at).toLocaleString()}
+                      {new Date(p.occurred_at).toLocaleString('ar-EG-u-nu-latn')}
                     </td>
                     <td className="p-4 text-sm dark:text-gray-300">
                       <span className={`px-2 py-1 rounded-full text-xs font-bold ${p.direction === 'in' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>

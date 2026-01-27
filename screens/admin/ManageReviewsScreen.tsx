@@ -70,14 +70,14 @@ const ManageReviewsScreen: React.FC = () => {
                 r.userName,
                 r.rating,
                 r.comment || '',
-                new Date(r.createdAt).toLocaleDateString('ar-SA'),
+                new Date(r.createdAt).toLocaleDateString('ar-SA-u-nu-latn'),
             ];
         });
         const success = await exportToXlsx(
             headers, 
             rows, 
             `reviews_report_${new Date().toISOString().split('T')[0]}.xlsx`,
-            { sheetName: 'Reviews', ...buildXlsxBrandOptions(settings, 'التقييمات', headers.length, { periodText: `التاريخ: ${new Date().toLocaleDateString('ar-SA')}` }) }
+            { sheetName: 'Reviews', ...buildXlsxBrandOptions(settings, 'التقييمات', headers.length, { periodText: `التاريخ: ${new Date().toLocaleDateString('ar-SA-u-nu-latn')}` }) }
         );
         if(success) {
             showNotification(`تم حفظ التقرير في مجلد المستندات`, 'success');
@@ -155,7 +155,7 @@ const ManageReviewsScreen: React.FC = () => {
                         </div>
                     </div>
                     <h2 className="text-2xl font-bold text-black">إدارة التقييمات</h2>
-                    <p className="text-base text-black mt-1">التاريخ: {new Date().toLocaleDateString('en-US')}</p>
+                    <p className="text-base text-black mt-1">التاريخ: {new Date().toLocaleDateString('ar-SA-u-nu-latn')}</p>
                 </div>
                 <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl overflow-hidden">
                     <div className="overflow-x-auto">
@@ -195,7 +195,7 @@ const ManageReviewsScreen: React.FC = () => {
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap border-r dark:border-gray-700">
                                                 <div className="text-sm text-gray-900 dark:text-white">{review.userName}</div>
-                                                <div className="text-xs text-gray-500 dark:text-gray-400" dir="ltr">{new Date(review.createdAt).toLocaleDateString('en-US')}</div>
+                                                <div className="text-xs text-gray-500 dark:text-gray-400" dir="ltr">{new Date(review.createdAt).toLocaleDateString('ar-SA-u-nu-latn')}</div>
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap border-r dark:border-gray-700">
                                                 <StarRating rating={review.rating} />

@@ -354,7 +354,7 @@ const formatDateInput = (d: string) => {
   if (!d) return '';
   const dt = new Date(d);
   if (Number.isNaN(dt.getTime())) return d;
-  return dt.toLocaleString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+  return dt.toLocaleString('ar-EG-u-nu-latn', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
 };
 
 const FinancialReports: React.FC = () => {
@@ -910,7 +910,7 @@ const FinancialReports: React.FC = () => {
       });
       if (error) throw error;
       const rows = ((data as any[]) || []).map((r) => ({
-        label: new Date(String(r.period)).toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
+        label: new Date(String(r.period)).toLocaleDateString('ar-EG-u-nu-latn', { month: 'short', year: '2-digit' }),
         value: Number(r.net_profit) || 0
       }));
       setIncomeTrend(rows);
@@ -1936,7 +1936,7 @@ const FinancialReports: React.FC = () => {
                       const headers = ['المرجع', 'التاريخ', 'الإجمالي', 'المدفوع', 'المتبقي'];
                       const rows = arDetailsRows.map((r) => ([
                         r.invoice_number ? r.invoice_number : `#${shortRef(r.id, 8)}`,
-                        new Date(r.date).toLocaleString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' }),
+                        new Date(r.date).toLocaleString('ar-EG-u-nu-latn', { year: 'numeric', month: '2-digit', day: '2-digit' }),
                         r.total,
                         r.paid,
                         r.outstanding,
@@ -1983,7 +1983,7 @@ const FinancialReports: React.FC = () => {
                         {arDetailsRows.map((r) => (
                           <tr key={r.id} className="border-b dark:border-gray-700">
                             <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">{r.invoice_number ? r.invoice_number : `#${shortRef(r.id, 8)}`}</td>
-                            <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">{new Date(r.date).toLocaleString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' })}</td>
+                            <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">{new Date(r.date).toLocaleString('ar-EG-u-nu-latn', { year: 'numeric', month: '2-digit', day: '2-digit' })}</td>
                             <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">{formatMoney(r.total)}</td>
                             <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">{formatMoney(r.paid)}</td>
                             <td className="py-2 px-3 font-bold dark:text-white border-l dark:border-gray-700" dir="ltr">{formatMoney(r.outstanding)}</td>
@@ -2018,7 +2018,7 @@ const FinancialReports: React.FC = () => {
                       const headers = ['المرجع', 'التاريخ', 'الإجمالي', 'المدفوع', 'المتبقي'];
                       const rows = apDetailsRows.map((r) => ([
                         r.reference_number ? r.reference_number : `#${shortRef(r.id, 8)}`,
-                        new Date(r.date).toLocaleString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' }),
+                        new Date(r.date).toLocaleString('ar-EG-u-nu-latn', { year: 'numeric', month: '2-digit', day: '2-digit' }),
                         r.total,
                         r.paid,
                         r.outstanding,
@@ -2065,7 +2065,7 @@ const FinancialReports: React.FC = () => {
                         {apDetailsRows.map((r) => (
                           <tr key={r.id} className="border-b dark:border-gray-700">
                             <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">{r.reference_number ? r.reference_number : `#${shortRef(r.id, 8)}`}</td>
-                            <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">{new Date(r.date).toLocaleString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' })}</td>
+                            <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">{new Date(r.date).toLocaleString('ar-EG-u-nu-latn', { year: 'numeric', month: '2-digit', day: '2-digit' })}</td>
                             <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">{formatMoney(r.total)}</td>
                             <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">{formatMoney(r.paid)}</td>
                             <td className="py-2 px-3 font-bold dark:text-white border-l dark:border-gray-700" dir="ltr">{formatMoney(r.outstanding)}</td>
@@ -2409,7 +2409,7 @@ const FinancialReports: React.FC = () => {
           </div>
           {lastUpdated.statements && (
             <div className="text-xs text-gray-400 dark:text-gray-500 mt-1" dir="ltr">
-              آخر تحديث: {new Date(lastUpdated.statements).toLocaleString('en-US', { hour: '2-digit', minute: '2-digit', year: 'numeric', month: '2-digit', day: '2-digit' })}
+              آخر تحديث: {new Date(lastUpdated.statements).toLocaleString('ar-EG-u-nu-latn', { hour: '2-digit', minute: '2-digit', year: 'numeric', month: '2-digit', day: '2-digit' })}
             </div>
           )}
           <div className="mt-3 space-y-1">
@@ -2781,7 +2781,7 @@ const FinancialReports: React.FC = () => {
           </div>
           {lastUpdated.statements && (
             <div className="text-xs text-gray-400 dark:text-gray-500 mt-1" dir="ltr">
-              آخر تحديث: {new Date(lastUpdated.statements).toLocaleString('en-US', { hour: '2-digit', minute: '2-digit', year: 'numeric', month: '2-digit', day: '2-digit' })}
+              آخر تحديث: {new Date(lastUpdated.statements).toLocaleString('ar-EG-u-nu-latn', { hour: '2-digit', minute: '2-digit', year: 'numeric', month: '2-digit', day: '2-digit' })}
             </div>
           )}
           <div className="mt-3 space-y-1">
@@ -2871,7 +2871,7 @@ const FinancialReports: React.FC = () => {
           </div>
           {lastUpdated.cashFlow && (
             <div className="text-xs text-gray-400 dark:text-gray-500 mt-1" dir="ltr">
-              آخر تحديث: {new Date(lastUpdated.cashFlow).toLocaleString('en-US', { hour: '2-digit', minute: '2-digit', year: 'numeric', month: '2-digit', day: '2-digit' })}
+              آخر تحديث: {new Date(lastUpdated.cashFlow).toLocaleString('ar-EG-u-nu-latn', { hour: '2-digit', minute: '2-digit', year: 'numeric', month: '2-digit', day: '2-digit' })}
             </div>
           )}
           <div className="mt-3 space-y-1">
@@ -2925,7 +2925,7 @@ const FinancialReports: React.FC = () => {
           </div>
           {lastUpdated.periods && (
             <div className="text-xs text-gray-400 dark:text-gray-500 mt-1" dir="ltr">
-              آخر تحديث: {new Date(lastUpdated.periods).toLocaleString('en-US', { hour: '2-digit', minute: '2-digit', year: 'numeric', month: '2-digit', day: '2-digit' })}
+              آخر تحديث: {new Date(lastUpdated.periods).toLocaleString('ar-EG-u-nu-latn', { hour: '2-digit', minute: '2-digit', year: 'numeric', month: '2-digit', day: '2-digit' })}
             </div>
           )}
           <div className="mt-3 space-y-2 max-h-56 overflow-auto">

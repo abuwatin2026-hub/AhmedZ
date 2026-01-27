@@ -288,7 +288,7 @@ const WarehousesScreen: React.FC = () => {
                                 {warehouse.capacityLimit && (
                                     <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
                                         <Icons.Package className="w-4 h-4" />
-                                        السعة: {warehouse.capacityLimit.toLocaleString()}
+                                        السعة: {warehouse.capacityLimit.toLocaleString('en-US')}
                                     </div>
                                 )}
                             </div>

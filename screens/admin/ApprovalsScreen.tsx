@@ -207,7 +207,7 @@ const ApprovalsScreen: React.FC = () => {
                       <span className="text-gray-600 dark:text-gray-300">طلب #{shortId(r.id)}</span>
                     </div>
                     <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                      الحالة: {r.status} • طالب: {shortId(r.requested_by)} • وقت: {r.created_at ? new Date(r.created_at).toLocaleString('ar') : '-'}
+                      الحالة: {r.status} • طالب: {shortId(r.requested_by)} • وقت: {r.created_at ? new Date(r.created_at).toLocaleString('ar-EG-u-nu-latn') : '-'}
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -251,7 +251,7 @@ const ApprovalsScreen: React.FC = () => {
                             <td className="py-2">{s.approver_role}</td>
                             <td className="py-2">{s.status}</td>
                             <td className="py-2">{s.action_by ? shortId(s.action_by) : '-'}</td>
-                            <td className="py-2">{s.action_at ? new Date(s.action_at).toLocaleString('ar') : '-'}</td>
+                            <td className="py-2">{s.action_at ? new Date(s.action_at).toLocaleString('ar-EG-u-nu-latn') : '-'}</td>
                           </tr>
                         ))}
                       </tbody>

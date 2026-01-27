@@ -11,7 +11,7 @@ import { useDeliveryZones } from '../contexts/DeliveryZoneContext';
 import { usePricing } from '../contexts/PricingContext';
 import TextInput from '../components/TextInput';
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
-import { BackArrowIcon, CreditCardIcon, KuraimiIcon, LocationIcon, MoneyIcon, PhoneIcon, UserIcon, TruckIcon } from '../components/icons';
+import { BackArrowIcon, ShareIcon, KuraimiIcon, LocationIcon, MoneyIcon, PhoneIcon, UserIcon, TruckIcon } from '../components/icons';
 import { addCSRFTokenToObject } from '../utils/csrfProtection';
 import { decryptField, encrypt } from '../utils/encryption';
 import { createLogger } from '../utils/logger';
@@ -23,7 +23,7 @@ import { getSupabaseClient } from '../supabase';
 const paymentMethodIcons: { [key: string]: React.ReactNode } = {
     cash: <MoneyIcon />,
     kuraimi: <KuraimiIcon />,
-    network: <CreditCardIcon />,
+    network: <ShareIcon />,
 };
 
 const logger = createLogger('CheckoutScreen');
@@ -340,6 +340,35 @@ const CheckoutScreen: React.FC = () => {
         }
     }, [availablePaymentMethods, paymentMethod]);
 
+    useEffect(() => {
+        if (paymentMethod === 'cash') {
+            setKuraimiRef('');
+            setKuraimiScreenshot(null);
+            const fileInput = document.getElementById('kuraimiScreenshotFile') as HTMLInputElement | null;
+            if (fileInput) fileInput.value = '';
+        }
+    }, [paymentMethod]);
+
+    const needsTransferDetails = paymentMethod === 'kuraimi' || paymentMethod === 'network';
+    const hasPaymentProof = Boolean(kuraimiRef.trim() || kuraimiScreenshot);
+    const canSubmit = !isSubmitting && availablePaymentMethods.length > 0 && (!needsTransferDetails || hasPaymentProof);
+
+    const isValidCustomerName = useMemo(() => {
+        const v = customerName.trim();
+        if (v.length < 3 || v.length > 50) return false;
+        return /^[\u0600-\u06FFa-zA-Z\s]+$/.test(v);
+    }, [customerName]);
+
+    const isValidPhoneNumber = useMemo(() => {
+        const v = phoneNumber.trim();
+        return /^(77|73|71|70)[0-9]{7}$/.test(v);
+    }, [phoneNumber]);
+
+    const isValidAddress = useMemo(() => {
+        const v = address.trim();
+        return v.length >= 10 && v.length <= 200;
+    }, [address]);
+
 
     const handleGetLocation = async () => {
         if (!navigator.geolocation) {
@@ -481,25 +510,28 @@ const CheckoutScreen: React.FC = () => {
         e.preventDefault();
         setError('');
 
-        const needsTransferDetails = paymentMethod === 'kuraimi' || paymentMethod === 'network';
-
-        if (!customerName.trim()) {
-            setError('يرجى إدخال الاسم');
+        if (!isValidCustomerName) {
+            setError('اسم العميل غير صحيح');
             return;
         }
-        if (!phoneNumber.trim()) {
-            setError('يرجى إدخال رقم الهاتف');
+        if (!isValidPhoneNumber) {
+            setError('رقم الهاتف غير صحيح');
             return;
         }
-        if (!address.trim()) {
-            setError('يرجى إدخال العنوان');
+        if (!isValidAddress) {
+            setError('العنوان غير صحيح');
             return;
         }
         if (!paymentMethod) {
             setError('يرجى اختيار طريقة الدفع');
             return;
         }
-        if (needsTransferDetails) {
+        if (paymentMethod === 'cash') {
+            if (kuraimiRef.trim() || kuraimiScreenshot) {
+                setError('لا يسمح بإثبات دفع للدفع النقدي');
+                return;
+            }
+        } else if (needsTransferDetails) {
             if (paymentMethod === 'kuraimi' && !selectedBank) {
                 setError('لا توجد بنوك متاحة حاليًا');
                 return;
@@ -509,7 +541,7 @@ const CheckoutScreen: React.FC = () => {
                 return;
             }
             if (!kuraimiRef.trim() && !kuraimiScreenshot) {
-                setError('يرجى إرفاق إشعار التحويل أو رقم العملية');
+                setError('إثبات الدفع مطلوب لطرق الدفع غير النقدية');
                 return;
             }
         }
@@ -582,8 +614,8 @@ const CheckoutScreen: React.FC = () => {
                 deliveryFee: effectiveDeliveryFee,
                 deliveryZoneId: selectedDeliveryZone?.id,
                 total,
-                customerName,
-                phoneNumber,
+                customerName: customerName.trim(),
+                phoneNumber: phoneNumber.trim(),
                 notes,
                 address: addressText,
                 location: locationCoords,
@@ -952,7 +984,7 @@ const CheckoutScreen: React.FC = () => {
                                                         {paymentMethodIcons[method]}
                                                     </div>
                                                     <span className="mx-3 rtl:mx-0 rtl:mr-3 text-lg font-semibold text-gray-800 dark:text-gray-200">
-                                                        {method === 'cash' ? 'الدفع عند الاستلام' : method === 'kuraimi' ? 'كريمي / بنك' : 'شبكة / تحويل'}
+                                                        {method === 'cash' ? 'الدفع عند الاستلام' : method === 'kuraimi' ? 'حسابات بنكية' : 'حوالات'}
                                                     </span>
                                                 </div>
                                             </label>
@@ -1088,7 +1120,7 @@ const CheckoutScreen: React.FC = () => {
                                     </div>
                                     {error && <p className="text-red-500 text-center mt-4 bg-red-50 dark:bg-red-900/20 p-3 rounded-lg">{error}</p>}
                                     <div className="mt-6">
-                                        <button type="submit" disabled={isSubmitting || availablePaymentMethods.length === 0} className="w-full bg-primary-500 text-white font-bold py-4 px-6 rounded-lg shadow-lg hover:bg-primary-600 transition-transform transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-orange-300 disabled:bg-gray-400 disabled:scale-100 disabled:cursor-not-allowed">
+                                        <button type="submit" disabled={!canSubmit} className="w-full bg-primary-500 text-white font-bold py-4 px-6 rounded-lg shadow-lg hover:bg-primary-600 transition-transform transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-orange-300 disabled:bg-gray-400 disabled:scale-100 disabled:cursor-not-allowed">
                                             {isSubmitting ? 'جاري التأكيد...' : 'تأكيد الطلب'}
                                         </button>
                                     </div>

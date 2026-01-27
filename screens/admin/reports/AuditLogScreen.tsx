@@ -16,7 +16,7 @@ type AuditLogRow = {
 
 const formatDate = (dateString: string) => {
     const date = new Date(dateString);
-    return date.toLocaleString('en-US', {
+    return date.toLocaleString('ar-EG-u-nu-latn', {
         year: 'numeric',
         month: '2-digit',
         day: '2-digit',
@@ -60,6 +60,50 @@ const AuditLogScreen: React.FC = () => {
     const supabase = useMemo(() => getSupabaseClient(), []);
     const { showNotification } = useToast();
 
+    const moduleLabels: Record<string, string> = {
+        purchases: 'المشتريات',
+        menu_items: 'الأصناف',
+        customers: 'العملاء',
+        settings: 'الإعدادات',
+        admin_users: 'إدارة المستخدمين',
+        inventory: 'المخزون',
+        chart_of_accounts: 'دليل الحسابات',
+        orders: 'الطلبات',
+        banks: 'الحسابات البنكية',
+        transfer_recipients: 'مستلمو الحوالات',
+        sales_returns: 'مرتجعات',
+        cash_shifts: 'الورديات',
+        warehouses: 'المستودعات',
+        reviews: 'التقييمات',
+        addons: 'الإضافات',
+        delivery_zones: 'مناطق التوصيل',
+    };
+    const actionLabels: Record<string, string> = {
+        create: 'إنشاء',
+        update: 'تحديث',
+        delete: 'حذف',
+        price_change: 'تغيير سعر',
+        cost_change: 'تغيير تكلفة',
+        status_change: 'تغيير حالة',
+        role_change: 'تغيير دور',
+        'role change': 'تغيير دور',
+        permission_change: 'تغيير صلاحيات',
+        'permission change': 'تغيير صلاحيات',
+        login: 'تسجيل دخول',
+        logout: 'تسجيل خروج',
+        user_logged_in: 'تسجيل دخول',
+        user_logged_out: 'تسجيل خروج',
+    };
+    const formatReason = (code?: string) => {
+        const v = String(code || '').trim().toUpperCase();
+        if (!v) return '—';
+        if (v === 'MISSING_REASON') return 'غير مذكور';
+        if (v === 'POLICY_OVERRIDE') return 'استثناء سياسة';
+        if (v === 'USER_REQUEST') return 'طلب المستخدم';
+        if (v === 'SYSTEM') return 'النظام';
+        if (v === 'SECURITY') return 'أمني';
+        return code || '—';
+    };
 
 
     const [logs, setLogs] = useState<AuditLogRow[]>([]);
@@ -302,7 +346,7 @@ const AuditLogScreen: React.FC = () => {
                                                     log.module
                                                 )}`}
                                             >
-                                                {log.module}
+                                                {moduleLabels[log.module] || log.module}
                                             </span>
                                         </td>
                                         <td className="py-3 px-4 border-r dark:border-gray-700">
@@ -311,7 +355,7 @@ const AuditLogScreen: React.FC = () => {
                                                     log.action
                                                 )}`}
                                             >
-                                                {log.action}
+                                                {actionLabels[log.action] || log.action}
                                             </span>
                                         </td>
                                         <td className="py-3 px-4 border-r dark:border-gray-700">
@@ -331,13 +375,11 @@ const AuditLogScreen: React.FC = () => {
                                             </span>
                                         </td>
                                         <td className="py-3 px-4 dark:text-white border-r dark:border-gray-700">
-                                            {typeof log.reason_code === 'string' && log.reason_code.trim()
-                                                ? log.reason_code
-                                                : '—'}
+                                            {formatReason(log.reason_code)}
                                         </td>
                                         <td className="py-3 px-4 dark:text-white border-r dark:border-gray-700">{log.details}</td>
                                         <td className="py-3 px-4 dark:text-white text-xs border-r dark:border-gray-700" dir="ltr">
-                                            {log.performed_by ? log.performed_by.substring(0, 8) + '...' : 'System'}
+                                            {log.performed_by ? log.performed_by.substring(0, 8) + '...' : 'النظام'}
                                         </td>
                                         <td className="py-3 px-4 text-center">
                                             {log.metadata && Object.keys(log.metadata).length > 0 && (

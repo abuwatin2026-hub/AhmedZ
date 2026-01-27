@@ -40,7 +40,7 @@ export const buildXlsxBrandOptions = (
     '';
   const period =
     (extras?.periodText as string) ||
-    `التاريخ: ${new Date().toLocaleDateString('ar-SA')}`;
+    `التاريخ: ${new Date().toLocaleDateString('ar-SA-u-nu-latn')}`;
   const pad = (text: string) =>
     Array.from({ length: Math.max(1, headersCount) }, (_, i) =>
       i === 0 ? text : ''

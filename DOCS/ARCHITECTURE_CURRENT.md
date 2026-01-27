@@ -1,5 +1,5 @@
-Version: 2026-01-26
-Last validated against migrations up to: 20260125130000_remediation_hardening.sql
+Version: 2026-01-27
+Last validated against migrations up to: 20260127095000_cod_batch_settlement.sql
 
 Analysis Contract (Enforcement)
 - أي تحليل أو تصميم أو اقتراح تنفيذ لا يبدأ صراحةً من هذا الملف ARCHITECTURE_CURRENT يعتبر غير صالح.
@@ -31,6 +31,71 @@ Analysis Contract (Enforcement)
   - النسخة المنشورة حاليًا: versionName=1.0.1, versionCode=2
   - شرط التحديث على Android: نفس packageName ونفس توقيع الـKeystore عبر كل الإصدارات
   - بناء Release يتطلب تهيئة متغيرات التوقيع AZTA_RELEASE_* ويُفشل البناء عند غيابها لتجنب APK موقّع بـ debug
+
+### نظام الطباعة (Frontend) — Production/Enterprise Grade
+ملاحظة إلزامية: هذا القسم يركّز على الطباعة وتجربة المستخدم في الواجهة. ترقيم/إصدار الفاتورة (invoiceNumber/issuedAt/snapshot) وتتبّع الطباعة له جزء تكاملي موثّق في قسم “الفواتير” أدناه.
+
+- القوالب الأساسية:
+  - فاتورة حرارية: [PrintableInvoice.tsx](file:///d:/JOMLA/AhmedZ/components/admin/PrintableInvoice.tsx)
+  - فاتورة A4: [Invoice.tsx](file:///d:/JOMLA/AhmedZ/components/Invoice.tsx)
+  - سند تسليم (Delivery Note): [PrintableOrder.tsx](file:///d:/JOMLA/AhmedZ/components/admin/PrintableOrder.tsx)
+- تشغيل الطباعة/المشاركة:
+  - طباعة HTML: [printUtils.ts](file:///d:/JOMLA/AhmedZ/utils/printUtils.ts) (دالة printContent + buildPrintHtml لإعادة الاستخدام)
+  - مشاركة/طباعة PDF: [export.ts](file:///d:/JOMLA/AhmedZ/utils/export.ts) (sharePdf + printPdfFromElement)
+  - شاشة الفاتورة (Admin/Customer): [InvoiceScreen.tsx](file:///d:/JOMLA/AhmedZ/screens/InvoiceScreen.tsx)
+  - POS autoprint (لا تغييرات على المنطق): [POSScreen.tsx](file:///d:/JOMLA/AhmedZ/screens/POSScreen.tsx)
+
+- إعدادات جديدة (Settings → Frontend فقط):
+  - عرض الورق الحراري: settings.posFlags.thermalPaperWidth = "58mm" | "80mm"
+  - طباعة حرارية تلقائية في POS: settings.posFlags.autoPrintThermalEnabled
+  - عدد نسخ الطباعة الحرارية في POS: settings.posFlags.thermalCopies
+  - القالب الافتراضي حسب الدور: settings.defaultInvoiceTemplateByRole { pos/admin/merchant → thermal|a4 }
+  - هوية الفروع للطباعة (اختياري): settings.branchBranding[warehouseId] = { name,address,contactNumber,logoUrl }
+  - النوع: [types.ts](file:///d:/JOMLA/AhmedZ/types.ts)
+  - الافتراضات: [SettingsContext.tsx](file:///d:/JOMLA/AhmedZ/contexts/SettingsContext.tsx)
+  - إدارة الإعدادات: [SettingsScreen.tsx](file:///d:/JOMLA/AhmedZ/screens/admin/SettingsScreen.tsx)
+
+- قواعد التنفيذ المعتمدة الآن:
+  - Thermal width:
+    - القالب الحراري لا يحتوي عرض ثابت؛ يعتمد على settings.posFlags.thermalPaperWidth.
+  - POS autoprint:
+    - الطباعة الحرارية التلقائية بعد البيع تعتمد على settings.posFlags.autoPrintThermalEnabled.
+    - عدد النسخ يعتمد على settings.posFlags.thermalCopies.
+  - RTL Accounting (Thermal):
+    - الأعمدة الرقمية (الكمية/السعر/الإجمالي) تلتزم: text-align:right + direction:ltr + tabular-nums.
+  - A4 Official:
+    - إضافة تاريخ/توقيع/ختم أسفل فاتورة A4 بدون التأثير على الحراري.
+  - A4 @page:
+    - توحيد @page داخل HTML المطبوع لضمان إخراج متسق: size A4 + margin 10mm (مع وضع auto للطباعة الحرارية).
+  - Delivery Note:
+    - تفعيل زر “طباعة سند تسليم” في الإدارة: [ManageOrdersScreen.tsx](file:///d:/JOMLA/AhmedZ/screens/admin/ManageOrdersScreen.tsx)
+  - Print Preview (اختياري):
+    - معاينة الطباعة متاحة في Admin/InvoiceScreen فقط عبر Modal، وتستخدم نفس HTML/CSS الفعلي للطباعة (بدون إعادة منطق).
+    - POS autoprint يبقى بدون معاينة افتراضيًا.
+  - ترقيم صفحات A4 (اختياري):
+    - زر “A4 (ترقيم صفحات)” يطبع عبر PDF ويضيف "الصفحة X من Y" في التذييل (لا ينطبق على الحراري).
+  - Watermark “نسخة”:
+    - يظهر عند إعادة الطباعة فقط: A4 كعلامة مائية + الحراري كسطر بسيط.
+    - يعتمد على order.invoicePrintCount (يزداد بعد كل طباعة عبر الواجهة).
+
+- ملاحظة تشغيلية (Typecheck/Build):
+  - استبعاد types-node من tsconfig لتجنب فحص مخرجات declarations وتخفيف الحمل: [tsconfig.json](file:///d:/JOMLA/AhmedZ/tsconfig.json)
+
+### الفواتير (Invoice Issuance & Print Audit)
+- أهلية إصدار الفاتورة في الواجهة (Frontend Gate):
+  - تُصدر الفاتورة فقط عند delivered + paidAt (يشمل COD لأن paidAt لا يُضبط إلا بعد Settlement).
+  - التنفيذ: [ensureInvoiceIssued](file:///d:/JOMLA/AhmedZ/contexts/OrderContext.tsx#L429-L495)
+- ترقيم الفاتورة (Server-assisted):
+  - عند توفر الاتصال وصلاحيات الإدارة، يتم إسناد invoiceNumber عبر RPC assign_invoice_number_if_missing ثم يُحفظ داخل order.data.
+  - fallback: generateInvoiceNumber في الواجهة عند تعذر RPC.
+  - المرجع: [assign_invoice_number_if_missing.sql](file:///d:/JOMLA/AhmedZ/supabase/migrations/20260115160000_assign_invoice_number_if_missing.sql) + [ensureInvoiceIssued](file:///d:/JOMLA/AhmedZ/contexts/OrderContext.tsx#L435-L495)
+- Invoice Snapshot (Freeze):
+  - عند إصدار الفاتورة لأول مرة يتم إنشاء invoiceSnapshot داخل order.data لتثبيت محتوى الفاتورة (items/amounts/customerInfo) وقت الإصدار.
+  - الهدف: منع تغيّر الفاتورة عند تغيير بيانات الطلب لاحقًا (تصحيح/عروض/أسماء).
+  - المرجع: [ensureInvoiceIssued](file:///d:/JOMLA/AhmedZ/contexts/OrderContext.tsx#L455-L493)
+- تتبّع الطباعة (Audit-friendly):
+  - invoicePrintCount و invoiceLastPrintedAt تُحدّث بعد الطباعة لتمييز “نسخة” وللتدقيق.
+  - التنفيذ: [InvoiceScreen.tsx](file:///d:/JOMLA/AhmedZ/screens/InvoiceScreen.tsx) + [incrementInvoicePrintCount](file:///d:/JOMLA/AhmedZ/contexts/OrderContext.tsx)
  
 ### التسعير (Pricing)
 - دالة السعر الزمنية المفعّلة الآن: get_item_price_with_discount(text p_item_id, uuid p_customer_id, numeric p_quantity)  
@@ -42,13 +107,15 @@ Analysis Contract (Enforcement)
   الأحدث ضمن نفس المهاجرة أعلاه، تُعيد price من menu_items عند عدم وجود سعر خاص/شريحة.
  
 ### إنشاء الطلب عبر الويب (Online Orders)
-- الدالة المفعّلة الآن: create_order_secure(jsonb p_items, uuid p_delivery_zone_id, text p_payment_method, text p_notes, text p_address, jsonb p_location, text p_customer_name, text p_phone_number, boolean p_is_scheduled, timestamptz p_scheduled_at, text p_coupon_code, numeric p_points_redeemed_value)  
-  أحدث نسخة: [20260123130000_safe_batch_core_refactor.sql](file:///d:/AhmedZ/supabase/migrations/20260123130000_safe_batch_core_refactor.sql#L1107-L1443)  
+- الدالة المفعّلة الآن (Checkout عبر الويب):  
+  create_order_secure_with_payment_proof(jsonb p_items, uuid p_delivery_zone_id, text p_payment_method, text p_notes, text p_address, jsonb p_location, text p_customer_name, text p_phone_number, boolean p_is_scheduled, timestamptz p_scheduled_at, text p_coupon_code, numeric p_points_redeemed_value, text p_payment_proof_type, text p_payment_proof)  
+  الأحدث: [20260126100000_critical_payment_proof_and_coupon_atomic.sql](file:///d:/AhmedZ/supabase/migrations/20260126100000_critical_payment_proof_and_coupon_atomic.sql)  
   نقاط تنفيذ:
-  - يحتسب Subtotal وفق وزن/كمية، ويضيف تكلفة الإضافات (Addons).
-  - يتحقق من الكوبون زمنياً وحد الاستخدام والحد الأدنى، ويرفض المنتهي.
-  - يحدّد warehouse_id الافتراضي ويستدعي Reserve FEFO.
-  - يحفظ snapshot في orders.data ويتضمن warehouseId.
+  - يتحقق server-side من customer_name/phone_number/address بنفس قواعد الواجهة (رفض برسائل واضحة).
+  - يسمح بحفظ إثبات الدفع فقط لطرق الدفع غير النقدية (kuraimi/network) ويمنعه للدفع النقدي.
+  - يحفظ paymentProofType/paymentProof داخل orders.data عند الدفع غير النقدي.
+  - يغلق صف الكوبون FOR UPDATE قبل إنشاء الطلب لمنع سباقات usageCount؛ الزيادة الفعلية تتم داخل create_order_secure أثناء إنشاء الطلب.
+  - منطق إنشاء الطلب الأساسي (التسعير/الإضافات/FEFO/warehouseId) يبقى ضمن create_order_secure الأحدث (مرجع التكامل: [order_promotions_integration.sql](file:///d:/AhmedZ/supabase/migrations/20260124164000_order_promotions_integration.sql#L46-L455)).
  
 ### المخزون والحجز/الخصم (Inventory FEFO)
 - الحجز: reserve_stock_for_order(jsonb p_items, uuid p_order_id, uuid p_warehouse_id)  
@@ -139,6 +206,72 @@ Analysis Contract (Enforcement)
    - post_* تقرأ حسابات التحكم من app_settings.data→'accounting_accounts' بقيم افتراضية سليمة؛ لا استخدام لحسابات غير مُعرّفة، والفشل صريح عند غياب الحساب في الدليل.
    - تجميد دوال الترحيل عبر حدث trg_freeze_posting_engine: يمنع CREATE/ALTER/DROP لـ post_* إلا عند ضبط app.posting_engine_upgrade='1' أثناء جلسات التحديث.
    - المراجع: [20260123240000_phase8_accounting_hardening.sql](file:///d:/AhmedZ/supabase/migrations/20260123240000_phase8_accounting_hardening.sql#L178-L186) + [phase8_accounting_hardening.sql](file:///d:/AhmedZ/supabase/migrations/20260123240000_phase8_accounting_hardening.sql#L519-L556)
+
+### COD Cash Control (Cash-in-Transit) — Full Accounting Lifecycle
+قاعدة إلزامية: التسليم ≠ التحصيل. لا يُضبط paidAt لأي طلب COD إلا بعد قبض فعلي داخل وردية الكاشير وتسجيل Payment نقدي.
+
+- نطاق التطبيق:
+  - ينطبق على: COD للتوصيل فقط (paymentMethod='cash' و orderSource<>'in_store' و delivery_zone_id موجود).
+- الحسابات المفاهيمية (CoA مبسّط على مستوى Ledger المخصص للـ COD):
+  - Sales_Revenue
+  - Accounts_Receivable_COD
+  - Cash_In_Transit
+  - Cash_On_Hand
+- جداول Ledger (Immutable):
+  - ledger_entries / ledger_lines
+  - driver_ledger (ذمة مندوب برصيد تراكمي balance_after)
+  - cod_settlements / cod_settlement_orders (تسوية مفردة أو مجمّعة)
+  - المرجع: [20260127093000_cod_cash_in_transit_ledger.sql](file:///d:/JOMLA/AhmedZ/supabase/migrations/20260127093000_cod_cash_in_transit_ledger.sql)
+- أمان RLS (تقسية):
+  - تم تفعيل FORCE ROW LEVEL SECURITY على جداول المحاسبة المذكورة لمنع أي تجاوز للسياسات عبر أدوار عليا أو استدعاءات غير متوقعة.
+  - المرجع: [20260127100500_force_rls_accounting.sql](file:///d:/JOMLA/AhmedZ/supabase/migrations/20260127100500_force_rls_accounting.sql)
+- دورة القيود (Step-by-Step):
+  - عند تسليم الطلب (Delivery):
+    - يمنع paidAt المبكر (حتى لو أرسله العميل).
+    - قيد الإيراد (Accrual):
+      - Dr Accounts_Receivable_COD / Cr Sales_Revenue
+    - نقل النقد خارج الصندوق (Cash-in-Transit):
+      - Dr Cash_In_Transit / Cr Accounts_Receivable_COD
+    - ذمة المندوب:
+      - driver_ledger: Debit على المندوب بقيمة الطلب.
+    - التنفيذ يتم Server-side داخل confirm_order_delivery عبر cod_post_delivery:
+      - [confirm_order_delivery](file:///d:/JOMLA/AhmedZ/supabase/migrations/20260127093000_cod_cash_in_transit_ledger.sql)
+      - [cod_post_delivery](file:///d:/JOMLA/AhmedZ/supabase/migrations/20260127093000_cod_cash_in_transit_ledger.sql)
+  - عند تسليم المندوب النقد للإدارة (Settlement):
+    - شرط: وردية نقدية مفتوحة للكاشير + صلاحية accounting.manage.
+    - قيد تسوية CIT:
+      - Dr Cash_On_Hand / Cr Cash_In_Transit
+    - ذمة المندوب:
+      - driver_ledger: Credit على المندوب بمبلغ التسوية.
+    - إنشاء Payment نقدي داخل الوردية عبر record_order_payment (لضمان الربط بالوردية وإنشاء قيد يومية وفق Posting Seal).
+    - الآن فقط: orders.data.paidAt = occurred_at
+    - RPC مفرد: cod_settle_order(order_id)
+      - المرجع: [cod_settle_order](file:///d:/JOMLA/AhmedZ/supabase/migrations/20260127093000_cod_cash_in_transit_ledger.sql)
+    - RPC مجمّع حسب المندوب: cod_settle_orders(driver_id, order_ids[])
+      - المرجع: [20260127095000_cod_batch_settlement.sql](file:///d:/JOMLA/AhmedZ/supabase/migrations/20260127095000_cod_batch_settlement.sql)
+- التقارير/المطابقة (إلزامي):
+  - رصيد Cash-in-Transit الحالي: v_cash_in_transit_balance
+  - ذمم المندوبين: v_driver_ledger_balances
+  - مطابقة CIT = Σ أرصدة المندوبين: v_cod_reconciliation_check
+  - تدقيق كامل لطلب COD: get_cod_audit(order_id)
+  - المرجع: [20260127093000_cod_cash_in_transit_ledger.sql](file:///d:/JOMLA/AhmedZ/supabase/migrations/20260127093000_cod_cash_in_transit_ledger.sql)
+- تقارير المبيعات النقدية (منع الاعتراف النقدي المبكر):
+  - get_payment_method_stats لا يحتسب COD delivered قبل paidAt.
+  - get_sales_report_summary يعزل total_collected عن COD قبل paidAt.
+  - المرجع: [20260127094000_cod_cash_basis_filters.sql](file:///d:/JOMLA/AhmedZ/supabase/migrations/20260127094000_cod_cash_basis_filters.sql) + [20260127094500_cod_fix_sales_report_summary_cash.sql](file:///d:/JOMLA/AhmedZ/supabase/migrations/20260127094500_cod_fix_sales_report_summary_cash.sql)
+- نقاط الربط في الواجهة (Frontend):
+  - منع ضبط paidAt عند delivered لطلبات COD، ومنع record_order_payment عند التسليم (COD فقط): [OrderContext.tsx](file:///d:/JOMLA/AhmedZ/contexts/OrderContext.tsx)
+  - غير COD: لا يُضبط paidAt إلا بعد نجاح تسجيل الدفعة عبر record_order_payment؛ في وضع Offline فقط يُسمح بضبط paidAt مع جدولة الدفع بالطابور لضمان عدم فقد بيانات الدفع.
+    - المرجع: [OrderContext.updateOrderStatus](file:///d:/JOMLA/AhmedZ/contexts/OrderContext.tsx#L1889-L2056)
+  - تسوية COD (واجهة مجمّعة حسب المندوب): /admin/cod-settlements
+    - الشاشة: [CODSettlementsScreen.tsx](file:///d:/JOMLA/AhmedZ/screens/admin/CODSettlementsScreen.tsx)
+    - الربط بالروترات: [App.tsx](file:///d:/JOMLA/AhmedZ/App.tsx)
+    - إظهار الرابط في القائمة: [AdminLayout.tsx](file:///d:/JOMLA/AhmedZ/screens/admin/AdminLayout.tsx)
+- تحسينات UX/Audit (اختيارية لكنها مفعّلة الآن):
+  - Badge “نقد لدى المندوب” في قائمة الطلبات (قراءة فقط من v_driver_ledger_balances).
+  - Modal تأكيد التسوية في شاشة COD (اسم المندوب/عدد الطلبات/المبلغ).
+  - زر “عرض سجل COD” يستدعي get_cod_audit(order_id) للعرض فقط.
+  - المرجع: [ManageOrdersScreen.tsx](file:///d:/JOMLA/AhmedZ/screens/admin/ManageOrdersScreen.tsx) + [CODSettlementsScreen.tsx](file:///d:/JOMLA/AhmedZ/screens/admin/CODSettlementsScreen.tsx)
  
 ### الفترات المحاسبية (Accounting Periods) — Enforcement & UX
 - Enforcement:
@@ -174,7 +307,7 @@ Analysis Contract (Enforcement)
 ## نقاط النظام الحرجة (Enforcement Summary)
 - التسعير فعليًا:
   - كل تسعير يُستخرج في الخادم عبر get_item_price_with_discount مع تحقق زمني للشريحة/السعر الخاص؛ لا تعديل للسعر الحقيقي في الأصناف.
-  - الكوبونات تُفحص في create_order_secure: انتهاء، حد استخدام، حد أدنى، ويُمنع المنتهي.
+  - الكوبونات تُفحص وتُزاد ذريًا داخل إنشاء الطلب؛ لا يوجد أي تعديل لعدادات usageCount من الواجهة.
 - عدم وجود نجاح تفاؤلي:
   - Online: إنشاء الطلب وإجمالي الدفع يعتمد رد RPC؛ لا اعتماد قبل رد الخادم.
   - POS: التسليم/الفاتورة عبر confirm_order_delivery/deduct_stock_on_delivery_v2؛ عند انقطاع الاتصال يُسجّل حالة “CREATED_OFFLINE” وتتم المزامنة لاحقًا، لكن التسعير/الخصم النهائي لا يتم محليًا.
@@ -193,6 +326,7 @@ Analysis Contract (Enforcement)
 - توقيعات reserve_stock_for_order بدون warehouse_id.
 - نسخ قديمة لـ confirm_order_delivery والدوال المرافقة بدون تحقق FEFO/محجوز.
 - الاعتماد على unit_type من v_sellable_products؛ النسخة المعتمدة تُرجع base_unit.
+- أي مسار Frontend يزيد usageCount للكوبونات (تم إزالته؛ الزيادة تتم داخل إنشاء الطلب فقط).
  
 ### شفافية الفاتورة (Invoice → Promotion → Approval → Journal)
 - الواجهة: get_invoice_audit(uuid p_order_id) تعيد مسار التدقيق الكامل للفاتورة.
@@ -261,6 +395,12 @@ Analysis Contract (Enforcement)
 - استعادة عند الحاجة:
   - pg_restore --clean --if-exists -d "$env:DATABASE_URL" "backups\\db_YYYY-MM-DD.dump"
   - غيّر التاريخ لملف النسخة المطلوب استعادته.
+
+- خطوات التراجع لهذه الهجرة 20260126100000_critical_payment_proof_and_coupon_atomic.sql:
+  - تنفيذ داخل معاملة:
+    - begin;
+    - drop function if exists public.create_order_secure_with_payment_proof(jsonb, uuid, text, text, text, jsonb, text, text, boolean, timestamptz, text, numeric, text, text);
+    - commit;
 
 ---
 هذا المستند هو المرجع الوحيد للحالة الحالية. أي تحليل أو تنفيذ لاحق يجب أن يلتزم هنا بالمنطق الأحدث الناسخ، وأي استنتاج من ملفات قديمة يُعتبر باطلًا.

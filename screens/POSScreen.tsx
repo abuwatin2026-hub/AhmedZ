@@ -1085,7 +1085,7 @@ const POSScreen: React.FC = () => {
                       <div className="text-[11px] text-gray-500 dark:text-gray-400 truncate">
                         {String((t as any).customerName || 'زبون حضوري')}
                         {String((t as any).phoneNumber || '') ? ` • ${String((t as any).phoneNumber)}` : ''}
-                        {t.createdAt ? ` • ${new Date(t.createdAt).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })}` : ''}
+                        {t.createdAt ? ` • ${new Date(t.createdAt).toLocaleTimeString('ar-SA-u-nu-latn', { hour: '2-digit', minute: '2-digit' })}` : ''}
                       </div>
                     </div>
                     <div className="flex items-center gap-2">

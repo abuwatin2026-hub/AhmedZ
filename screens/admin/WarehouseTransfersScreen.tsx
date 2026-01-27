@@ -255,7 +255,7 @@ const WarehouseTransfersScreen: React.FC = () => {
                                         </span>
                                     </div>
                                     <p className="text-sm text-gray-600 dark:text-gray-400">
-                                        {new Date(transfer.transferDate).toLocaleDateString('ar-EG')}
+                                        {new Date(transfer.transferDate).toLocaleDateString('ar-EG-u-nu-latn')}
                                     </p>
                                 </div>
                             </div>

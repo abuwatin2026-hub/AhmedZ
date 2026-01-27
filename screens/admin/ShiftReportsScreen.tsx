@@ -357,10 +357,10 @@ const ShiftReportsScreen: React.FC = () => {
     const methodLabel = (method: string) => {
         const m = (method || '').toLowerCase();
         if (m === 'cash') return 'نقد';
-        if (m === 'network') return 'شبكة';
-        if (m === 'kuraimi') return 'حوالة/كريمي';
-        if (m === 'bank') return 'حوالة/كريمي';
-        if (m === 'card') return 'شبكة';
+        if (m === 'network') return 'حوالات';
+        if (m === 'kuraimi') return 'حسابات بنكية';
+        if (m === 'bank') return 'حسابات بنكية';
+        if (m === 'card') return 'حوالات';
         if (m === 'ar') return 'آجل';
         if (m === 'store_credit') return 'رصيد عميل';
         return method || '-';
@@ -499,8 +499,8 @@ const ShiftReportsScreen: React.FC = () => {
         const shiftRow = reportShift;
         const cashierId = String(shiftRow?.cashier_id || '');
         const cashierLabel = cashierLabelById[cashierId] || (cashierId ? cashierId.slice(0, 8) : '-');
-        const openedAt = shiftRow?.opened_at ? new Date(String(shiftRow.opened_at)).toLocaleString() : '-';
-        const closedAt = shiftRow?.closed_at ? new Date(String(shiftRow.closed_at)).toLocaleString() : '-';
+        const openedAt = shiftRow?.opened_at ? new Date(String(shiftRow.opened_at)).toLocaleString('ar-EG-u-nu-latn') : '-';
+        const closedAt = shiftRow?.closed_at ? new Date(String(shiftRow.closed_at)).toLocaleString('ar-EG-u-nu-latn') : '-';
         const status = String(shiftRow?.status || '');
         const startAmount = Number(shiftRow?.start_amount) || 0;
         const endAmount = shiftRow?.end_amount === null || shiftRow?.end_amount === undefined ? null : Number(shiftRow.end_amount);
@@ -693,10 +693,10 @@ const ShiftReportsScreen: React.FC = () => {
                                     {cashierLabelById[shift.cashierId] || shift.cashierId?.slice(0, 8) || '-'}
                                 </td>
                                 <td className="p-2 sm:p-4 text-xs sm:text-sm dark:text-gray-300">
-                                    {new Date(shift.openedAt).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                    {new Date(shift.openedAt).toLocaleDateString('ar-EG-u-nu-latn', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                                 </td>
                                 <td className="p-2 sm:p-4 text-xs sm:text-sm dark:text-gray-300">
-                                    {shift.closedAt ? new Date(shift.closedAt).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-'}
+                                    {shift.closedAt ? new Date(shift.closedAt).toLocaleDateString('ar-EG-u-nu-latn', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-'}
                                 </td>
                                 <td className="p-2 sm:p-4 text-xs sm:text-sm font-mono dark:text-gray-300">
                                     {shift.startAmount.toFixed(2)}
@@ -1072,7 +1072,7 @@ const ShiftReportsScreen: React.FC = () => {
                                                     ['البند', 'القيمة'],
                                                     rows,
                                                     `shift-${reportShiftId}-summary.xlsx`,
-                                                    { sheetName: 'Shift Summary', currencyColumns: [1], currencyFormat: '#,##0.00', ...buildXlsxBrandOptions(settings, 'الوردية', 2, { periodText: `التاريخ: ${new Date().toLocaleDateString('ar-SA')}` }) }
+                                                    { sheetName: 'Shift Summary', currencyColumns: [1], currencyFormat: '#,##0.00', ...buildXlsxBrandOptions(settings, 'الوردية', 2, { periodText: `التاريخ: ${new Date().toLocaleDateString('ar-SA-u-nu-latn')}` }) }
                                                 );
                                                 }}
                                                 className="px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
@@ -1114,7 +1114,7 @@ const ShiftReportsScreen: React.FC = () => {
                                                             preludeRows: [
                                                                 [settings.cafeteriaName?.ar || settings.cafeteriaName?.en || '', ''],
                                                                 ['تقرير: تسوية طرق الدفع', ''],
-                                                                [`التاريخ: ${new Date().toLocaleDateString('ar-SA')}`, '']
+                                                                [`التاريخ: ${new Date().toLocaleDateString('ar-SA-u-nu-latn')}`, '']
                                                             ],
                                                             accentColor: settings.brandColors?.primary || '#2F2B7C'
                                                         }
@@ -1147,7 +1147,7 @@ const ShiftReportsScreen: React.FC = () => {
                                                             preludeRows: [
                                                                 [settings.cafeteriaName?.ar || settings.cafeteriaName?.en || '', '','','','', ''],
                                                                 ['تقرير: عمليات الوردية','','','','',''],
-                                                                [`التاريخ: ${new Date().toLocaleDateString('ar-SA')}`,'','','','','']
+                                                                [`التاريخ: ${new Date().toLocaleDateString('ar-SA-u-nu-latn')}`,'','','','','']
                                                             ],
                                                             accentColor: settings.brandColors?.primary || '#2F2B7C'
                                                         }

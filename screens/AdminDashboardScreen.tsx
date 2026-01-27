@@ -39,7 +39,7 @@ const OrderCard: React.FC<{ order: Order }> = ({ order }) => {
             <div className="flex justify-between items-start">
                 <div>
                     <p className="font-bold text-lg text-gray-800 dark:text-white">طلب #{order.id.split('-')[0].slice(-4)}</p>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">{createdAtDate.toLocaleString('ar-SA')}</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">{createdAtDate.toLocaleString('ar-EG-u-nu-latn')}</p>
                 </div>
                 <div className={`px-3 py-1 text-sm font-semibold rounded-full ${adminStatusColors[order.status]}`}>
                     {statusLabels[order.status]}

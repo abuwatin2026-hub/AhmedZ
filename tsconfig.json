@@ -46,6 +46,7 @@
     "public",
     "www",
     "supabase",
+    "types-node",
     ".tmp"
   ],
   "references": [

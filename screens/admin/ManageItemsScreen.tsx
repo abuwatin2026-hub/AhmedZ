@@ -541,7 +541,7 @@ const ManageItemsScreen: React.FC = () => {
       headers, 
       rows, 
       filename,
-      { sheetName: 'Expiry Report', ...buildXlsxBrandOptions(settings, 'صلاحية الأصناف', headers.length, { periodText: `التاريخ: ${new Date().toLocaleDateString('ar-SA')}` }) }
+      { sheetName: 'Expiry Report', ...buildXlsxBrandOptions(settings, 'صلاحية الأصناف', headers.length, { periodText: `التاريخ: ${new Date().toLocaleDateString('ar-SA-u-nu-latn')}` }) }
     );
     if (success) {
       showNotification(language === 'ar' ? 'تم حفظ التقرير في مجلد المستندات' : 'Report saved to Documents folder', 'success');

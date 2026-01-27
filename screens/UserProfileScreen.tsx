@@ -132,7 +132,7 @@ const UserProfileScreen: React.FC = () => {
 
     setPasskeysLoading(true);
     try {
-      const friendlyName = `Passkey (${new Date().toLocaleDateString('ar-YE')})`;
+      const friendlyName = `Passkey (${new Date().toLocaleDateString('ar-YE-u-nu-latn')})`;
 
       // Check if webauthn.register exists
       if (!mfa.webauthn || typeof mfa.webauthn.register !== 'function') {

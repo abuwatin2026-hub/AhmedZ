@@ -63,10 +63,10 @@ const SalesReports: React.FC = () => {
     const methodLabel = (method: string) => {
         const m = (method || '').toLowerCase();
         if (m === 'cash') return 'نقد';
-        if (m === 'network') return 'شبكة';
-        if (m === 'kuraimi') return 'حوالة/كريمي';
-        if (m === 'bank') return 'حوالة/كريمي';
-        if (m === 'card') return 'شبكة';
+        if (m === 'network') return 'حوالات';
+        if (m === 'kuraimi') return 'حسابات بنكية';
+        if (m === 'bank') return 'حسابات بنكية';
+        if (m === 'card') return 'حوالات';
         if (m === 'ar') return 'آجل';
         if (m === 'store_credit') return 'رصيد عميل';
         return method || '-';
@@ -176,7 +176,7 @@ const SalesReports: React.FC = () => {
             const rows = ((data as any[]) || [])
                 .map((r: any) => ({
                     date: new Date(String(r.day_date)),
-                    label: new Date(String(r.day_date)).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+                    label: new Date(String(r.day_date)).toLocaleDateString('ar-EG-u-nu-latn', { month: 'short', day: 'numeric' }),
                     value: Number(r.total_sales) || 0,
                 }))
                 .sort((a: any, b: any) => a.date.getTime() - b.date.getTime())
@@ -471,7 +471,7 @@ const SalesReports: React.FC = () => {
         }
         const rows = (data as any[]).map((r: any) => [
             String(r.id).slice(-6).toUpperCase(),
-            new Date(String(r.date_by)).toLocaleString('ar-SA'),
+            new Date(String(r.date_by)).toLocaleString('ar-SA-u-nu-latn'),
             String(r.customer_name || ''),
             Number(r.total || 0).toFixed(2),
             String(r.status || ''),
@@ -809,7 +809,7 @@ const SalesReports: React.FC = () => {
                                 {(showAllOrders ? visibleOrders : visibleOrders.slice(0, 100)).map(order => (
                                     <tr key={order.id}>
                                         <td className="px-6 py-4 whitespace-nowrap font-mono border-r dark:border-gray-700">#{order.id.slice(-6).toUpperCase()}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap border-r dark:border-gray-700" dir="ltr">{getEffectiveDate(order).toLocaleDateString('en-US')}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap border-r dark:border-gray-700" dir="ltr">{getEffectiveDate(order).toLocaleDateString('ar-EG-u-nu-latn')}</td>
                                         <td className="px-6 py-4 whitespace-nowrap border-r dark:border-gray-700">{order.customerName}</td>
                                         <td className="px-6 py-4 whitespace-nowrap font-semibold text-orange-500 border-r dark:border-gray-700">
                                             {Number(order.total || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {currency}
@@ -817,7 +817,7 @@ const SalesReports: React.FC = () => {
                                         <td className="px-6 py-4 whitespace-nowrap border-r dark:border-gray-700">{order.status}</td>
                                         <td className="px-6 py-4 whitespace-nowrap font-mono border-r dark:border-gray-700">{order.invoiceNumber || '-'}</td>
                                         <td className="px-6 py-4 whitespace-nowrap border-r dark:border-gray-700" dir="ltr">
-                                            {order.invoiceIssuedAt ? new Date(order.invoiceIssuedAt).toLocaleString('en-US') : '-'}
+                                            {order.invoiceIssuedAt ? new Date(order.invoiceIssuedAt).toLocaleString('ar-EG-u-nu-latn') : '-'}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap border-r dark:border-gray-700">{order.paymentMethod || '-'}</td>
                                         <td className="px-6 py-4 whitespace-nowrap border-r dark:border-gray-700">

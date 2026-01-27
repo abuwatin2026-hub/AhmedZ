@@ -124,7 +124,7 @@ const ShiftManagementModal: React.FC<ShiftManagementModalProps> = ({ isOpen, onC
                                 <>
                                     <div className="flex justify-between items-center mb-1">
                                         <span className="text-sm text-gray-500 dark:text-gray-400">وقت البدء:</span>
-                                    <span className="font-mono text-xs dark:text-gray-300">{new Date(currentShift.openedAt).toLocaleString()}</span>
+                                    <span className="font-mono text-xs dark:text-gray-300">{new Date(currentShift.openedAt).toLocaleString('ar-EG-u-nu-latn')}</span>
                                 </div>
                                 <div className="flex justify-between items-center mb-1">
                                     <span className="text-sm text-gray-500 dark:text-gray-400">عهدة البداية:</span>

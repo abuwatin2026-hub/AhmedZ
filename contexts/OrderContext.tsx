@@ -780,10 +780,12 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         p_is_scheduled: Boolean(orderData.isScheduled),
         p_scheduled_at: orderData.scheduledAt || null,
         p_coupon_code: orderData.appliedCouponCode || null,
-        p_points_redeemed_value: orderData.pointsRedeemedValue || 0
+        p_points_redeemed_value: orderData.pointsRedeemedValue || 0,
+        p_payment_proof_type: orderData.paymentProofType || null,
+        p_payment_proof: orderData.paymentProof || null
     };
 
-    const { data: createdOrderData, error } = await supabase.rpc('create_order_secure', rpcPayload);
+    const { data: createdOrderData, error } = await supabase.rpc('create_order_secure_with_payment_proof', rpcPayload);
     if (error) {
         console.error('RPC Error:', error);
         throw new Error(localizeSupabaseError(error));
@@ -1863,6 +1865,10 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         });
     }
     const updates: Partial<Order> = { status };
+    const isCodDeliveryOrder =
+      (existing.paymentMethod || '').trim() === 'cash' &&
+      (existing.orderSource || '').trim() !== 'in_store' &&
+      Boolean(existing.deliveryZoneId);
 
     if (status === 'out_for_delivery' && !existing.outForDeliveryAt) {
       updates.outForDeliveryAt = nowIso;
@@ -1894,9 +1900,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       updates.cancelledAt = nowIso;
     }
 
-    if (status === 'delivered' && !existing.paidAt) {
-      updates.paidAt = nowIso;
-    }
+    // Non-COD: لا نضبط paidAt هنا؛ سيتم ضبطه فقط بعد تسجيل الدفع بنجاح لاحقًا لضمان السلامة المحاسبية.
 
     await addOrderEvent({
       orderId,
@@ -1981,45 +1985,58 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
 
     if (willDeliver) {
-      const updated = { ...existing, ...updates } as Order;
-      await ensureInvoiceIssued(updated, nowIso);
-      if (updates.paidAt || updated.paidAt) {
+      let updated = { ...existing, ...updates } as Order;
+      // بعد تأكيد التسليم، نتعامل مع مسار non-COD لضمان عدم ضبط paidAt بدون تسجيل Payment بنجاح.
+      if (!isCodDeliveryOrder) {
         try {
           const supabase = getSupabaseClient();
-          if (supabase) {
-            const paidAlready = await fetchOrderPaidAmount(updated.id);
-            const remaining = Math.max(0, (Number(updated.total) || 0) - paidAlready);
-            if (remaining > 0) {
-          const { error } = await supabase.rpc('record_order_payment', {
-            p_order_id: updated.id,
-            p_amount: remaining,
-            p_method: updated.paymentMethod,
-            p_occurred_at: updates.paidAt || updated.paidAt,
-            p_idempotency_key: `delivery:${updated.id}:${updates.paidAt || updated.paidAt}:${Number(remaining) || 0}`,
-          });
-          if (error) {
-            const isOffline = typeof navigator !== 'undefined' && navigator.onLine === false;
-            if (isOffline || isAbortLikeError(error)) {
-              enqueueRpc('record_order_payment', {
-                p_order_id: updated.id,
-                p_amount: remaining,
-                p_method: updated.paymentMethod,
-                p_occurred_at: updates.paidAt || updated.paidAt,
-                p_idempotency_key: `delivery:${updated.id}:${updates.paidAt || updated.paidAt}:${Number(remaining) || 0}`,
-              });
-            } else {
-              if (import.meta.env.DEV) {
-                logger.warn('Failed to record payment on delivery:', error);
+          if (!supabase) throw new Error('Supabase غير مهيأ.');
+          const paidAlready = await fetchOrderPaidAmount(updated.id);
+          const remaining = Math.max(0, (Number(updated.total) || 0) - paidAlready);
+          let paidAtIso: string | undefined;
+          if (remaining > 0) {
+            const { error } = await supabase.rpc('record_order_payment', {
+              p_order_id: updated.id,
+              p_amount: remaining,
+              p_method: updated.paymentMethod,
+              p_occurred_at: nowIso,
+              p_idempotency_key: `delivery:${updated.id}:${nowIso}:${Number(remaining) || 0}`,
+            });
+            if (error) {
+              const isOffline = typeof navigator !== 'undefined' && navigator.onLine === false;
+              if (isOffline || isAbortLikeError(error)) {
+                // Offline: إبقاء السلوك كما هو عبر الطابور، مع السماح بضبط paidAt
+                enqueueRpc('record_order_payment', {
+                  p_order_id: updated.id,
+                  p_amount: remaining,
+                  p_method: updated.paymentMethod,
+                  p_occurred_at: nowIso,
+                  p_idempotency_key: `delivery:${updated.id}:${nowIso}:${Number(remaining) || 0}`,
+                });
+                paidAtIso = nowIso;
+              } else {
+                // الأكثر أمانًا محاسبيًا: إيقاف العملية بدون ضبط paidAt إذا فشل تسجيل الدفع
+                throw new Error('تعذر تسجيل الدفعة عند التسليم (غير COD). لن يتم ضبط وقت الدفع paidAt.');
               }
+            } else {
+              paidAtIso = nowIso;
             }
+          } else {
+            // تم سداد كامل المبلغ مسبقًا (دفعات جزئية)، يسمح بضبط paidAt الآن
+            paidAtIso = nowIso;
           }
-            }
+          if (paidAtIso) {
+            updated = { ...updated, paidAt: paidAtIso } as Order;
+            await ensureInvoiceIssued(updated, paidAtIso);
+            await updateRemoteOrder(updated);
           }
         } catch (err) {
-          if (import.meta.env.DEV) {
-            logger.warn('Failed to record payment on delivery:', err);
-          }
+          // تمرير الخطأ ليُبلغ الواجهة؛ لا نضبط paidAt إن فشل الدفع في وضع Online
+          throw err instanceof Error ? err : new Error(String(err || 'Payment error'));
         }
+      } else {
+        // COD: المسار غير متأثر هنا؛ الضبط يتم عبر وظائف التسوية فقط
+        await ensureInvoiceIssued(updated, nowIso);
       }
 
       // AWARD POINTS LOGIC
@@ -2063,22 +2080,50 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
 
     const nowIso = new Date().toISOString();
-    const updates: Partial<Order> = { paidAt: existing.paidAt || nowIso };
-    await addOrderEvent({
-      orderId,
-      action: 'order.markedPaid',
-      actorType: 'admin',
-      actorId: adminUser?.id,
-      createdAt: updates.paidAt,
-      payload: { paymentMethod: existing.paymentMethod },
-    });
-
-    const updated = { ...existing, ...updates } as Order;
-    await ensureInvoiceIssued(updated, updates.paidAt);
-    await updateRemoteOrder(updated);
     try {
       const supabase = getSupabaseClient();
       if (supabase) {
+        const isCodDeliveryOrder =
+          (existing.paymentMethod || '').trim() === 'cash' &&
+          (existing.orderSource || '').trim() !== 'in_store' &&
+          Boolean(existing.deliveryZoneId);
+
+        if (isCodDeliveryOrder) {
+          const { data: paidAtValue, error } = await supabase.rpc('cod_settle_order', {
+            p_order_id: existing.id,
+            p_occurred_at: nowIso,
+          });
+          if (error) throw error;
+          const paidAtIso = typeof paidAtValue === 'string' ? paidAtValue : nowIso;
+          await addOrderEvent({
+            orderId,
+            action: 'order.markedPaid',
+            actorType: 'admin',
+            actorId: adminUser?.id,
+            createdAt: paidAtIso,
+            payload: { paymentMethod: existing.paymentMethod, mode: 'cod_settlement' },
+          });
+          const refreshed = await fetchRemoteOrderById(orderId);
+          if (refreshed) {
+            setOrders(prev => prev.map(o => (o.id === refreshed.id ? refreshed : o)));
+          }
+          return;
+        }
+
+        const updates: Partial<Order> = { paidAt: existing.paidAt || nowIso };
+        await addOrderEvent({
+          orderId,
+          action: 'order.markedPaid',
+          actorType: 'admin',
+          actorId: adminUser?.id,
+          createdAt: updates.paidAt,
+          payload: { paymentMethod: existing.paymentMethod },
+        });
+
+        const updated = { ...existing, ...updates } as Order;
+        await ensureInvoiceIssued(updated, updates.paidAt);
+        await updateRemoteOrder(updated);
+
         const paidAlready = await fetchOrderPaidAmount(updated.id);
         const remaining = Math.max(0, (Number(updated.total) || 0) - paidAlready);
         if (remaining > 0) {
@@ -2111,6 +2156,8 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       }
       throw err;
     }
+    const updates: Partial<Order> = { paidAt: existing.paidAt || nowIso };
+    const updated = { ...existing, ...updates } as Order;
     setOrders(prev => prev.map(o => (o.id === updated.id ? updated : o)));
     // await fetchOrders();
   };

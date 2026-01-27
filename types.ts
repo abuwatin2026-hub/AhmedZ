@@ -468,6 +468,18 @@ export interface AppSettings {
     barcodeScanEnabled?: boolean;
     autoPrintThermalEnabled?: boolean;
     thermalCopies?: number;
+    thermalPaperWidth?: '58mm' | '80mm';
+  };
+  branchBranding?: Record<string, {
+    name?: string;
+    address?: string;
+    contactNumber?: string;
+    logoUrl?: string;
+  }>;
+  defaultInvoiceTemplateByRole?: {
+    pos?: 'thermal' | 'a4';
+    admin?: 'thermal' | 'a4';
+    merchant?: 'thermal' | 'a4';
   };
   inventoryFlags?: {
     autoArchiveExpired?: boolean;
@@ -873,6 +885,7 @@ export const defaultAdminPermissionsForRole = (role: AdminRole): AdminPermission
     'dashboard.view',
     'profile.view',
     'orders.view',
+    'reports.view',
     'orders.markPaid',
     'orders.createInStore',
     'cashShifts.open',

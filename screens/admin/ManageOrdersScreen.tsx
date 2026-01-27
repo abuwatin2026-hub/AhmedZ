@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { renderToString } from 'react-dom/server';
 import { useOrders } from '../../contexts/OrderContext';
 import { localizeSupabaseError } from '../../utils/errorUtils';
 import { useSalesReturn } from '../../contexts/SalesReturnContext';
@@ -9,13 +10,17 @@ import { useSettings } from '../../contexts/SettingsContext';
 import { adminStatusColors } from '../../utils/orderUtils';
 import Spinner from '../../components/Spinner';
 import ConfirmationModal from '../../components/admin/ConfirmationModal';
+import PrintableOrder from '../../components/admin/PrintableOrder';
 import { useDeliveryZones } from '../../contexts/DeliveryZoneContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCashShift } from '../../contexts/CashShiftContext';
+import { useSessionScope } from '../../contexts/SessionScopeContext';
+import { useWarehouses } from '../../contexts/WarehouseContext';
 import OsmMapEmbed from '../../components/OsmMapEmbed';
 import NumberInput from '../../components/NumberInput';
 import { useMenu } from '../../contexts/MenuContext';
 import { getSupabaseClient } from '../../supabase';
+import { printContent } from '../../utils/printUtils';
 
 const statusTranslations: Record<OrderStatus, string> = {
     pending: 'قيد الانتظار',
@@ -28,11 +33,11 @@ const statusTranslations: Record<OrderStatus, string> = {
 
 const paymentTranslations: Record<string, string> = {
     cash: 'نقدًا',
-    network: 'شبكة/بطاقة',
-    kuraimi: 'كريمي/تحويل',
-    card: 'شبكة/بطاقة',
-    bank: 'كريمي/تحويل',
-    bank_transfer: 'كريمي/تحويل',
+    network: 'حوالات',
+    kuraimi: 'حسابات بنكية',
+    card: 'حوالات',
+    bank: 'حسابات بنكية',
+    bank_transfer: 'حسابات بنكية',
     mixed: 'متعدد',
     unknown: 'غير محدد'
 };
@@ -66,6 +71,8 @@ const ManageOrdersScreen: React.FC = () => {
     const { getDeliveryZoneById } = useDeliveryZones();
     const { hasPermission, listAdminUsers, user: adminUser } = useAuth();
     const { currentShift } = useCashShift();
+    const sessionScope = useSessionScope();
+    const { getWarehouseById } = useWarehouses();
     const { menuItems: allMenuItems } = useMenu();
     const [filterStatus, setFilterStatus] = useState<OrderStatus | 'all'>('all');
     const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
@@ -125,9 +132,15 @@ const ManageOrdersScreen: React.FC = () => {
     const [partialPaymentMethod, setPartialPaymentMethod] = useState<string>('cash');
     const [partialPaymentOccurredAt, setPartialPaymentOccurredAt] = useState<string>('');
     const [isRecordingPartialPayment, setIsRecordingPartialPayment] = useState(false);
+    const [driverCashByDriverId, setDriverCashByDriverId] = useState<Record<string, number>>({});
+    const [codAuditOrderId, setCodAuditOrderId] = useState<string | null>(null);
+    const [codAuditLoading, setCodAuditLoading] = useState(false);
+    const [codAuditData, setCodAuditData] = useState<any>(null);
 
     const searchParams = new URLSearchParams(location.search);
     const highlightedOrderId = (searchParams.get('orderId') || '') || (typeof (location.state as any)?.orderId === 'string' ? (location.state as any).orderId : '');
+
+    const canViewAccounting = hasPermission('accounting.view') || hasPermission('accounting.manage');
 
     const inStoreAvailablePaymentMethods = useMemo(() => {
         const enabled = Object.entries(settings.paymentMethods || {})
@@ -135,6 +148,46 @@ const ManageOrdersScreen: React.FC = () => {
             .map(([key]) => key);
         return enabled;
     }, [settings.paymentMethods]);
+
+    useEffect(() => {
+        const fetchDriverBalances = async () => {
+            if (!canViewAccounting) return;
+            const supabase = getSupabaseClient();
+            if (!supabase) return;
+            const { data, error } = await supabase
+                .from('v_driver_ledger_balances')
+                .select('driver_id,balance_after')
+                .limit(5000);
+            if (error) return;
+            const next: Record<string, number> = {};
+            for (const row of (data as any[]) || []) {
+                const id = String((row as any)?.driver_id || '');
+                const bal = Number((row as any)?.balance_after || 0);
+                if (id) next[id] = bal;
+            }
+            setDriverCashByDriverId(next);
+        };
+        fetchDriverBalances();
+    }, [canViewAccounting]);
+
+    const openCodAudit = async (orderId: string) => {
+        if (!canViewAccounting) return;
+        const supabase = getSupabaseClient();
+        if (!supabase) return;
+        setCodAuditOrderId(orderId);
+        setCodAuditLoading(true);
+        setCodAuditData(null);
+        try {
+            const { data, error } = await supabase.rpc('get_cod_audit', { p_order_id: orderId });
+            if (error) throw error;
+            setCodAuditData(data);
+        } catch (err: any) {
+            showNotification('تعذر تحميل سجل COD', 'error');
+            setCodAuditData(null);
+        } finally {
+            setCodAuditLoading(false);
+        }
+    };
 
     const canCancel = hasPermission('orders.cancel');
     const canMarkPaid = hasPermission('orders.markPaid');
@@ -262,6 +315,36 @@ const ManageOrdersScreen: React.FC = () => {
             const message = raw && /[\u0600-\u06FF]/.test(raw) ? raw : 'فشل تعيين المندوب.';
             showNotification(message, 'error');
         }
+    };
+
+    const handlePrintDeliveryNote = (order: Order) => {
+        const fallback = {
+            name: (settings.cafeteriaName?.[language] || settings.cafeteriaName?.ar || settings.cafeteriaName?.en || '').trim(),
+            address: (settings.address || '').trim(),
+            contactNumber: (settings.contactNumber || '').trim(),
+            logoUrl: (settings.logoUrl || '').trim(),
+        };
+        const warehouseId = (order as any)?.warehouseId || sessionScope.scope?.warehouseId || '';
+        const wh = warehouseId ? getWarehouseById(String(warehouseId)) : undefined;
+        const key = warehouseId ? String(warehouseId) : '';
+        const override = key ? settings.branchBranding?.[key] : undefined;
+        const brand = {
+            name: (override?.name || wh?.name || fallback.name || '').trim(),
+            address: (override?.address || wh?.address || wh?.location || fallback.address || '').trim(),
+            contactNumber: (override?.contactNumber || wh?.phone || fallback.contactNumber || '').trim(),
+            logoUrl: (override?.logoUrl || fallback.logoUrl || '').trim(),
+        };
+        const content = renderToString(
+            <PrintableOrder
+                order={order}
+                language="ar"
+                cafeteriaName={brand.name}
+                cafeteriaAddress={brand.address}
+                cafeteriaPhone={brand.contactNumber}
+                logoUrl={brand.logoUrl}
+            />
+        );
+        printContent(content, `سند تسليم #${order.id.slice(-6).toUpperCase()}`);
     };
 
     const confirmDeliveredWithPin = async () => {
@@ -876,7 +959,7 @@ const ManageOrdersScreen: React.FC = () => {
                 <div className="flex justify-between items-start mb-3">
                     <div>
                         <div className="text-sm font-bold text-gray-900 dark:text-white">#{order.id.slice(-6).toUpperCase()}</div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400" dir="ltr">{new Date(order.createdAt).toLocaleDateString('en-US')}</div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400" dir="ltr">{new Date(order.createdAt).toLocaleDateString('ar-EG-u-nu-latn')}</div>
                     </div>
                     <div className="flex flex-col items-end gap-1">
                         <span className={`px-2 py-1 rounded-full text-xs font-semibold ${adminStatusColors[order.status] || 'bg-gray-100 text-gray-800'}`}>
@@ -884,9 +967,21 @@ const ManageOrdersScreen: React.FC = () => {
                         </span>
                         {order.isScheduled && order.scheduledAt && (
                             <div className="text-[10px] text-purple-600 dark:text-purple-400 font-bold" dir="ltr">
-                                🕒 {new Date(order.scheduledAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                                🕒 {new Date(order.scheduledAt).toLocaleTimeString('ar-EG-u-nu-latn', { hour: 'numeric', minute: '2-digit' })}
                             </div>
                         )}
+                        {(() => {
+                            const isCod = order.paymentMethod === 'cash' && order.orderSource !== 'in_store' && Boolean(order.deliveryZoneId);
+                            if (!isCod) return null;
+                            const driverId = String(order.deliveredBy || order.assignedDeliveryUserId || '');
+                            const bal = driverId ? (Number(driverCashByDriverId[driverId]) || 0) : 0;
+                            if (bal <= 0.01) return null;
+                            return (
+                                <span className="px-2 py-1 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 dark:bg-amber-900/30 dark:text-amber-200">
+                                    نقد لدى المندوب: <span className="font-mono ms-1" dir="ltr">{bal.toFixed(2)}</span>
+                                </span>
+                            );
+                        })()}
                     </div>
                 </div>
 
@@ -1042,6 +1137,15 @@ const ManageOrdersScreen: React.FC = () => {
                         </button>
                     )}
 
+                    {canViewAccounting && order.paymentMethod === 'cash' && order.orderSource !== 'in_store' && Boolean(order.deliveryZoneId) && (
+                        <button
+                            onClick={() => openCodAudit(order.id)}
+                            className="col-span-2 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition text-sm font-semibold"
+                        >
+                            🧾 عرض سجل COD
+                        </button>
+                    )}
+
                     {canReturn && (
                         <div className="col-span-2 flex gap-2">
                             <button
@@ -1181,10 +1285,10 @@ const ManageOrdersScreen: React.FC = () => {
                                     <tr key={order.id} data-order-id={order.id} className={order.id === highlightedOrderId ? 'bg-yellow-50 dark:bg-yellow-900/20' : undefined}>
                                         <td className="px-6 py-4 whitespace-nowrap border-r dark:border-gray-700">
                                             <div className="text-sm font-bold text-gray-900 dark:text-white">#{order.id.slice(-6).toUpperCase()}</div>
-                                            <div className="text-xs text-gray-500 dark:text-gray-400" dir="ltr">{new Date(order.createdAt).toLocaleDateString('en-US')}</div>
+                                            <div className="text-xs text-gray-500 dark:text-gray-400" dir="ltr">{new Date(order.createdAt).toLocaleDateString('ar-EG-u-nu-latn')}</div>
                                             {order.isScheduled && order.scheduledAt && (
-                                                <div className="text-xs text-purple-600 dark:text-purple-400 mt-1 font-semibold" title={new Date(order.scheduledAt).toLocaleString()}>
-                                                    مجدول لـ: <span dir="ltr">{new Date(order.scheduledAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>
+                                                <div className="text-xs text-purple-600 dark:text-purple-400 mt-1 font-semibold" title={new Date(order.scheduledAt).toLocaleString('ar-EG-u-nu-latn')}>
+                                                    مجدول لـ: <span dir="ltr">{new Date(order.scheduledAt).toLocaleTimeString('ar-EG-u-nu-latn', { hour: 'numeric', minute: '2-digit' })}</span>
                                                 </div>
                                             )}
                                         </td>
@@ -1197,6 +1301,20 @@ const ManageOrdersScreen: React.FC = () => {
                                                     منطقة التوصيل: {getDeliveryZoneById(order.deliveryZoneId)?.name['ar'] || order.deliveryZoneId.slice(-6).toUpperCase()}
                                                 </div>
                                             )}
+                                            {(() => {
+                                                const isCod = order.paymentMethod === 'cash' && order.orderSource !== 'in_store' && Boolean(order.deliveryZoneId);
+                                                if (!isCod) return null;
+                                                const driverId = String(order.deliveredBy || order.assignedDeliveryUserId || '');
+                                                const bal = driverId ? (Number(driverCashByDriverId[driverId]) || 0) : 0;
+                                                if (bal <= 0.01) return null;
+                                                return (
+                                                    <div className="mt-1">
+                                                        <span className="inline-flex items-center px-2 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-900 dark:bg-amber-900/30 dark:text-amber-200">
+                                                            نقد لدى المندوب: <span className="font-mono ms-1" dir="ltr">{bal.toFixed(2)}</span>
+                                                        </span>
+                                                    </div>
+                                                );
+                                            })()}
                                             {order.location && (
                                                 <div className="mt-1">
                                                     <button
@@ -1267,15 +1385,15 @@ const ManageOrdersScreen: React.FC = () => {
                                             </ul>
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap border-r dark:border-gray-700">
-                                            <div className="text-sm font-semibold text-orange-500" dir="ltr">{Number(order.total || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ر.ي</div>
-                                            {order.discountAmount && order.discountAmount > 0 && <div className="text-xs text-green-600 dark:text-green-400 line-through" dir="ltr">{Number(order.subtotal + order.deliveryFee).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>}
+                                            <div className="text-sm font-semibold text-orange-500" dir="ltr">{Number(order.total || 0).toLocaleString('ar-EG-u-nu-latn', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ر.ي</div>
+                                            {order.discountAmount && order.discountAmount > 0 && <div className="text-xs text-green-600 dark:text-green-400 line-through" dir="ltr">{Number(order.subtotal + order.deliveryFee).toLocaleString('ar-EG-u-nu-latn', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>}
                                             {(() => {
                                                 const paid = Number(paidSumByOrderId[order.id]) || 0;
                                                 const remaining = Math.max(0, (Number(order.total) || 0) - paid);
                                                 return (
                                                     <div className="mt-1 space-y-0.5 text-xs text-gray-600 dark:text-gray-400">
-                                                        <div>مدفوع: <span className="font-mono" dir="ltr">{Number(paid || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
-                                                        <div>متبقي: <span className="font-mono" dir="ltr">{Number(remaining || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+                                                        <div>مدفوع: <span className="font-mono" dir="ltr">{Number(paid || 0).toLocaleString('ar-EG-u-nu-latn', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+                                                        <div>متبقي: <span className="font-mono" dir="ltr">{Number(remaining || 0).toLocaleString('ar-EG-u-nu-latn', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
                                                     </div>
                                                 );
                                             })()}
@@ -1325,6 +1443,13 @@ const ManageOrdersScreen: React.FC = () => {
                                                             ) : (
                                                                 <div className="text-xs text-gray-400">غير متاحة</div>
                                                             )}
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handlePrintDeliveryNote(order)}
+                                                                className="px-3 py-1 bg-gray-800 text-white rounded hover:bg-gray-900 transition text-xs font-semibold"
+                                                            >
+                                                                طباعة سند تسليم
+                                                            </button>
                                                             {paymentActions}
                                                         </div>
                                                     );
@@ -1344,12 +1469,30 @@ const ManageOrdersScreen: React.FC = () => {
                                                                     </button>
                                                                 </div>
                                                             )}
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handlePrintDeliveryNote(order)}
+                                                                className="px-3 py-1 bg-gray-800 text-white rounded hover:bg-gray-900 transition text-xs font-semibold"
+                                                            >
+                                                                طباعة سند تسليم
+                                                            </button>
                                                             {paymentActions}
                                                         </div>
                                                     );
                                                 }
 
-                                                return <div className="text-xs text-gray-400">غير متاحة</div>;
+                                                return (
+                                                    <div className="flex flex-col gap-2">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handlePrintDeliveryNote(order)}
+                                                            className="px-3 py-1 bg-gray-800 text-white rounded hover:bg-gray-900 transition text-xs font-semibold"
+                                                        >
+                                                            طباعة سند تسليم
+                                                        </button>
+                                                        <div className="text-xs text-gray-400">غير متاحة</div>
+                                                    </div>
+                                                );
                                             })()}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap">
@@ -1448,6 +1591,15 @@ const ManageOrdersScreen: React.FC = () => {
                                                     ? (language === 'ar' ? 'إخفاء السجل' : 'Hide log')
                                                     : (language === 'ar' ? 'سجل الإجراءات' : 'Audit log')}
                                             </button>
+                                            {canViewAccounting && order.paymentMethod === 'cash' && order.orderSource !== 'in_store' && Boolean(order.deliveryZoneId) && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => openCodAudit(order.id)}
+                                                    className="mt-2 w-full px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition text-sm font-semibold"
+                                                >
+                                                    عرض سجل COD
+                                                </button>
+                                            )}
                                             {expandedAuditOrderId === order.id && (
                                                 <div className="mt-2 p-3 rounded-md bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700">
                                                     {auditLoadingOrderId === order.id ? (
@@ -1509,7 +1661,7 @@ const ManageOrdersScreen: React.FC = () => {
                                                                                 )}
                                                                             </div>
                                                                             <div className="shrink-0 text-gray-500 dark:text-gray-400" dir="ltr">
-                                                                                {new Date(ev.createdAt).toLocaleString('en-US')}
+                                                                                {new Date(ev.createdAt).toLocaleString('ar-EG-u-nu-latn')}
                                                                             </div>
                                                                         </div>
                                                                     </li>
@@ -1838,9 +1990,9 @@ const ManageOrdersScreen: React.FC = () => {
                                         {method === 'cash'
                                             ? 'نقدًا'
                                             : method === 'kuraimi'
-                                                ? 'إيداع بنكي'
+                                                ? 'حسابات بنكية'
                                                 : method === 'network'
-                                                    ? 'حوالة'
+                                                    ? 'حوالات'
                                                     : (paymentTranslations[method] || method)}
                                     </option>
                                 ))
@@ -2204,6 +2356,55 @@ const ManageOrdersScreen: React.FC = () => {
             </ConfirmationModal>
 
             <ConfirmationModal
+                isOpen={Boolean(codAuditOrderId)}
+                onClose={() => {
+                    if (codAuditLoading) return;
+                    setCodAuditOrderId(null);
+                    setCodAuditData(null);
+                }}
+                onConfirm={() => { }}
+                title={codAuditOrderId ? `سجل COD للطلب #${codAuditOrderId.slice(-6).toUpperCase()}` : 'سجل COD'}
+                message=""
+                cancelText="إغلاق"
+                hideConfirmButton
+                maxWidthClassName="max-w-3xl"
+            >
+                <div className="space-y-3">
+                    {codAuditLoading ? (
+                        <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+                            <Spinner />
+                            <span>جاري التحميل...</span>
+                        </div>
+                    ) : (
+                        <>
+                            <div className="flex items-center justify-between gap-2">
+                                <div className="text-xs text-gray-600 dark:text-gray-300">
+                                    هذا السجل للعرض فقط.
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        try {
+                                            navigator.clipboard.writeText(JSON.stringify(codAuditData ?? {}, null, 2));
+                                            showNotification('تم النسخ', 'success');
+                                        } catch {
+                                            showNotification('تعذر النسخ', 'error');
+                                        }
+                                    }}
+                                    className="px-3 py-1 bg-gray-900 text-white rounded hover:bg-gray-800 transition text-xs"
+                                >
+                                    نسخ JSON
+                                </button>
+                            </div>
+                            <pre className="text-xs bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700 rounded-md p-3 overflow-auto max-h-[60dvh]">
+                                {JSON.stringify(codAuditData ?? {}, null, 2)}
+                            </pre>
+                        </>
+                    )}
+                </div>
+            </ConfirmationModal>
+
+            <ConfirmationModal
                 isOpen={Boolean(partialPaymentOrderId)}
                 onClose={() => {
                     if (isRecordingPartialPayment) return;
@@ -2367,8 +2568,8 @@ const ManageOrdersScreen: React.FC = () => {
                                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
                                 >
                                     <option value="cash">نقدي</option>
-                                    <option value="network">شبكة/حوالة</option>
-                                    <option value="kuraimi">كريمي/إيداع</option>
+                                    <option value="network">حوالات</option>
+                                    <option value="kuraimi">حسابات بنكية</option>
                                 </select>
                             </div>
 

@@ -189,10 +189,10 @@ const POSTestConsole: React.FC = () => {
       }
       if (hasNetwork) {
         await createInStoreSale({ lines, discountType: 'amount', discountValue: 0, paymentMethod: 'network', paymentBreakdown: [{ method: 'network', amount: 0, referenceNumber: 'NET123', senderName: 'Tester', declaredAmount: 0, amountConfirmed: true }] });
-        addLog('Payment: شبكة/تحويل تم');
+        addLog('Payment: حوالات تم');
       } else if (hasKuraimi) {
         await createInStoreSale({ lines, discountType: 'amount', discountValue: 0, paymentMethod: 'kuraimi', paymentBreakdown: [{ method: 'kuraimi', amount: 0, referenceNumber: 'KR123', senderName: 'Tester', declaredAmount: 0, amountConfirmed: true }] });
-        addLog('Payment: كريمي تم');
+        addLog('Payment: حسابات بنكية تم');
       }
       if (hasCash && (hasNetwork || hasKuraimi) && currentShift) {
         const other = hasNetwork ? 'network' : 'kuraimi';

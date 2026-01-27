@@ -367,7 +367,7 @@ const ManageChallengesScreen: React.FC = () => {
                                         +{challenge.rewardValue} نقطة
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
-                                        {new Date(challenge.endDate).toLocaleDateString('ar-SA')}
+                                        {new Date(challenge.endDate).toLocaleDateString('ar-SA-u-nu-latn')}
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
                                         {participantCounts[challenge.id] || 0}

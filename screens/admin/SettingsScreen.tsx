@@ -22,6 +22,7 @@ const SettingsScreen: React.FC = () => {
   const { settings, updateSettings } = useSettings();
   const { showNotification } = useToast();
   const [formState, setFormState] = useState<AppSettings>(settings);
+  const [branchBrandingWarehouseId, setBranchBrandingWarehouseId] = useState<string>('');
   const [isSaving, setIsSaving] = useState(false);
   const [isMaintenanceSaving, setIsMaintenanceSaving] = useState(false);
   const [banks, setBanks] = useState<Bank[]>([]);
@@ -91,6 +92,12 @@ const SettingsScreen: React.FC = () => {
   const { priceTiers, specialPrices } = usePricing();
   const { hasPermission } = useAuth();
 
+  useEffect(() => {
+    if (branchBrandingWarehouseId) return;
+    const firstActive = warehouses.find(w => w.isActive);
+    if (firstActive?.id) setBranchBrandingWarehouseId(firstActive.id);
+  }, [branchBrandingWarehouseId, warehouses]);
+
   const checklist = useMemo(() => {
     const nameOk = Boolean((settings.cafeteriaName?.ar || settings.cafeteriaName?.en || '').trim());
     const contactOk = Boolean((settings.contactNumber || '').trim());
@@ -106,9 +113,9 @@ const SettingsScreen: React.FC = () => {
       : (!anyPaymentEnabled
           ? 'فعّل طريقة دفع'
           : (!kuraimiOk
-              ? 'أضف بنك للكريمي'
+              ? 'أضف بنك'
               : !networkOk
-                ? 'أضف مستلماً للشبكة'
+                ? 'أضف مستلماً للحوالات'
                 : ''));
 
     const zonesActiveCount = deliveryZones.filter(z => z.isActive).length;
@@ -729,7 +736,7 @@ const SettingsScreen: React.FC = () => {
       }));
     }
     else if (name.startsWith('posFlags.')) {
-      const field = name.split('.')[1] as 'barcodeScanEnabled' | 'autoPrintThermalEnabled' | 'thermalCopies';
+      const field = name.split('.')[1] as 'barcodeScanEnabled' | 'autoPrintThermalEnabled' | 'thermalCopies' | 'thermalPaperWidth';
       const isChecked = (e.target as HTMLInputElement).checked;
       setFormState(prev => ({
         ...prev,
@@ -737,7 +744,41 @@ const SettingsScreen: React.FC = () => {
           barcodeScanEnabled: Boolean(prev.posFlags?.barcodeScanEnabled),
           autoPrintThermalEnabled: Boolean(prev.posFlags?.autoPrintThermalEnabled),
           thermalCopies: Number(prev.posFlags?.thermalCopies) || 1,
-          [field]: field === 'thermalCopies' ? Math.max(1, parseInt(value) || 1) : isChecked,
+          thermalPaperWidth: (prev.posFlags?.thermalPaperWidth === '80mm' ? '80mm' : '58mm'),
+          [field]: field === 'thermalCopies'
+            ? Math.max(1, parseInt(value) || 1)
+            : field === 'thermalPaperWidth'
+              ? (value === '80mm' ? '80mm' : '58mm')
+              : isChecked,
+        },
+      }));
+    }
+    else if (name.startsWith('defaultInvoiceTemplateByRole.')) {
+      const field = name.split('.')[1] as 'pos' | 'admin' | 'merchant';
+      const nextValue = value === 'thermal' ? 'thermal' : 'a4';
+      setFormState(prev => ({
+        ...prev,
+        defaultInvoiceTemplateByRole: {
+          pos: prev.defaultInvoiceTemplateByRole?.pos === 'a4' ? 'a4' : 'thermal',
+          admin: prev.defaultInvoiceTemplateByRole?.admin === 'thermal' ? 'thermal' : 'a4',
+          merchant: prev.defaultInvoiceTemplateByRole?.merchant === 'thermal' ? 'thermal' : 'a4',
+          [field]: nextValue,
+        },
+      }));
+    }
+    else if (name.startsWith('branchBranding.')) {
+      const parts = name.split('.');
+      const warehouseId = parts[1] || '';
+      const field = (parts[2] || '') as 'name' | 'address' | 'contactNumber' | 'logoUrl';
+      if (!warehouseId || !field) return;
+      setFormState(prev => ({
+        ...prev,
+        branchBranding: {
+          ...(prev.branchBranding || {}),
+          [warehouseId]: {
+            ...(prev.branchBranding?.[warehouseId] || {}),
+            [field]: value,
+          },
         },
       }));
     }
@@ -1108,11 +1149,11 @@ const SettingsScreen: React.FC = () => {
             </label>
             <label className="flex items-center p-3 bg-gray-50 dark:bg-gray-700 rounded-md cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600">
               <input type="checkbox" name="payment.kuraimi" checked={formState.paymentMethods.kuraimi} onChange={handleChange} className="form-checkbox h-5 w-5 text-gold-500 rounded focus:ring-gold-500" />
-              <span className="mx-3 text-gray-700 dark:text-gray-300">الكريمي</span>
+              <span className="mx-3 text-gray-700 dark:text-gray-300">حسابات بنكية</span>
             </label>
             <label className="flex items-center p-3 bg-gray-50 dark:bg-gray-700 rounded-md cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600">
               <input type="checkbox" name="payment.network" checked={formState.paymentMethods.network} onChange={handleChange} className="form-checkbox h-5 w-5 text-gold-500 rounded focus:ring-gold-500" />
-              <span className="mx-3 text-gray-700 dark:text-gray-300">شبكة</span>
+              <span className="mx-3 text-gray-700 dark:text-gray-300">حوالات</span>
             </label>
           </div>
         </section>
@@ -1155,7 +1196,118 @@ const SettingsScreen: React.FC = () => {
                 />
                 <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">مثلاً 2 لنسخة عميل + نسخة تاجر.</p>
               </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">عرض الورق الحراري</label>
+                <select
+                  name="posFlags.thermalPaperWidth"
+                  value={formState.posFlags?.thermalPaperWidth === '80mm' ? '80mm' : '58mm'}
+                  onChange={handleChange}
+                  className="w-full p-3 border border-gray-300 rounded-lg dark:bg-gray-700 dark:border-gray-600 focus:ring-2 focus:ring-gold-500 focus:border-gold-500 transition"
+                >
+                  <option value="58mm">58mm</option>
+                  <option value="80mm">80mm</option>
+                </select>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">تُستخدم للطباعة الحرارية (POS) بدون افتراض نوع طابعة.</p>
+              </div>
             </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">القالب الافتراضي (POS)</label>
+                <select
+                  name="defaultInvoiceTemplateByRole.pos"
+                  value={formState.defaultInvoiceTemplateByRole?.pos === 'a4' ? 'a4' : 'thermal'}
+                  onChange={handleChange}
+                  className="w-full p-3 border border-gray-300 rounded-lg dark:bg-gray-700 dark:border-gray-600 focus:ring-2 focus:ring-gold-500 focus:border-gold-500 transition"
+                >
+                  <option value="thermal">حراري</option>
+                  <option value="a4">A4</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">القالب الافتراضي (Admin)</label>
+                <select
+                  name="defaultInvoiceTemplateByRole.admin"
+                  value={formState.defaultInvoiceTemplateByRole?.admin === 'thermal' ? 'thermal' : 'a4'}
+                  onChange={handleChange}
+                  className="w-full p-3 border border-gray-300 rounded-lg dark:bg-gray-700 dark:border-gray-600 focus:ring-2 focus:ring-gold-500 focus:border-gold-500 transition"
+                >
+                  <option value="a4">A4</option>
+                  <option value="thermal">حراري</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4 border-r-4 rtl:border-l-4 rtl:border-r-0 border-gold-500 pr-4 rtl:pr-0 rtl:pl-4">
+            هوية الفروع للطباعة (اختياري)
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">اختر الفرع/المستودع</label>
+              <select
+                value={branchBrandingWarehouseId}
+                onChange={(e) => setBranchBrandingWarehouseId(e.target.value)}
+                className="w-full p-3 border border-gray-300 rounded-lg dark:bg-gray-700 dark:border-gray-600 focus:ring-2 focus:ring-gold-500 focus:border-gold-500 transition"
+              >
+                <option value="">—</option>
+                {warehouses.filter(w => w.isActive).map(w => (
+                  <option key={w.id} value={w.id}>{w.name} ({w.code})</option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">يُستخدم في الفاتورة الحرارية وA4 وسند التسليم عند توفره.</p>
+            </div>
+
+            {(() => {
+              const wid = String(branchBrandingWarehouseId || '');
+              if (!wid) return null;
+              const current = formState.branchBranding?.[wid] || {};
+              return (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">اسم الفرع</label>
+                    <input
+                      type="text"
+                      name={`branchBranding.${wid}.name`}
+                      value={current.name || ''}
+                      onChange={handleChange}
+                      className="w-full p-3 border border-gray-300 rounded-lg dark:bg-gray-700 dark:border-gray-600"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">عنوان الفرع</label>
+                    <input
+                      type="text"
+                      name={`branchBranding.${wid}.address`}
+                      value={current.address || ''}
+                      onChange={handleChange}
+                      className="w-full p-3 border border-gray-300 rounded-lg dark:bg-gray-700 dark:border-gray-600"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">رقم التواصل</label>
+                    <input
+                      type="text"
+                      name={`branchBranding.${wid}.contactNumber`}
+                      value={current.contactNumber || ''}
+                      onChange={handleChange}
+                      className="w-full p-3 border border-gray-300 rounded-lg dark:bg-gray-700 dark:border-gray-600"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">رابط الشعار (URL أو Data URL)</label>
+                    <input
+                      type="text"
+                      name={`branchBranding.${wid}.logoUrl`}
+                      value={current.logoUrl || ''}
+                      onChange={handleChange}
+                      className="w-full p-3 border border-gray-300 rounded-lg dark:bg-gray-700 dark:border-gray-600"
+                    />
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </section>
 

@@ -142,6 +142,12 @@ const defaultSettings: AppSettings = {
     barcodeScanEnabled: true,
     autoPrintThermalEnabled: true,
     thermalCopies: 2,
+    thermalPaperWidth: '58mm',
+  },
+  defaultInvoiceTemplateByRole: {
+    pos: 'thermal',
+    admin: 'a4',
+    merchant: 'a4',
   },
   inventoryFlags: {
     autoArchiveExpired: false,

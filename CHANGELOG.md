@@ -7,6 +7,8 @@
 - تحسين رسائل الأخطاء عند رفض العمليات داخل فترات مقفلة عبر localizeSupabaseError لذكر السبب صراحةً.
 - لا تغييرات على المنطق المحاسبي، التريجرات، أو سياسات RLS؛ تعديل واجهة فقط.
 - المراجع: [FinancialReports.tsx](file:///d:/AhmedZ/screens/admin/reports/FinancialReports.tsx)، [errorUtils.ts](file:///d:/AhmedZ/utils/errorUtils.ts)
+- Critical Fix: Payment Proof Persistence
+- Security Fix: Coupon Usage Atomic Enforcement
 
 ## 2026-01-25 — Remediation & Hardening
 - اعتماد شفافية الفاتورة (Invoice → Promotion → Approval → Journal) عبر واجهة: get_invoice_audit  

@@ -156,6 +156,26 @@ const OrderConfirmationScreen: React.FC = () => {
                     </p>
                 )}
 
+                {order.paymentProof && (
+                    <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg text-start">
+                        <div className="text-sm font-bold text-gray-800 dark:text-gray-200">إثبات الدفع</div>
+                        <div className="mt-2 text-sm">
+                            {order.paymentProofType === 'image' ? (
+                                <a
+                                    href={order.paymentProof}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-blue-600 dark:text-blue-400 hover:underline"
+                                >
+                                    عرض الصورة
+                                </a>
+                            ) : (
+                                <span className="font-mono text-gray-700 dark:text-gray-300">{order.paymentProof}</span>
+                            )}
+                        </div>
+                    </div>
+                )}
+
                 {order.status === 'scheduled' && order.scheduledAt && (
                      <div className="mt-8 p-4 bg-blue-50 dark:bg-blue-900/30 rounded-lg">
                         <h2 className="text-xl font-bold text-blue-800 dark:text-blue-300">مجدول لـ</h2>

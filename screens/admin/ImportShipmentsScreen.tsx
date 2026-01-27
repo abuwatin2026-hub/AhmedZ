@@ -118,13 +118,13 @@ const ImportShipmentsScreen: React.FC = () => {
                                 )}
                                 {shipment.expectedArrivalDate && (
                                     <div className="text-gray-600">
-                                        الوصول المتوقع: {new Date(shipment.expectedArrivalDate).toLocaleDateString('ar-EG')}
+                                        الوصول المتوقع: {new Date(shipment.expectedArrivalDate).toLocaleDateString('ar-EG-u-nu-latn')}
                                     </div>
                                 )}
                                 {shipment.actualArrivalDate && (
                                     <div className="flex items-center gap-2 text-green-600">
                                         <Check className="w-4 h-4" />
-                                        <span>وصل في {new Date(shipment.actualArrivalDate).toLocaleDateString('ar-EG')}</span>
+                                        <span>وصل في {new Date(shipment.actualArrivalDate).toLocaleDateString('ar-EG-u-nu-latn')}</span>
                                     </div>
                                 )}
                             </div>

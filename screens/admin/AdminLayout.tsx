@@ -88,7 +88,7 @@ const AdminNotificationMenu: React.FC = () => {
                     {note.title}
                   </p>
                   <span className="text-[10px] text-gray-400">
-                    {new Date(note.createdAt).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })}
+                    {new Date(note.createdAt).toLocaleTimeString('ar-SA-u-nu-latn', { hour: '2-digit', minute: '2-digit' })}
                   </span>
                 </div>
                 <p className="text-xs text-gray-600 dark:text-gray-400 line-clamp-2">
@@ -117,6 +117,7 @@ const navLinks: Array<{ to: string; label: string; icon: React.ReactNode; permis
   { to: 'warehouses', label: 'المستودعات', icon: <Icons.Package />, permission: 'stock.manage' },
   { to: 'warehouse-transfers', label: 'تحويلات المستودعات', icon: <Icons.TruckIcon />, permission: 'stock.manage' },
   { to: 'orders', label: 'إدارة الطلبات', icon: <Icons.OrdersIcon />, permission: 'orders.view' },
+  { to: 'cod-settlements', label: 'تسوية COD', icon: <Icons.MoneyIcon />, permission: 'accounting.manage' },
   { to: '/pos', label: 'نقطة البيع (POS)', icon: <Icons.CartIcon />, permission: 'orders.createInStore' },
   { to: 'my-shift', label: 'ورديتي', icon: <Icons.ClockIcon />, permission: 'cashShifts.viewOwn' },
   { to: 'delivery-zones', label: 'مناطق التوصيل', icon: <Icons.TruckIcon />, permission: 'deliveryZones.manage' },
@@ -156,6 +157,7 @@ const routePermissions: Record<string, AdminPermission> = {
   'warehouses': 'stock.manage',
   'warehouse-transfers': 'stock.manage',
   'orders': 'orders.view',
+  'cod-settlements': 'accounting.manage',
   'my-shift': 'cashShifts.viewOwn',
   'delivery-zones': 'deliveryZones.manage',
   'items': 'items.manage',
@@ -326,7 +328,7 @@ const AdminLayout: React.FC = () => {
               <Icons.ClockIcon className={`w-5 h-5 ${currentShift ? 'text-green-500' : 'text-gray-400'}`} />
               <div className="flex flex-col items-start px-2">
                 <span className="font-semibold text-sm">{currentShift ? 'الوردية مفتوحة' : 'بدء الوردية'}</span>
-                {currentShift && <span className="text-xs opacity-75">منذ {new Date(currentShift.openedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>}
+                {currentShift && <span className="text-xs opacity-75">منذ {new Date(currentShift.openedAt).toLocaleTimeString('ar-EG-u-nu-latn', { hour: '2-digit', minute: '2-digit' })}</span>}
               </div>
             </button>
           </div>

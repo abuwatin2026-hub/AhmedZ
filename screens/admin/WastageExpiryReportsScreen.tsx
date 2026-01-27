@@ -146,7 +146,7 @@ const WastageExpiryReportsScreen: React.FC = () => {
           <tbody>
             {entries.map(e => (
               <tr key={e.id} className="border-b dark:border-gray-700">
-                <td className="p-2">{new Date(e.occurredAt).toLocaleString('ar-SA')}</td>
+                <td className="p-2">{new Date(e.occurredAt).toLocaleString('ar-SA-u-nu-latn')}</td>
                 <td className="p-2">{e.entryType === 'wastage' ? 'هدر' : 'انتهاء'}</td>
                 <td className="p-2">{e.itemId.slice(-6).toUpperCase()}</td>
                 <td className="p-2">{e.warehouseId ? e.warehouseId.slice(-6).toUpperCase() : '-'}</td>

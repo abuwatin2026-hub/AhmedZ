@@ -29,6 +29,15 @@ const SystemAuditScreen: React.FC = () => {
         marketing: 'التسويق',
         customers: 'العملاء',
         reviews: 'التقييمات',
+        warehouses: 'المستودعات',
+        admin_users: 'إدارة المستخدمين',
+        sales_returns: 'مرتجعات',
+        chart_of_accounts: 'دليل الحسابات',
+        banks: 'الحسابات البنكية',
+        transfer_recipients: 'مستلمو الحوالات',
+        menu_items: 'المنتجات',
+        addons: 'الإضافات',
+        delivery_zones: 'مناطق التوصيل',
     }), []);
 
     const actionLabels: Record<string, string> = useMemo(() => ({
@@ -45,6 +54,9 @@ const SystemAuditScreen: React.FC = () => {
         created: 'تم إنشاء',
         updated: 'تم تحديث',
         deleted: 'تم حذف',
+        permission_change: 'تغيير الصلاحيات',
+        permissions_changed: 'تغيير الصلاحيات',
+        permission_changed: 'تغيير الصلاحيات',
     }), []);
 
     const safeString = (value: unknown) => (typeof value === 'string' ? value : String(value ?? ''));
@@ -102,7 +114,7 @@ const SystemAuditScreen: React.FC = () => {
         if (!raw) return '-';
         const direct = actionLabels[raw];
         if (direct) return direct;
-        const normalized = raw.replace(/\./g, '_').toLowerCase();
+        const normalized = raw.replace(/[\s.\-]+/g, '_').toLowerCase();
         const direct2 = actionLabels[normalized];
         if (direct2) return direct2;
         const tableOpMatch = raw.match(/^([a-z0-9_]+)\.([a-z0-9_]+)$/i);
@@ -146,6 +158,9 @@ const SystemAuditScreen: React.FC = () => {
         }
 
         if (/^User logged in$/i.test(raw)) return 'تم تسجيل الدخول';
+        if (/^User logged out$/i.test(raw)) return 'تم تسجيل الخروج';
+        const permChanged = raw.match(/^Permissions?\s+changed\s+for\s+user\s+(.+)$/i);
+        if (permChanged?.[1]) return `تم تغيير صلاحيات المستخدم ${permChanged[1]}`;
         const delivered = raw.match(/^Order\s+#?([A-Za-z0-9_-]+)\s+delivered$/i);
         if (delivered?.[1]) return `تم تسليم الطلب #${delivered[1]}`;
 
@@ -216,13 +231,24 @@ const SystemAuditScreen: React.FC = () => {
         if (!iso) return '-';
         const d = new Date(iso);
         if (isNaN(d.getTime())) return '-';
-        return d.toLocaleString('en-US');
+        return d.toLocaleString('ar-EG-u-nu-latn');
+    };
+
+    const formatReason = (code?: string) => {
+        const v = safeString(code).trim().toUpperCase();
+        if (!v) return '—';
+        if (v === 'MISSING_REASON') return 'غير مذكور';
+        if (v === 'POLICY_OVERRIDE') return 'استثناء سياسة';
+        if (v === 'USER_REQUEST') return 'طلب المستخدم';
+        if (v === 'SYSTEM') return 'النظام';
+        if (v === 'SECURITY') return 'أمني';
+        return code || '—';
     };
 
     return (
         <div className="space-y-6 animate-fade-in">
             <div className="flex justify-between items-center">
-                <h1 className="text-3xl font-bold dark:text-white">سجل النظام (Audit Logs)</h1>
+                <h1 className="text-3xl font-bold dark:text-white">سجل النظام</h1>
                 <div className="flex gap-2">
                     <select
                         value={moduleFilter}
@@ -309,13 +335,13 @@ const SystemAuditScreen: React.FC = () => {
                                             </span>
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white border-r dark:border-gray-700">
-                                            {safeString(log.reasonCode || '').trim() || '—'}
+                                            {formatReason(log.reasonCode)}
                                         </td>
                                         <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400 max-w-md break-words whitespace-pre-wrap line-clamp-2 border-r dark:border-gray-700" title={log.details}>
                                             {formatDetails(log.details)}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                                            {actorNames[log.performedBy] || log.performedBy || 'System'}
+                                            {actorNames[log.performedBy] || log.performedBy || 'النظام'}
                                         </td>
                                     </tr>
                                 ))

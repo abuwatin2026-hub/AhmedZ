@@ -353,9 +353,9 @@ const ManageExpensesScreen: React.FC = () => {
                                         disabled={!payNow}
                                         className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600 disabled:opacity-60"
                                     >
-                                        <option value="cash">كاش</option>
-                                        <option value="network">شبكة/حوالة</option>
-                                        <option value="kuraimi">كريمي/إيداع</option>
+                                        <option value="cash">نقدًا</option>
+                                        <option value="network">حوالات</option>
+                                        <option value="kuraimi">حسابات بنكية</option>
                                     </select>
                                 </div>
                             </div>
@@ -395,9 +395,9 @@ const ManageExpensesScreen: React.FC = () => {
                                         onChange={e => setPaymentMethod(e.target.value)}
                                         className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600"
                                     >
-                                        <option value="cash">كاش</option>
-                                        <option value="network">شبكة/حوالة</option>
-                                        <option value="kuraimi">كريمي/إيداع</option>
+                                        <option value="cash">نقدًا</option>
+                                        <option value="network">حوالات</option>
+                                        <option value="kuraimi">حسابات بنكية</option>
                                     </select>
                                 </div>
                             </div>

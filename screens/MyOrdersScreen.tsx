@@ -34,7 +34,7 @@ const OrderHistoryCard: React.FC<{
                         طلب #{order.id.split('-')[1]}
                     </p>
                     <p className="text-sm text-gray-500 dark:text-gray-400">
-                        {new Date(order.createdAt).toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric' })}
+                        {new Date(order.createdAt).toLocaleDateString('ar-EG-u-nu-latn', { year: 'numeric', month: 'long', day: 'numeric' })}
                     </p>
                 </div>
                 <div className={`text-sm font-semibold px-3 py-1 rounded-full ${colorClasses}`}>

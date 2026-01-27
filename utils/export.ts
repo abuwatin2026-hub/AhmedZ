@@ -2,6 +2,192 @@ import { Share } from '@capacitor/share';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Capacitor } from '@capacitor/core';
 
+const createPdfDataUriFromElement = async (
+    element: HTMLElement,
+    title: string,
+    options?: {
+        pageSize?: [number, number];
+        scale?: number;
+        unit?: 'mm' | 'px';
+        headerTitle?: string;
+        headerSubtitle?: string;
+        footerText?: string;
+        headerHeight?: number;
+        footerHeight?: number;
+        logoUrl?: string;
+        accentColor?: string;
+        brandLines?: string[];
+        pageNumbers?: boolean;
+    }
+): Promise<string> => {
+    const [{ jsPDF }, { default: html2canvas }] = await Promise.all([
+        import('jspdf'),
+        import('html2canvas'),
+    ]);
+    const hexToRgb = (hex?: string): { r: number; g: number; b: number } | null => {
+        if (!hex) return null;
+        const h = hex.trim().replace(/^#/, '');
+        if (!/^[0-9a-fA-F]{6}$/.test(h)) return null;
+        return { r: parseInt(h.slice(0, 2), 16), g: parseInt(h.slice(2, 4), 16), b: parseInt(h.slice(4, 6), 16) };
+    };
+    const textOn = (rgb: { r: number; g: number; b: number } | null): 'light' | 'dark' => {
+        if (!rgb) return 'dark';
+        const srgb = [rgb.r / 255, rgb.g / 255, rgb.b / 255].map(v => v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4));
+        const L = 0.2126 * srgb[0] + 0.7152 * srgb[1] + 0.0722 * srgb[2];
+        return L > 0.45 ? 'dark' : 'light';
+    };
+    const accent = hexToRgb(options?.accentColor);
+    const brandFooter = [
+        options?.footerText || '',
+        ...(options?.brandLines || []),
+    ].filter(Boolean).join(' • ');
+    const prepareLogoData = async (src?: string): Promise<{ data: string; format: 'PNG' | 'JPEG'; width: number; height: number } | null> => {
+        if (!src) return null;
+        try {
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.decoding = 'async';
+            img.referrerPolicy = 'no-referrer';
+            const loaded = await new Promise<HTMLImageElement>((resolve, reject) => {
+                img.onload = () => resolve(img);
+                img.onerror = reject;
+                img.src = src;
+            });
+            const maxH = 32;
+            const ratio = loaded.width > 0 && loaded.height > 0 ? loaded.width / loaded.height : 1;
+            const targetH = maxH;
+            const targetW = Math.max(1, Math.round(targetH * ratio));
+            const canvasEl = document.createElement('canvas');
+            canvasEl.width = targetW;
+            canvasEl.height = targetH;
+            const ctx = canvasEl.getContext('2d');
+            if (!ctx) return null;
+            ctx.clearRect(0, 0, targetW, targetH);
+            ctx.drawImage(loaded, 0, 0, targetW, targetH);
+            const data = canvasEl.toDataURL('image/png');
+            return { data, format: 'PNG', width: targetW, height: targetH };
+        } catch {
+            return null;
+        }
+    };
+    const logo = await prepareLogoData(options?.logoUrl);
+    const isMobile = /Mobi|Android/i.test(navigator.userAgent) || Capacitor.isNativePlatform();
+    const scale = options?.scale ?? (isMobile ? 1.5 : 2);
+    const usePx = options?.unit ? options.unit === 'px' : isMobile;
+    const headerTitle = options?.headerTitle ?? '';
+    const headerSubtitle = options?.headerSubtitle ?? title;
+    const footerText = brandFooter || `تم الإنشاء: ${new Date().toLocaleString('ar-EG-u-nu-latn')}`;
+    const canvas = await html2canvas(element, { scale });
+    const imgData = canvas.toDataURL('image/png');
+
+    let dataUri = '';
+    if (usePx) {
+        const headerPx = Math.max(0, options?.headerHeight ?? 40);
+        const footerPx = Math.max(0, options?.footerHeight ?? 24);
+        const pageSize = options?.pageSize || [canvas.width, canvas.height + headerPx + footerPx];
+        const orientation = pageSize[0] > pageSize[1] ? 'l' : 'p';
+        const pdf = new jsPDF({ orientation, unit: 'px', format: pageSize });
+        const pageWidth = pdf.internal.pageSize.getWidth();
+        const pageHeight = pdf.internal.pageSize.getHeight();
+        let headerTop = 8;
+        if (accent) {
+            pdf.setFillColor(accent.r, accent.g, accent.b);
+            pdf.rect(0, 0, pageWidth, headerPx, 'F');
+        }
+        const tonePx = textOn(accent) === 'light' ? { r: 255, g: 255, b: 255 } : { r: 30, g: 41, b: 59 };
+        pdf.setTextColor(tonePx.r, tonePx.g, tonePx.b);
+        if (logo) {
+            const lw = Math.min(logo.width, Math.round(pageWidth * 0.18));
+            const lh = logo.height;
+            const ly = Math.min(headerPx - 10, headerTop);
+            pdf.addImage(logo.data, logo.format, 12, ly, lw, lh);
+        }
+        const titleY = Math.min(18, headerPx - 14);
+        const subtitleY = Math.min(32, headerPx - 6);
+        if (headerTitle) {
+            pdf.setFontSize(14);
+            pdf.text(headerTitle, pageWidth / 2, titleY, { align: 'center' as any });
+        }
+        if (headerSubtitle) {
+            pdf.setFontSize(11);
+            pdf.text(headerSubtitle, pageWidth / 2, subtitleY, { align: 'center' as any });
+        }
+        pdf.setTextColor(0, 0, 0);
+        pdf.addImage(imgData, 'PNG', 0, headerPx, pageWidth, pageHeight - headerPx - footerPx);
+        pdf.setFontSize(10);
+        const pageLabelPx = options?.pageNumbers ? `الصفحة 1 من 1` : '';
+        const footerLinePx = [footerText, pageLabelPx].filter(Boolean).join(' • ');
+        pdf.text(footerLinePx, pageWidth / 2, pageHeight - 8, { align: 'center' as any });
+        dataUri = pdf.output('datauristring');
+    } else {
+        const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
+        const pageWidth = pdf.internal.pageSize.getWidth();
+        const pageHeight = pdf.internal.pageSize.getHeight();
+        const headerMm = Math.max(0, options?.headerHeight ?? 10);
+        const footerMm = Math.max(0, options?.footerHeight ?? 8);
+        const contentHeightMm = Math.max(0.1, pageHeight - headerMm - footerMm);
+        const imgWidth = pageWidth;
+
+        const imgDataPxWidth = canvas.width;
+        const imgDataPxHeight = canvas.height;
+
+        const sliceCanvas = document.createElement('canvas');
+        const sliceContext = sliceCanvas.getContext('2d');
+        if (!sliceContext) throw new Error('Failed to initialize canvas context');
+        sliceCanvas.width = imgDataPxWidth;
+
+        const mmPerPx = pageWidth / imgDataPxWidth;
+        const pageHeightPx = contentHeightMm / mmPerPx;
+        const totalPages = Math.max(1, Math.ceil(imgDataPxHeight / pageHeightPx));
+        let currentPage = 1;
+
+        let offsetPx = 0;
+        while (offsetPx < imgDataPxHeight) {
+            const sliceHeightPx = Math.min(imgDataPxHeight - offsetPx, pageHeightPx);
+            sliceCanvas.height = sliceHeightPx;
+            sliceContext.clearRect(0, 0, sliceCanvas.width, sliceCanvas.height);
+            sliceContext.drawImage(canvas, 0, offsetPx, sliceCanvas.width, sliceHeightPx, 0, 0, sliceCanvas.width, sliceCanvas.height);
+            const sliceData = sliceCanvas.toDataURL('image/png');
+            const leftPad = 8;
+            const titleYmm = Math.min(6, headerMm - 4);
+            const subtitleYmm = Math.min(10, headerMm - 1);
+            if (accent) {
+                pdf.setFillColor(accent.r, accent.g, accent.b);
+                pdf.rect(0, 0, pageWidth, headerMm, 'F');
+            }
+            const toneMm = textOn(accent) === 'light' ? { r: 255, g: 255, b: 255 } : { r: 30, g: 41, b: 59 };
+            pdf.setTextColor(toneMm.r, toneMm.g, toneMm.b);
+            if (logo) {
+                const mmRatio = mmPerPx;
+                const lwMm = Math.min(pageWidth * 0.18, logo.width * mmRatio);
+                const lhMm = logo.height * mmRatio;
+                pdf.addImage(logo.data, logo.format, leftPad, Math.max(2, titleYmm - 4), lwMm, lhMm);
+            }
+            if (headerTitle) {
+                pdf.setFontSize(12);
+                pdf.text(headerTitle, pageWidth / 2, titleYmm, { align: 'center' as any });
+            }
+            if (headerSubtitle) {
+                pdf.setFontSize(10);
+                pdf.text(headerSubtitle, pageWidth / 2, subtitleYmm, { align: 'center' as any });
+            }
+            pdf.setTextColor(0, 0, 0);
+            pdf.addImage(sliceData, 'PNG', 0, headerMm, imgWidth, (sliceHeightPx * mmPerPx));
+            pdf.setFontSize(9);
+            const pageLabel = options?.pageNumbers ? `الصفحة ${currentPage} من ${totalPages}` : '';
+            const footerLine = [footerText, pageLabel].filter(Boolean).join(' • ');
+            pdf.text(footerLine, pageWidth / 2, pageHeight - 4, { align: 'center' as any });
+            offsetPx += sliceHeightPx;
+            currentPage += 1;
+            if (offsetPx < imgDataPxHeight) pdf.addPage();
+        }
+
+        dataUri = pdf.output('datauristring');
+    }
+
+    return dataUri;
+};
+
 export const sharePdf = async (
     elementId: string,
     title: string,
@@ -25,170 +211,7 @@ export const sharePdf = async (
     if (!element) return false;
 
     try {
-        const [{ jsPDF }, { default: html2canvas }] = await Promise.all([
-            import('jspdf'),
-            import('html2canvas'),
-        ]);
-        const hexToRgb = (hex?: string): { r: number; g: number; b: number } | null => {
-            if (!hex) return null;
-            const h = hex.trim().replace(/^#/, '');
-            if (!/^[0-9a-fA-F]{6}$/.test(h)) return null;
-            return { r: parseInt(h.slice(0, 2), 16), g: parseInt(h.slice(2, 4), 16), b: parseInt(h.slice(4, 6), 16) };
-        };
-        const textOn = (rgb: { r: number; g: number; b: number } | null): 'light' | 'dark' => {
-            if (!rgb) return 'dark';
-            const srgb = [rgb.r / 255, rgb.g / 255, rgb.b / 255].map(v => v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4));
-            const L = 0.2126 * srgb[0] + 0.7152 * srgb[1] + 0.0722 * srgb[2];
-            return L > 0.45 ? 'dark' : 'light';
-        };
-        const accent = hexToRgb(options?.accentColor);
-        const brandFooter = [
-            options?.footerText || '',
-            ...(options?.brandLines || []),
-        ].filter(Boolean).join(' • ');
-        const prepareLogoData = async (src?: string): Promise<{ data: string; format: 'PNG' | 'JPEG'; width: number; height: number } | null> => {
-            if (!src) return null;
-            try {
-                const img = new Image();
-                img.crossOrigin = 'anonymous';
-                img.decoding = 'async';
-                img.referrerPolicy = 'no-referrer';
-                const loaded = await new Promise<HTMLImageElement>((resolve, reject) => {
-                    img.onload = () => resolve(img);
-                    img.onerror = reject;
-                    img.src = src;
-                });
-                const maxH = 32;
-                const ratio = loaded.width > 0 && loaded.height > 0 ? loaded.width / loaded.height : 1;
-                const targetH = maxH;
-                const targetW = Math.max(1, Math.round(targetH * ratio));
-                const canvasEl = document.createElement('canvas');
-                canvasEl.width = targetW;
-                canvasEl.height = targetH;
-                const ctx = canvasEl.getContext('2d');
-                if (!ctx) return null;
-                ctx.clearRect(0, 0, targetW, targetH);
-                ctx.drawImage(loaded, 0, 0, targetW, targetH);
-                const data = canvasEl.toDataURL('image/png');
-                return { data, format: 'PNG', width: targetW, height: targetH };
-            } catch {
-                return null;
-            }
-        };
-        const logo = await prepareLogoData(options?.logoUrl);
-        const isMobile = /Mobi|Android/i.test(navigator.userAgent) || Capacitor.isNativePlatform();
-        const scale = options?.scale ?? (isMobile ? 1.5 : 2);
-        const usePx = options?.unit ? options.unit === 'px' : isMobile;
-        const headerTitle = options?.headerTitle ?? '';
-        const headerSubtitle = options?.headerSubtitle ?? title;
-        const footerText = brandFooter || `تم الإنشاء: ${new Date().toLocaleString('en-US')}`;
-        const canvas = await html2canvas(element, { scale });
-        const imgData = canvas.toDataURL('image/png');
-
-        let dataUri = '';
-        if (usePx) {
-            const headerPx = Math.max(0, options?.headerHeight ?? 40);
-            const footerPx = Math.max(0, options?.footerHeight ?? 24);
-            const pageSize = options?.pageSize || [canvas.width, canvas.height + headerPx + footerPx];
-            const orientation = pageSize[0] > pageSize[1] ? 'l' : 'p';
-            const pdf = new jsPDF({ orientation, unit: 'px', format: pageSize });
-            const pageWidth = pdf.internal.pageSize.getWidth();
-            const pageHeight = pdf.internal.pageSize.getHeight();
-            let headerTop = 8;
-            if (accent) {
-                pdf.setFillColor(accent.r, accent.g, accent.b);
-                pdf.rect(0, 0, pageWidth, headerPx, 'F');
-            }
-            const tonePx = textOn(accent) === 'light' ? { r: 255, g: 255, b: 255 } : { r: 30, g: 41, b: 59 };
-            pdf.setTextColor(tonePx.r, tonePx.g, tonePx.b);
-            if (logo) {
-                const lw = Math.min(logo.width, Math.round(pageWidth * 0.18));
-                const lh = logo.height;
-                const ly = Math.min(headerPx - 10, headerTop);
-                pdf.addImage(logo.data, logo.format, 12, ly, lw, lh);
-            }
-            const titleY = Math.min(18, headerPx - 14);
-            const subtitleY = Math.min(32, headerPx - 6);
-            if (headerTitle) {
-                pdf.setFontSize(14);
-                pdf.text(headerTitle, pageWidth / 2, titleY, { align: 'center' as any });
-            }
-            if (headerSubtitle) {
-                pdf.setFontSize(11);
-                pdf.text(headerSubtitle, pageWidth / 2, subtitleY, { align: 'center' as any });
-            }
-            pdf.setTextColor(0, 0, 0);
-            pdf.addImage(imgData, 'PNG', 0, headerPx, pageWidth, pageHeight - headerPx - footerPx);
-            pdf.setFontSize(10);
-            const pageLabelPx = options?.pageNumbers ? `الصفحة 1 من 1` : '';
-            const footerLinePx = [footerText, pageLabelPx].filter(Boolean).join(' • ');
-            pdf.text(footerLinePx, pageWidth / 2, pageHeight - 8, { align: 'center' as any });
-            dataUri = pdf.output('datauristring');
-        } else {
-            const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
-            const pageWidth = pdf.internal.pageSize.getWidth();
-            const pageHeight = pdf.internal.pageSize.getHeight();
-            const headerMm = Math.max(0, options?.headerHeight ?? 10);
-            const footerMm = Math.max(0, options?.footerHeight ?? 8);
-            const contentHeightMm = Math.max(0.1, pageHeight - headerMm - footerMm);
-            const imgWidth = pageWidth;
-
-            const imgDataPxWidth = canvas.width;
-            const imgDataPxHeight = canvas.height;
-
-            const sliceCanvas = document.createElement('canvas');
-            const sliceContext = sliceCanvas.getContext('2d');
-            if (!sliceContext) throw new Error('Failed to initialize canvas context');
-            sliceCanvas.width = imgDataPxWidth;
-
-            const mmPerPx = pageWidth / imgDataPxWidth;
-            const pageHeightPx = contentHeightMm / mmPerPx;
-            const totalPages = Math.max(1, Math.ceil(imgDataPxHeight / pageHeightPx));
-            let currentPage = 1;
-
-            let offsetPx = 0;
-            while (offsetPx < imgDataPxHeight) {
-                const sliceHeightPx = Math.min(imgDataPxHeight - offsetPx, pageHeightPx);
-                sliceCanvas.height = sliceHeightPx;
-                sliceContext.clearRect(0, 0, sliceCanvas.width, sliceCanvas.height);
-                sliceContext.drawImage(canvas, 0, offsetPx, sliceCanvas.width, sliceHeightPx, 0, 0, sliceCanvas.width, sliceCanvas.height);
-                const sliceData = sliceCanvas.toDataURL('image/png');
-                const leftPad = 8;
-                const titleYmm = Math.min(6, headerMm - 4);
-                const subtitleYmm = Math.min(10, headerMm - 1);
-                if (accent) {
-                    pdf.setFillColor(accent.r, accent.g, accent.b);
-                    pdf.rect(0, 0, pageWidth, headerMm, 'F');
-                }
-                const toneMm = textOn(accent) === 'light' ? { r: 255, g: 255, b: 255 } : { r: 30, g: 41, b: 59 };
-                pdf.setTextColor(toneMm.r, toneMm.g, toneMm.b);
-                if (logo) {
-                    const mmRatio = mmPerPx;
-                    const lwMm = Math.min(pageWidth * 0.18, logo.width * mmRatio);
-                    const lhMm = logo.height * mmRatio;
-                    pdf.addImage(logo.data, logo.format, leftPad, Math.max(2, titleYmm - 4), lwMm, lhMm);
-                }
-                if (headerTitle) {
-                    pdf.setFontSize(12);
-                    pdf.text(headerTitle, pageWidth / 2, titleYmm, { align: 'center' as any });
-                }
-                if (headerSubtitle) {
-                    pdf.setFontSize(10);
-                    pdf.text(headerSubtitle, pageWidth / 2, subtitleYmm, { align: 'center' as any });
-                }
-                pdf.setTextColor(0, 0, 0);
-                pdf.addImage(sliceData, 'PNG', 0, headerMm, imgWidth, (sliceHeightPx * mmPerPx));
-                pdf.setFontSize(9);
-                const pageLabel = options?.pageNumbers ? `الصفحة ${currentPage} من ${totalPages}` : '';
-                const footerLine = [footerText, pageLabel].filter(Boolean).join(' • ');
-                pdf.text(footerLine, pageWidth / 2, pageHeight - 4, { align: 'center' as any });
-                offsetPx += sliceHeightPx;
-                currentPage += 1;
-                if (offsetPx < imgDataPxHeight) pdf.addPage();
-            }
-
-            dataUri = pdf.output('datauristring');
-        }
+        const dataUri = await createPdfDataUriFromElement(element, title, options);
 
         if (Capacitor.isNativePlatform()) {
             try {
@@ -225,6 +248,41 @@ export const sharePdf = async (
         if (import.meta.env.DEV) {
             console.error('Error sharing PDF:', error);
         }
+        return false;
+    }
+};
+
+export const printPdfFromElement = async (
+    elementId: string,
+    title: string,
+    options?: {
+        pageSize?: [number, number];
+        scale?: number;
+        unit?: 'mm' | 'px';
+        headerTitle?: string;
+        headerSubtitle?: string;
+        footerText?: string;
+        headerHeight?: number;
+        footerHeight?: number;
+        logoUrl?: string;
+        accentColor?: string;
+        brandLines?: string[];
+        pageNumbers?: boolean;
+    }
+): Promise<boolean> => {
+    const element = document.getElementById(elementId);
+    if (!element) return false;
+    if (Capacitor.isNativePlatform()) return false;
+    try {
+        const dataUri = await createPdfDataUriFromElement(element, title, options);
+        const w = window.open('about:blank', '_blank');
+        if (!w) return false;
+        const safeTitle = String(title || 'PDF').replace(/</g, '').replace(/>/g, '');
+        w.document.open();
+        w.document.write(`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>${safeTitle}</title></head><body style="margin:0"><iframe id="pdf" src="${dataUri}" style="border:0;width:100vw;height:100vh"></iframe><script>const f=document.getElementById('pdf');f.addEventListener('load',()=>{try{f.contentWindow.focus();f.contentWindow.print();}catch(e){try{window.print();}catch(_){}}});<\/script></body></html>`);
+        w.document.close();
+        return true;
+    } catch {
         return false;
     }
 };
