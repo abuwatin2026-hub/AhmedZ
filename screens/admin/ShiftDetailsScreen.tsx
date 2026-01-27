@@ -134,13 +134,13 @@ const ShiftDetailsScreen: React.FC = () => {
           .eq('cashier_id', user.id)
           .eq('status', 'open')
           .order('opened_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
+          .limit(1);
         if (error) {
           setResolvedShiftId(null);
           return;
         }
-        setResolvedShiftId(data?.id ? String(data.id) : null);
+        const row = Array.isArray(data) ? data[0] : data;
+        setResolvedShiftId(row?.id ? String(row.id) : null);
       } catch {
         setResolvedShiftId(null);
       }

@@ -77,8 +77,7 @@ export const CashShiftProvider = ({ children }: { children: ReactNode }) => {
                 .eq('cashier_id', user.id)
                 .eq('status', 'open')
                 .order('opened_at', { ascending: false })
-                .limit(1)
-                .single();
+                .limit(1);
 
             if (error) {
                 const c = (error as any)?.code;
@@ -91,14 +90,15 @@ export const CashShiftProvider = ({ children }: { children: ReactNode }) => {
                 }
             }
 
-            if (data) {
+            const row = Array.isArray(data) ? data[0] : data;
+            if (row) {
                 const shift: CashShift = {
-                    id: data.id,
-                    cashierId: data.cashier_id,
-                    openedAt: data.opened_at,
-                    startAmount: data.start_amount,
-                    status: data.status,
-                    notes: data.notes
+                    id: row.id,
+                    cashierId: row.cashier_id,
+                    openedAt: row.opened_at,
+                    startAmount: row.start_amount,
+                    status: row.status,
+                    notes: row.notes
                 };
                 setCurrentShift(shift);
                 const expected = await calculateExpectedCash(shift);
