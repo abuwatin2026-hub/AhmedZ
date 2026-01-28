@@ -62,6 +62,27 @@ const PurchaseOrderScreen: React.FC = () => {
     };
 
     const isIsoDate = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test((s || '').trim());
+    const normalizeDateInput = (value: string) => {
+        const raw = String(value || '').trim();
+        if (!raw) return '';
+        if (isIsoDate(raw)) return raw;
+        const m = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+        if (!m) return raw;
+        const a = Number(m[1]);
+        const b = Number(m[2]);
+        const y = Number(m[3]);
+        if (!Number.isFinite(a) || !Number.isFinite(b) || !Number.isFinite(y)) return raw;
+        if (y < 1900 || y > 2200) return raw;
+        let month = a;
+        let day = b;
+        if (a > 12 && b <= 12) {
+            month = b;
+            day = a;
+        }
+        const mm = String(month).padStart(2, '0');
+        const dd = String(day).padStart(2, '0');
+        return `${y}-${mm}-${dd}`;
+    };
 
     const formatPurchaseDate = (value: unknown) => {
         if (typeof value !== 'string') return '-';
@@ -264,7 +285,12 @@ const PurchaseOrderScreen: React.FC = () => {
             if (!purchaseDate) errors.push('تاريخ الشراء مطلوب');
             if (!invoiceRef) errors.push('رقم فاتورة المورد مطلوب');
             if (orderItems.length === 0) errors.push('أضف صنف واحد على الأقل');
-            orderItems.forEach((row, idx) => {
+            const normalizedItems = orderItems.map((row) => ({
+                ...row,
+                productionDate: normalizeDateInput(row.productionDate || ''),
+                expiryDate: normalizeDateInput(row.expiryDate || ''),
+            }));
+            normalizedItems.forEach((row, idx) => {
                 const rowNo = idx + 1;
                 if (!row.itemId) errors.push(`سطر ${rowNo}: الصنف مطلوب`);
                 if (!Number.isFinite(row.quantity) || Number(row.quantity) <= 0) errors.push(`سطر ${rowNo}: الكمية مطلوبة`);
@@ -285,7 +311,7 @@ const PurchaseOrderScreen: React.FC = () => {
                 setFormErrors(errors);
                 return;
             }
-            const validItems = orderItems.filter(i => i.itemId && i.quantity > 0);
+            const validItems = normalizedItems.filter(i => i.itemId && i.quantity > 0);
             await createPurchaseOrder(supplierId, purchaseDate, validItems, receiveOnCreate, invoiceRef);
             setIsModalOpen(false);
             // Reset form
@@ -363,7 +389,12 @@ const PurchaseOrderScreen: React.FC = () => {
         e.preventDefault();
         if (!receiveOrder) return;
         try {
-            for (const r of receiveRows) {
+            const normalizedRows = receiveRows.map((r) => ({
+                ...r,
+                productionDate: normalizeDateInput(r.productionDate || ''),
+                expiryDate: normalizeDateInput(r.expiryDate || ''),
+            }));
+            for (const r of normalizedRows) {
                 if (Number(r.receiveNow) <= 0) continue;
                 const item = getItemById(r.itemId);
                 if (item && item.category === 'food') {
@@ -384,7 +415,7 @@ const PurchaseOrderScreen: React.FC = () => {
                     return;
                 }
             }
-            const items = receiveRows
+            const items = normalizedRows
                 .filter(r => Number(r.receiveNow) > 0)
                 .map(r => ({
                     itemId: r.itemId,
