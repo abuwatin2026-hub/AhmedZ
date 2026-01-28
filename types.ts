@@ -816,6 +816,9 @@ export type AdminPermission =
   | 'promotions.manage'
   | 'reviews.manage'
   | 'stock.manage'
+  | 'procurement.manage'
+  | 'import.close'
+  | 'inventory.manage'
   | 'prices.manage'
   | 'reports.view'
   | 'settings.manage'
@@ -853,6 +856,9 @@ export const ADMIN_PERMISSION_DEFS: Array<{ key: AdminPermission; labelAr: strin
   { key: 'promotions.manage', labelAr: 'إدارة العروض' },
   { key: 'reviews.manage', labelAr: 'إدارة المراجعات' },
   { key: 'stock.manage', labelAr: 'إدارة المخزون' },
+  { key: 'procurement.manage', labelAr: 'إدارة الاستيراد/الشحنات' },
+  { key: 'import.close', labelAr: 'إقفال/تسليم الشحنات' },
+  { key: 'inventory.manage', labelAr: 'إدارة الحركات والمخزون الداخلي' },
   { key: 'prices.manage', labelAr: 'إدارة الأسعار' },
   { key: 'reports.view', labelAr: 'عرض التقارير' },
   { key: 'settings.manage', labelAr: 'إدارة الإعدادات' },
