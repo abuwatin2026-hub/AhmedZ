@@ -73,13 +73,21 @@ export const localizeError = (message: string): string => {
     raw.includes('violates row-level security') ||
     raw.includes('policy')
   ) return 'ليس لديك صلاحية تنفيذ هذا الإجراء.';
-  if (raw.includes('duplicate') || raw.includes('already')) return 'البيانات المدخلة موجودة مسبقًا.';
+  if (
+    raw.includes('duplicate key value') ||
+    raw.includes('violates unique constraint') ||
+    raw.includes('already exists') ||
+    raw.includes('duplicate')
+  ) return 'البيانات المدخلة موجودة مسبقًا.';
   if (raw.includes('missing') || raw.includes('required')) return 'الحقول المطلوبة ناقصة.';
   return message;
 };
 
 export const localizeSupabaseError = (error: unknown): string => {
   if (isAbortLikeError(error)) return '';
+  const anyErr = error as any;
+  const code = typeof anyErr?.code === 'string' ? anyErr.code : '';
+  if (code === '23505') return 'البيانات المدخلة موجودة مسبقًا.';
   const message = resolveErrorMessage(error);
   return localizeError(message || '');
 };

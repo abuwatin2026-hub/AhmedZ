@@ -215,7 +215,7 @@ BEGIN
   
   -- نقل الأصناف
   FOR v_item IN 
-    SELECT item_id, quantity, batch_id
+    SELECT id, item_id, quantity, batch_id
     FROM public.warehouse_transfer_items 
     WHERE transfer_id = p_transfer_id
   LOOP
@@ -493,7 +493,7 @@ BEGIN
     -- تحديث الكمية المنقولة
     UPDATE public.warehouse_transfer_items
     SET transferred_quantity = v_item.quantity
-    WHERE transfer_id = p_transfer_id AND item_id = v_item.item_id;
+    WHERE id = v_item.id;
   END LOOP;
   
   -- تحديث حالة النقل

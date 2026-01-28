@@ -125,6 +125,7 @@ const PurchaseOrderScreen: React.FC = () => {
     const [receiveOrder, setReceiveOrder] = useState<PurchaseOrder | null>(null);
     const [receiveRows, setReceiveRows] = useState<ReceiveRow[]>([]);
     const [receiveOccurredAt, setReceiveOccurredAt] = useState<string>(getLocalDateTimeInputValue());
+    const [isReceivingPartial, setIsReceivingPartial] = useState<boolean>(false);
     const [returnOrder, setReturnOrder] = useState<PurchaseOrder | null>(null);
     const [returnRows, setReturnRows] = useState<ReceiveRow[]>([]);
     const [returnOccurredAt, setReturnOccurredAt] = useState<string>(getLocalDateTimeInputValue());
@@ -388,6 +389,8 @@ const PurchaseOrderScreen: React.FC = () => {
     const handleReceivePartial = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!receiveOrder) return;
+        if (isReceivingPartial) return;
+        setIsReceivingPartial(true);
         try {
             const normalizedRows = receiveRows.map((r) => ({
                 ...r,
@@ -434,6 +437,8 @@ const PurchaseOrderScreen: React.FC = () => {
         } catch (error) {
             console.error(error);
             alert(getErrorMessage(error, 'فشل استلام المخزون.'));
+        } finally {
+            setIsReceivingPartial(false);
         }
     };
 
@@ -1392,7 +1397,13 @@ const PurchaseOrderScreen: React.FC = () => {
                             <h2 className="text-xl font-bold dark:text-white">استلام مخزون (جزئي)</h2>
                             <button
                                 type="button"
-                                onClick={() => { setIsReceiveModalOpen(false); setReceiveOrder(null); setReceiveRows([]); }}
+                                onClick={() => {
+                                    if (isReceivingPartial) return;
+                                    setIsReceiveModalOpen(false);
+                                    setReceiveOrder(null);
+                                    setReceiveRows([]);
+                                }}
+                                disabled={isReceivingPartial}
                                 className="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-600"
                             >
                                 <Icons.XIcon className="w-6 h-6" />
@@ -1467,16 +1478,23 @@ const PurchaseOrderScreen: React.FC = () => {
                             <div className="flex justify-end gap-2 pt-2">
                                 <button
                                     type="button"
-                                    onClick={() => { setIsReceiveModalOpen(false); setReceiveOrder(null); setReceiveRows([]); }}
+                                    onClick={() => {
+                                        if (isReceivingPartial) return;
+                                        setIsReceiveModalOpen(false);
+                                        setReceiveOrder(null);
+                                        setReceiveRows([]);
+                                    }}
+                                    disabled={isReceivingPartial}
                                     className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 text-gray-800"
                                 >
                                     إلغاء
                                 </button>
                                 <button
                                     type="submit"
+                                    disabled={isReceivingPartial}
                                     className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
                                 >
-                                    تأكيد الاستلام
+                                    {isReceivingPartial ? 'جاري الاستلام...' : 'تأكيد الاستلام'}
                                 </button>
                             </div>
                         </form>

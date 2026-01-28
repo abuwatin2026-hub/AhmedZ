@@ -1687,7 +1687,7 @@ begin
   end if;
 
   for v_item in
-    select item_id, quantity
+    select id, item_id, quantity
     from public.warehouse_transfer_items
     where transfer_id = p_transfer_id
   loop
@@ -1806,8 +1806,7 @@ begin
 
     update public.warehouse_transfer_items
     set transferred_quantity = v_item.quantity
-    where transfer_id = p_transfer_id
-      and item_id = v_item.item_id;
+    where id = v_item.id;
   end loop;
 
   update public.warehouse_transfers
