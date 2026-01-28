@@ -46,15 +46,10 @@ const ApprovalsScreen: React.FC = () => {
     }
     setLoading(true);
     try {
-      const base = supabase
-        .from('approval_requests')
-        .select('id,target_table,target_id,request_type,status,requested_by,approved_by,approved_at,rejected_by,rejected_at,created_at')
-        .order('created_at', { ascending: false })
-        .limit(200);
-
-      const { data: reqRows, error: reqErr } = statusFilter === 'all'
-        ? await base
-        : await base.eq('status', statusFilter);
+      const { data: reqRows, error: reqErr } = await supabase.rpc('list_approval_requests', {
+        p_status: statusFilter,
+        p_limit: 200,
+      } as any);
 
       if (reqErr) throw reqErr;
       const list = (reqRows || []) as any[];
@@ -77,12 +72,9 @@ const ApprovalsScreen: React.FC = () => {
         setSteps([]);
         return;
       }
-      const { data: stepRows, error: stepErr } = await supabase
-        .from('approval_steps')
-        .select('id,request_id,step_no,approver_role,status,action_by,action_at')
-        .in('request_id', requestIds)
-        .order('step_no', { ascending: true })
-        .limit(1000);
+      const { data: stepRows, error: stepErr } = await supabase.rpc('list_approval_steps', {
+        p_request_ids: requestIds,
+      } as any);
 
       if (stepErr) throw stepErr;
       setSteps(((stepRows || []) as any[]).map((s) => ({
