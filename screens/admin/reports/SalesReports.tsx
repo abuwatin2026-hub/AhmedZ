@@ -9,6 +9,7 @@ import LineChart from '../../../components/admin/charts/LineChart';
 import { getSupabaseClient } from '../../../supabase';
 import { useSettings } from '../../../contexts/SettingsContext';
 import { localizeSupabaseError } from '../../../utils/errorUtils';
+import { endOfDayFromYmd, startOfDayFromYmd, toYmdLocal } from '../../../utils/dateUtils';
 
 const SalesReports: React.FC = () => {
     const { showNotification } = useToast();
@@ -31,21 +32,9 @@ const SalesReports: React.FC = () => {
 
     const range = useMemo(() => {
         if (!startDate || !endDate) return undefined;
-        
-        const getStartOfDay = (dateStr: string) => {
-            const parts = dateStr.split('-');
-            if (parts.length !== 3) return new Date(dateStr);
-            return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]), 0, 0, 0, 0);
-        };
-
-        const getEndOfDay = (dateStr: string) => {
-            const parts = dateStr.split('-');
-            if (parts.length !== 3) return new Date(dateStr);
-            return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]), 23, 59, 59, 999);
-        };
-
-        const start = getStartOfDay(startDate);
-        const end = getEndOfDay(endDate);
+        const start = startOfDayFromYmd(startDate);
+        const end = endOfDayFromYmd(endDate);
+        if (!start || !end) return undefined;
         return { start, end };
     }, [startDate, endDate]);
 
@@ -102,13 +91,8 @@ const SalesReports: React.FC = () => {
             end.setMonth(11, 31);
             end.setHours(23, 59, 59, 999);
         }
-        const toLocalYMD = (date: Date) => {
-            const offset = date.getTimezoneOffset();
-            const local = new Date(date.getTime() - (offset * 60 * 1000));
-            return local.toISOString().slice(0, 10);
-        };
-        setStartDate(toLocalYMD(start));
-        setEndDate(toLocalYMD(end));
+        setStartDate(toYmdLocal(start));
+        setEndDate(toYmdLocal(end));
     };
 
 

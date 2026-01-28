@@ -437,14 +437,28 @@ const ShiftReportsScreen: React.FC = () => {
         }
         setIsClosing(true);
         try {
-            const { error } = await supabase.rpc('close_cash_shift_v2', {
+            const argsV2: Record<string, any> = {
                 p_shift_id: closeShiftId,
                 p_end_amount: num,
                 p_notes: closeNotes || null,
                 p_forced_reason: closeForcedReason.trim() || null,
                 p_denomination_counts: closeUseDenoms ? closeDenoms : null,
                 p_tender_counts: tenderCounts
-            });
+            };
+            let { error } = await supabase.rpc('close_cash_shift_v2', argsV2);
+            if (error) {
+                const msg = String((error as any)?.message || '');
+                if (/schema cache|could not find the function|PGRST202/i.test(msg)) {
+                    const { error: fallbackErr } = await supabase.rpc('close_cash_shift_v2', {
+                        p_shift_id: closeShiftId,
+                        p_end_amount: num,
+                        p_notes: closeNotes || null,
+                        p_forced_reason: closeForcedReason.trim() || null,
+                        p_denomination_counts: closeUseDenoms ? closeDenoms : null
+                    } as any);
+                    error = fallbackErr as any;
+                }
+            }
             if (error) throw error;
             setCloseShiftId(null);
             await refresh();

@@ -7,6 +7,7 @@ import { buildPdfBrandOptions, buildXlsxBrandOptions } from '../../../utils/bran
 import HorizontalBarChart from '../../../components/admin/charts/HorizontalBarChart';
 import { getInvoiceOrderView } from '../../../utils/orderUtils';
 import { useSettings } from '../../../contexts/SettingsContext';
+import { endOfDayFromYmd, startOfDayFromYmd, toYmdLocal } from '../../../utils/dateUtils';
 
 const CustomerReports: React.FC = () => {
     const { orders } = useOrders();
@@ -48,16 +49,15 @@ const CustomerReports: React.FC = () => {
             end.setMonth(11, 31);
             end.setHours(23, 59, 59, 999);
         }
-        setStartDate(start.toISOString().slice(0, 10));
-        setEndDate(end.toISOString().slice(0, 10));
+        setStartDate(toYmdLocal(start));
+        setEndDate(toYmdLocal(end));
     };
 
     const range = useMemo(() => {
         if (!startDate || !endDate) return undefined;
-        const start = new Date(startDate);
-        start.setHours(0, 0, 0, 0);
-        const end = new Date(endDate);
-        end.setHours(23, 59, 59, 999);
+        const start = startOfDayFromYmd(startDate);
+        const end = endOfDayFromYmd(endDate);
+        if (!start || !end) return undefined;
         return { start, end };
     }, [startDate, endDate]);
 
@@ -144,7 +144,7 @@ const CustomerReports: React.FC = () => {
         const success = await exportToXlsx(
             headers,
             rows,
-            `customer_report_${new Date().toISOString().split('T')[0]}.xlsx`,
+            `customer_report_${toYmdLocal(new Date())}.xlsx`,
             { sheetName: 'Customers', currencyColumns: [5, 6], currencyFormat: '#,##0.00', ...buildXlsxBrandOptions(settings, 'العملاء', headers.length, { periodText: `الفترة: ${startDate || '—'} → ${endDate || '—'}` }) }
         );
         if (success) {
@@ -159,7 +159,7 @@ const CustomerReports: React.FC = () => {
         const success = await sharePdf(
             'print-area',
             'تقرير العملاء',
-            `customer_report_${new Date().toISOString().split('T')[0]}.pdf`,
+            `customer_report_${toYmdLocal(new Date())}.pdf`,
             buildPdfBrandOptions(settings, 'تقرير العملاء', { pageNumbers: true })
         );
         if (success) {

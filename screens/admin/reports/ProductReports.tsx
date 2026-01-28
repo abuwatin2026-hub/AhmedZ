@@ -7,6 +7,7 @@ import { buildPdfBrandOptions, buildXlsxBrandOptions } from '../../../utils/bran
 import HorizontalBarChart from '../../../components/admin/charts/HorizontalBarChart';
 import { getSupabaseClient } from '../../../supabase';
 import { localizeSupabaseError } from '../../../utils/errorUtils';
+import { endOfDayFromYmd, startOfDayFromYmd, toYmdLocal } from '../../../utils/dateUtils';
 
 interface ProductSalesRow {
     item_id: string;
@@ -64,16 +65,8 @@ const ProductReports: React.FC = () => {
             start.setMonth(0, 1);
             end.setMonth(11, 31);
         }
-        
-        // Use local date string YYYY-MM-DD
-        const toLocalYMD = (date: Date) => {
-            const offset = date.getTimezoneOffset();
-            const local = new Date(date.getTime() - (offset * 60 * 1000));
-            return local.toISOString().slice(0, 10);
-        };
-
-        setStartDate(toLocalYMD(start));
-        setEndDate(toLocalYMD(end));
+        setStartDate(toYmdLocal(start));
+        setEndDate(toYmdLocal(end));
     };
 
     // Initialize with "all" or specific range
@@ -86,31 +79,8 @@ const ProductReports: React.FC = () => {
 
     const range = useMemo(() => {
         if (!startDate && !endDate) return null;
-
-        // Construct dates ensuring they represent the start of the day and end of the day in LOCAL time
-        // Parsing "YYYY-MM-DD" usually defaults to UTC in Date.parse, but "YYYY-MM-DDT00:00:00" defaults to local in most implementations,
-        // or we can construct it manually.
-        
-        const getStartOfDay = (dateStr: string) => {
-            if (!dateStr) return null;
-            const d = new Date(dateStr);
-            d.setHours(0, 0, 0, 0);
-            // If the browser parsed YYYY-MM-DD as UTC (e.g. 00:00 UTC), and we are in +3, it might be 3AM local.
-            // Better approach:
-            const parts = dateStr.split('-');
-            if (parts.length !== 3) return new Date(dateStr);
-            return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]), 0, 0, 0, 0);
-        };
-
-        const getEndOfDay = (dateStr: string) => {
-            if (!dateStr) return null;
-            const parts = dateStr.split('-');
-            if (parts.length !== 3) return new Date(dateStr);
-            return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]), 23, 59, 59, 999);
-        };
-
-        const start = startDate ? getStartOfDay(startDate) : null;
-        const end = endDate ? getEndOfDay(endDate) : null;
+        const start = startDate ? startOfDayFromYmd(startDate) : null;
+        const end = endDate ? endOfDayFromYmd(endDate) : null;
         
         if (!start || !end) return null;
 

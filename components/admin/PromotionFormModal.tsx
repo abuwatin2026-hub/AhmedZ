@@ -6,6 +6,7 @@ import { useAds } from '../../contexts/AdContext';
 import { useToast } from '../../contexts/ToastContext';
 import { useItemMeta } from '../../contexts/ItemMetaContext';
 import { useSettings } from '../../contexts/SettingsContext';
+import { toDateTimeLocalInputValueFromIso } from '../../utils/dateUtils';
 
 type PromotionDraft = Omit<Promotion, 'id' | 'items'> & { id?: string; items: PromotionItem[] };
 
@@ -16,14 +17,6 @@ interface PromotionFormModalProps {
   promotionToEdit: Promotion | null;
   isSaving: boolean;
 }
-
-const toLocalDateTimeValue = (iso?: string) => {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-};
 
 const PromotionFormModal: React.FC<PromotionFormModalProps> = ({ isOpen, onClose, onSave, promotionToEdit, isSaving }) => {
   const { menuItems } = useMenu();
@@ -208,7 +201,7 @@ const PromotionFormModal: React.FC<PromotionFormModalProps> = ({ isOpen, onClose
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">بداية العرض</label>
                 <input
                   type="datetime-local"
-                  value={toLocalDateTimeValue(draft.startAt)}
+                  value={toDateTimeLocalInputValueFromIso(draft.startAt)}
                   onChange={(e) => setDraft((prev) => ({ ...prev, startAt: new Date(e.target.value).toISOString() }))}
                   required
                   className="mt-1 w-full p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600"
@@ -218,7 +211,7 @@ const PromotionFormModal: React.FC<PromotionFormModalProps> = ({ isOpen, onClose
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">نهاية العرض</label>
                 <input
                   type="datetime-local"
-                  value={toLocalDateTimeValue(draft.endAt)}
+                  value={toDateTimeLocalInputValueFromIso(draft.endAt)}
                   onChange={(e) => setDraft((prev) => ({ ...prev, endAt: new Date(e.target.value).toISOString() }))}
                   required
                   className="mt-1 w-full p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600"

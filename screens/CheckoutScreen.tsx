@@ -19,6 +19,7 @@ import { findNearestDeliveryZone, verifyZoneMatch, formatDistance } from '../uti
 import InteractiveMap from '../components/InteractiveMap';
 import type { Bank, TransferRecipient } from '../types';
 import { getSupabaseClient } from '../supabase';
+import { toDateTimeLocalInputValue, toUtcIsoFromLocalDateTimeInput } from '../utils/dateUtils';
 
 const paymentMethodIcons: { [key: string]: React.ReactNode } = {
     cash: <MoneyIcon />,
@@ -630,7 +631,7 @@ const CheckoutScreen: React.FC = () => {
                 pointsRedeemedValue: pointsDiscount,
                 referralDiscount: referralDiscount,
                 isScheduled,
-                scheduledAt: isScheduled ? new Date(scheduledAt).toISOString() : undefined,
+                scheduledAt: isScheduled ? (toUtcIsoFromLocalDateTimeInput(scheduledAt) || undefined) : undefined,
             };
 
             // Add CSRF token
@@ -964,7 +965,7 @@ const CheckoutScreen: React.FC = () => {
                                     {isScheduled && (
                                         <div className="p-4 bg-gold-50 dark:bg-orange-900/20 rounded-b-lg animate-fade-in">
                                             <label htmlFor="scheduledAt" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">اختر الوقت والتاريخ</label>
-                                            <input type="datetime-local" id="scheduledAt" value={scheduledAt} onChange={e => setScheduledAt(e.target.value)} required className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700" min={new Date().toISOString().slice(0, 16)} />
+                                            <input type="datetime-local" id="scheduledAt" value={scheduledAt} onChange={e => setScheduledAt(e.target.value)} required className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700" min={toDateTimeLocalInputValue()} />
                                         </div>
                                     )}
                                 </div>

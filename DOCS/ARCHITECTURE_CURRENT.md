@@ -1,5 +1,5 @@
-Version: 2026-01-27
-Last validated against migrations up to: 20260127104500_import_close_grant_restrict.sql
+Version: 2026-01-28
+Last validated against migrations up to: 20260128232000_unify_close_cash_shift_v2_signature.sql
 
 Analysis Contract (Enforcement)
 - أي تحليل أو تصميم أو اقتراح تنفيذ لا يبدأ صراحةً من هذا الملف ARCHITECTURE_CURRENT يعتبر غير صالح.
@@ -186,6 +186,67 @@ Import Shipments Accounting Rule — Setting shipment status to delivered automa
   - trg_lock_approval_requests يفرض عدم قابلية التعديل والحذف خارج حالات معتمدة.
   - approval_required(request_type, amount) يُحدّد وجوب الموافقة قبل التنفيذ.
   - حقول orders: discount_requires_approval, discount_approval_status, discount_approval_request_id موجودة للتكامل.
+- واجهات RPC للإدارة (Admin list RPCs) — القراءة عبر SECURITY DEFINER (2026-01-28):
+  - list_approval_requests(text p_status default 'pending', int p_limit default 200)  
+    يُعيد قائمة الطلبات حسب الحالة (pending/approved/rejected أو all) مع حد أقصى 500، ويطبّق _require_staff.  
+    المرجع: [20260128153000_approvals_admin_list_rpcs.sql](file:///d:/JOMLA/AhmedZ/supabase/migrations/20260128153000_approvals_admin_list_rpcs.sql)
+  - list_approval_steps(uuid[] p_request_ids)  
+    يُعيد جميع خطوات الموافقة لطلبات محددة (order by request_id, step_no) ويطبّق _require_staff.  
+    المرجع: [20260128153000_approvals_admin_list_rpcs.sql](file:///d:/JOMLA/AhmedZ/supabase/migrations/20260128153000_approvals_admin_list_rpcs.sql)
+- إنشاء طلب موافقة (Server-side):
+  - create_approval_request(text target_table, text target_id, text request_type, numeric amount, jsonb payload) → uuid  
+    يحسب payload_hash بـ digest(sha256) ويُنشئ approval_requests + approval_steps حسب policy_steps النشطة الأقرب لـ min_amount.  
+    النسخة الناسخة (search_path مع extensions): [20260128162000_fix_pgcrypto_digest_search_path.sql](file:///d:/JOMLA/AhmedZ/supabase/migrations/20260128162000_fix_pgcrypto_digest_search_path.sql)
+- منع التلاعب (Immutability + Self-approval):
+  - approve_approval_step يمنع self_approval_forbidden، ويُقفل الطلب/الخطوة بعد finalization.  
+    المرجع: [20260124143000_approvals_lock_and_self_approval.sql](file:///d:/JOMLA/AhmedZ/supabase/migrations/20260124143000_approvals_lock_and_self_approval.sql)
+
+### المشتريات (Purchases) — أوامر الشراء/الاستلام/التكاليف/الدفعات (2026-01-28)
+- الاستلام الجزئي (GRN) المعتمد الآن: receive_purchase_order_partial(uuid, jsonb, timestamptz)  
+  النسخة الناسخة: [20260128195000_purchase_receipt_item_cost_overrides.sql](file:///d:/JOMLA/AhmedZ/supabase/migrations/20260128195000_purchase_receipt_item_cost_overrides.sql)  
+  نقاط تنفيذ:
+  - warehouse_id يُستنتج من purchase_orders.warehouse_id ثم fallback إلى default warehouse.
+  - تحقق ISO للتواريخ: expiryDate/harvestDate؛ وإلزام expiryDate للأصناف الغذائية.
+  - إنشاء batch_balances لكل دفعة وربط inventory_movements بـ batch_id.
+  - التكاليف الفعلية في الاستلام يمكن إدخالها per-item:
+    - transportCost/supplyTaxCost ضمن items payload تُستخدم بدل menu_items عند توفرها.
+    - يتم حفظها داخل purchase_receipt_items (transport_cost/supply_tax_cost).
+- تكامل الموافقات مع الاستلام:
+  - إذا approval_required('receipt', total_amount) مطلوبة:
+    - owner يقوم Auto-Approve عند الاستلام، وإلا يتم الرفض صراحةً برسالة purchase receipt requires approval.
+  - مرجع التكامل الأولي: [receipt_approval_integration.sql](file:///d:/JOMLA/AhmedZ/supabase/migrations/20260128131000_receipt_approval_integration.sql)
+- أوامر الشراء والموافقات/التزامن:
+  - تكاملات “الاستلام/المرتجع/اعتماد أمر الشراء” تمت عبر حزمة هجرات:  
+    [20260128150000_purchases_warehouse_returns_po_approval_sync.sql](file:///d:/JOMLA/AhmedZ/supabase/migrations/20260128150000_purchases_warehouse_returns_po_approval_sync.sql) + [20260128160000_purchases_owner_auto_approve_receipt_po.sql](file:///d:/JOMLA/AhmedZ/supabase/migrations/20260128160000_purchases_owner_auto_approve_receipt_po.sql)
+- ترحيل حركة المخزون (Posting) أصبح Idempotent:
+  - post_inventory_movement(uuid) يتأكد من عدم وجود journal_entries لنفس source_event قبل إنشاء قيد جديد (منع الترحيل المكرر).
+  - المرجع: [20260128190000_fix_post_inventory_movement_idempotent.sql](file:///d:/JOMLA/AhmedZ/supabase/migrations/20260128190000_fix_post_inventory_movement_idempotent.sql)
+- دفعات المورد (Purchase Order Payments):
+  - record_purchase_order_payment(uuid, numeric, text, timestamptz, jsonb) تُسجّل دفعة في payments فقط وتترك تحديث paid_amount للتزامن من payments.
+  - تمنع الدفع عند السداد الكامل، وتمنع تجاوز الإجمالي.
+  - دفعة نقدية تتطلب وردية مفتوحة عبر shift_id.
+  - النسخة الناسخة: [20260128220000_fix_record_purchase_order_payment_use_payments_sync.sql](file:///d:/JOMLA/AhmedZ/supabase/migrations/20260128220000_fix_record_purchase_order_payment_use_payments_sync.sql)
+  - مزامنة paid_amount من payments مفروضة عبر trg_payments_sync_purchase_orders:
+    [purchases_schema_constraints_narrow.sql](file:///d:/JOMLA/AhmedZ/supabase/migrations/20260121194001_purchases_schema_constraints_narrow.sql)
+- توضيح واجهة “الحالة” في قائمة المشتريات:
+  - تم فصل شارة الاستلام عن شارة الدفع لتجنب الالتباس: “الاستلام: … / الدفع: …”.
+  - التنفيذ: [PurchaseOrderScreen.tsx](file:///d:/JOMLA/AhmedZ/screens/admin/PurchaseOrderScreen.tsx)
+
+### الورديات النقدية (Cash Shifts) — إغلاق الوردية (RPC) (2026-01-28)
+- close_cash_shift_v2 هو RPC المعتمد لإغلاق الوردية.
+- التوقيع النهائي الموحد (Single Source): close_cash_shift_v2(uuid, numeric, text, text, jsonb, jsonb)  
+  - يكتب denomination_counts و tender_counts داخل cash_shifts عند الإغلاق.
+  - يمنع الإغلاق عند وجود فرق بدون p_forced_reason.
+  - المرجع: [20260128232000_unify_close_cash_shift_v2_signature.sql](file:///d:/JOMLA/AhmedZ/supabase/migrations/20260128232000_unify_close_cash_shift_v2_signature.sql)
+- توافق الواجهة:
+  - الواجهة تحاول الإغلاق بالتوقيع الكامل، وتعمل fallback تلقائيًا عند تأخر schema cache.
+  - التنفيذ: [CashShiftContext.tsx](file:///d:/JOMLA/AhmedZ/contexts/CashShiftContext.tsx) + [ShiftReportsScreen.tsx](file:///d:/JOMLA/AhmedZ/screens/admin/ShiftReportsScreen.tsx)
+
+### العملة (Currency) — عملة واحدة فقط: YER (2026-01-28)
+- قاعدة إلزامية: لا توجد أي عملات أخرى ولا يوجد تحويل/صرف عملة.
+- get_base_currency() = 'YER' دائمًا، و get_fx_rate(...) = 1 دائمًا.
+- تم استبدال تريجرات FX على orders/payments بتريجرات تفرض YER وتثبت fx_rate=1 و base_* = total/amount.
+- المرجع: [20260128224000_force_single_currency_yer_no_fx.sql](file:///d:/JOMLA/AhmedZ/supabase/migrations/20260128224000_force_single_currency_yer_no_fx.sql)
 
 ### Phase 13 – RBAC Hardening & Privilege Seal (Enterprise Security Gate)
 - إغلاق مسارات النشر المحاسبي (Posting Seal):
@@ -307,6 +368,12 @@ Import Shipments Accounting Rule — Setting shipment status to delivered automa
 - صلاحيات النشر المحاسبي:
   - أي GRANT EXECUTE على post_payment/post_inventory_movement/post_order_delivery للـ anon/authenticated تم تجاوزه؛ المرجع النهائي هو Seal Phase 13.  
     المرجع: [20260123123500_lockdown_accounting_posting_functions.sql](file:///d:/AhmedZ/supabase/migrations/20260123123500_lockdown_accounting_posting_functions.sql) + [20260125120000_phase13_rbac_hardening_privilege_seal.sql](file:///d:/AhmedZ/supabase/migrations/20260125120000_phase13_rbac_hardening_privilege_seal.sql)
+- الوردية (close_cash_shift_v2):
+  - وجود توقيعين مختلفين لـ close_cash_shift_v2 (5 بارامترات/6 بارامترات) تم تجاوزه؛ النسخة المعتمدة الآن توقيع واحد فقط بستة بارامترات.  
+    المرجع: [20260128232000_unify_close_cash_shift_v2_signature.sql](file:///d:/JOMLA/AhmedZ/supabase/migrations/20260128232000_unify_close_cash_shift_v2_signature.sql)
+- العملة/سعر الصرف:
+  - منطق FX multi-currency على orders/payments تم تعطيله لصالح عملة واحدة YER فقط.  
+    المرجع: [20260128224000_force_single_currency_yer_no_fx.sql](file:///d:/JOMLA/AhmedZ/supabase/migrations/20260128224000_force_single_currency_yer_no_fx.sql)
 - عكس القيود:
   - reverse_journal_entry بحماية staff-only تم تجاوزه؛ النسخة الفعلية تتطلب service_role أو accounting.manage.  
     المرجع: [20260125120000_phase13_rbac_hardening_privilege_seal.sql](file:///d:/AhmedZ/supabase/migrations/20260125120000_phase13_rbac_hardening_privilege_seal.sql)

@@ -10,6 +10,7 @@ import { useSettings } from '../../../contexts/SettingsContext';
 import LineChart from '../../../components/admin/charts/LineChart';
 import ConfirmationModal from '../../../components/admin/ConfirmationModal';
 import { localizeSupabaseError } from '../../../utils/errorUtils';
+import { toYmdLocal } from '../../../utils/dateUtils';
 
 type TrialBalanceRow = {
   account_code: string;
@@ -227,17 +228,10 @@ type JournalEntryLine = {
   account_name: string;
 };
 
-const toISODateLocal = (d: Date) => {
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
-
 const getMonthRange = (d: Date) => {
   const start = new Date(d.getFullYear(), d.getMonth(), 1);
   const end = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-  return { start: toISODateLocal(start), end: toISODateLocal(end) };
+  return { start: toYmdLocal(start), end: toYmdLocal(end) };
 };
 
 const getPreviousMonthRange = (d: Date) => {
@@ -250,7 +244,7 @@ const getPreviousAsOfDate = (asOf: string) => {
   const dt = new Date(asOf);
   if (Number.isNaN(dt.getTime())) return '';
   const prev = new Date(dt.getFullYear(), dt.getMonth() - 1, dt.getDate());
-  return toISODateLocal(prev);
+  return toYmdLocal(prev);
 };
 
 const computeAccountAmount = (accountType: string, debit: number, credit: number) => {
@@ -396,7 +390,7 @@ const FinancialReports: React.FC = () => {
   const defaultFilters = useMemo<FinancialReportFilters>(() => {
     const now = new Date();
     const { start, end } = getMonthRange(now);
-    return { startDate: start, endDate: end, asOfDate: toISODateLocal(now) };
+    return { startDate: start, endDate: end, asOfDate: toYmdLocal(now) };
   }, []);
 
   const [appliedFilters, setAppliedFilters] = useState<FinancialReportFilters>(defaultFilters);
@@ -408,7 +402,7 @@ const FinancialReports: React.FC = () => {
     const asOf = params.get('asOf') || '';
     const ccId = params.get('ccId') || '';
     if (start || end || asOf || ccId) {
-      const f = { startDate: start, endDate: end, asOfDate: asOf || toISODateLocal(new Date()), costCenterId: ccId };
+      const f = { startDate: start, endDate: end, asOfDate: asOf || toYmdLocal(new Date()), costCenterId: ccId };
       setDraftFilters(f);
       setAppliedFilters(f);
     }
@@ -834,7 +828,7 @@ const FinancialReports: React.FC = () => {
   const loadStatementsComparison = useCallback(async () => {
     if (!supabase) return;
     try {
-      const now = new Date(appliedFilters.startDate || toISODateLocal(new Date()));
+      const now = new Date(appliedFilters.startDate || toYmdLocal(new Date()));
       const { start, end } = getPreviousMonthRange(now);
       const [{ data: isData, error: isError }] = await Promise.all([
         supabase.rpc('income_statement', { 
@@ -879,7 +873,7 @@ const FinancialReports: React.FC = () => {
   const loadCashFlowComparison = useCallback(async () => {
     if (!supabase) return;
     try {
-      const now = new Date(appliedFilters.startDate || toISODateLocal(new Date()));
+      const now = new Date(appliedFilters.startDate || toYmdLocal(new Date()));
       const { start, end } = getPreviousMonthRange(now);
       const { data: cfData, error: cfError } = await supabase.rpc('cash_flow_statement', {
         p_start: start || null,
@@ -2224,7 +2218,7 @@ const FinancialReports: React.FC = () => {
             type="button"
             onClick={() => {
               const now = new Date();
-              const today = toISODateLocal(now);
+              const today = toYmdLocal(now);
               setDraftFilters((prev) => ({ ...prev, startDate: today, endDate: today, asOfDate: today }));
             }}
             className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-sm font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700"
@@ -2236,7 +2230,7 @@ const FinancialReports: React.FC = () => {
             onClick={() => {
               const now = new Date();
               const { start, end } = getMonthRange(now);
-              setDraftFilters((prev) => ({ ...prev, startDate: start, endDate: end, asOfDate: toISODateLocal(now) }));
+              setDraftFilters((prev) => ({ ...prev, startDate: start, endDate: end, asOfDate: toYmdLocal(now) }));
             }}
             className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-sm font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700"
           >
@@ -2248,7 +2242,7 @@ const FinancialReports: React.FC = () => {
               const now = new Date();
               const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
               const { start, end } = getMonthRange(lastMonth);
-              setDraftFilters((prev) => ({ ...prev, startDate: start, endDate: end, asOfDate: toISODateLocal(now) }));
+              setDraftFilters((prev) => ({ ...prev, startDate: start, endDate: end, asOfDate: toYmdLocal(now) }));
             }}
             className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-sm font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700"
           >

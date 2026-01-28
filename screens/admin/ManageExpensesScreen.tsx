@@ -4,6 +4,7 @@ import { Expense, CostCenter } from '../../types';
 import { useToast } from '../../contexts/ToastContext';
 // import { useSettings } from '../../contexts/SettingsContext';
 import NumberInput from '../../components/NumberInput';
+import { nextMonthStartYmd, toDateInputValue, toDateTimeLocalInputValue, toMonthInputValue, toUtcIsoAtMiddayFromYmd } from '../../utils/dateUtils';
 
 const ManageExpensesScreen: React.FC = () => {
     const { showNotification } = useToast();
@@ -12,18 +13,18 @@ const ManageExpensesScreen: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
-    const [filterDate, setFilterDate] = useState<string>(new Date().toISOString().slice(0, 7)); // YYYY-MM
+    const [filterDate, setFilterDate] = useState<string>(toMonthInputValue());
     const [paymentExpense, setPaymentExpense] = useState<Expense | null>(null);
     const [paymentAmount, setPaymentAmount] = useState<number>(0);
     const [paymentMethod, setPaymentMethod] = useState<string>('cash');
-    const [paymentOccurredAt, setPaymentOccurredAt] = useState<string>(new Date().toISOString().slice(0, 16));
+    const [paymentOccurredAt, setPaymentOccurredAt] = useState<string>(toDateTimeLocalInputValue());
 
     // Form State
     const [formData, setFormData] = useState<Partial<Expense>>({
         title: '',
         amount: 0,
         category: 'other',
-        date: new Date().toISOString().slice(0, 10),
+        date: toDateInputValue(),
         notes: '',
         cost_center_id: ''
     });
@@ -58,7 +59,7 @@ const ManageExpensesScreen: React.FC = () => {
 
             // Filter by selected month
             const startOfMonth = `${filterDate}-01`;
-            const endOfMonth = new Date(new Date(startOfMonth).setMonth(new Date(startOfMonth).getMonth() + 1)).toISOString().slice(0, 10);
+            const endOfMonth = nextMonthStartYmd(filterDate);
 
             const { data, error } = await supabase
                 .from('expenses')
@@ -100,7 +101,7 @@ const ManageExpensesScreen: React.FC = () => {
             if (error) throw error;
 
             if (inserted?.id) {
-                const occurredAt = new Date(`${formData.date}T12:00:00`).toISOString();
+                const occurredAt = toUtcIsoAtMiddayFromYmd(formData.date);
                 if (payNow) {
                     const { error: payError } = await supabase.rpc('record_expense_payment', {
                         p_expense_id: inserted.id,
@@ -125,7 +126,7 @@ const ManageExpensesScreen: React.FC = () => {
                 title: '',
                 amount: 0,
                 category: 'other',
-                date: new Date().toISOString().slice(0, 10),
+                date: toDateInputValue(),
                 notes: '',
                 cost_center_id: ''
             });
@@ -142,7 +143,7 @@ const ManageExpensesScreen: React.FC = () => {
         setPaymentExpense(exp);
         setPaymentAmount(exp.amount);
         setPaymentMethod('cash');
-        setPaymentOccurredAt(new Date().toISOString().slice(0, 16));
+        setPaymentOccurredAt(toDateTimeLocalInputValue());
         setIsPaymentModalOpen(true);
     };
 

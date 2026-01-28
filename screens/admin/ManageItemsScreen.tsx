@@ -12,26 +12,21 @@ import { useSettings } from '../../contexts/SettingsContext';
 import { useItemMeta } from '../../contexts/ItemMetaContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useStock } from '../../contexts/StockContext';
+import { parseYmdToLocalDate, toYmdLocal } from '../../utils/dateUtils';
+import { getSupabaseClient } from '../../supabase';
 
 const EXPIRY_SOON_DAYS = 1;
 
 const startOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
 
-const formatDateOnly = (date: Date) => {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-};
+const formatDateOnly = (date: Date) => toYmdLocal(date);
 
 const parseDateOnly = (value?: string): Date | null => {
   if (!value) return null;
   const trimmed = value.trim();
   if (!trimmed) return null;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
-    const date = new Date(`${trimmed}T00:00:00`);
-    return Number.isNaN(date.getTime()) ? null : startOfDay(date);
-  }
+  const ymd = parseYmdToLocalDate(trimmed);
+  if (ymd) return startOfDay(ymd);
   const date = new Date(trimmed);
   return Number.isNaN(date.getTime()) ? null : startOfDay(date);
 };
@@ -39,35 +34,6 @@ const parseDateOnly = (value?: string): Date | null => {
 const diffDays = (from: Date, to: Date) => Math.round((startOfDay(to).getTime() - startOfDay(from).getTime()) / 86400000);
 
 type ExpiryStatus = 'expired' | 'expiring' | 'ok' | 'missing';
-
-const getItemMeta = (item: MenuItem) => {
-  const today = startOfDay(new Date());
-  const productionDate = parseDateOnly((item as any).productionDate || (item as any).harvestDate);
-  const explicitExpiryDate = parseDateOnly(item.expiryDate);
-  const effectiveExpiryDate = explicitExpiryDate || null;
-  const ageDays = productionDate ? diffDays(productionDate, today) : null;
-  const daysToExpiry = effectiveExpiryDate ? diffDays(today, effectiveExpiryDate) : null;
-
-  let expiryStatus: ExpiryStatus = 'missing';
-  if (effectiveExpiryDate) {
-    if ((daysToExpiry ?? 0) < 0) expiryStatus = 'expired';
-    else if ((daysToExpiry ?? 0) <= EXPIRY_SOON_DAYS) expiryStatus = 'expiring';
-    else expiryStatus = 'ok';
-  }
-
-  return {
-    freshnessLevel: item.freshnessLevel,
-    hasFreshness: Boolean(item.freshnessLevel),
-    expiryStatus,
-    productionDate,
-    explicitExpiryDate,
-    effectiveExpiryDate,
-    ageDays,
-    daysToExpiry,
-    hasProduction: Boolean(productionDate),
-    hasExplicitExpiry: Boolean(explicitExpiryDate),
-  };
-};
 
 const ManageItemsScreen: React.FC = () => {
   const { menuItems, addMenuItem, updateMenuItem, deleteMenuItem, loading } = useMenu();
@@ -108,7 +74,7 @@ const ManageItemsScreen: React.FC = () => {
   const [unitTypeFilter, setUnitTypeFilter] = useState<'all' | string>('all');
   const [freshnessFilter, setFreshnessFilter] = useState<'all' | string>('all');
   const [expiryFilter, setExpiryFilter] = useState<'all' | ExpiryStatus>('all');
-  const [sortBy, setSortBy] = useState<'default' | 'production_newest' | 'production_oldest' | 'expiry_soonest'>('default');
+  const [sortBy, setSortBy] = useState<'default' | 'expiry_soonest'>('default');
   const [showArchived, setShowArchived] = useState(false);
   const [statusAction, setStatusAction] = useState<'archive' | 'restore'>('archive');
 
@@ -135,6 +101,7 @@ const ManageItemsScreen: React.FC = () => {
 
 
   const expiryAlertLastShown = useRef<string>('');
+  const [expiryMetaByItemId, setExpiryMetaByItemId] = useState<Record<string, { status: ExpiryStatus; closestExpiry: Date | null; daysToExpiry: number | null; hasMissingExpiryStock: boolean }>>({});
 
   const notifyError = (error: unknown) => {
     const raw = error instanceof Error ? error.message : '';
@@ -155,6 +122,113 @@ const ManageItemsScreen: React.FC = () => {
     setIsMetaModalOpen(true);
     resetDrafts(tab);
   };
+
+  useEffect(() => {
+    const supabase = getSupabaseClient();
+    if (!supabase) {
+      setExpiryMetaByItemId({});
+      return;
+    }
+
+    let cancelled = false;
+
+    const load = async () => {
+      const foodIds = Array.from(new Set(menuItems.filter(i => i.category === 'food' && i.status !== 'archived').map(i => i.id)));
+      if (foodIds.length === 0) {
+        if (!cancelled) setExpiryMetaByItemId({});
+        return;
+      }
+
+      const today = startOfDay(new Date());
+      const agg: Record<string, { hasExpired: boolean; hasExpiring: boolean; hasMissing: boolean; minDays: number | null; minDate: Date | null }> = {};
+
+      const chunkSize = 200;
+      for (let offset = 0; offset < foodIds.length; offset += chunkSize) {
+        const chunk = foodIds.slice(offset, offset + chunkSize);
+        const { data, error } = await supabase
+          .from('v_food_batch_balances')
+          .select('item_id, expiry_date, remaining_qty')
+          .in('item_id', chunk)
+          .gt('remaining_qty', 0);
+        if (error) throw error;
+
+        for (const row of (data || []) as any[]) {
+          const itemId = typeof row?.item_id === 'string' ? row.item_id : '';
+          if (!itemId) continue;
+          const remaining = Number(row?.remaining_qty || 0);
+          if (!(remaining > 0)) continue;
+
+          const entry = agg[itemId] || (agg[itemId] = { hasExpired: false, hasExpiring: false, hasMissing: false, minDays: null, minDate: null });
+          const expiry = row?.expiry_date ? parseDateOnly(String(row.expiry_date)) : null;
+          if (!expiry) {
+            entry.hasMissing = true;
+            continue;
+          }
+
+          const days = diffDays(today, expiry);
+          if (entry.minDays === null || days < entry.minDays) {
+            entry.minDays = days;
+            entry.minDate = expiry;
+          }
+          if (days < 0) entry.hasExpired = true;
+          else if (days <= EXPIRY_SOON_DAYS) entry.hasExpiring = true;
+        }
+      }
+
+      const next: Record<string, { status: ExpiryStatus; closestExpiry: Date | null; daysToExpiry: number | null; hasMissingExpiryStock: boolean }> = {};
+      for (const itemId of foodIds) {
+        const a = agg[itemId];
+        if (!a) continue;
+        const status: ExpiryStatus = a.hasExpired ? 'expired' : a.hasExpiring ? 'expiring' : a.hasMissing ? 'missing' : 'ok';
+        next[itemId] = {
+          status,
+          closestExpiry: a.minDate,
+          daysToExpiry: a.minDays,
+          hasMissingExpiryStock: a.hasMissing,
+        };
+      }
+
+      if (!cancelled) setExpiryMetaByItemId(next);
+    };
+
+    void load().catch(() => {
+      if (!cancelled) setExpiryMetaByItemId({});
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [menuItems]);
+
+  const getItemMeta = React.useCallback((item: MenuItem) => {
+    const available = Number(item.availableStock ?? 0);
+    const hasStock = available > 0;
+
+    if (item.category !== 'food') {
+      return {
+        freshnessLevel: item.freshnessLevel,
+        hasFreshness: Boolean(item.freshnessLevel),
+        expiryStatus: 'ok' as ExpiryStatus,
+        effectiveExpiryDate: null as Date | null,
+        daysToExpiry: null as number | null,
+        hasExplicitExpiry: false,
+        hasStock,
+      };
+    }
+
+    const meta = expiryMetaByItemId[item.id];
+    const expiryStatus: ExpiryStatus = meta ? meta.status : (hasStock ? 'missing' : 'ok');
+
+    return {
+      freshnessLevel: item.freshnessLevel,
+      hasFreshness: Boolean(item.freshnessLevel),
+      expiryStatus,
+      effectiveExpiryDate: meta?.closestExpiry || null,
+      daysToExpiry: typeof meta?.daysToExpiry === 'number' ? meta.daysToExpiry : null,
+      hasExplicitExpiry: Boolean(meta?.closestExpiry),
+      hasStock,
+    };
+  }, [expiryMetaByItemId]);
 
   const handleOpenFormModal = (item: MenuItem | null = null) => {
     setCurrentItem(item);
@@ -268,21 +342,11 @@ const ManageItemsScreen: React.FC = () => {
         const daysB = metaB.daysToExpiry ?? Number.POSITIVE_INFINITY;
         if (daysA !== daysB) return daysA - daysB;
       }
-
-      if (sortBy === 'production_newest' || sortBy === 'production_oldest') {
-        const timeA = metaA.productionDate?.getTime() ?? Number.NEGATIVE_INFINITY;
-        const timeB = metaB.productionDate?.getTime() ?? Number.NEGATIVE_INFINITY;
-        if (timeA !== timeB) return sortBy === 'production_newest' ? timeB - timeA : timeA - timeB;
-      }
-
-      const timeA = metaA.productionDate?.getTime() ?? 0;
-      const timeB = metaB.productionDate?.getTime() ?? 0;
-      if (timeA !== timeB) return timeB - timeA;
       const nameA = a.name['ar'] || a.name.ar || '';
       const nameB = b.name['ar'] || b.name.ar || '';
       return nameA.localeCompare(nameB);
     });
-  }, [menuItems, searchTerm, categoryFilter, unitTypeFilter, freshnessFilter, expiryFilter, sortBy, showArchived]);
+  }, [menuItems, searchTerm, categoryFilter, unitTypeFilter, freshnessFilter, expiryFilter, sortBy, showArchived, getItemMeta]);
 
   const expiryExportRows = useMemo(() => {
     return menuItems
@@ -297,7 +361,7 @@ const ManageItemsScreen: React.FC = () => {
         const daysB = b.meta.daysToExpiry ?? Number.POSITIVE_INFINITY;
         return daysA - daysB;
       });
-  }, [menuItems]);
+  }, [menuItems, getItemMeta]);
 
   const expirySummary = useMemo(() => {
     const activeItems = menuItems.filter(item => item.status !== 'archived');
@@ -305,20 +369,18 @@ const ManageItemsScreen: React.FC = () => {
       total: activeItems.length,
       expired: 0,
       expiring: 0,
-      missingProduction: 0,
-      missingExpiry: 0,
+      missing: 0,
     };
 
     activeItems.forEach(item => {
       const meta = getItemMeta(item);
-      if (!meta.hasProduction) summary.missingProduction += 1;
-      if (!meta.hasExplicitExpiry) summary.missingExpiry += 1;
       if (meta.expiryStatus === 'expired') summary.expired += 1;
       if (meta.expiryStatus === 'expiring') summary.expiring += 1;
+      if (meta.expiryStatus === 'missing') summary.missing += 1;
     });
 
     return summary;
-  }, [menuItems]);
+  }, [menuItems, getItemMeta]);
 
   useEffect(() => {
     if (expirySummary.total === 0) return;
@@ -510,11 +572,11 @@ const ManageItemsScreen: React.FC = () => {
   const handleExportExpiryReport = async () => {
     const headers =
       language === 'ar'
-        ? ['الصنف', 'تاريخ الإنتاج', 'تاريخ الانتهاء', 'حالة الانتهاء', 'العمر (يوم)', 'متبقي (يوم)', 'المخزون']
-        : ['Item', 'Production date', 'Expiry date', 'Expiry status', 'Age (days)', 'Days to expiry', 'Stock'];
+        ? ['الصنف', 'تاريخ الانتهاء (أقرب دفعة)', 'حالة الانتهاء', 'متبقي (يوم)', 'المخزون']
+        : ['Item', 'Expiry (nearest batch)', 'Expiry status', 'Days to expiry', 'Stock'];
 
     const rows = expiryExportRows.map(({ item, meta }) => {
-      const expiry = item.expiryDate || '';
+      const expiry = meta.effectiveExpiryDate ? formatDateOnly(meta.effectiveExpiryDate) : '';
 
       const statusLabel =
         meta.expiryStatus === 'expired'
@@ -527,10 +589,8 @@ const ManageItemsScreen: React.FC = () => {
 
       return [
         item.name[language] || item.name.ar,
-        (item as any).productionDate || (item as any).harvestDate || '',
         expiry,
         statusLabel,
-        meta.ageDays ?? '',
         meta.daysToExpiry ?? '',
         typeof item.availableStock === 'number' ? String(item.availableStock) : '',
       ];
@@ -663,8 +723,6 @@ const ManageItemsScreen: React.FC = () => {
               className="w-full p-3 border border-gray-300 rounded-lg dark:bg-gray-700 dark:border-gray-600 focus:ring-2 focus:ring-gold-500 focus:border-gold-500 transition"
             >
               <option value="default">{language === 'ar' ? 'الترتيب الافتراضي' : 'Default order'}</option>
-              <option value="production_newest">{language === 'ar' ? 'الأحدث إنتاجًا' : 'Newest production'}</option>
-              <option value="production_oldest">{language === 'ar' ? 'الأقدم إنتاجًا' : 'Oldest production'}</option>
               <option value="expiry_soonest">{language === 'ar' ? 'الأقرب انتهاءً' : 'Soonest expiry'}</option>
             </select>
           </div>
@@ -690,11 +748,8 @@ const ManageItemsScreen: React.FC = () => {
             <span className="px-3 py-1 rounded-full text-xs font-semibold bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200">
               {language === 'ar' ? `قريب الانتهاء: ${expirySummary.expiring}` : `Expiring: ${expirySummary.expiring}`}
             </span>
-            <span className="px-3 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">
-              {language === 'ar' ? `بدون تاريخ إنتاج: ${expirySummary.missingProduction}` : `Missing production: ${expirySummary.missingProduction}`}
-            </span>
             <span className="px-3 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
-              {language === 'ar' ? `بدون تاريخ انتهاء: ${expirySummary.missingExpiry}` : `Missing expiry: ${expirySummary.missingExpiry}`}
+              {language === 'ar' ? `بدون تاريخ: ${expirySummary.missing}` : `Missing: ${expirySummary.missing}`}
             </span>
           </div>
         )}
@@ -762,8 +817,8 @@ const ManageItemsScreen: React.FC = () => {
                       )}
                       {(() => {
                         const meta = getItemMeta(item);
-                        const hasAny = meta.hasExplicitExpiry || meta.hasProduction || Boolean(meta.effectiveExpiryDate);
-                        if (!hasAny) return null;
+                        const shouldShow = item.category === 'food' && (meta.expiryStatus !== 'ok' || meta.hasExplicitExpiry);
+                        if (!shouldShow) return null;
 
                         const expiryLabel =
                           meta.expiryStatus === 'expired'
@@ -783,31 +838,28 @@ const ManageItemsScreen: React.FC = () => {
                                 ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
                                 : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200';
 
-                        const productionText = meta.productionDate
-                          ? (language === 'ar' ? `إنتاج: ${formatDateOnly(meta.productionDate)}` : `Production: ${formatDateOnly(meta.productionDate)}`)
+                        const expiryText = meta.effectiveExpiryDate
+                          ? (language === 'ar'
+                            ? `أقرب انتهاء: ${formatDateOnly(meta.effectiveExpiryDate)}`
+                            : `Nearest expiry: ${formatDateOnly(meta.effectiveExpiryDate)}`)
                           : '';
-
-                        const expiryText = item.expiryDate
-                          ? (language === 'ar' ? `انتهاء: ${item.expiryDate}` : `Expiry: ${item.expiryDate}`)
-                          : meta.effectiveExpiryDate
-                            ? (language === 'ar'
-                              ? `انتهاء (تقديري): ${formatDateOnly(meta.effectiveExpiryDate)}`
-                              : `Expiry (estimated): ${formatDateOnly(meta.effectiveExpiryDate)}`)
-                            : '';
+                        const remainingText = typeof meta.daysToExpiry === 'number'
+                          ? (language === 'ar' ? `متبقي: ${meta.daysToExpiry} يوم` : `Remaining: ${meta.daysToExpiry} days`)
+                          : '';
 
                         return (
                           <div className="mt-2 flex flex-wrap gap-2">
                             <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${expiryClass}`}>
                               {language === 'ar' ? `حالة الانتهاء: ${expiryLabel}` : `Expiry: ${expiryLabel}`}
                             </span>
-                            {productionText && (
-                              <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-50 text-gray-700 dark:bg-gray-700 dark:text-gray-200">
-                                {productionText}
-                              </span>
-                            )}
                             {expiryText && (
                               <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-50 text-gray-700 dark:bg-gray-700 dark:text-gray-200">
                                 {expiryText}
+                              </span>
+                            )}
+                            {remainingText && (
+                              <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-50 text-gray-700 dark:bg-gray-700 dark:text-gray-200">
+                                {remainingText}
                               </span>
                             )}
                           </div>

@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Coupon } from '../../types';
 import { useSettings } from '../../contexts/SettingsContext';
+import { normalizeIsoDateOnly, toUtcIsoAtMiddayFromYmd } from '../../utils/dateUtils';
 
 interface CouponFormModalProps {
   isOpen: boolean;
@@ -35,7 +36,7 @@ const CouponFormModal: React.FC<CouponFormModalProps> = ({ isOpen, onClose, onSa
         value: couponToEdit.value,
         minOrderAmount: couponToEdit.minOrderAmount || 0,
         maxDiscount: couponToEdit.maxDiscount || 0,
-        expiresAt: couponToEdit.expiresAt ? couponToEdit.expiresAt.split('T')[0] : '',
+        expiresAt: couponToEdit.expiresAt ? normalizeIsoDateOnly(couponToEdit.expiresAt) : '',
         usageLimit: couponToEdit.usageLimit || 0,
         isActive: couponToEdit.isActive !== undefined ? couponToEdit.isActive : true,
       });
@@ -65,7 +66,7 @@ const CouponFormModal: React.FC<CouponFormModalProps> = ({ isOpen, onClose, onSa
         ...coupon,
         minOrderAmount: coupon.minOrderAmount || undefined,
         maxDiscount: coupon.maxDiscount || undefined,
-        expiresAt: coupon.expiresAt ? new Date(coupon.expiresAt).toISOString() : undefined,
+        expiresAt: coupon.expiresAt ? toUtcIsoAtMiddayFromYmd(coupon.expiresAt) : undefined,
         usageLimit: coupon.usageLimit || undefined,
     };
     onSave(couponToEdit ? { ...finalCoupon, id: couponToEdit.id } : finalCoupon);

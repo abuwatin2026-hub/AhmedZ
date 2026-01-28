@@ -363,14 +363,17 @@ export const StockProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         if (!supabase) return;
 
         try {
-            const { data, error } = await supabase.rpc('process_expired_items');
+            const warehouseId = sessionScope.requireScope().warehouseId;
+            const { data, error } = await supabase.rpc('process_expiry_light', {
+                p_warehouse_id: warehouseId
+            });
             if (error) throw error;
-            // The RPC returns { success: boolean, processed_count: number }
-            if (data && data.success && data.processed_count > 0) {
+            const processedCount = Number(data || 0);
+            if (processedCount > 0) {
                 showNotification(
                     language === 'ar'
-                        ? `تمت أرشفة ${data.processed_count} منتجات منتهية الصلاحية تلقائياً.`
-                        : `Auto-archived ${data.processed_count} expired items.`,
+                        ? `تم تفريغ ${processedCount} دفعات منتهية كهدر.`
+                        : `Processed ${processedCount} expired batches as wastage.`,
                     'info'
                 );
                 await fetchStock();
@@ -381,7 +384,7 @@ export const StockProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             const msg = localizeSupabaseError(error);
             if (msg && import.meta.env.DEV) console.error(msg);
         }
-    }, [language, fetchStock, showNotification]);
+    }, [language, fetchStock, showNotification, sessionScope]);
 
     useEffect(() => {
         // Respect inventory flag: do NOT auto-archive expired items globally

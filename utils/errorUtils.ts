@@ -40,6 +40,18 @@ export const localizeError = (message: string): string => {
   if (raw.includes('cash method requires an open cash shift')) {
     return 'يجب فتح وردية نقدية صالحة قبل تسجيل دفعة نقدية لهذا الطلب.';
   }
+  if (raw.includes('payments_cash_requires_shift') || (raw.includes('violates check constraint') && raw.includes('cash_requires_shift'))) {
+    return 'لا يمكن تسجيل دفعة نقدية بدون وردية نقدية مفتوحة. افتح وردية ثم أعد المحاولة.';
+  }
+  if (raw.includes('posting already exists for this source')) {
+    return 'تم ترحيل هذا القيد سابقًا. إذا أردت الإلغاء، يجب إنشاء قيد عكسي (Reversal).';
+  }
+  if (raw.includes('could not find the function') && raw.includes('close_cash_shift_v2')) {
+    return 'تعذر العثور على دالة إغلاق الوردية في قاعدة البيانات. حدّث النظام ثم أعد المحاولة.';
+  }
+  if ((raw.includes('is not unique') || raw.includes('not unique')) && raw.includes('close_cash_shift_v2')) {
+    return 'تعذر إغلاق الوردية بسبب تعارض في نسخة دالة الإغلاق بقاعدة البيانات. تم إصلاحه في تحديث القاعدة—حدّث الصفحة ثم أعد المحاولة.';
+  }
   if (
     raw.includes('closed period') ||
     raw.includes('period is closed') ||
@@ -50,6 +62,32 @@ export const localizeError = (message: string): string => {
   }
   if (raw.includes('paid amount exceeds total')) {
     return 'المبلغ المدفوع يتجاوز إجمالي الطلب. تحقق من الدفعات السابقة أو من قيمة الطلب.';
+  }
+  if (raw.includes('purchase order total is zero')) {
+    return 'لا يمكن تسجيل دفعة لأمر شراء إجماليه صفر. حدّث الأمر أو تحقق من بنوده ثم أعد المحاولة.';
+  }
+  if (raw.includes('purchase order already fully paid')) {
+    return 'أمر الشراء مسدد بالكامل ولا يمكن إضافة دفعة جديدة.';
+  }
+  if (raw.includes('purchase_orders_amounts_check')) {
+    return 'تعذر حفظ الدفعة لأن المبلغ المدفوع أصبح يتجاوز إجمالي أمر الشراء.';
+  }
+  if (raw.includes('fx rate missing for currency')) {
+    const m = message.match(/fx rate missing for currency\s+([A-Z]{3})/i);
+    const c = m && m[1] ? m[1].toUpperCase() : '';
+    return c ? `لا يوجد سعر صرف للعملة ${c} لليوم. أضف سعر الصرف ثم أعد المحاولة.` : 'لا يوجد سعر صرف للعملة لليوم. أضف سعر الصرف ثم أعد المحاولة.';
+  }
+  if (raw.includes('p_purchase_order_id is required')) {
+    return 'معرف أمر الشراء مطلوب.';
+  }
+  if (raw.includes('p_order_id is required')) {
+    return 'معرف الطلب مطلوب.';
+  }
+  if (raw.includes('p_payment_id is required')) {
+    return 'معرف الدفعة مطلوب.';
+  }
+  if (raw.includes('source_id is required') || raw.includes('source_type is required')) {
+    return 'تعذر ترحيل القيد المحاسبي بسبب نقص بيانات المصدر. حدّث الصفحة ثم أعد المحاولة.';
   }
   if (raw.includes('order not found')) {
     return 'تعذر العثور على هذا الطلب في قاعدة البيانات. حدّث الصفحة وتأكد أن الطلب لم يُحذف.';

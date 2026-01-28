@@ -16,6 +16,7 @@ import {
     type ChallengeStats,
 } from '../../utils/challengeQueries';
 import { getSupabaseClient } from '../../supabase';
+import { normalizeIsoDateOnly, toYmdLocal } from '../../utils/dateUtils';
 
 const ManageChallengesScreen: React.FC = () => {
     const { showNotification } = useToast();
@@ -454,8 +455,8 @@ const ChallengeFormModal: React.FC<ChallengeFormModalProps> = ({
         targetCount: 10,
         rewardType: 'points',
         rewardValue: 100,
-        startDate: new Date().toISOString().split('T')[0],
-        endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        startDate: toYmdLocal(new Date()),
+        endDate: toYmdLocal(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)),
         status: 'active',
     });
 
@@ -471,8 +472,8 @@ const ChallengeFormModal: React.FC<ChallengeFormModalProps> = ({
                 targetCount: 10,
                 rewardType: 'points',
                 rewardValue: 100,
-                startDate: new Date().toISOString().split('T')[0],
-                endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+                startDate: toYmdLocal(new Date()),
+                endDate: toYmdLocal(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)),
                 status: 'active',
             });
         }
@@ -617,7 +618,7 @@ const ChallengeFormModal: React.FC<ChallengeFormModalProps> = ({
                                 <input
                                     type="date"
                                     required
-                                    value={formData.startDate?.split('T')[0]}
+                                    value={normalizeIsoDateOnly(String(formData.startDate || ''))}
                                     onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
                                     className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-800 dark:text-white"
                                 />
@@ -629,7 +630,7 @@ const ChallengeFormModal: React.FC<ChallengeFormModalProps> = ({
                                 <input
                                     type="date"
                                     required
-                                    value={formData.endDate?.split('T')[0]}
+                                    value={normalizeIsoDateOnly(String(formData.endDate || ''))}
                                     onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
                                     className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-800 dark:text-white"
                                 />

@@ -5,6 +5,7 @@ import { useAddons } from '../../contexts/AddonContext';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useItemMeta } from '../../contexts/ItemMetaContext';
+import { useStock } from '../../contexts/StockContext';
 import ImageUploader from '../ImageUploader';
 import NumberInput from '../NumberInput';
 import { getSupabaseClient } from '../../supabase';
@@ -24,6 +25,7 @@ const ItemFormModal: React.FC<ItemFormModalProps> = ({ isOpen, onClose, onSave, 
   const { t, language } = useSettings();
   const { hasPermission } = useAuth();
   const { categories, unitTypes, freshnessLevels, getCategoryLabel, getUnitLabel, getFreshnessLabel } = useItemMeta();
+  const { getStockByItemId } = useStock();
 
   const getInitialFormState = (): Omit<MenuItem, 'id' | 'rating'> => ({
     ...((): Pick<MenuItem, 'category' | 'unitType' | 'freshnessLevel' | 'minWeight'> => {
@@ -53,13 +55,10 @@ const ItemFormModal: React.FC<ItemFormModalProps> = ({ isOpen, onClose, onSave, 
     isFeatured: false,
     availableStock: 0,
     buyingPrice: 0,
-    transportCost: 0,
-    supplyTaxCost: 0,
   });
 
   const [item, setItem] = useState(getInitialFormState());
   const [hasReceipts, setHasReceipts] = useState(false);
-  const [dateError, setDateError] = useState<string>('');
   const [formError, setFormError] = useState<string>('');
 
   useEffect(() => {
@@ -79,13 +78,9 @@ const ItemFormModal: React.FC<ItemFormModalProps> = ({ isOpen, onClose, onSave, 
         unitType: itemToEdit.unitType || 'kg',
         availableStock: itemToEdit.availableStock || 0,
         freshnessLevel: itemToEdit.freshnessLevel || 'fresh',
-        productionDate: itemToEdit.productionDate || (itemToEdit as any).harvestDate,
-        expiryDate: itemToEdit.expiryDate,
         minWeight: itemToEdit.minWeight || 0.5,
         pricePerUnit: itemToEdit.pricePerUnit,
         buyingPrice: itemToEdit.buyingPrice || 0,
-        transportCost: itemToEdit.transportCost || 0,
-        supplyTaxCost: itemToEdit.supplyTaxCost || 0,
       });
     } else {
       setItem(getInitialFormState());
@@ -131,16 +126,6 @@ const ItemFormModal: React.FC<ItemFormModalProps> = ({ isOpen, onClose, onSave, 
     };
   }, [itemToEdit?.id, hasPermission]);
   
-  useEffect(() => {
-    const h = (item as any).productionDate || '';
-    const e = item.expiryDate || '';
-    if (h && e && h > e) {
-      setDateError(language === 'ar' ? 'تاريخ الإنتاج يجب أن يسبق تاريخ الانتهاء' : 'Production date must be before expiry');
-    } else {
-      setDateError('');
-    }
-  }, [(item as any).productionDate, item.expiryDate, language]);
-
   useEffect(() => {
     const nameAr = (item.name?.ar || '').trim();
     const descAr = (item.description?.ar || '').trim();
@@ -191,18 +176,6 @@ const ItemFormModal: React.FC<ItemFormModalProps> = ({ isOpen, onClose, onSave, 
     if (type === 'checkbox') {
       setItem(prev => ({ ...prev, [name]: (e.target as HTMLInputElement).checked }));
     } else {
-      if (name === 'buyingPrice' || name === 'transportCost' || name === 'supplyTaxCost') {
-        const val = parseFloat(value) || 0;
-        setItem(prev => {
-          const newState = { ...prev, [name]: val };
-          // Auto-calculate total cost
-          const b = name === 'buyingPrice' ? val : (newState.buyingPrice || 0);
-          const t = name === 'transportCost' ? val : (newState.transportCost || 0);
-          const s = name === 'supplyTaxCost' ? val : (newState.supplyTaxCost || 0);
-          return { ...newState, costPrice: b + t + s };
-        });
-        return;
-      }
       setItem(prev => ({ ...prev, [name]: (name === 'price' || name === 'costPrice') ? parseFloat(value) : value }));
     }
   };
@@ -225,14 +198,7 @@ const ItemFormModal: React.FC<ItemFormModalProps> = ({ isOpen, onClose, onSave, 
     const parsed = parseFloat(value);
     const numeric = Number.isFinite(parsed) ? parsed : 0;
     setItem((prev) => {
-      const next = { ...prev, [name]: numeric } as typeof prev;
-      if (name === 'buyingPrice' || name === 'transportCost' || name === 'supplyTaxCost') {
-        const buyingPrice = name === 'buyingPrice' ? numeric : (Number(next.buyingPrice) || 0);
-        const transportCost = name === 'transportCost' ? numeric : (Number(next.transportCost) || 0);
-        const supplyTaxCost = name === 'supplyTaxCost' ? numeric : (Number(next.supplyTaxCost) || 0);
-        return { ...next, costPrice: buyingPrice + transportCost + supplyTaxCost };
-      }
-      return next;
+      return { ...prev, [name]: numeric } as typeof prev;
     });
   };
 
@@ -265,8 +231,8 @@ const ItemFormModal: React.FC<ItemFormModalProps> = ({ isOpen, onClose, onSave, 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const canEditPrice = !itemToEdit || hasPermission('prices.manage');
-    const safeItem = itemToEdit && !canEditPrice ? { ...item, price: itemToEdit.price } : item;
-    onSave(itemToEdit ? { ...safeItem, id: itemToEdit.id } : safeItem);
+    const safeItemBase = itemToEdit && !canEditPrice ? { ...item, price: itemToEdit.price } : item;
+    onSave(itemToEdit ? { ...safeItemBase, id: itemToEdit.id } : safeItemBase);
   };
 
   const categoryOptions = React.useMemo(() => {
@@ -398,49 +364,19 @@ const ItemFormModal: React.FC<ItemFormModalProps> = ({ isOpen, onClose, onSave, 
                   <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-3">تفاصيل التكلفة</h3>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">سعر الشراء (الأساسي)</label>
-                      <NumberInput
-                        id="buyingPrice"
-                        name="buyingPrice"
-                        value={item.buyingPrice || 0}
-                        onChange={handleNumberChange}
-                        min={0}
-                        step={0.5}
-                        placeholder="0"
-                        disabled={hasReceipts || !hasPermission('stock.manage')}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">تكلفة النقل</label>
-                      <NumberInput
-                        id="transportCost"
-                        name="transportCost"
-                        value={item.transportCost || 0}
-                        onChange={handleNumberChange}
-                        min={0}
-                        step={0.5}
-                        placeholder="0"
-                        disabled={hasReceipts || !hasPermission('stock.manage')}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">قيمة الضريبة</label>
-                      <NumberInput
-                        id="supplyTaxCost"
-                        name="supplyTaxCost"
-                        value={item.supplyTaxCost || 0}
-                        onChange={handleNumberChange}
-                        min={0}
-                        step={0.5}
-                        placeholder="0"
-                        disabled={hasReceipts || !hasPermission('stock.manage')}
-                      />
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">آخر سعر شراء</label>
+                      <div className="w-full p-3 border rounded-md bg-gray-100 dark:bg-gray-600 text-gray-500 font-bold text-center">
+                        {Number(item.buyingPrice) || 0}
+                      </div>
                     </div>
                   </div>
                   <div className="mt-3 pt-3 border-t dark:border-gray-600">
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">إجمالي التكلفة (تلقائي)</label>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">متوسط تكلفة المخزون</label>
                     <div className="w-full p-3 border rounded-md bg-gray-100 dark:bg-gray-600 text-gray-500 font-bold text-center">
-                      {item.costPrice}
+                      {(() => {
+                        const stock = itemToEdit?.id ? getStockByItemId(itemToEdit.id) : undefined;
+                        return Number(stock?.avgCost) || 0;
+                      })()}
                     </div>
                   </div>
                 </div>
@@ -481,15 +417,6 @@ const ItemFormModal: React.FC<ItemFormModalProps> = ({ isOpen, onClose, onSave, 
                       ))}
                     </select>
                   </div>
-                  <div>
-                    <label htmlFor="productionDate" className="block text-sm font-medium text-gray-700 dark:text-gray-300">تاريخ الإنتاج</label>
-                    <input type="date" name="productionDate" id="productionDate" value={(item as any).productionDate || ''} onChange={handleChange} className="mt-1 w-full p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600" />
-                  </div>
-                </div>
-
-                <div>
-                  <label htmlFor="expiryDate" className="block text-sm font-medium text-gray-700 dark:text-gray-300">تاريخ الانتهاء</label>
-                  <input type="date" name="expiryDate" id="expiryDate" value={item.expiryDate || ''} onChange={handleChange} className="mt-1 w-full p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600" />
                 </div>
 
                 <div>
@@ -552,11 +479,6 @@ const ItemFormModal: React.FC<ItemFormModalProps> = ({ isOpen, onClose, onSave, 
               </div>
             </details>
 
-            {dateError && (
-              <div className="mt-2 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-                <p className="text-sm text-red-600 dark:text-red-400">{dateError}</p>
-              </div>
-            )}
             {formError && (
               <div className="mt-2 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
                 <p className="text-sm text-red-600 dark:text-red-400">{formError}</p>
@@ -575,7 +497,7 @@ const ItemFormModal: React.FC<ItemFormModalProps> = ({ isOpen, onClose, onSave, 
             </button>
             <button
               type="submit"
-              disabled={isSaving || Boolean(dateError) || Boolean(formError)}
+              disabled={isSaving || Boolean(formError)}
               className="px-6 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 font-medium shadow-md transition-colors w-32 flex justify-center"
             >
               {isSaving ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : t('save')}

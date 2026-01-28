@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { usePurchases } from '../../contexts/PurchasesContext';
 import { useMenu } from '../../contexts/MenuContext';
 import { useStock } from '../../contexts/StockContext';
@@ -8,6 +8,7 @@ import { useToast } from '../../contexts/ToastContext';
 import * as Icons from '../../components/icons';
 import { MenuItem } from '../../types';
 import { PurchaseOrder } from '../../types';
+import { isIsoDate, normalizeIsoDateOnly, toDateInputValue, toDateTimeLocalInputValue } from '../../utils/dateUtils';
 
 interface OrderItemRow {
     itemId: string;
@@ -40,54 +41,14 @@ const PurchaseOrderScreen: React.FC = () => {
     const canDelete = user?.role === 'owner';
     const canCancel = user?.role === 'owner' || user?.role === 'manager';
 
-    const getLocalDateInputValue = (d: Date = new Date()) => {
-        const year = d.getFullYear();
-        const month = String(d.getMonth() + 1).padStart(2, '0');
-        const day = String(d.getDate()).padStart(2, '0');
-        return `${year}-${month}-${day}`;
-    };
-
-    const getLocalDateTimeInputValue = (d: Date = new Date()) => {
-        const year = d.getFullYear();
-        const month = String(d.getMonth() + 1).padStart(2, '0');
-        const day = String(d.getDate()).padStart(2, '0');
-        const hours = String(d.getHours()).padStart(2, '0');
-        const minutes = String(d.getMinutes()).padStart(2, '0');
-        return `${year}-${month}-${day}T${hours}:${minutes}`;
-    };
-
     const getErrorMessage = (error: unknown, fallback: string) => {
         if (error instanceof Error && error.message) return error.message;
         return fallback;
     };
 
-    const isIsoDate = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test((s || '').trim());
-    const normalizeDateInput = (value: string) => {
-        const raw = String(value || '').trim();
-        if (!raw) return '';
-        if (isIsoDate(raw)) return raw;
-        const m = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-        if (!m) return raw;
-        const a = Number(m[1]);
-        const b = Number(m[2]);
-        const y = Number(m[3]);
-        if (!Number.isFinite(a) || !Number.isFinite(b) || !Number.isFinite(y)) return raw;
-        if (y < 1900 || y > 2200) return raw;
-        let month = a;
-        let day = b;
-        if (a > 12 && b <= 12) {
-            month = b;
-            day = a;
-        }
-        const mm = String(month).padStart(2, '0');
-        const dd = String(day).padStart(2, '0');
-        return `${y}-${mm}-${dd}`;
-    };
-
     const formatPurchaseDate = (value: unknown) => {
         if (typeof value !== 'string') return '-';
-        const dateOnly = /^\d{4}-\d{2}-\d{2}$/;
-        if (dateOnly.test(value)) {
+        if (isIsoDate(value)) {
             return new Date(`${value}T00:00:00`).toLocaleDateString('ar-EG-u-nu-latn');
         }
         const d = new Date(value);
@@ -104,7 +65,7 @@ const PurchaseOrderScreen: React.FC = () => {
     const [isReceiveModalOpen, setIsReceiveModalOpen] = useState(false);
     const [isReturnModalOpen, setIsReturnModalOpen] = useState(false);
     const [supplierId, setSupplierId] = useState('');
-    const [purchaseDate, setPurchaseDate] = useState(getLocalDateInputValue());
+    const [purchaseDate, setPurchaseDate] = useState(toDateInputValue());
     const [supplierInvoiceNumber, setSupplierInvoiceNumber] = useState<string>('');
     const [orderItems, setOrderItems] = useState<OrderItemRow[]>([]);
     const [receiveOnCreate, setReceiveOnCreate] = useState(true);
@@ -115,7 +76,7 @@ const PurchaseOrderScreen: React.FC = () => {
     const [paymentOrder, setPaymentOrder] = useState<PurchaseOrder | null>(null);
     const [paymentAmount, setPaymentAmount] = useState<number>(0);
     const [paymentMethod, setPaymentMethod] = useState<string>('cash');
-    const [paymentOccurredAt, setPaymentOccurredAt] = useState<string>(getLocalDateTimeInputValue());
+    const [paymentOccurredAt, setPaymentOccurredAt] = useState<string>(toDateTimeLocalInputValue());
     const [paymentReferenceNumber, setPaymentReferenceNumber] = useState<string>('');
     const [paymentSenderName, setPaymentSenderName] = useState<string>('');
     const [paymentSenderPhone, setPaymentSenderPhone] = useState<string>('');
@@ -124,12 +85,14 @@ const PurchaseOrderScreen: React.FC = () => {
     const [paymentIdempotencyKey, setPaymentIdempotencyKey] = useState<string>('');
     const [receiveOrder, setReceiveOrder] = useState<PurchaseOrder | null>(null);
     const [receiveRows, setReceiveRows] = useState<ReceiveRow[]>([]);
-    const [receiveOccurredAt, setReceiveOccurredAt] = useState<string>(getLocalDateTimeInputValue());
+    const [receiveOccurredAt, setReceiveOccurredAt] = useState<string>(toDateTimeLocalInputValue());
     const [isReceivingPartial, setIsReceivingPartial] = useState<boolean>(false);
     const [returnOrder, setReturnOrder] = useState<PurchaseOrder | null>(null);
     const [returnRows, setReturnRows] = useState<ReceiveRow[]>([]);
-    const [returnOccurredAt, setReturnOccurredAt] = useState<string>(getLocalDateTimeInputValue());
+    const [returnOccurredAt, setReturnOccurredAt] = useState<string>(toDateTimeLocalInputValue());
     const [returnReason, setReturnReason] = useState<string>('');
+    const [isCreatingReturn, setIsCreatingReturn] = useState<boolean>(false);
+    const createReturnInFlightRef = useRef(false);
     const [formErrors, setFormErrors] = useState<string[]>([]);
 
     // Helper to add a new row
@@ -288,8 +251,8 @@ const PurchaseOrderScreen: React.FC = () => {
             if (orderItems.length === 0) errors.push('أضف صنف واحد على الأقل');
             const normalizedItems = orderItems.map((row) => ({
                 ...row,
-                productionDate: normalizeDateInput(row.productionDate || ''),
-                expiryDate: normalizeDateInput(row.expiryDate || ''),
+                productionDate: normalizeIsoDateOnly(row.productionDate || ''),
+                expiryDate: normalizeIsoDateOnly(row.expiryDate || ''),
             }));
             normalizedItems.forEach((row, idx) => {
                 const rowNo = idx + 1;
@@ -359,12 +322,12 @@ const PurchaseOrderScreen: React.FC = () => {
                 remaining,
                 receiveNow: remaining,
                 productionDate: (base?.productionDate || (base as any)?.harvestDate || ''),
-                expiryDate: base?.expiryDate || ''
+                expiryDate: base?.expiryDate || '',
             };
         });
         setReceiveOrder(order);
         setReceiveRows(rows);
-        setReceiveOccurredAt(getLocalDateTimeInputValue());
+        setReceiveOccurredAt(toDateTimeLocalInputValue());
         setIsReceiveModalOpen(true);
     };
 
@@ -394,8 +357,8 @@ const PurchaseOrderScreen: React.FC = () => {
         try {
             const normalizedRows = receiveRows.map((r) => ({
                 ...r,
-                productionDate: normalizeDateInput(r.productionDate || ''),
-                expiryDate: normalizeDateInput(r.expiryDate || ''),
+                productionDate: normalizeIsoDateOnly(r.productionDate || ''),
+                expiryDate: normalizeIsoDateOnly(r.expiryDate || ''),
             }));
             for (const r of normalizedRows) {
                 if (Number(r.receiveNow) <= 0) continue;
@@ -464,7 +427,7 @@ const PurchaseOrderScreen: React.FC = () => {
         });
         setReturnOrder(order);
         setReturnRows(rows);
-        setReturnOccurredAt(getLocalDateTimeInputValue());
+        setReturnOccurredAt(toDateTimeLocalInputValue());
         setReturnReason('');
         setIsReturnModalOpen(true);
     };
@@ -480,6 +443,9 @@ const PurchaseOrderScreen: React.FC = () => {
     const handleCreateReturn = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!returnOrder) return;
+        if (createReturnInFlightRef.current) return;
+        createReturnInFlightRef.current = true;
+        setIsCreatingReturn(true);
         try {
             const items = returnRows
                 .filter(r => Number(r.receiveNow) > 0)
@@ -503,6 +469,9 @@ const PurchaseOrderScreen: React.FC = () => {
                 message = 'المخزون الحالي لا يكفي لإتمام المرتجع لأحد الأصناف.';
             }
             alert(message);
+        } finally {
+            setIsCreatingReturn(false);
+            createReturnInFlightRef.current = false;
         }
     };
 
@@ -526,7 +495,7 @@ const PurchaseOrderScreen: React.FC = () => {
         setPaymentAmount(remaining);
         const nextMethod = availablePaymentMethods.length > 0 ? availablePaymentMethods[0] : '';
         setPaymentMethod(nextMethod);
-        setPaymentOccurredAt(getLocalDateTimeInputValue());
+        setPaymentOccurredAt(toDateTimeLocalInputValue());
         setPaymentReferenceNumber('');
         setPaymentSenderName('');
         setPaymentSenderPhone('');
@@ -682,6 +651,13 @@ const PurchaseOrderScreen: React.FC = () => {
                                     ? 'مسودة'
                                     : 'ملغي';
 
+                        const paymentBadge = (() => {
+                            if (credit > 0) return { label: `رصيد لك: ${credit.toFixed(2)}`, className: 'bg-blue-50 text-blue-700' };
+                            if (total > 0 && remainingRaw <= 0.000000001) return { label: 'مسدد بالكامل', className: 'bg-green-100 text-green-700' };
+                            if (paid > 0) return { label: 'مسدد جزئياً', className: 'bg-yellow-100 text-yellow-700' };
+                            return { label: 'غير مسدد', className: 'bg-gray-100 text-gray-700' };
+                        })();
+
                         return (
                             <div key={order.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700 p-4">
                                 <div className="flex items-start justify-between gap-3">
@@ -689,9 +665,14 @@ const PurchaseOrderScreen: React.FC = () => {
                                         <div className="text-sm text-gray-500 dark:text-gray-400">رقم المرجع (فاتورة المورد)</div>
                                         <div className="font-mono text-sm dark:text-gray-200 break-all">{order.referenceNumber || '-'}</div>
                                     </div>
-                                    <span className={['px-2 py-1 rounded-full text-xs font-bold whitespace-nowrap', statusClass].join(' ')}>
-                                        {statusLabel}
-                                    </span>
+                                    <div className="flex flex-col items-end gap-1">
+                                        <span className={['px-2 py-1 rounded-full text-xs font-bold whitespace-nowrap', statusClass].join(' ')}>
+                                            {`الاستلام: ${statusLabel}`}
+                                        </span>
+                                        <span className={['px-2 py-1 rounded-full text-xs font-bold whitespace-nowrap', paymentBadge.className].join(' ')}>
+                                            {`الدفع: ${paymentBadge.label}`}
+                                        </span>
+                                    </div>
                                     {order.hasReturns ? (
                                         <span className="px-2 py-1 rounded-full text-xs font-bold whitespace-nowrap bg-blue-100 text-blue-700">
                                             {total <= 1e-9 ? 'مرتجع كلي' : 'مرتجع جزئي'}
@@ -806,7 +787,7 @@ const PurchaseOrderScreen: React.FC = () => {
                             <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">الإجمالي</th>
                             <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">المدفوع</th>
                             <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">المتبقي</th>
-                            <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">الحالة</th>
+                            <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">الاستلام / الدفع</th>
                             <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">إجراء</th>
                         </tr>
                     </thead>
@@ -826,6 +807,12 @@ const PurchaseOrderScreen: React.FC = () => {
                                     const hasReceived = (order.items || []).some((it: any) => Number(it?.receivedQuantity || 0) > 0);
                                     const canPurge = canDelete && order.status === 'draft' && paid <= 0 && !hasReceived;
                                     const canCancelOrder = canCancel && order.status === 'draft' && paid <= 0 && !hasReceived;
+                                    const paymentBadge = (() => {
+                                        if (credit > 0) return { label: `رصيد لك: ${credit.toFixed(2)}`, className: 'bg-blue-50 text-blue-700' };
+                                        if (total > 0 && remainingRaw <= 0.000000001) return { label: 'مسدد بالكامل', className: 'bg-green-100 text-green-700' };
+                                        if (paid > 0) return { label: 'مسدد جزئياً', className: 'bg-yellow-100 text-yellow-700' };
+                                        return { label: 'غير مسدد', className: 'bg-gray-100 text-gray-700' };
+                                    })();
                                     return (
                                 <tr key={order.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30">
                                     <td className="p-4 font-mono text-sm dark:text-gray-300">{order.referenceNumber || '-'}</td>
@@ -836,29 +823,29 @@ const PurchaseOrderScreen: React.FC = () => {
                                     <td className="p-4 font-mono text-sm dark:text-gray-300">{paid.toFixed(2)}</td>
                                     <td className="p-4 font-mono text-sm dark:text-gray-300">{remaining.toFixed(2)}</td>
                                     <td className="p-4">
-                                        <span className={[
-                                            'px-2 py-1 rounded-full text-xs font-bold',
-                                            order.status === 'completed' ? 'bg-green-100 text-green-700'
-                                                : order.status === 'partial' ? 'bg-yellow-100 text-yellow-700'
-                                                    : order.status === 'cancelled' ? 'bg-red-100 text-red-700'
-                                                        : 'bg-gray-100 text-gray-700'
-                                        ].join(' ')}>
-                                            {order.status === 'completed'
-                                                ? 'مستلم بالكامل'
-                                                : order.status === 'partial'
-                                                    ? 'مستلم جزئيًا'
-                                                    : order.status === 'draft'
-                                                        ? 'مسودة'
-                                                        : 'ملغي'}
-                                        </span>
+                                        <div className="flex flex-col items-start gap-1">
+                                            <span className={[
+                                                'px-2 py-1 rounded-full text-xs font-bold',
+                                                order.status === 'completed' ? 'bg-green-100 text-green-700'
+                                                    : order.status === 'partial' ? 'bg-yellow-100 text-yellow-700'
+                                                        : order.status === 'cancelled' ? 'bg-red-100 text-red-700'
+                                                            : 'bg-gray-100 text-gray-700'
+                                            ].join(' ')}>
+                                                {order.status === 'completed'
+                                                    ? 'الاستلام: مستلم بالكامل'
+                                                    : order.status === 'partial'
+                                                        ? 'الاستلام: مستلم جزئيًا'
+                                                        : order.status === 'draft'
+                                                            ? 'الاستلام: مسودة'
+                                                            : 'الاستلام: ملغي'}
+                                            </span>
+                                            <span className={['px-2 py-1 rounded-full text-xs font-bold', paymentBadge.className].join(' ')}>
+                                                {`الدفع: ${paymentBadge.label}`}
+                                            </span>
+                                        </div>
                                         {order.hasReturns ? (
                                             <span className="ml-2 px-2 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-700">
                                                 {total <= 1e-9 ? 'مرتجع كلي' : 'مرتجع جزئي'}
-                                            </span>
-                                        ) : null}
-                                        {credit > 0 ? (
-                                            <span className="ml-2 px-2 py-1 rounded-full text-xs font-bold bg-blue-50 text-blue-700">
-                                                رصيد لك: {credit.toFixed(2)}
                                             </span>
                                         ) : null}
                                     </td>
@@ -1424,7 +1411,7 @@ const PurchaseOrderScreen: React.FC = () => {
                             </div>
                             <div className="border rounded-lg overflow-hidden dark:border-gray-700">
                                 <div className="overflow-x-auto">
-                                <table className="min-w-[720px] w-full text-right text-sm">
+                                <table className="min-w-[980px] w-full text-right text-sm">
                                     <thead className="bg-gray-50 dark:bg-gray-700">
                                         <tr>
                                             <th className="p-2 sm:p-3">الصنف</th>
@@ -1509,8 +1496,14 @@ const PurchaseOrderScreen: React.FC = () => {
                             <h2 className="text-xl font-bold dark:text-white">مرتجع إلى المورد</h2>
                             <button
                                 type="button"
-                                onClick={() => { setIsReturnModalOpen(false); setReturnOrder(null); setReturnRows([]); }}
-                                className="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-600"
+                                onClick={() => {
+                                    if (isCreatingReturn) return;
+                                    setIsReturnModalOpen(false);
+                                    setReturnOrder(null);
+                                    setReturnRows([]);
+                                }}
+                                disabled={isCreatingReturn}
+                                className="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 <Icons.XIcon className="w-6 h-6" />
                             </button>
@@ -1579,16 +1572,23 @@ const PurchaseOrderScreen: React.FC = () => {
                             <div className="flex justify-end gap-2 pt-2">
                                 <button
                                     type="button"
-                                    onClick={() => { setIsReturnModalOpen(false); setReturnOrder(null); setReturnRows([]); }}
-                                    className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 text-gray-800"
+                                    onClick={() => {
+                                        if (isCreatingReturn) return;
+                                        setIsReturnModalOpen(false);
+                                        setReturnOrder(null);
+                                        setReturnRows([]);
+                                    }}
+                                    disabled={isCreatingReturn}
+                                    className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 text-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
                                     إلغاء
                                 </button>
                                 <button
                                     type="submit"
-                                    className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+                                    disabled={isCreatingReturn}
+                                    className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
-                                    تسجيل المرتجع
+                                    {isCreatingReturn ? 'جاري تسجيل المرتجع...' : 'تسجيل المرتجع'}
                                 </button>
                             </div>
                         </form>

@@ -1,0 +1,126 @@
+create or replace function public.record_purchase_order_payment(
+  p_purchase_order_id uuid,
+  p_amount numeric,
+  p_method text,
+  p_occurred_at timestamptz,
+  p_data jsonb default '{}'::jsonb
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_amount numeric;
+  v_total numeric;
+  v_status text;
+  v_method text;
+  v_occurred_at timestamptz;
+  v_payment_id uuid;
+  v_data jsonb;
+  v_idempotency_key text;
+  v_shift_id uuid;
+  v_paid_sum numeric;
+begin
+  if not public.can_manage_stock() then
+    raise exception 'not allowed';
+  end if;
+
+  if p_purchase_order_id is null then
+    raise exception 'p_purchase_order_id is required';
+  end if;
+
+  select coalesce(po.total_amount, 0), po.status
+  into v_total, v_status
+  from public.purchase_orders po
+  where po.id = p_purchase_order_id
+  for update;
+
+  if not found then
+    raise exception 'purchase order not found';
+  end if;
+
+  if v_status = 'cancelled' then
+    raise exception 'cannot pay cancelled purchase order';
+  end if;
+
+  v_total := coalesce(v_total, 0);
+  if v_total <= 0 then
+    raise exception 'purchase order total is zero';
+  end if;
+
+  v_amount := coalesce(p_amount, 0);
+  if v_amount <= 0 then
+    raise exception 'invalid amount';
+  end if;
+
+  select coalesce(sum(p.amount), 0)
+  into v_paid_sum
+  from public.payments p
+  where p.reference_table = 'purchase_orders'
+    and p.direction = 'out'
+    and p.reference_id = p_purchase_order_id::text;
+
+  if (v_total - coalesce(v_paid_sum, 0)) <= 0.000000001 then
+    raise exception 'purchase order already fully paid';
+  end if;
+
+  if (coalesce(v_paid_sum, 0) + v_amount) > (v_total + 0.000000001) then
+    raise exception 'paid amount exceeds total';
+  end if;
+
+  v_method := nullif(trim(coalesce(p_method, '')), '');
+  if v_method is null then
+    v_method := 'cash';
+  end if;
+
+  v_occurred_at := coalesce(p_occurred_at, now());
+  v_data := jsonb_strip_nulls(jsonb_build_object('purchaseOrderId', p_purchase_order_id::text) || coalesce(p_data, '{}'::jsonb));
+  v_idempotency_key := nullif(trim(coalesce(v_data->>'idempotencyKey', '')), '');
+  v_shift_id := public._resolve_open_shift_for_cash(auth.uid());
+
+  if v_method = 'cash' and v_shift_id is null then
+    raise exception 'cash method requires an open cash shift';
+  end if;
+
+  if v_idempotency_key is null then
+    insert into public.payments(direction, method, amount, currency, reference_table, reference_id, occurred_at, created_by, data, shift_id)
+    values (
+      'out',
+      v_method,
+      v_amount,
+      'YER',
+      'purchase_orders',
+      p_purchase_order_id::text,
+      v_occurred_at,
+      auth.uid(),
+      v_data,
+      v_shift_id
+    )
+    returning id into v_payment_id;
+  else
+    insert into public.payments(direction, method, amount, currency, reference_table, reference_id, occurred_at, created_by, data, idempotency_key, shift_id)
+    values (
+      'out',
+      v_method,
+      v_amount,
+      'YER',
+      'purchase_orders',
+      p_purchase_order_id::text,
+      v_occurred_at,
+      auth.uid(),
+      v_data,
+      v_idempotency_key,
+      v_shift_id
+    )
+    on conflict (reference_table, reference_id, direction, idempotency_key)
+    do nothing
+    returning id into v_payment_id;
+
+    if v_payment_id is null then
+      return;
+    end if;
+  end if;
+end;
+$$;
+

@@ -205,14 +205,28 @@ export const CashShiftProvider = ({ children }: { children: ReactNode }) => {
             if (Math.abs(endAmount - expectedCash) > 0.01 && !forceReason) {
                 throw new Error('يرجى إدخال سبب عند وجود فرق في الجرد.');
             }
-            const { error: closeError } = await supabase.rpc('close_cash_shift_v2', {
+            const argsV2: Record<string, any> = {
                 p_shift_id: currentShift.id,
                 p_end_amount: endAmount,
                 p_notes: notes ?? null,
                 p_forced_reason: forceReason,
                 p_denomination_counts: null,
                 p_tender_counts: null
-            });
+            };
+            let { error: closeError } = await supabase.rpc('close_cash_shift_v2', argsV2);
+            if (closeError) {
+                const msg = String((closeError as any)?.message || '');
+                if (/schema cache|could not find the function|PGRST202/i.test(msg)) {
+                    const { error: fallbackErr } = await supabase.rpc('close_cash_shift_v2', {
+                        p_shift_id: currentShift.id,
+                        p_end_amount: endAmount,
+                        p_notes: notes ?? null,
+                        p_forced_reason: forceReason,
+                        p_denomination_counts: null
+                    } as any);
+                    closeError = fallbackErr as any;
+                }
+            }
             if (closeError) throw new Error(localizeSupabaseError(closeError));
 
             const diff = endAmount - expectedCash;

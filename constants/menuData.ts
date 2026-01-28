@@ -1,5 +1,6 @@
 
 import type { MenuItem, UnitType } from '../types';
+import { toYmdLocal } from '../utils/dateUtils';
 
 export const menuItems: MenuItem[] = [
   {
@@ -16,7 +17,7 @@ export const menuItems: MenuItem[] = [
     pricePerUnit: 8000,
     minWeight: 0.5,
     availableStock: 120,
-    expiryDate: new Date(Date.now() + 180 * 86400000).toISOString().split('T')[0],
+    expiryDate: toYmdLocal(new Date(Date.now() + 180 * 86400000)),
   },
   {
     id: '2',
@@ -32,7 +33,7 @@ export const menuItems: MenuItem[] = [
     pricePerUnit: 3500,
     minWeight: 0.5,
     availableStock: 200,
-    expiryDate: new Date(Date.now() + 365 * 86400000).toISOString().split('T')[0],
+    expiryDate: toYmdLocal(new Date(Date.now() + 365 * 86400000)),
   },
   {
     id: '3',
@@ -47,7 +48,7 @@ export const menuItems: MenuItem[] = [
     unitType: 'piece' as UnitType,
     pricePerUnit: 4500,
     availableStock: 80,
-    expiryDate: new Date(Date.now() + 540 * 86400000).toISOString().split('T')[0],
+    expiryDate: toYmdLocal(new Date(Date.now() + 540 * 86400000)),
   },
   {
     id: '4',
@@ -63,7 +64,7 @@ export const menuItems: MenuItem[] = [
     pricePerUnit: 1200,
     minWeight: 0.5,
     availableStock: 150,
-    expiryDate: new Date(Date.now() + 720 * 86400000).toISOString().split('T')[0],
+    expiryDate: toYmdLocal(new Date(Date.now() + 720 * 86400000)),
   },
   {
     id: '5',
@@ -79,6 +80,6 @@ export const menuItems: MenuItem[] = [
     pricePerUnit: 12000,
     minWeight: 0.5,
     availableStock: 60,
-    expiryDate: new Date(Date.now() + 365 * 86400000).toISOString().split('T')[0],
+    expiryDate: toYmdLocal(new Date(Date.now() + 365 * 86400000)),
   },
 ];

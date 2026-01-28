@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { getSupabaseClient } from '../supabase';
 import { isAbortLikeError, localizeSupabaseError } from '../utils/errorUtils';
+import { normalizeIsoDateOnly, toDateInputValue, toUtcIsoAtMiddayFromYmd, toUtcIsoFromLocalDateTimeInput } from '../utils/dateUtils';
 import { Supplier, PurchaseOrder } from '../types';
 import { useAuth } from './AuthContext';
 
@@ -93,7 +94,18 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const code = typeof anyErr?.code === 'string' ? anyErr.code : '';
     if (code === '23505') return true;
     const msg = typeof anyErr?.message === 'string' ? anyErr.message.toLowerCase() : '';
-    return msg.includes('duplicate') || msg.includes('unique');
+    const details = typeof anyErr?.details === 'string' ? anyErr.details.toLowerCase() : '';
+    const hint = typeof anyErr?.hint === 'string' ? anyErr.hint.toLowerCase() : '';
+    const combined = `${msg}\n${details}\n${hint}`;
+    return (
+      combined.includes('duplicate') ||
+      combined.includes('duplicate key') ||
+      combined.includes('unique') ||
+      combined.includes('violates unique constraint') ||
+      combined.includes('already exists') ||
+      combined.includes('البيانات المدخلة موجودة مسبق') ||
+      combined.includes('موجودة مسبق')
+    );
   };
 
   const normalizeUomCode = (value: unknown) => {
@@ -449,11 +461,7 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
         const totalAmount = items.reduce((sum, item) => sum + (item.quantity * item.unitCost), 0);
         const itemsCount = items.length;
-        const normalizedDate = (() => {
-          const d = new Date(purchaseDate);
-          if (isNaN(d.getTime())) return new Date().toISOString().slice(0, 10);
-          return d.toISOString().slice(0, 10);
-        })();
+        const normalizedDate = normalizeIsoDateOnly(purchaseDate) || toDateInputValue();
 
         try {
           setError(null);
@@ -577,7 +585,7 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                       harvestDate: i.productionDate,
                       expiryDate: i.expiryDate
                   })),
-                  p_occurred_at: new Date(`${normalizedDate}T00:00:00.000Z`).toISOString()
+                  p_occurred_at: toUtcIsoAtMiddayFromYmd(normalizedDate)
               });
               if (receiveError) {
                 const msg = String((receiveError as any)?.message || '');
@@ -645,20 +653,60 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         occurredAt?: string,
         data?: Record<string, unknown>
     ) => {
-        if (!supabase || !user) return;
+        if (!supabase) throw new Error('Supabase غير مهيأ.');
+        if (!user) throw new Error('لم يتم تسجيل الدخول.');
         try {
-          const payloadData = data && typeof data === 'object' ? data : undefined;
-          const { error } = await supabase.rpc('record_purchase_order_payment', {
-              p_purchase_order_id: purchaseOrderId,
-              p_amount: amount,
-              p_method: method,
-              p_occurred_at: occurredAt ? new Date(occurredAt).toISOString() : new Date().toISOString(),
-              p_data: payloadData ?? {}
-          });
+          const id = String(purchaseOrderId || '').trim();
+          if (!id) throw new Error('معرف أمر الشراء غير صالح.');
+          const numericAmount = Number(amount);
+          if (!Number.isFinite(numericAmount) || numericAmount <= 0) throw new Error('قيمة الدفعة غير صحيحة.');
+          const methodValue = String(method || '').trim() || 'cash';
+          const occurredAtIso = (() => {
+            if (!occurredAt) return new Date().toISOString();
+            const converted = toUtcIsoFromLocalDateTimeInput(occurredAt);
+            if (converted) return converted;
+            const parsed = new Date(String(occurredAt).trim());
+            if (Number.isNaN(parsed.getTime())) return new Date().toISOString();
+            return parsed.toISOString();
+          })();
+          const payloadData = data && typeof data === 'object' ? data : {};
+
+          const argsWithData = {
+            p_purchase_order_id: id,
+            p_amount: numericAmount,
+            p_method: methodValue,
+            p_occurred_at: occurredAtIso,
+            p_data: payloadData,
+          } as any;
+
+          let { error } = await supabase.rpc('record_purchase_order_payment', argsWithData);
+          if (error) {
+            const msg = String((error as any)?.message || '');
+            if (/schema cache|could not find the function|PGRST202/i.test(msg)) {
+              const { error: retryErr } = await supabase.rpc('record_purchase_order_payment', {
+                p_purchase_order_id: id,
+                p_amount: numericAmount,
+                p_method: methodValue,
+                p_occurred_at: occurredAtIso,
+              } as any);
+              if (retryErr) throw retryErr;
+              error = null as any;
+            }
+          }
           if (error) throw error;
           await fetchPurchaseOrders();
         } catch (err) {
-          throw new Error(localizeSupabaseError(err));
+          const anyErr = err as any;
+          const localized = localizeSupabaseError(err);
+          const code = typeof anyErr?.code === 'string' ? anyErr.code : '';
+          const message = typeof anyErr?.message === 'string' ? anyErr.message : '';
+          const details = typeof anyErr?.details === 'string' ? anyErr.details : '';
+          const hint = typeof anyErr?.hint === 'string' ? anyErr.hint : '';
+          if (import.meta.env.DEV && (code || details || hint) && localized) {
+            const extra = [code, message, details, hint].map(s => String(s || '').trim()).filter(Boolean).join(' | ');
+            throw new Error(extra ? `${localized} (${extra})` : localized);
+          }
+          throw new Error(localized);
         }
     };
 
@@ -677,9 +725,9 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                   itemId: i.itemId,
                   quantity: i.quantity,
                   harvestDate: i.productionDate,
-                  expiryDate: i.expiryDate
+                  expiryDate: i.expiryDate,
               })),
-              p_occurred_at: occurredAt ? new Date(occurredAt).toISOString() : new Date().toISOString()
+              p_occurred_at: occurredAt ? (toUtcIsoFromLocalDateTimeInput(occurredAt) || new Date(occurredAt).toISOString()) : new Date().toISOString()
           });
           if (error) {
             const msg = String((error as any)?.message || '');
@@ -712,18 +760,98 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         reason?: string,
         occurredAt?: string
     ) => {
-        if (!supabase || !user) return;
+        if (!supabase) throw new Error('Supabase غير مهيأ.');
         try {
-          const { error } = await supabase.rpc('create_purchase_return', {
-              p_order_id: purchaseOrderId,
-              p_items: items,
-              p_reason: reason || null,
-              p_occurred_at: occurredAt ? new Date(occurredAt).toISOString() : new Date().toISOString()
+          const trimmedOrderId = String(purchaseOrderId || '').trim();
+          if (!trimmedOrderId) throw new Error('معرف أمر الشراء غير صالح.');
+
+          const occurredIso = (() => {
+            if (!occurredAt) return new Date().toISOString();
+            const parsed = new Date(String(occurredAt || '').trim());
+            if (Number.isNaN(parsed.getTime())) return new Date().toISOString();
+            const now = new Date();
+            if (parsed.getSeconds() === 0 && parsed.getMilliseconds() === 0) {
+              parsed.setSeconds(now.getSeconds(), now.getMilliseconds());
+            }
+            return parsed.toISOString();
+          })();
+
+          const mergedByItemId = new Map<string, number>();
+          for (const row of items || []) {
+            const itemId = String((row as any)?.itemId || '').trim();
+            const qty = Number((row as any)?.quantity || 0);
+            if (!itemId || !(qty > 0)) continue;
+            mergedByItemId.set(itemId, (mergedByItemId.get(itemId) || 0) + qty);
+          }
+          const mergedItems = Array.from(mergedByItemId.entries()).map(([itemId, quantity]) => ({ itemId, quantity }));
+          if (mergedItems.length === 0) throw new Error('الرجاء إدخال كمية للمرتجع.');
+
+          const { data: authData } = await supabase.auth.getUser();
+          const authUserId = typeof authData?.user?.id === 'string' ? authData.user.id : null;
+
+          const { data, error } = await supabase.rpc('create_purchase_return', {
+            p_order_id: trimmedOrderId,
+            p_items: mergedItems,
+            p_reason: reason || null,
+            p_occurred_at: occurredIso,
           });
           if (error) throw error;
+
+          let returnId = typeof data === 'string' ? data : '';
+          if (!returnId && authUserId) {
+            const occurred = new Date(occurredIso);
+            const minIso = new Date(occurred.getTime() - 10_000).toISOString();
+            const maxIso = new Date(occurred.getTime() + 10_000).toISOString();
+            const { data: row, error: findErr } = await supabase
+              .from('purchase_returns')
+              .select('id')
+              .eq('purchase_order_id', trimmedOrderId)
+              .eq('created_by', authUserId)
+              .gte('returned_at', minIso)
+              .lte('returned_at', maxIso)
+              .order('returned_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+            if (findErr) throw findErr;
+            returnId = typeof (row as any)?.id === 'string' ? String((row as any).id) : '';
+          }
+
+          if (!returnId) throw new Error('تم تنفيذ العملية بدون إرجاع رقم المرتجع. يرجى تحديث دالة create_purchase_return في قاعدة البيانات.');
+
+          const { data: returnItems, error: itemsErr } = await supabase
+            .from('purchase_return_items')
+            .select('id')
+            .eq('return_id', returnId)
+            .limit(1);
+          if (itemsErr) throw itemsErr;
+          if (!Array.isArray(returnItems) || returnItems.length === 0) {
+            throw new Error('لم يتم إنشاء بنود المرتجع فعلياً. يرجى مراجعة صلاحيات قاعدة البيانات ودالة المرتجع.');
+          }
+
+          const { data: movements, error: mvErr } = await supabase
+            .from('inventory_movements')
+            .select('id')
+            .eq('reference_table', 'purchase_returns')
+            .eq('reference_id', returnId)
+            .limit(1);
+          if (mvErr) throw mvErr;
+          if (!Array.isArray(movements) || movements.length === 0) {
+            throw new Error('لم يتم إنشاء حركة مخزون للمرتجع. يرجى مراجعة دالة post_inventory_movement.');
+          }
+
           await fetchPurchaseOrders();
         } catch (err) {
-          throw new Error(localizeSupabaseError(err));
+          const anyErr = err as any;
+          const localized = localizeSupabaseError(err);
+          const code = typeof anyErr?.code === 'string' ? anyErr.code : '';
+          const message = typeof anyErr?.message === 'string' ? anyErr.message : '';
+          const details = typeof anyErr?.details === 'string' ? anyErr.details : '';
+          const hint = typeof anyErr?.hint === 'string' ? anyErr.hint : '';
+          if (import.meta.env.DEV && (code || details || hint) && localized) {
+            const extra = [code, message, details, hint].map(s => String(s || '').trim()).filter(Boolean).join(' | ');
+            throw new Error(extra ? `${localized} (${extra})` : localized);
+          }
+          throw new Error(localized);
         }
     };
 

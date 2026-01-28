@@ -1,7 +1,6 @@
 import React from 'react';
 import { useOrders } from '../../contexts/OrderContext';
 import { useToast } from '../../contexts/ToastContext';
-import { useStock } from '../../contexts/StockContext';
 import type { Order, OrderStatus, CartItem } from '../../types';
 // import { useSettings } from '../../contexts/SettingsContext';
 import { adminStatusColors } from '../../utils/orderUtils';
@@ -85,12 +84,6 @@ const OrderCard: React.FC<{ order: Order }> = ({ order }) => {
 
 const AdminDashboardScreen: React.FC = () => {
     const { orders } = useOrders();
-    const { processExpiredItems } = useStock();
-
-    // Auto-Process Expired Items on Mount
-    React.useEffect(() => {
-        processExpiredItems();
-    }, [processExpiredItems]);
 
     return (
         <div className="animate-fade-in">

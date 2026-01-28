@@ -10,7 +10,9 @@ if (!SUPABASE_URL || !SUPABASE_KEY) {
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 async function main() {
-  const today = new Date().toISOString().slice(0, 10);
+  const d = new Date();
+  const pad2 = (n) => String(n).padStart(2, '0');
+  const today = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
   const { data, error } = await supabase
     .from('batches')
     .select('warehouse_id, item_id, expiry_date')

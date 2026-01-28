@@ -4,6 +4,7 @@ import { useSettings } from '../../contexts/SettingsContext';
 import { SupplierContract } from '../../types';
 import { usePurchases } from '../../contexts/PurchasesContext';
 import { Plus, Search, Edit, Trash, X } from '../../components/icons';
+import { normalizeIsoDateOnly, toYmdLocal } from '../../utils/dateUtils';
 
 const SupplierContractsScreen: React.FC = () => {
     const { t } = useSettings();
@@ -42,8 +43,8 @@ const SupplierContractsScreen: React.FC = () => {
             deliveryLeadTimeDays: 0,
             minimumOrderAmount: 0,
             notes: '',
-            startDate: new Date().toISOString().split('T')[0],
-            endDate: new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString().split('T')[0]
+            startDate: toYmdLocal(new Date()),
+            endDate: toYmdLocal(new Date(new Date().setFullYear(new Date().getFullYear() + 1)))
         });
         setIsAddModalOpen(true);
     };
@@ -52,8 +53,8 @@ const SupplierContractsScreen: React.FC = () => {
         setEditingContract(contract);
         setFormData({
             ...contract,
-            startDate: contract.startDate.split('T')[0],
-            endDate: contract.endDate.split('T')[0]
+            startDate: normalizeIsoDateOnly(contract.startDate),
+            endDate: normalizeIsoDateOnly(contract.endDate)
         });
         setIsAddModalOpen(true);
     };
@@ -140,8 +141,8 @@ const SupplierContractsScreen: React.FC = () => {
                                 <td className="px-6 py-4 text-sm">{getSupplierName(contract.supplierId)}</td>
                                 <td className="px-6 py-4 text-sm">
                                     <div className="flex flex-col">
-                                        <span>{contract.startDate.split('T')[0]}</span>
-                                        <span className="text-gray-400 text-xs">{t('to')} {contract.endDate.split('T')[0]}</span>
+                                        <span>{normalizeIsoDateOnly(contract.startDate)}</span>
+                                        <span className="text-gray-400 text-xs">{t('to')} {normalizeIsoDateOnly(contract.endDate)}</span>
                                     </div>
                                 </td>
                                 <td className="px-6 py-4 text-sm">

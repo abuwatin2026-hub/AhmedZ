@@ -21,6 +21,7 @@ import NumberInput from '../../components/NumberInput';
 import { useMenu } from '../../contexts/MenuContext';
 import { getSupabaseClient } from '../../supabase';
 import { printContent } from '../../utils/printUtils';
+import { toDateTimeLocalInputValue } from '../../utils/dateUtils';
 
 const statusTranslations: Record<OrderStatus, string> = {
     pending: 'قيد الانتظار',
@@ -742,11 +743,6 @@ const ManageOrdersScreen: React.FC = () => {
         void loadPaidSums(filteredAndSortedOrders.map(o => o.id));
     }, [filteredAndSortedOrders, loadPaidSums]);
 
-    const toLocalInputValue = (iso: string) => {
-        const d = new Date(iso);
-        const pad = (n: number) => String(n).padStart(2, '0');
-        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-    };
     const openPartialPaymentModal = (orderId: string) => {
         const order = filteredAndSortedOrders.find(o => o.id === orderId) || orders.find(o => o.id === orderId);
         if (!order) return;
@@ -755,7 +751,7 @@ const ManageOrdersScreen: React.FC = () => {
         setPartialPaymentOrderId(orderId);
         setPartialPaymentAmount(remaining > 0 ? Number(remaining.toFixed(2)) : 0);
         setPartialPaymentMethod(order.orderSource === 'in_store' ? 'cash' : ((order.paymentMethod || 'cash').trim() || 'cash'));
-        setPartialPaymentOccurredAt(toLocalInputValue(new Date().toISOString()));
+        setPartialPaymentOccurredAt(toDateTimeLocalInputValue());
     };
 
     const confirmPartialPayment = async () => {

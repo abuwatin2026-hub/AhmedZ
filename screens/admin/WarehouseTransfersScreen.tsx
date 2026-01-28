@@ -5,6 +5,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import * as Icons from '../../components/icons';
 import type { WarehouseTransfer } from '../../types';
+import { toYmdLocal } from '../../utils/dateUtils';
 
 const WarehouseTransfersScreen: React.FC = () => {
     const { warehouses, transfers, createTransfer, completeTransfer, cancelTransfer } = useWarehouses();
@@ -20,7 +21,7 @@ const WarehouseTransfersScreen: React.FC = () => {
     const [formData, setFormData] = useState({
         from_warehouse_id: '',
         to_warehouse_id: '',
-        transfer_date: new Date().toISOString().split('T')[0],
+        transfer_date: toYmdLocal(new Date()),
         notes: '',
         items: [] as Array<{ itemId: string; quantity: number; notes: string }>,
     });
@@ -44,7 +45,7 @@ const WarehouseTransfersScreen: React.FC = () => {
         setFormData({
             from_warehouse_id: '',
             to_warehouse_id: '',
-            transfer_date: new Date().toISOString().split('T')[0],
+            transfer_date: toYmdLocal(new Date()),
             notes: '',
             items: [],
         });

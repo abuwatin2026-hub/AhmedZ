@@ -10,6 +10,7 @@ import Spinner from '../../components/Spinner';
 import { exportToXlsx, sharePdf } from '../../utils/export';
 import { buildPdfBrandOptions, buildXlsxBrandOptions } from '../../utils/branding';
 import { useSettings } from '../../contexts/SettingsContext';
+import { toYmdLocal } from '../../utils/dateUtils';
 
 const ManageReviewsScreen: React.FC = () => {
     const { reviews, deleteReview, loading } = useReviews();
@@ -76,7 +77,7 @@ const ManageReviewsScreen: React.FC = () => {
         const success = await exportToXlsx(
             headers, 
             rows, 
-            `reviews_report_${new Date().toISOString().split('T')[0]}.xlsx`,
+            `reviews_report_${toYmdLocal(new Date())}.xlsx`,
             { sheetName: 'Reviews', ...buildXlsxBrandOptions(settings, 'التقييمات', headers.length, { periodText: `التاريخ: ${new Date().toLocaleDateString('ar-SA-u-nu-latn')}` }) }
         );
         if(success) {
@@ -91,7 +92,7 @@ const ManageReviewsScreen: React.FC = () => {
         const success = await sharePdf(
             'print-area',
             'إدارة التقييمات',
-            `reviews_report_${new Date().toISOString().split('T')[0]}.pdf`,
+            `reviews_report_${toYmdLocal(new Date())}.pdf`,
             buildPdfBrandOptions(settings, 'إدارة التقييمات', { pageNumbers: true })
         );
         if (success) {

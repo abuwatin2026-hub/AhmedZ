@@ -4,6 +4,7 @@ import { useSettings } from '../../contexts/SettingsContext';
 import { SupplierEvaluation } from '../../types';
 import { usePurchases } from '../../contexts/PurchasesContext';
 import { Plus, Search, X } from '../../components/icons';
+import { normalizeIsoDateOnly, toYmdLocal } from '../../utils/dateUtils';
 
 const SupplierEvaluationsScreen: React.FC = () => {
     const { t } = useSettings();
@@ -38,7 +39,7 @@ const SupplierEvaluationsScreen: React.FC = () => {
             communicationScore: 3,
             notes: '',
             recommendation: 'maintain',
-            evaluationDate: new Date().toISOString().split('T')[0]
+            evaluationDate: toYmdLocal(new Date())
         });
         setIsAddModalOpen(true);
     };
@@ -47,7 +48,7 @@ const SupplierEvaluationsScreen: React.FC = () => {
         setEditingEvaluation(evaluation);
         setFormData({
             ...evaluation,
-            evaluationDate: evaluation.evaluationDate.split('T')[0]
+            evaluationDate: normalizeIsoDateOnly(evaluation.evaluationDate)
         });
         setIsAddModalOpen(true);
     };
@@ -126,7 +127,7 @@ const SupplierEvaluationsScreen: React.FC = () => {
                         <div className="flex justify-between items-start mb-4">
                             <div>
                                 <h3 className="font-bold text-lg">{getSupplierName(evaluation.supplierId)}</h3>
-                                <div className="text-sm text-gray-500">{evaluation.evaluationDate.split('T')[0]}</div>
+                                <div className="text-sm text-gray-500">{normalizeIsoDateOnly(evaluation.evaluationDate)}</div>
                             </div>
                             <div className={`px-2 py-1 rounded-full text-sm font-bold ${getScoreColor(evaluation.overallScore)}`}>
                                 {evaluation.overallScore.toFixed(1)} / 5.0

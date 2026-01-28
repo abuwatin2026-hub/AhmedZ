@@ -1,5 +1,6 @@
 import { getSupabaseClient } from '../supabase';
 import type { Challenge } from '../types';
+import { normalizeIsoDateOnly } from './dateUtils';
 
 export interface ChallengeStats {
     totalChallenges: number;
@@ -144,7 +145,7 @@ export async function createChallenge(challenge: Omit<Challenge, 'id'>): Promise
     if (!supabase) throw new Error('Supabase is not configured.');
 
     const id = crypto.randomUUID();
-    const endDate = typeof challenge.endDate === 'string' ? challenge.endDate.split('T')[0] : challenge.endDate;
+    const endDate = typeof challenge.endDate === 'string' ? normalizeIsoDateOnly(challenge.endDate) : challenge.endDate;
     const payload = {
         id,
         status: challenge.status,
@@ -171,7 +172,7 @@ export async function updateChallenge(id: string, updates: Partial<Challenge>): 
 
     const updated = { ...current, ...updates };
 
-    const endDate = typeof updated.endDate === 'string' ? updated.endDate.split('T')[0] : updated.endDate;
+    const endDate = typeof updated.endDate === 'string' ? normalizeIsoDateOnly(updated.endDate) : updated.endDate;
     const payload = {
         status: updated.status,
         end_date: endDate,

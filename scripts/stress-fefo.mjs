@@ -55,10 +55,13 @@ async function resolveWarehouseId() {
 
 async function pickFoodItemWithBatches() {
   // اختيار صنف غذائي له 3–10 دفعات صالحة
+  const d = new Date();
+  const pad2 = (n) => String(n).padStart(2, '0');
+  const today = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
   const { data: rows, error } = await supabase
     .from('batches')
     .select('item_id, expiry_date')
-    .gte('expiry_date', new Date().toISOString().slice(0, 10))
+    .gte('expiry_date', today)
     .limit(1000);
   if (error) throw error;
   const counts = new Map();
