@@ -188,6 +188,18 @@ Analysis Contract (Enforcement)
 Import Shipments Accounting Rule — Setting shipment status to delivered automatically applies landed cost to inventory and updates average cost for remaining stock. Historical COGS are not recalculated.
  
 ### محرك العروض (Promotions)
+### Phase 6.3 – RPC Canonicalization & Strict Mode
+- واجهات رسمية واحدة فقط للعميل والطابور:  
+  - confirm_order_delivery(p_payload jsonb)  
+  - confirm_order_delivery_with_credit(p_payload jsonb)  
+  - reserve_stock_for_order(p_payload jsonb)  
+  المرجع: [20260129210000_unify_rpc_payload_wrappers.sql](file:///d:/JOMLA/AhmedZ/supabase/migrations/20260129210000_unify_rpc_payload_wrappers.sql)
+- التواقيع المباشرة تُستخدم داخليًا فقط بواسطة الأغلفة.
+- Strict Mode: بعد تأكيد وجود الأغلفة وجلسة مصادَقة وعدم ظهور 404/PGRST202 عند أول نداء غلاف، تُفعَّل واجهة “غلاف فقط” وتُوقف أي fallback.
+- Health Check: rpc_has_function(text) متاح ويُستخدم لفحص وجود الأغلفة في الإنتاج للمستخدم المصادَق. المرجع: [20260115254000_test_rpc_has_function.sql](file:///d:/JOMLA/AhmedZ/supabase/migrations/20260115254000_test_rpc_has_function.sql)
+- Reset Strict Mode (اختياري): عند تغيير نسخة التطبيق، يُنصح بمسح العلم المحلي RPC_STRICT_MODE أو ربطه بالنسخة لتفعيل التحقق مرة واحدة لكل نسخة.
+ 
+### محرك العروض (Promotions)
 - المخطط (Schema):
   - الجدول الرئيسي: promotions  
     يحتوي على name, start_at, end_at, is_active, discount_mode ('fixed_total' | 'percent_off'), fixed_total, percent_off, display_original_total, max_uses, exclusive_with_coupon, requires_approval, approval_status, approval_request_id، مع قيود زمنية ومنع حالات غير صالحة.  

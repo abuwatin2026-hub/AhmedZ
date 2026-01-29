@@ -17,6 +17,9 @@ import ErrorBoundary from './components/ErrorBoundary';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { useSettings } from './contexts/SettingsContext';
 import { startQueueProcessor } from './utils/offlineQueue';
+import { getSupabaseClient } from './supabase';
+import { isRpcWrappersAvailable } from './supabase';
+import { useSystemAudit } from './contexts/SystemAuditContext';
 
 // Lazy load screens
 const HomeScreen = lazy(() => import('./screens/HomeScreen'));
@@ -230,6 +233,26 @@ const AppStateListener: React.FC = () => {
   return null;
 };
 
+const RpcHealthCheck: React.FC = () => {
+  const { logAction } = useSystemAudit();
+  useEffect(() => {
+    const run = async () => {
+      const sup = getSupabaseClient();
+      if (!sup) return;
+      const { data: sessionData } = await sup.auth.getSession();
+      if (!sessionData?.session) return;
+      const ok = await isRpcWrappersAvailable();
+      if (ok) {
+        await logAction('rpc.health', 'system', 'wrappers available', { env: 'production' });
+      } else {
+        await logAction('rpc.health', 'system', 'wrappers missing', { env: 'production' });
+      }
+    };
+    void run();
+  }, [logAction]);
+  return null;
+};
+
 const App: React.FC = () => {
   useEffect(() => {
     startQueueProcessor();
@@ -240,6 +263,7 @@ const App: React.FC = () => {
         <HashRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <HardwareBackButtonHandler />
           <AppStateListener />
+          <RpcHealthCheck />
           <Suspense fallback={<PageLoader />}>
             <Routes>
               {/* Customer Facing Routes */}
