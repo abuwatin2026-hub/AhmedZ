@@ -1,4 +1,4 @@
-import { getSupabaseClient } from '../supabase';
+import { getSupabaseClient, isRpcStrictMode } from '../supabase';
 
 type TableOp = 'insert' | 'upsert' | 'update' | 'delete';
 
@@ -56,8 +56,11 @@ const callRpcWithFallback = async (
     return { data, error };
   };
 
+  const strict = isRpcStrictMode();
   let res = await run(args);
   if (!res.error || !isRpcNotFoundError(res.error)) return res;
+
+  if (strict) return res;
 
   if (name === 'reserve_stock_for_order') {
     const payload = (args as any)?.p_payload;

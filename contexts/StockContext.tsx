@@ -4,7 +4,7 @@ import { useToast } from './ToastContext';
 import { useSettings } from './SettingsContext';
 import { useAuth } from './AuthContext';
 import { useSessionScope } from './SessionScopeContext';
-import { getSupabaseClient } from '../supabase';
+import { getSupabaseClient, isRpcStrictMode, markRpcStrictModeEnabled, isRpcWrappersAvailable } from '../supabase';
 import { logger } from '../utils/logger';
 import { isAbortLikeError, localizeSupabaseError } from '../utils/errorUtils';
 
@@ -85,9 +85,21 @@ export const StockProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             reserveRpcModeRef.current = null;
         }
 
+        const strict = isRpcStrictMode();
+        if (strict) {
+            const err = await tryWrapper();
+            if (!err || !isRpcNotFoundError(err)) {
+                reserveRpcModeRef.current = 'wrapper';
+                if (await isRpcWrappersAvailable()) markRpcStrictModeEnabled();
+                return err;
+            }
+            return err;
+        }
+
         let err = await tryWrapper();
         if (!err || !isRpcNotFoundError(err)) {
             reserveRpcModeRef.current = 'wrapper';
+            if (await isRpcWrappersAvailable()) markRpcStrictModeEnabled();
             return err;
         }
 

@@ -6,7 +6,7 @@ import { useChallenges } from './ChallengeContext';
 import { useAuth } from './AuthContext';
 import { useSessionScope } from './SessionScopeContext';
 import { generateInvoiceNumber } from '../utils/orderUtils';
-import { getSupabaseClient } from '../supabase';
+import { getSupabaseClient, isRpcStrictMode, markRpcStrictModeEnabled, isRpcWrappersAvailable } from '../supabase';
 import { createLogger } from '../utils/logger';
 import { localizeSupabaseError, isAbortLikeError } from '../utils/errorUtils';
 import { enqueueRpc, upsertOfflinePosOrder } from '../utils/offlineQueue';
@@ -187,9 +187,21 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       reserveStockRpcModeRef.current = null;
     }
 
+    const strict = isRpcStrictMode();
+    if (strict) {
+      const err = await tryWrapper();
+      if (!err || !isRpcNotFoundError(err)) {
+        reserveStockRpcModeRef.current = 'wrapper';
+        if (await isRpcWrappersAvailable()) markRpcStrictModeEnabled();
+        return err;
+      }
+      return err;
+    }
+
     let err = await tryWrapper();
     if (!err || !isRpcNotFoundError(err)) {
       reserveStockRpcModeRef.current = 'wrapper';
+      if (await isRpcWrappersAvailable()) markRpcStrictModeEnabled();
       return err;
     }
 
@@ -236,9 +248,21 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       confirmDeliveryWithCreditRpcModeRef.current = null;
     }
 
+    const strict = isRpcStrictMode();
+    if (strict) {
+      const err = await tryWrapper();
+      if (!err || !isRpcNotFoundError(err)) {
+        confirmDeliveryWithCreditRpcModeRef.current = 'wrapper';
+        if (await isRpcWrappersAvailable()) markRpcStrictModeEnabled();
+        return err;
+      }
+      return err;
+    }
+
     let err = await tryWrapper();
     if (!err || !isRpcNotFoundError(err)) {
       confirmDeliveryWithCreditRpcModeRef.current = 'wrapper';
+      if (await isRpcWrappersAvailable()) markRpcStrictModeEnabled();
       return err;
     }
 
@@ -279,9 +303,21 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       confirmDeliveryRpcModeRef.current = null;
     }
 
+    const strict = isRpcStrictMode();
+    if (strict) {
+      const err = await tryWrapper();
+      if (!err || !isRpcNotFoundError(err)) {
+        confirmDeliveryRpcModeRef.current = 'wrapper';
+        if (await isRpcWrappersAvailable()) markRpcStrictModeEnabled();
+        return err;
+      }
+      return err;
+    }
+
     let err = await tryWrapper();
     if (!err || !isRpcNotFoundError(err)) {
       confirmDeliveryRpcModeRef.current = 'wrapper';
+      if (await isRpcWrappersAvailable()) markRpcStrictModeEnabled();
       return err;
     }
 
