@@ -1,3 +1,4 @@
+-- هذه هي الواجهة المعتمدة للواجهة الأمامية والـ Offline Queue
 create or replace function public.reserve_stock_for_order(p_payload jsonb)
 returns void
 language plpgsql
@@ -45,6 +46,7 @@ revoke all on function public.reserve_stock_for_order(jsonb) from public;
 revoke execute on function public.reserve_stock_for_order(jsonb) from anon;
 grant execute on function public.reserve_stock_for_order(jsonb) to authenticated;
 
+-- هذه هي الواجهة المعتمدة للواجهة الأمامية والـ Offline Queue
 create or replace function public.confirm_order_delivery(p_payload jsonb)
 returns void
 language plpgsql
@@ -99,6 +101,7 @@ revoke all on function public.confirm_order_delivery(jsonb) from public;
 revoke execute on function public.confirm_order_delivery(jsonb) from anon;
 grant execute on function public.confirm_order_delivery(jsonb) to authenticated;
 
+-- هذه هي الواجهة المعتمدة للواجهة الأمامية والـ Offline Queue
 create or replace function public.confirm_order_delivery_with_credit(p_payload jsonb)
 returns void
 language plpgsql

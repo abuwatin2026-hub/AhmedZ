@@ -132,6 +132,84 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const isUuid = (value: unknown) => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 
+  const isRpcNotFoundError = (err: any) => {
+    const code = String(err?.code || '');
+    const msg = String(err?.message || '');
+    const details = String(err?.details || '');
+    const status = (err as any)?.status;
+    return (
+      code === 'PGRST202' ||
+      status === 404 ||
+      /Could not find the function/i.test(msg) ||
+      /PGRST202/i.test(details)
+    );
+  };
+
+  const rpcReserveStockForOrder = async (supabase: any, input: { items: any[]; orderId?: string | null; warehouseId?: string | null }) => {
+    const tryWrapper = async () => {
+      const { error } = await supabase.rpc('reserve_stock_for_order', {
+        p_payload: {
+          p_items: input.items,
+          p_order_id: input.orderId ?? null,
+          p_warehouse_id: input.warehouseId ?? null,
+        }
+      });
+      return error;
+    };
+    const tryDirect3 = async () => {
+      const { error } = await supabase.rpc('reserve_stock_for_order', {
+        p_items: input.items,
+        p_order_id: input.orderId ?? null,
+        p_warehouse_id: input.warehouseId ?? null,
+      });
+      return error;
+    };
+    const tryLegacy1 = async () => {
+      const { error } = await supabase.rpc('reserve_stock_for_order', {
+        p_items: input.items,
+      });
+      return error;
+    };
+
+    let err = await tryWrapper();
+    if (err && isRpcNotFoundError(err)) {
+      err = await tryDirect3();
+    }
+    if (err && isRpcNotFoundError(err)) {
+      err = await tryLegacy1();
+    }
+    return err;
+  };
+
+  const rpcConfirmOrderDeliveryWithCredit = async (supabase: any, input: { orderId: string; items: any[]; updatedData: any; warehouseId: string }) => {
+    const tryWrapper = async () => {
+      const { error } = await supabase.rpc('confirm_order_delivery_with_credit', {
+        p_payload: {
+          p_order_id: input.orderId,
+          p_items: input.items,
+          p_updated_data: input.updatedData,
+          p_warehouse_id: input.warehouseId,
+        }
+      });
+      return error;
+    };
+    const tryDirect4 = async () => {
+      const { error } = await supabase.rpc('confirm_order_delivery_with_credit', {
+        p_order_id: input.orderId,
+        p_items: input.items,
+        p_updated_data: input.updatedData,
+        p_warehouse_id: input.warehouseId,
+      });
+      return error;
+    };
+
+    let err = await tryWrapper();
+    if (err && isRpcNotFoundError(err)) {
+      err = await tryDirect4();
+    }
+    return err;
+  };
+
   const resolveOrderAddress = useCallback(async (order: Order): Promise<Order> => {
     const currentAddr = typeof (order as any).address === 'string' ? (order as any).address : '';
     if (currentAddr && addressCacheRef.current.has(currentAddr)) {
@@ -1387,13 +1465,11 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     if (!supabase) throw new Error('Supabase غير مهيأ.');
     const sb2 = supabase!;
     if (canMarkPaidUi) {
-      const { error: rpcError } = await sb2.rpc('confirm_order_delivery_with_credit', {
-        p_payload: {
-          p_order_id: newOrder.id,
-          p_items: payloadItems,
-          p_updated_data: newOrder,
-          p_warehouse_id: warehouseId,
-        }
+      const rpcError = await rpcConfirmOrderDeliveryWithCredit(sb2, {
+        orderId: newOrder.id,
+        items: payloadItems,
+        updatedData: newOrder,
+        warehouseId,
       });
 
       if (rpcError) {
@@ -1655,13 +1731,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       }))
       .filter((entry) => Number(entry.quantity) > 0);
     const sb3 = supabase!;
-    const { error: reserveErr } = await sb3.rpc('reserve_stock_for_order', {
-      p_payload: {
-        p_items: payloadItems,
-        p_order_id: newOrder.id,
-        p_warehouse_id: warehouseId,
-      }
-    });
+    const reserveErr = await rpcReserveStockForOrder(sb3, { items: payloadItems, orderId: newOrder.id, warehouseId });
     if (reserveErr) {
       await sb3.from('orders').delete().eq('id', newOrder.id);
       throw new Error(localizeSupabaseError(reserveErr));
@@ -1842,13 +1912,11 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       }))
       .filter((entry) => Number(entry.quantity) > 0);
     const updatedDelivered: Order = { ...existing, status: 'delivered', deliveredAt: nowIso, paidAt: nowIso, paymentMethod: payment.paymentMethod };
-    const { error: rpcError } = await supabase.rpc('confirm_order_delivery_with_credit', {
-      p_payload: {
-        p_order_id: existing.id,
-        p_items: payloadItems,
-        p_updated_data: updatedDelivered,
-        p_warehouse_id: warehouseId,
-      }
+    const rpcError = await rpcConfirmOrderDeliveryWithCredit(supabase, {
+      orderId: existing.id,
+      items: payloadItems,
+      updatedData: updatedDelivered,
+      warehouseId,
     });
     if (rpcError) {
       throw new Error(localizeSupabaseError(rpcError));
@@ -2114,13 +2182,11 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         throw new Error('نطاق المستودع غير محدد لهذا الطلب. يمنع التنفيذ خارج نطاق الجلسة.');
       };
       const warehouseId = await resolveWarehouseId(updated.id);
-      const { error: rpcError } = await supabase.rpc('confirm_order_delivery_with_credit', {
-        p_payload: {
-          p_order_id: updated.id,
-          p_items: payloadItems,
-          p_updated_data: updated,
-          p_warehouse_id: warehouseId,
-        }
+      const rpcError = await rpcConfirmOrderDeliveryWithCredit(supabase, {
+        orderId: updated.id,
+        items: payloadItems,
+        updatedData: updated,
+        warehouseId,
       });
 
       if (rpcError) {
