@@ -36,8 +36,6 @@ const isOffline = () => typeof navigator !== 'undefined' && navigator.onLine ===
 const BLOCK_OFFLINE_RPC = new Set<string>([
   'record_order_payment',
   'record_purchase_order_payment',
-  'confirm_order_delivery',
-  'confirm_order_delivery_with_credit',
   'deduct_stock_on_delivery_v2',
   'receive_purchase_order',
   'receive_purchase_order_partial',
