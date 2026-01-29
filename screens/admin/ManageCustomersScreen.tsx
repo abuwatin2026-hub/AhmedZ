@@ -16,7 +16,7 @@ const ManageCustomersScreen: React.FC = () => {
   const navigate = useNavigate();
   const { customers, loading, fetchCustomers, deleteCustomer } = useUserAuth();
   const { updateOrderStatus, markOrderPaid } = useOrders();
-  const { hasPermission } = useAuth();
+  const { hasPermission, listAdminUsers } = useAuth();
   const { showNotification } = useToast();
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -24,6 +24,7 @@ const ManageCustomersScreen: React.FC = () => {
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [ordersError, setOrdersError] = useState<string | null>(null);
   const [detailsTab, setDetailsTab] = useState<'overview' | 'orders' | 'actions'>('overview');
+  const [isSelectedCustomerAppLinked, setIsSelectedCustomerAppLinked] = useState<boolean>(true);
   const [customerDraft, setCustomerDraft] = useState<{ fullName: string; phoneNumber: string; loyaltyTier: Customer['loyaltyTier']; firstOrderDiscountApplied: boolean }>({
     fullName: '',
     phoneNumber: '',
@@ -35,6 +36,15 @@ const ManageCustomersScreen: React.FC = () => {
   const [isCancellingOrder, setIsCancellingOrder] = useState(false);
   const [deleteCustomerId, setDeleteCustomerId] = useState<string | null>(null);
   const [isDeletingCustomer, setIsDeletingCustomer] = useState(false);
+  const [adminUserIds, setAdminUserIds] = useState<Set<string>>(new Set());
+  const [newCustomerModalOpen, setNewCustomerModalOpen] = useState(false);
+  const [newCustomerDraft, setNewCustomerDraft] = useState<{ fullName: string; phone: string; customerType: 'retail' | 'wholesale'; creditLimit?: number; notes?: string }>({
+    fullName: '',
+    phone: '',
+    customerType: 'retail',
+    creditLimit: undefined,
+    notes: '',
+  });
 
   const statusTranslations: Record<OrderStatus, string> = {
     pending: 'قيد الانتظار',
@@ -52,6 +62,7 @@ const ManageCustomersScreen: React.FC = () => {
   const canMarkPaid = hasPermission('orders.markPaid') || canUpdateAllStatuses;
   const canViewInvoice = canMarkPaid || canUpdateAllStatuses;
   const canDeleteCustomer = hasPermission('customers.manage');
+  const canManageCustomers = hasPermission('customers.manage');
 
   const handleOpenPointsModal = (customer: Customer) => {
     setEditingCustomer(customer);
@@ -80,6 +91,26 @@ const ManageCustomersScreen: React.FC = () => {
   };
 
   useEffect(() => {
+    let cancelled = false;
+    const loadAdmins = async () => {
+      try {
+        const admins = await listAdminUsers();
+        const ids = new Set(admins.map(a => a.id));
+        if (!cancelled) setAdminUserIds(ids);
+      } catch {
+        if (!cancelled) setAdminUserIds(new Set());
+      }
+    };
+    loadAdmins();
+    return () => { cancelled = true; };
+  }, [listAdminUsers]);
+
+  const visibleCustomers = useMemo(() => {
+    if (!adminUserIds || adminUserIds.size === 0) return customers;
+    return customers.filter(c => !adminUserIds.has(c.id));
+  }, [customers, adminUserIds]);
+
+  useEffect(() => {
     if (!selectedCustomer) return;
     let cancelled = false;
     const run = async () => {
@@ -94,8 +125,8 @@ const ManageCustomersScreen: React.FC = () => {
         }
         const { data: rows, error } = await supabase
           .from('orders')
-          .select('id,data')
-          .eq('customer_auth_user_id', selectedCustomer.id);
+          .select('id,data,customer_auth_user_id')
+          .or(`customer_auth_user_id.eq.${selectedCustomer.id},data->>customerId.eq.${selectedCustomer.id}`);
         if (error) throw error;
         const orders = (rows || []).map(r => r.data as Order).filter(Boolean);
         orders.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
@@ -114,6 +145,45 @@ const ManageCustomersScreen: React.FC = () => {
       cancelled = true;
     };
   }, [selectedCustomer?.id]);
+
+  useEffect(() => {
+    // Simple badge: show "غير مرتبط بالتطبيق" if customers.auth_user_id is null
+    let cancelled = false;
+    const probe = async () => {
+      if (!selectedCustomer) {
+        setIsSelectedCustomerAppLinked(true);
+        return;
+      }
+      const supabase = getSupabaseClient();
+      if (!supabase) {
+        setIsSelectedCustomerAppLinked(true);
+        return;
+      }
+      try {
+        const phone = selectedCustomer.phoneNumber;
+        if (!phone) {
+          setIsSelectedCustomerAppLinked(Boolean(selectedCustomer.loginIdentifier || selectedCustomer.email));
+          return;
+        }
+        const { data, error } = await supabase
+          .from('customers')
+          .select('auth_user_id')
+          .eq('phone_number', phone)
+          .limit(1)
+          .maybeSingle();
+        if (error) {
+          setIsSelectedCustomerAppLinked(true);
+          return;
+        }
+        const authId = (data as any)?.auth_user_id || null;
+        if (!cancelled) setIsSelectedCustomerAppLinked(Boolean(authId));
+      } catch {
+        if (!cancelled) setIsSelectedCustomerAppLinked(true);
+      }
+    };
+    void probe();
+    return () => { cancelled = true; };
+  }, [selectedCustomer?.phoneNumber, selectedCustomer?.id]);
 
   useEffect(() => {
     if (!selectedCustomer) return;
@@ -261,6 +331,17 @@ const ManageCustomersScreen: React.FC = () => {
     <>
       <div className="animate-fade-in">
         <h1 className="text-3xl font-bold dark:text-white mb-6">إدارة العملاء</h1>
+        <div className="mb-4">
+          {canManageCustomers && (
+            <button
+              type="button"
+              onClick={() => setNewCustomerModalOpen(true)}
+              className="px-4 py-2 rounded-md bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700"
+            >
+              ➕ إضافة عميل
+            </button>
+          )}
+        </div>
         
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl overflow-hidden">
           <div className="overflow-x-auto">
@@ -283,8 +364,8 @@ const ManageCustomersScreen: React.FC = () => {
                        </div>
                     </td>
                   </tr>
-                ) : customers.length > 0 ? (
-                  customers.map((customer: Customer) => (
+                ) : visibleCustomers.length > 0 ? (
+                  visibleCustomers.map((customer: Customer) => (
                     <tr key={customer.id} className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/40" onClick={() => openCustomerDetails(customer)}>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center">
@@ -349,6 +430,109 @@ const ManageCustomersScreen: React.FC = () => {
         />
       )}
 
+      {newCustomerModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setNewCustomerModalOpen(false)} />
+          <div className="relative w-full max-w-xl bg-white dark:bg-gray-800 rounded-xl shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+              <div className="text-lg font-bold text-gray-900 dark:text-white">إضافة عميل</div>
+              <button onClick={() => setNewCustomerModalOpen(false)} className="px-3 py-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200">
+                إغلاق
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">الاسم</label>
+                <input
+                  type="text"
+                  value={newCustomerDraft.fullName}
+                  onChange={(e) => setNewCustomerDraft(prev => ({ ...prev, fullName: e.target.value }))}
+                  className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-gold-500 focus:border-gold-500 transition"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">رقم الهاتف (فريد)</label>
+                <input
+                  type="text"
+                  value={newCustomerDraft.phone}
+                  onChange={(e) => setNewCustomerDraft(prev => ({ ...prev, phone: e.target.value }))}
+                  className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-gold-500 focus:border-gold-500 transition"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">نوع العميل</label>
+                <select
+                  value={newCustomerDraft.customerType}
+                  onChange={(e) => setNewCustomerDraft(prev => ({ ...prev, customerType: e.target.value === 'wholesale' ? 'wholesale' : 'retail' }))}
+                  className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-gold-500 focus:border-gold-500 transition"
+                >
+                  <option value="retail">Retail</option>
+                  <option value="wholesale">Wholesale</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">حد ائتماني (اختياري)</label>
+                <input
+                  type="number"
+                  value={typeof newCustomerDraft.creditLimit === 'number' ? newCustomerDraft.creditLimit : ''}
+                  onChange={(e) => setNewCustomerDraft(prev => ({ ...prev, creditLimit: e.target.value ? parseFloat(e.target.value) : undefined }))}
+                  className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-gold-500 focus:border-gold-500 transition"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">ملاحظات</label>
+                <textarea
+                  rows={3}
+                  value={newCustomerDraft.notes || ''}
+                  onChange={(e) => setNewCustomerDraft(prev => ({ ...prev, notes: e.target.value }))}
+                  className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-gold-500 focus:border-gold-500 transition"
+                />
+              </div>
+              <div className="pt-3 mt-3 border-t border-gray-200 dark:border-gray-700">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const supabase = getSupabaseClient();
+                    if (!supabase) {
+                      showNotification('تعذر الوصول للخادم.', 'error');
+                      return;
+                    }
+                    const fullName = newCustomerDraft.fullName.trim();
+                    const phone = newCustomerDraft.phone.trim();
+                    const customerType = newCustomerDraft.customerType === 'wholesale' ? 'wholesale' : 'retail';
+                    const creditLimit = typeof newCustomerDraft.creditLimit === 'number' ? newCustomerDraft.creditLimit : null;
+                    const notes = (newCustomerDraft.notes || '').trim();
+                    if (!phone) {
+                      showNotification('رقم الهاتف مطلوب.', 'error');
+                      return;
+                    }
+                    try {
+                      const { error } = await (supabase as any).functions.invoke('create_admin_customer', {
+                        body: { fullName, phone, customerType, creditLimit, notes },
+                      });
+                      if (error) {
+                        const msg = (error as any)?.message || String(error);
+                        showNotification(/CREDIT|duplicate|موجود|exists/i.test(msg) ? msg : 'فشل إنشاء العميل.', 'error');
+                        return;
+                      }
+                      showNotification('تم إنشاء العميل بنجاح.', 'success');
+                      setNewCustomerModalOpen(false);
+                      setNewCustomerDraft({ fullName: '', phone: '', customerType: 'retail', creditLimit: undefined, notes: '' });
+                    } catch (err) {
+                      const raw = err instanceof Error ? err.message : String(err || '');
+                      showNotification(raw && /[\u0600-\u06FF]/.test(raw) ? raw : 'حدث خطأ أثناء إنشاء العميل.', 'error');
+                    }
+                  }}
+                  className="px-4 py-2 rounded-md bg-gray-800 text-white text-sm font-semibold"
+                >
+                  حفظ
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {selectedCustomer && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
           <div className="absolute inset-0 bg-black/50" onClick={closeCustomerDetails} />
@@ -365,6 +549,13 @@ const ManageCustomersScreen: React.FC = () => {
                 <div>
                   <div className="text-lg font-bold text-gray-900 dark:text-white">{selectedCustomer.fullName || 'عميل'}</div>
                   <div className="text-sm text-gray-500 dark:text-gray-400">{selectedCustomer.id}</div>
+                        {!isSelectedCustomerAppLinked && (
+                          <div className="mt-1">
+                            <span className="px-2 py-1 rounded-full text-[11px] font-semibold bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-200">
+                              غير مرتبط بالتطبيق
+                            </span>
+                          </div>
+                        )}
                 </div>
               </div>
               <button onClick={closeCustomerDetails} className="px-3 py-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200">

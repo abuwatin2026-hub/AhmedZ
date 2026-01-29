@@ -53,7 +53,7 @@ const unitTranslations: Record<string, string> = {
 const ManageOrdersScreen: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
-    const { orders, updateOrderStatus, assignOrderToDelivery, acceptDeliveryAssignment, createInStoreSale, loading, markOrderPaid, recordOrderPaymentPartial, issueInvoiceNow } = useOrders();
+    const { orders, updateOrderStatus, assignOrderToDelivery, acceptDeliveryAssignment, createInStoreSale, createInStoreDraftQuotation, loading, markOrderPaid, recordOrderPaymentPartial, issueInvoiceNow } = useOrders();
     const { createReturn, processReturn, getReturnsByOrder } = useSalesReturn();
     const { showNotification } = useToast();
     const language = 'ar';
@@ -126,6 +126,10 @@ const ManageOrdersScreen: React.FC = () => {
     const [inStoreItemSearch, setInStoreItemSearch] = useState('');
     const [inStoreSelectedAddons, setInStoreSelectedAddons] = useState<Record<string, number>>({});
     const [inStoreLines, setInStoreLines] = useState<Array<{ menuItemId: string; quantity?: number; weight?: number; selectedAddons?: Record<string, number> }>>([]);
+    const [inStoreCustomerMode, setInStoreCustomerMode] = useState<'walk_in' | 'existing'>('walk_in');
+    const [inStoreCustomerPhoneSearch, setInStoreCustomerPhoneSearch] = useState('');
+    const [inStoreCustomerSearchResult, setInStoreCustomerSearchResult] = useState<{ id: string; fullName?: string; phoneNumber?: string } | null>(null);
+    const [inStoreSelectedCustomerId, setInStoreSelectedCustomerId] = useState<string>('');
     const [mapModal, setMapModal] = useState<{ title: string; coords: { lat: number; lng: number } } | null>(null);
     const [paidSumByOrderId, setPaidSumByOrderId] = useState<Record<string, number>>({});
     const [partialPaymentOrderId, setPartialPaymentOrderId] = useState<string | null>(null);
@@ -143,12 +147,17 @@ const ManageOrdersScreen: React.FC = () => {
 
     const canViewAccounting = hasPermission('accounting.view') || hasPermission('accounting.manage');
 
+    const canUseCash = hasPermission('orders.markPaid') && hasPermission('cashShifts.open');
     const inStoreAvailablePaymentMethods = useMemo(() => {
         const enabled = Object.entries(settings.paymentMethods || {})
             .filter(([, isEnabled]) => Boolean(isEnabled))
             .map(([key]) => key);
         return enabled;
     }, [settings.paymentMethods]);
+    const inStoreVisiblePaymentMethods = useMemo(() => {
+        const enabled = inStoreAvailablePaymentMethods;
+        return canUseCash ? enabled : enabled.filter(m => m !== 'cash');
+    }, [inStoreAvailablePaymentMethods, canUseCash]);
 
     useEffect(() => {
         const fetchDriverBalances = async () => {
@@ -265,10 +274,10 @@ const ManageOrdersScreen: React.FC = () => {
             setInStorePaymentMethod('');
             return;
         }
-        if (!inStorePaymentMethod || !inStoreAvailablePaymentMethods.includes(inStorePaymentMethod)) {
-            setInStorePaymentMethod(inStoreAvailablePaymentMethods[0]);
+        if (!inStorePaymentMethod || !inStoreVisiblePaymentMethods.includes(inStorePaymentMethod)) {
+            setInStorePaymentMethod(inStoreVisiblePaymentMethods[0]);
         }
-    }, [inStoreAvailablePaymentMethods, inStorePaymentMethod, isInStoreSaleOpen]);
+    }, [inStoreVisiblePaymentMethods, inStorePaymentMethod, isInStoreSaleOpen]);
 
     useEffect(() => {
         if (!isInStoreSaleOpen) return;
@@ -605,6 +614,7 @@ const ManageOrdersScreen: React.FC = () => {
             const order = await createInStoreSale({
                 lines: inStoreLines,
                 paymentMethod: primaryPaymentMethod,
+                customerId: inStoreCustomerMode === 'existing' && inStoreSelectedCustomerId ? inStoreSelectedCustomerId : undefined,
                 customerName: inStoreCustomerName,
                 phoneNumber: inStorePhoneNumber,
                 notes: inStoreNotes,
@@ -626,13 +636,18 @@ const ManageOrdersScreen: React.FC = () => {
                     cashReceived: p.method === 'cash' ? (p.cashReceived > 0 ? p.cashReceived : undefined) : undefined,
                 })),
             });
+            const awaitingPayment = order.status === 'pending';
             const isQueued = Boolean((order as any).offlineState) || order.status !== 'delivered';
-            showNotification(
-                language === 'ar'
-                    ? (isQueued ? `تم إرسال البيع للمزامنة #${order.id.slice(-6).toUpperCase()}` : `تم تسجيل البيع الحضوري #${order.id.slice(-6).toUpperCase()}`)
-                    : (isQueued ? `Sale queued for sync #${order.id.slice(-6).toUpperCase()}` : `In-store sale created #${order.id.slice(-6).toUpperCase()}`),
-                isQueued ? 'info' : 'success'
-            );
+            if (awaitingPayment) {
+                showNotification('تم إنشاء الطلب وبانتظار التحصيل من الكاشير', 'info');
+            } else {
+                showNotification(
+                    language === 'ar'
+                        ? (isQueued ? `تم إرسال البيع للمزامنة #${order.id.slice(-6).toUpperCase()}` : `تم تسجيل البيع الحضوري #${order.id.slice(-6).toUpperCase()}`)
+                        : (isQueued ? `Sale queued for sync #${order.id.slice(-6).toUpperCase()}` : `In-store sale created #${order.id.slice(-6).toUpperCase()}`),
+                    isQueued ? 'info' : 'success'
+                );
+            }
             if (inStoreAutoOpenInvoice && !isQueued) {
                 navigate(`/admin/invoice/${order.id}`);
             }
@@ -658,6 +673,43 @@ const ManageOrdersScreen: React.FC = () => {
                 ? (raw ? `فشل تسجيل البيع الحضوري: ${raw}` : 'فشل تسجيل البيع الحضوري.')
                 : (raw ? `Failed to create in-store sale: ${raw}` : 'Failed to create in-store sale.');
             showNotification(message, 'error');
+        } finally {
+            setIsInStoreCreating(false);
+        }
+    };
+    const saveInStoreDraftQuotation = async () => {
+        if (inStoreLines.length === 0) {
+            showNotification('أضف أصنافًا أولاً.', 'error');
+            return;
+        }
+        setIsInStoreCreating(true);
+        try {
+            const order = await createInStoreDraftQuotation({
+                lines: inStoreLines,
+                customerId: inStoreCustomerMode === 'existing' && inStoreSelectedCustomerId ? inStoreSelectedCustomerId : undefined,
+                customerName: inStoreCustomerName,
+                phoneNumber: inStorePhoneNumber,
+                notes: inStoreNotes,
+                discountType: inStoreDiscountType,
+                discountValue: Number(inStoreDiscountValue) || 0,
+            });
+            showNotification(`تم حفظ المسودة #${order.id.slice(-6).toUpperCase()}`, 'success');
+            setIsInStoreSaleOpen(false);
+            setInStoreCustomerName('');
+            setInStorePhoneNumber('');
+            setInStoreNotes('');
+            setInStoreDiscountType('amount');
+            setInStoreDiscountValue(0);
+            setInStoreLines([]);
+            setInStoreSelectedItemId('');
+            setInStoreSelectedAddons({});
+            setInStoreCustomerMode('walk_in');
+            setInStoreSelectedCustomerId('');
+            setInStoreCustomerSearchResult(null);
+            setInStoreCustomerPhoneSearch('');
+        } catch (error) {
+            const raw = error instanceof Error ? error.message : '';
+            showNotification(raw && /[\u0600-\u06FF]/.test(raw) ? raw : 'فشل حفظ المسودة.', 'error');
         } finally {
             setIsInStoreCreating(false);
         }
@@ -1044,6 +1096,13 @@ const ManageOrdersScreen: React.FC = () => {
                         <div className="font-mono text-sm text-gray-900 dark:text-white">{remaining.toFixed(2)} <span className="text-xs">ر.ي</span></div>
                     </div>
                 </div>
+                {remaining > 1e-9 && order.status !== 'delivered' && (
+                    <div className="mb-3">
+                        <span className="px-2 py-1 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-900 dark:bg-amber-900/30 dark:text-amber-200">
+                            بانتظار التحصيل
+                        </span>
+                    </div>
+                )}
 
                 {/* Actions Grid */}
                 <div className="grid grid-cols-2 gap-2">
@@ -1390,6 +1449,13 @@ const ManageOrdersScreen: React.FC = () => {
                                                     <div className="mt-1 space-y-0.5 text-xs text-gray-600 dark:text-gray-400">
                                                         <div>مدفوع: <span className="font-mono" dir="ltr">{Number(paid || 0).toLocaleString('ar-EG-u-nu-latn', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
                                                         <div>متبقي: <span className="font-mono" dir="ltr">{Number(remaining || 0).toLocaleString('ar-EG-u-nu-latn', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+                                                        {remaining > 1e-9 && order.status !== 'delivered' && (
+                                                            <div>
+                                                                <span className="px-2 py-1 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-900 dark:bg-amber-900/30 dark:text-amber-200">
+                                                                    بانتظار التحصيل
+                                                                </span>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 );
                                             })()}
@@ -1711,7 +1777,7 @@ const ManageOrdersScreen: React.FC = () => {
                 confirmingText={language === 'ar' ? 'جاري التسجيل...' : 'Creating...'}
                 cancelText={language === 'ar' ? 'رجوع' : 'Back'}
                 confirmButtonClassName="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400"
-                hideConfirmButton={inStoreLines.length === 0 || inStoreAvailablePaymentMethods.length === 0 || !inStorePaymentMethod}
+                hideConfirmButton={inStoreLines.length === 0 || inStoreVisiblePaymentMethods.length === 0 || !inStorePaymentMethod}
             >
                     <div className="space-y-4">
                     <div className="flex items-center justify-between text-xs">
@@ -1751,6 +1817,80 @@ const ManageOrdersScreen: React.FC = () => {
                                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                             />
                         </div>
+                    </div>
+                    <div className="p-3 border border-gray-200 dark:border-gray-700 rounded-md bg-gray-50 dark:bg-gray-800/40 space-y-2">
+                        <div className="text-xs font-semibold text-gray-700 dark:text-gray-300">العميل</div>
+                        <div className="flex items-center gap-3">
+                            <label className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300">
+                                <input
+                                    type="radio"
+                                    checked={inStoreCustomerMode === 'walk_in'}
+                                    onChange={() => { setInStoreCustomerMode('walk_in'); setInStoreSelectedCustomerId(''); setInStoreCustomerSearchResult(null); }}
+                                />
+                                زبون حضوري (Walk‑In)
+                            </label>
+                            <label className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300">
+                                <input
+                                    type="radio"
+                                    checked={inStoreCustomerMode === 'existing'}
+                                    onChange={() => setInStoreCustomerMode('existing')}
+                                />
+                                عميل موجود (customers)
+                            </label>
+                        </div>
+                        {inStoreCustomerMode === 'existing' && (
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
+                                <div className="md:col-span-2">
+                                    <label className="block text-[11px] text-gray-600 dark:text-gray-300 mb-1">رقم الهاتف</label>
+                                    <input
+                                        type="text"
+                                        value={inStoreCustomerPhoneSearch}
+                                        onChange={(e) => setInStoreCustomerPhoneSearch(e.target.value)}
+                                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                                        placeholder="مثال: 771234567"
+                                    />
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={async () => {
+                                        const supabase = getSupabaseClient();
+                                        if (!supabase) return;
+                                        const phone = inStoreCustomerPhoneSearch.trim();
+                                        if (!phone) { setInStoreCustomerSearchResult(null); setInStoreSelectedCustomerId(''); return; }
+                                        const { data, error } = await supabase
+                                            .from('customers')
+                                            .select('id, full_name, phone_number')
+                                            .eq('phone_number', phone)
+                                            .limit(1)
+                                            .maybeSingle();
+                                        if (error) {
+                                            setInStoreCustomerSearchResult(null);
+                                            setInStoreSelectedCustomerId('');
+                                            showNotification('تعذر البحث عن العميل.', 'error');
+                                            return;
+                                        }
+                                        if (data) {
+                                            const c = { id: String((data as any).id), fullName: (data as any).full_name, phoneNumber: (data as any).phone_number };
+                                            setInStoreCustomerSearchResult(c);
+                                            setInStoreSelectedCustomerId(c.id);
+                                        } else {
+                                            setInStoreCustomerSearchResult(null);
+                                            setInStoreSelectedCustomerId('');
+                                            showNotification('لم يتم العثور على عميل بهذا الرقم.', 'error');
+                                        }
+                                    }}
+                                    className="px-3 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 transition text-xs font-semibold"
+                                >
+                                    بحث
+                                </button>
+                            </div>
+                        )}
+                        {inStoreCustomerMode === 'existing' && inStoreCustomerSearchResult && (
+                            <div className="text-xs text-gray-700 dark:text-gray-300">
+                                عميل مختار: <span className="font-mono">{inStoreCustomerSearchResult.fullName || '—'}</span> • <span className="font-mono">{inStoreCustomerSearchResult.phoneNumber || '—'}</span>
+                                <div className="mt-1 text-[11px] text-gray-500">ID: <span className="font-mono">{inStoreSelectedCustomerId}</span></div>
+                            </div>
+                        )}
                     </div>
                     <div>
                         <label className="block text-xs text-gray-600 dark:text-gray-300 mb-1">{language === 'ar' ? 'ملاحظات (اختياري)' : 'Notes (optional)'}</label>
@@ -1808,9 +1948,9 @@ const ManageOrdersScreen: React.FC = () => {
                                         setInStoreMultiPaymentEnabled(checked);
                                         if (checked) {
                                             const total = Number(inStoreTotals.total) || 0;
-                                            const initialMethod = inStorePaymentMethod && inStoreAvailablePaymentMethods.includes(inStorePaymentMethod)
+                                            const initialMethod = inStorePaymentMethod && inStoreVisiblePaymentMethods.includes(inStorePaymentMethod)
                                                 ? inStorePaymentMethod
-                                                : (inStoreAvailablePaymentMethods[0] || 'cash');
+                                                : (inStoreVisiblePaymentMethods[0] || '');
                                             setInStorePaymentLines([{
                                                 method: initialMethod,
                                                 amount: Number(total.toFixed(2)),
@@ -1830,7 +1970,7 @@ const ManageOrdersScreen: React.FC = () => {
                                 <button
                                     type="button"
                                     onClick={() => {
-                                        const method = inStoreAvailablePaymentMethods[0] || 'cash';
+                                        const method = inStoreVisiblePaymentMethods[0] || '';
                                         setInStorePaymentLines(prev => [...prev, { method, amount: 0, declaredAmount: 0, amountConfirmed: method === 'cash', cashReceived: 0 }]);
                                     }}
                                     className="px-3 py-2 rounded-md bg-gray-200 text-gray-800 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600 text-xs font-semibold"
@@ -1868,7 +2008,7 @@ const ManageOrdersScreen: React.FC = () => {
                                                         }}
                                                         className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
                                                     >
-                                                        {inStoreAvailablePaymentMethods.map((m) => (
+                                                        {inStoreVisiblePaymentMethods.map((m) => (
                                                             <option key={m} value={m}>{paymentTranslations[m] || m}</option>
                                                         ))}
                                                     </select>
@@ -1978,10 +2118,10 @@ const ManageOrdersScreen: React.FC = () => {
                             onChange={(e) => setInStorePaymentMethod(e.target.value)}
                             className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                         >
-                            {inStoreAvailablePaymentMethods.length === 0 ? (
+                            {inStoreVisiblePaymentMethods.length === 0 ? (
                                 <option value="">لا توجد طرق دفع مفعلة في الإعدادات</option>
                             ) : (
-                                inStoreAvailablePaymentMethods.map((method) => (
+                                inStoreVisiblePaymentMethods.map((method) => (
                                     <option key={method} value={method}>
                                         {method === 'cash'
                                             ? 'نقدًا'
@@ -2283,6 +2423,19 @@ const ManageOrdersScreen: React.FC = () => {
                             </div>
                         )
                     }
+                    <div className="pt-3 mt-3 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                        <button
+                            type="button"
+                            onClick={saveInStoreDraftQuotation}
+                            disabled={isInStoreCreating || inStoreLines.length === 0}
+                            className="px-3 py-2 rounded-md bg-gray-800 text-white hover:bg-gray-900 transition text-sm font-semibold disabled:opacity-60"
+                        >
+                            حفظ كمسودة (Quotation)
+                        </button>
+                        <div className="text-[11px] text-gray-500 dark:text-gray-400">
+                            المسودة لا تحجز المخزون. الحجز يتم عند الإتمام.
+                        </div>
+                    </div>
                 </div >
             </ConfirmationModal >
             <ConfirmationModal

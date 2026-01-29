@@ -105,15 +105,15 @@ const AdminNotificationMenu: React.FC = () => {
 
 const navLinks: Array<{ to: string; label: string; icon: React.ReactNode; permission: AdminPermission }> = [
   { to: 'dashboard', label: 'لوحة التحكم', icon: <Icons.DashboardIcon />, permission: 'dashboard.view' },
-  { to: 'stock', label: 'إدارة المخزون', icon: <Icons.ListIcon />, permission: 'stock.manage' },
+  { to: 'stock', label: 'إدارة المخزون', icon: <Icons.ListIcon />, permission: 'inventory.view' },
   { to: 'wastage', label: 'تسجيل هدر', icon: <Icons.ReportIcon />, permission: 'stock.manage' },
   { to: 'expiry-batches', label: 'دفعات منتهية', icon: <Icons.ClockIcon />, permission: 'stock.manage' },
-  { to: 'wastage-expiry-reports', label: 'تقارير الهدر/الانتهاء', icon: <Icons.ReportIcon />, permission: 'reports.view' },
+  { to: 'wastage-expiry-reports', label: 'تقارير الهدر/الانتهاء', icon: <Icons.ReportIcon />, permission: 'inventory.movements.view' },
   { to: 'suppliers', label: 'الموردين', icon: <Icons.TruckIcon />, permission: 'stock.manage' },
   { to: 'supplier-contracts', label: 'عقود الموردين', icon: <Icons.FileText />, permission: 'stock.manage' },
   { to: 'supplier-evaluations', label: 'تقييم الموردين', icon: <Icons.StarIcon />, permission: 'stock.manage' },
   { to: 'purchases', label: 'المشتريات', icon: <Icons.ReportIcon />, permission: 'stock.manage' },
-  { to: 'import-shipments', label: 'الشحنات', icon: <Icons.Package />, permission: 'stock.manage' },
+  { to: 'import-shipments', label: 'الشحنات', icon: <Icons.Package />, permission: 'shipments.view' },
   { to: 'warehouses', label: 'المستودعات', icon: <Icons.Package />, permission: 'stock.manage' },
   { to: 'warehouse-transfers', label: 'تحويلات المستودعات', icon: <Icons.TruckIcon />, permission: 'stock.manage' },
   { to: 'orders', label: 'إدارة الطلبات', icon: <Icons.OrdersIcon />, permission: 'orders.view' },
@@ -145,15 +145,15 @@ const navLinks: Array<{ to: string; label: string; icon: React.ReactNode; permis
 
 const routePermissions: Record<string, AdminPermission> = {
   'dashboard': 'dashboard.view',
-  'stock': 'stock.manage',
+  'stock': 'inventory.view',
   'wastage': 'stock.manage',
   'expiry-batches': 'stock.manage',
-  'wastage-expiry-reports': 'reports.view',
+  'wastage-expiry-reports': 'inventory.movements.view',
   'suppliers': 'stock.manage',
   'supplier-contracts': 'stock.manage',
   'supplier-evaluations': 'stock.manage',
   'purchases': 'stock.manage',
-  'import-shipments': 'stock.manage',
+  'import-shipments': 'shipments.view',
   'warehouses': 'stock.manage',
   'warehouse-transfers': 'stock.manage',
   'orders': 'orders.view',
@@ -199,6 +199,15 @@ const AdminLayout: React.FC = () => {
     if (link.to === '/pos') {
       return hasPermission('orders.createInStore') || hasPermission('orders.updateStatus.all');
     }
+    if (link.to === 'stock') {
+      return hasPermission('inventory.view') || hasPermission('stock.manage');
+    }
+    if (link.to === 'import-shipments') {
+      return hasPermission('shipments.view') || hasPermission('stock.manage');
+    }
+    if (link.to === 'wastage-expiry-reports') {
+      return hasPermission('inventory.movements.view') || hasPermission('reports.view') || hasPermission('stock.manage');
+    }
     return hasPermission(link.permission);
   };
 
@@ -224,7 +233,13 @@ const AdminLayout: React.FC = () => {
         const ok =
           currentRoute === 'my-shift'
             ? hasPermission('cashShifts.viewOwn') || hasPermission('cashShifts.manage')
-            : hasPermission(requiredPermission);
+            : currentRoute === 'stock'
+              ? (hasPermission('inventory.view') || hasPermission('stock.manage'))
+              : currentRoute === 'import-shipments'
+                ? (hasPermission('shipments.view') || hasPermission('stock.manage'))
+                : currentRoute === 'wastage-expiry-reports'
+                  ? (hasPermission('inventory.movements.view') || hasPermission('reports.view') || hasPermission('stock.manage'))
+                  : hasPermission(requiredPermission);
         if (!ok) {
             // Redirect to dashboard or show unauthorized if already on dashboard (to avoid loop)
             if (currentRoute !== 'dashboard') {

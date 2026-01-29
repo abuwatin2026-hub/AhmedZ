@@ -59,8 +59,8 @@ serve(async (req) => {
     }
 
     try {
-        const supabaseUrl = (Deno.env.get('AZTA_SUPABASE_URL') ?? '').trim()
-        const serviceRoleKey = (Deno.env.get('AZTA_SUPABASE_SERVICE_ROLE_KEY') ?? '').trim()
+        const supabaseUrl = ((Deno.env.get('AZTA_SUPABASE_URL') ?? Deno.env.get('SUPABASE_URL')) ?? '').trim()
+        const serviceRoleKey = ((Deno.env.get('AZTA_SUPABASE_SERVICE_ROLE_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')) ?? '').trim()
         if (!supabaseUrl || !serviceRoleKey) {
             return new Response(
                 JSON.stringify({ error: 'إعدادات الدالة غير مكتملة (AZTA_SUPABASE_URL / AZTA_SUPABASE_SERVICE_ROLE_KEY).' }),

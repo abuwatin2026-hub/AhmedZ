@@ -1,4 +1,4 @@
-Version: 2026-01-28
+Version: 2026-01-29
 Last validated against migrations up to: 20260128232000_unify_close_cash_shift_v2_signature.sql
 
 Analysis Contract (Enforcement)
@@ -31,6 +31,59 @@ Analysis Contract (Enforcement)
   - النسخة المنشورة حاليًا: versionName=1.0.1, versionCode=2
   - شرط التحديث على Android: نفس packageName ونفس توقيع الـKeystore عبر كل الإصدارات
   - بناء Release يتطلب تهيئة متغيرات التوقيع AZTA_RELEASE_* ويُفشل البناء عند غيابها لتجنب APK موقّع بـ debug
+
+### التحكم في الصلاحيات والأدوار (Admin RBAC)
+- أدوار الإدارة: owner, manager, employee, cashier, delivery, accountant.
+- صلاحيات الواجهة الأساسية معرّفة مركزياً: [types.ts](file:///d:/JOMLA/AhmedZ/types.ts) (ADMIN_PERMISSION_DEFS).
+- صلاحيات عرض إضافية مدعومة في الواجهة فقط: shipments.view, inventory.view, inventory.movements.view.
+- Legacy Super Role: stock.manage يبقى صلاحية فائقة في الواجهة كفالـباك حيثما لزم، دون تعديل RLS.
+- قوالب صلاحيات تشغيلية (واجهة فقط): UI_ROLE_PRESET_DEFS + permissionsForPreset لاستخدامها عند إنشاء/تعديل مستخدم.
+  - Sales, Cashier, InventoryKeeper, Procurement, Accountant, BranchManager, Viewer.
+  - تطبيق القالب في الإدارة: [AdminProfileScreen.tsx](file:///d:/JOMLA/AhmedZ/screens/admin/AdminProfileScreen.tsx#L298-L325) و[AdminProfileScreen.tsx](file:///d:/JOMLA/AhmedZ/screens/admin/AdminProfileScreen.tsx#L613-L622).
+
+### فصل المبيعات عن التحصيل (واجهة فقط) — المرحلة 5.1
+- الهدف: Sales ينشئ الطلب فقط؛ التحصيل النقدي Cashier/Accountant حصراً.
+- تقييد وسائل الدفع (UI Guard):
+  - canUseCash = hasPermission('orders.markPaid') && hasPermission('cashShifts.open').
+  - إخفاء خيار "نقدًا" بالكامل من واجهة البيع الحضوري عند عدم تحقق canUseCash.
+  - التنفيذ: [ManageOrdersScreen.tsx](file:///d:/JOMLA/AhmedZ/screens/admin/ManageOrdersScreen.tsx#L146-L160) و[ManageOrdersScreen.tsx](file:///d:/JOMLA/AhmedZ/screens/admin/ManageOrdersScreen.tsx#L1980-L1997).
+- فصل الإنشاء عن التحصيل:
+  - عند عدم امتلاك orders.markPaid لا يتم استدعاء record_order_payment، ويُنشأ الطلب بالحالة pending (بانتظار التحصيل)، ولا يُصدر invoiceSnapshot آنياً.
+  - التنفيذ: [OrderContext.tsx](file:///d:/JOMLA/AhmedZ/contexts/OrderContext.tsx#L1243-L1332) مع تسجيل أحداث مشروطة [OrderContext.tsx](file:///d:/JOMLA/AhmedZ/contexts/OrderContext.tsx#L1453-L1480).
+- توضيح الحالة (UX):
+  - إشعار بعد الحفظ: "تم إنشاء الطلب وبانتظار التحصيل من الكاشير".
+  - وسم بصري “بانتظار التحصيل” عند وجود متبقي ولم يتم التسليم.
+  - التنفيذ: [ManageOrdersScreen.tsx](file:///d:/JOMLA/AhmedZ/screens/admin/ManageOrdersScreen.tsx#L636-L652) و[ManageOrdersScreen.tsx](file:///d:/JOMLA/AhmedZ/screens/admin/ManageOrdersScreen.tsx#L1037-L1046) و[ManageOrdersScreen.tsx](file:///d:/JOMLA/AhmedZ/screens/admin/ManageOrdersScreen.tsx#L1383-L1396).
+
+### البيع الحضوري (In‑Store) — المرحلة 5.0
+- اختيار العميل:
+  - Walk‑In Retail (افتراضي): بدون customer_id.
+  - Existing Customer: بحث برقم الهاتف من جدول customers واختيار العميل.
+  - التنفيذ: [ManageOrdersScreen.tsx](file:///d:/JOMLA/AhmedZ/screens/admin/ManageOrdersScreen.tsx#L1735-L1811).
+- تسعير الجملة تلقائيًا:
+  - تمرير p_customer_id إلى get_item_price_with_discount عند وجود عميل فعلي.
+  - التنفيذ: [OrderContext.tsx](file:///d:/JOMLA/AhmedZ/contexts/OrderContext.tsx#L1075-L1084) و[OrderContext.tsx](file:///d:/JOMLA/AhmedZ/contexts/OrderContext.tsx#L1544-L1551).
+- الحقول الموسعة للطلب:
+  - Order يحتوي الآن customerId و isDraft (واجهة فقط): [types.ts](file:///d:/JOMLA/AhmedZ/types.ts#L284-L302).
+- مسودة/عرض سعر (Draft/Quotation) بلا حجز:
+  - خيار “حفظ كمسودة” ينشئ طلب pending مع isDraft=true دون reserve_stock_for_order؛ التحويل لاحقاً عبر مسار التسليم/الدفع المعتاد.
+  - التنفيذ: [OrderContext.tsx](file:///d:/JOMLA/AhmedZ/contexts/OrderContext.tsx#L1608-L1675) وزر الواجهة: [ManageOrdersScreen.tsx](file:///d:/JOMLA/AhmedZ/screens/admin/ManageOrdersScreen.tsx#L2262-L2280).
+- POS: لم يتغير؛ يبقى Retail افتراضياً ولا يختار عميل من POS.
+
+### إدارة العملاء — المرحلة 5.2 (واجهة فقط)
+- تعريف العميل: المصدر الوحيد للعرض هو جدول customers؛ لا ربط ولا جلب من auth.users أو profiles أو admin_users.
+- تنظيف القائمة: إخفاء المدير/الكاشير من قائمة العملاء عبر فلترة الواجهة بمطابقة ids على admin_users.
+  - التنفيذ: تحميل مستخدمي الإدارة [ManageCustomersScreen.tsx](file:///d:/JOMLA/AhmedZ/screens/admin/ManageCustomersScreen.tsx#L140-L157) وتطبيق الفلتر [ManageCustomersScreen.tsx](file:///d:/JOMLA/AhmedZ/screens/admin/ManageCustomersScreen.tsx#L159-L162).
+- توحيد القنوات:
+  - عرض الطلبات للعميل عبر customer_auth_user_id (أونلاين) أو data->>customerId (حضوري).
+  - التنفيذ: [ManageCustomersScreen.tsx](file:///d:/JOMLA/AhmedZ/screens/admin/ManageCustomersScreen.tsx#L92-L103).
+- إنشاء عميل يدوي (واجهة فقط الآن):
+  - زر “إضافة عميل” (Retail/Wholesale + حد ائتماني اختياري + ملاحظات).
+  - الإدراج الفعلي يتطلب RPC مؤمّن (سيُعالج في المرحلة 6؛ لا تعديل RLS الآن).
+  - التنفيذ: [ManageCustomersScreen.tsx](file:///d:/JOMLA/AhmedZ/screens/admin/ManageCustomersScreen.tsx#L172-L182) و[ManageCustomersScreen.tsx](file:///d:/JOMLA/AhmedZ/screens/admin/ManageCustomersScreen.tsx#L344-L411).
+‑ الصلاحيات:
+  - customers.view للاختيار في البيع.
+  - customers.manage للإنشاء/التعديل/الحذف. Sales لديه view فقط؛ Accountant/Manager لديه manage.
 
 ### نظام الطباعة (Frontend) — Production/Enterprise Grade
 ملاحظة إلزامية: هذا القسم يركّز على الطباعة وتجربة المستخدم في الواجهة. ترقيم/إصدار الفاتورة (invoiceNumber/issuedAt/snapshot) وتتبّع الطباعة له جزء تكاملي موثّق في قسم “الفواتير” أدناه.

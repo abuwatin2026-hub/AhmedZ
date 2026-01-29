@@ -286,6 +286,7 @@ export interface Order {
   userId?: string;
   orderSource?: 'online' | 'in_store';
   warehouseId?: string;
+  customerId?: string;
   offlineId?: string;
   offlineState?: 'CREATED_OFFLINE' | 'SYNCED' | 'DELIVERED' | 'FAILED' | 'CONFLICT';
   offlineError?: string;
@@ -299,6 +300,7 @@ export interface Order {
   phoneNumber: string;
   notes?: string;
   address: string;
+  isDraft?: boolean;
   location?: {
     lat: number;
     lng: number;
@@ -801,6 +803,9 @@ export type AdminPermission =
   | 'orders.createInStore'
   | 'orders.updateStatus.all'
   | 'orders.updateStatus.delivery'
+  | 'shipments.view'
+  | 'inventory.view'
+  | 'inventory.movements.view'
   | 'cashShifts.open'
   | 'cashShifts.viewOwn'
   | 'cashShifts.closeSelf'
@@ -841,6 +846,9 @@ export const ADMIN_PERMISSION_DEFS: Array<{ key: AdminPermission; labelAr: strin
   { key: 'orders.createInStore', labelAr: 'إضافة بيع حضوري' },
   { key: 'orders.updateStatus.all', labelAr: 'تغيير حالة الطلبات (كامل)' },
   { key: 'orders.updateStatus.delivery', labelAr: 'تغيير حالة الطلبات (مندوب)' },
+  { key: 'shipments.view', labelAr: 'عرض الشحنات' },
+  { key: 'inventory.view', labelAr: 'عرض المخزون' },
+  { key: 'inventory.movements.view', labelAr: 'عرض حركات المخزون والتقارير' },
   { key: 'cashShifts.open', labelAr: 'فتح وردية نقدية' },
   { key: 'cashShifts.viewOwn', labelAr: 'عرض ورديتي' },
   { key: 'cashShifts.closeSelf', labelAr: 'إغلاق ورديتي' },
@@ -904,6 +912,106 @@ export const defaultAdminPermissionsForRole = (role: AdminRole): AdminPermission
   return ['dashboard.view', 'profile.view', 'orders.view', 'orders.markPaid'];
 };
 
+export type RolePreset =
+  | 'sales'
+  | 'cashier_preset'
+  | 'inventoryKeeper'
+  | 'procurement'
+  | 'accountant_preset'
+  | 'branchManager'
+  | 'viewer';
+
+export const UI_ROLE_PRESET_DEFS: Array<{ key: RolePreset; labelAr: string; permissions: AdminPermission[] }> = [
+  {
+    key: 'sales',
+    labelAr: 'مبيعات (Sales)',
+    permissions: [
+      'orders.view',
+      'orders.createInStore',
+      'reports.view',
+      'shipments.view',
+      'inventory.view',
+    ],
+  },
+  {
+    key: 'cashier_preset',
+    labelAr: 'كاشير (Cashier)',
+    permissions: [
+      'orders.view',
+      'orders.markPaid',
+      'cashShifts.open',
+      'cashShifts.viewOwn',
+      'cashShifts.closeSelf',
+      'cashShifts.cashIn',
+      'cashShifts.cashOut',
+      'reports.view',
+    ],
+  },
+  {
+    key: 'inventoryKeeper',
+    labelAr: 'أمين مخزن (Inventory)',
+    permissions: [
+      'inventory.manage',
+      'inventory.view',
+      'inventory.movements.view',
+    ],
+  },
+  {
+    key: 'procurement',
+    labelAr: 'مشتريات/استيراد (Procurement)',
+    permissions: [
+      'procurement.manage',
+      'shipments.view',
+    ],
+  },
+  {
+    key: 'accountant_preset',
+    labelAr: 'محاسب (Accountant)',
+    permissions: [
+      'reports.view',
+      'expenses.manage',
+      'accounting.view',
+      'accounting.manage',
+      'accounting.periods.close',
+      'accounting.approve',
+      'accounting.void',
+    ],
+  },
+  {
+    key: 'branchManager',
+    labelAr: 'مدير فرع (BranchManager)',
+    permissions: [
+      'dashboard.view',
+      'orders.view',
+      'orders.markPaid',
+      'orders.updateStatus.all',
+      'items.manage',
+      'customers.manage',
+      'prices.manage',
+      'reports.view',
+      'shipments.view',
+      'inventory.view',
+      'inventory.movements.view',
+      'expenses.manage',
+      'accounting.view',
+    ],
+  },
+  {
+    key: 'viewer',
+    labelAr: 'مراقب (Viewer)',
+    permissions: [
+      'orders.view',
+      'reports.view',
+      'shipments.view',
+      'inventory.view',
+    ],
+  },
+];
+
+export const permissionsForPreset = (preset: RolePreset): AdminPermission[] => {
+  const found = UI_ROLE_PRESET_DEFS.find(p => p.key === preset);
+  return found ? found.permissions : [];
+};
 export interface AdminUser {
   id: string;
   username: string;

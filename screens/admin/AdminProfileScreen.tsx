@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import type { AdminPermission, AdminRole, AdminUser } from '../../types';
-import { ADMIN_PERMISSION_DEFS, defaultAdminPermissionsForRole } from '../../types';
+import { ADMIN_PERMISSION_DEFS, defaultAdminPermissionsForRole, UI_ROLE_PRESET_DEFS, permissionsForPreset } from '../../types';
 import TextInput from '../../components/TextInput';
 import PasswordInput from '../../components/PasswordInput';
 import { AtSymbolIcon, CameraIcon, MailIcon, PhoneIcon, UserIcon } from '../../components/icons';
@@ -28,6 +28,7 @@ const AdminProfileScreen: React.FC = () => {
   const [isCreatingUser, setIsCreatingUser] = useState(false);
   const [customizeNewUserPermissions, setCustomizeNewUserPermissions] = useState(false);
   const [newUserPermissions, setNewUserPermissions] = useState<AdminPermission[]>([]);
+  const [newUserPreset, setNewUserPreset] = useState<string>('');
 
   const [resetPasswordUserId, setResetPasswordUserId] = useState<string | null>(null);
   const [resetPasswordValue, setResetPasswordValue] = useState('');
@@ -38,6 +39,7 @@ const AdminProfileScreen: React.FC = () => {
   const [editUser, setEditUser] = useState({ username: '', fullName: '', role: 'employee' as AdminRole, email: '', phoneNumber: '', avatarUrl: '' });
   const [editPermissions, setEditPermissions] = useState<AdminPermission[]>([]);
   const [isUpdatingUser, setIsUpdatingUser] = useState(false);
+  const [editPreset, setEditPreset] = useState<string>('');
 
   const [deleteUserId, setDeleteUserId] = useState<string | null>(null);
   const [isDeletingUser, setIsDeletingUser] = useState(false);
@@ -297,6 +299,30 @@ const AdminProfileScreen: React.FC = () => {
             </div>
             {customizeNewUserPermissions && (
               <div className="md:col-span-2">
+                <div className="flex items-center gap-3 mb-3">
+                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">قالب صلاحيات</label>
+                  <select
+                    value={newUserPreset}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setNewUserPreset(val);
+                      if (val) setNewUserPermissions(permissionsForPreset(val as any));
+                    }}
+                    className="p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 focus:ring-gold-500 focus:border-gold-500 text-sm"
+                  >
+                    <option value="">— اختر قالب —</option>
+                    {UI_ROLE_PRESET_DEFS.map(p => (
+                      <option key={p.key} value={p.key}>{p.labelAr}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => setNewUserPermissions(defaultPermissionsForRole(newUser.role))}
+                    className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline"
+                  >
+                    افتراضي الدور
+                  </button>
+                </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {ADMIN_PERMISSION_DEFS.filter(def => def.key !== 'adminUsers.manage').map(def => (
                     <label key={def.key} className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 dark:border-gray-700">
@@ -619,6 +645,22 @@ const AdminProfileScreen: React.FC = () => {
                   >
                     افتراضي الدور
                   </button>
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={editPreset}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setEditPreset(val);
+                        if (val) setEditPermissions(permissionsForPreset(val as any));
+                      }}
+                      className="p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 focus:ring-gold-500 focus:border-gold-500 text-xs"
+                    >
+                      <option value="">— قالب صلاحيات —</option>
+                      {UI_ROLE_PRESET_DEFS.map(p => (
+                        <option key={p.key} value={p.key}>{p.labelAr}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-64 overflow-auto p-2 border border-gray-200 dark:border-gray-700 rounded-lg">
                   {ADMIN_PERMISSION_DEFS.map(def => (

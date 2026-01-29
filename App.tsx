@@ -275,16 +275,44 @@ const App: React.FC = () => {
                 <Route path="coupons" element={<AdminProtectedRoute permissions={['coupons.manage']}><ManageCouponsScreen /></AdminProtectedRoute>} />
                 <Route path="promotions" element={<AdminProtectedRoute permissions={['promotions.manage']}><ManagePromotionsScreen /></AdminProtectedRoute>} />
                 <Route path="reviews" element={<AdminProtectedRoute permissions={['reviews.manage']}><ManageReviewsScreen /></AdminProtectedRoute>} />
-                <Route path="stock" element={<AdminProtectedRoute permissions={['stock.manage']}><ManageStockScreen /></AdminProtectedRoute>} />
+                <Route
+                  path="stock"
+                  element={
+                    <AdminProtectedRoute permissions={['inventory.view', 'stock.manage']} requireAllPermissions={false}>
+                      <ManageStockScreen />
+                    </AdminProtectedRoute>
+                  }
+                />
                 <Route path="wastage" element={<AdminProtectedRoute permissions={['stock.manage']}><WastageScreen /></AdminProtectedRoute>} />
                 <Route path="expiry-batches" element={<AdminProtectedRoute permissions={['stock.manage']}><ExpiryBatchesScreen /></AdminProtectedRoute>} />
-                <Route path="wastage-expiry-reports" element={<AdminProtectedRoute permissions={['reports.view']}><WastageExpiryReportsScreen /></AdminProtectedRoute>} />
+                <Route
+                  path="wastage-expiry-reports"
+                  element={
+                    <AdminProtectedRoute permissions={['inventory.movements.view', 'reports.view', 'stock.manage']} requireAllPermissions={false}>
+                      <WastageExpiryReportsScreen />
+                    </AdminProtectedRoute>
+                  }
+                />
                 <Route path="suppliers" element={<AdminProtectedRoute permissions={['stock.manage']}><SuppliersScreen /></AdminProtectedRoute>} />
                 <Route path="purchases" element={<AdminProtectedRoute permissions={['stock.manage']}><PurchaseOrderScreen /></AdminProtectedRoute>} />
                 <Route path="supplier-contracts" element={<AdminProtectedRoute permissions={['stock.manage']}><SupplierContractsScreen /></AdminProtectedRoute>} />
                 <Route path="supplier-evaluations" element={<AdminProtectedRoute permissions={['stock.manage']}><SupplierEvaluationsScreen /></AdminProtectedRoute>} />
-                <Route path="import-shipments" element={<AdminProtectedRoute permissions={['stock.manage']}><ImportShipmentsScreen /></AdminProtectedRoute>} />
-                <Route path="import-shipments/:id" element={<AdminProtectedRoute permissions={['stock.manage']}><ImportShipmentDetailsScreen /></AdminProtectedRoute>} />
+                <Route
+                  path="import-shipments"
+                  element={
+                    <AdminProtectedRoute permissions={['shipments.view', 'stock.manage']} requireAllPermissions={false}>
+                      <ImportShipmentsScreen />
+                    </AdminProtectedRoute>
+                  }
+                />
+                <Route
+                  path="import-shipments/:id"
+                  element={
+                    <AdminProtectedRoute permissions={['shipments.view', 'stock.manage']} requireAllPermissions={false}>
+                      <ImportShipmentDetailsScreen />
+                    </AdminProtectedRoute>
+                  }
+                />
                 <Route path="warehouses" element={<AdminProtectedRoute permissions={['stock.manage']}><WarehousesScreen /></AdminProtectedRoute>} />
                 <Route path="warehouse-transfers" element={<AdminProtectedRoute permissions={['stock.manage']}><WarehouseTransfersScreen /></AdminProtectedRoute>} />
                 <Route path="price-tiers" element={<AdminProtectedRoute permissions={['prices.manage']}><PriceTiersScreen /></AdminProtectedRoute>} />
