@@ -149,12 +149,7 @@ export const rpcHasFunction = async (name: string): Promise<boolean> => {
   const supabase = getSupabaseClient();
   if (!supabase) return false;
   try {
-    const sanitized = (() => {
-      const s = String(name || '').trim();
-      const idx = s.indexOf('(');
-      return idx >= 0 ? s.slice(0, idx).trim() : s;
-    })();
-    const { data, error } = await supabase.rpc('rpc_has_function', { p_name: sanitized });
+    const { data, error } = await supabase.rpc('rpc_has_function', { p_name: name });
     if (error) return false;
     return Boolean(data);
   } catch {
