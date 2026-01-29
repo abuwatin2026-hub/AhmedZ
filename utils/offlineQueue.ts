@@ -56,47 +56,6 @@ const callRpcWithFallback = async (
     return { data, error };
   };
 
-  if (name === 'reserve_stock_for_order') {
-    const payload = (args as any)?.p_payload;
-    if (payload && typeof payload === 'object') {
-      const directArgs = {
-        p_items: payload.p_items ?? payload.items ?? [],
-        p_order_id: payload.p_order_id ?? payload.order_id ?? payload.orderId ?? null,
-        p_warehouse_id: payload.p_warehouse_id ?? payload.warehouse_id ?? payload.warehouseId ?? null,
-      };
-      let resFirst = await run(directArgs);
-      if (!resFirst.error || !isRpcNotFoundError(resFirst.error)) return resFirst;
-    }
-  }
-
-  if (name === 'confirm_order_delivery_with_credit') {
-    const payload = (args as any)?.p_payload;
-    if (payload && typeof payload === 'object') {
-      const directArgs = {
-        p_order_id: payload.p_order_id ?? payload.order_id ?? payload.orderId,
-        p_items: payload.p_items ?? payload.items ?? [],
-        p_updated_data: payload.p_updated_data ?? payload.updated_data ?? {},
-        p_warehouse_id: payload.p_warehouse_id ?? payload.warehouse_id ?? payload.warehouseId,
-      };
-      let resFirst = await run(directArgs);
-      if (!resFirst.error || !isRpcNotFoundError(resFirst.error)) return resFirst;
-    }
-  }
-
-  if (name === 'confirm_order_delivery') {
-    const payload = (args as any)?.p_payload;
-    if (payload && typeof payload === 'object') {
-      const directArgs = {
-        p_order_id: payload.p_order_id ?? payload.order_id ?? payload.orderId,
-        p_items: payload.p_items ?? payload.items ?? [],
-        p_updated_data: payload.p_updated_data ?? payload.updated_data ?? {},
-        p_warehouse_id: payload.p_warehouse_id ?? payload.warehouse_id ?? payload.warehouseId,
-      };
-      let resFirst = await run(directArgs);
-      if (!resFirst.error || !isRpcNotFoundError(resFirst.error)) return resFirst;
-    }
-  }
-
   let res = await run(args);
   if (!res.error || !isRpcNotFoundError(res.error)) return res;
 
@@ -284,6 +243,10 @@ export const processQueue = async (): Promise<{ processed: number; remaining: nu
   try {
     const supabase = getSupabaseClient();
     if (!supabase) return { processed: 0, remaining: queueSize() };
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError || !sessionData.session) {
+      return { processed: 0, remaining: queueSize() };
+    }
     const tasks = read();
     const next: OfflineTask[] = [];
     let processed = 0;

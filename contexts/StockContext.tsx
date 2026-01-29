@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, ReactNode, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useCallback, useEffect, useRef } from 'react';
 import type { MenuItem, StockManagement } from '../types';
 import { useToast } from './ToastContext';
 import { useSettings } from './SettingsContext';
@@ -31,6 +31,7 @@ export const StockProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const { t, language } = useSettings();
     const { isAuthenticated, hasPermission } = useAuth();
     const sessionScope = useSessionScope();
+    const reserveRpcModeRef = useRef<null | 'wrapper' | 'direct3' | 'legacy1'>(null);
 
     const isRpcNotFoundError = (err: any) => {
         const code = String(err?.code || '');
@@ -71,12 +72,34 @@ export const StockProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             return error;
         };
 
-        let err = await tryDirect3();
-        if (err && isRpcNotFoundError(err)) {
-            err = await tryWrapper();
+        const runByMode = async (mode: 'wrapper' | 'direct3' | 'legacy1') => {
+            if (mode === 'wrapper') return await tryWrapper();
+            if (mode === 'direct3') return await tryDirect3();
+            return await tryLegacy1();
+        };
+
+        const cached = reserveRpcModeRef.current;
+        if (cached) {
+            const err = await runByMode(cached);
+            if (!err || !isRpcNotFoundError(err)) return err;
+            reserveRpcModeRef.current = null;
         }
-        if (err && isRpcNotFoundError(err)) {
-            err = await tryLegacy1();
+
+        let err = await tryWrapper();
+        if (!err || !isRpcNotFoundError(err)) {
+            reserveRpcModeRef.current = 'wrapper';
+            return err;
+        }
+
+        err = await tryDirect3();
+        if (!err || !isRpcNotFoundError(err)) {
+            reserveRpcModeRef.current = 'direct3';
+            return err;
+        }
+
+        err = await tryLegacy1();
+        if (!err || !isRpcNotFoundError(err)) {
+            reserveRpcModeRef.current = 'legacy1';
         }
         return err;
     };
@@ -329,6 +352,10 @@ export const StockProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         }
 
         try {
+            const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+            if (sessionError || !sessionData.session) {
+                return false;
+            }
             const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
             const safeOrderId = orderId && uuidRegex.test(orderId) ? orderId : null;
             const resolveWarehouseId = async (): Promise<string> => {

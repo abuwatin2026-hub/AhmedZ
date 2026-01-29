@@ -111,6 +111,9 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const sessionScope = useSessionScope();
  
   const addressCacheRef = useRef<Map<string, string>>(new Map());
+  const reserveStockRpcModeRef = useRef<null | 'wrapper' | 'direct3' | 'legacy1'>(null);
+  const confirmDeliveryWithCreditRpcModeRef = useRef<null | 'wrapper' | 'direct4'>(null);
+  const confirmDeliveryRpcModeRef = useRef<null | 'wrapper' | 'direct4'>(null);
 
 
   const logAudit = async (action: string, details: string, metadata?: any) => {
@@ -171,12 +174,34 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       return error;
     };
 
-    let err = await tryDirect3();
-    if (err && isRpcNotFoundError(err)) {
-      err = await tryWrapper();
+    const runByMode = async (mode: 'wrapper' | 'direct3' | 'legacy1') => {
+      if (mode === 'wrapper') return await tryWrapper();
+      if (mode === 'direct3') return await tryDirect3();
+      return await tryLegacy1();
+    };
+
+    const cached = reserveStockRpcModeRef.current;
+    if (cached) {
+      const err = await runByMode(cached);
+      if (!err || !isRpcNotFoundError(err)) return err;
+      reserveStockRpcModeRef.current = null;
     }
-    if (err && isRpcNotFoundError(err)) {
-      err = await tryLegacy1();
+
+    let err = await tryWrapper();
+    if (!err || !isRpcNotFoundError(err)) {
+      reserveStockRpcModeRef.current = 'wrapper';
+      return err;
+    }
+
+    err = await tryDirect3();
+    if (!err || !isRpcNotFoundError(err)) {
+      reserveStockRpcModeRef.current = 'direct3';
+      return err;
+    }
+
+    err = await tryLegacy1();
+    if (!err || !isRpcNotFoundError(err)) {
+      reserveStockRpcModeRef.current = 'legacy1';
     }
     return err;
   };
@@ -203,9 +228,66 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       return error;
     };
 
-    let err = await tryDirect4();
-    if (err && isRpcNotFoundError(err)) {
-      err = await tryWrapper();
+    const runByMode = async (mode: 'wrapper' | 'direct4') => (mode === 'wrapper' ? await tryWrapper() : await tryDirect4());
+    const cached = confirmDeliveryWithCreditRpcModeRef.current;
+    if (cached) {
+      const err = await runByMode(cached);
+      if (!err || !isRpcNotFoundError(err)) return err;
+      confirmDeliveryWithCreditRpcModeRef.current = null;
+    }
+
+    let err = await tryWrapper();
+    if (!err || !isRpcNotFoundError(err)) {
+      confirmDeliveryWithCreditRpcModeRef.current = 'wrapper';
+      return err;
+    }
+
+    err = await tryDirect4();
+    if (!err || !isRpcNotFoundError(err)) {
+      confirmDeliveryWithCreditRpcModeRef.current = 'direct4';
+    }
+    return err;
+  };
+
+  const rpcConfirmOrderDelivery = async (supabase: any, input: { orderId: string; items: any[]; updatedData: any; warehouseId: string }) => {
+    const tryDirect4 = async () => {
+      const { error } = await supabase.rpc('confirm_order_delivery', {
+        p_order_id: input.orderId,
+        p_items: input.items,
+        p_updated_data: input.updatedData,
+        p_warehouse_id: input.warehouseId,
+      });
+      return error;
+    };
+    const tryWrapper = async () => {
+      const { error } = await supabase.rpc('confirm_order_delivery', {
+        p_payload: {
+          p_order_id: input.orderId,
+          p_items: input.items,
+          p_updated_data: input.updatedData,
+          p_warehouse_id: input.warehouseId,
+        }
+      });
+      return error;
+    };
+
+    const runByMode = async (mode: 'wrapper' | 'direct4') => (mode === 'wrapper' ? await tryWrapper() : await tryDirect4());
+    const cached = confirmDeliveryRpcModeRef.current;
+    if (cached) {
+      const err = await runByMode(cached);
+      if (!err || !isRpcNotFoundError(err)) return err;
+      confirmDeliveryRpcModeRef.current = null;
+    }
+
+    let err = await tryWrapper();
+    if (!err || !isRpcNotFoundError(err)) {
+      confirmDeliveryRpcModeRef.current = 'wrapper';
+      return err;
+    }
+
+    err = await tryDirect4();
+    if (!err || !isRpcNotFoundError(err)) {
+      confirmDeliveryRpcModeRef.current = 'direct4';
     }
     return err;
   };
@@ -1724,6 +1806,11 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     await createRemoteOrder(newOrder);
     const supabase = getSupabaseClient();
     if (!supabase) throw new Error('Supabase غير مهيأ.');
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError || !sessionData.session) {
+      await supabase.from('orders').delete().eq('id', newOrder.id);
+      throw new Error('انتهت الجلسة. الرجاء تسجيل الدخول مرة أخرى.');
+    }
     const payloadItems = newOrder.items
       .map((item) => ({
         itemId: item.id,
@@ -2171,6 +2258,10 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
       const supabase = getSupabaseClient();
       if (!supabase) throw new Error('Supabase غير مهيأ.');
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !sessionData.session) {
+        throw new Error('انتهت الجلسة. الرجاء تسجيل الدخول مرة أخرى.');
+      }
 
       const resolveWarehouseId = async (orderId?: string): Promise<string> => {
         const tryOrder = orderId ? await supabase.from('orders').select('warehouse_id,data').eq('id', orderId).maybeSingle() : { data: null, error: null };
@@ -2182,17 +2273,34 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         throw new Error('نطاق المستودع غير محدد لهذا الطلب. يمنع التنفيذ خارج نطاق الجلسة.');
       };
       const warehouseId = await resolveWarehouseId(updated.id);
-      const rpcError = await rpcConfirmOrderDeliveryWithCredit(supabase, {
-        orderId: updated.id,
-        items: payloadItems,
-        updatedData: updated,
-        warehouseId,
-      });
+      let isWholesaleCustomer = false;
+      try {
+        const { data: customerTypeRes, error: customerTypeErr } = await supabase.rpc('get_order_customer_type', { p_order_id: updated.id });
+        if (!customerTypeErr) {
+          isWholesaleCustomer = String(customerTypeRes || '').trim() === 'wholesale';
+        }
+      } catch {
+      }
+
+      const rpcError = isWholesaleCustomer
+        ? await rpcConfirmOrderDeliveryWithCredit(supabase, {
+          orderId: updated.id,
+          items: payloadItems,
+          updatedData: updated,
+          warehouseId,
+        })
+        : await rpcConfirmOrderDelivery(supabase, {
+          orderId: updated.id,
+          items: payloadItems,
+          updatedData: updated,
+          warehouseId,
+        });
 
       if (rpcError) {
         const isOffline = typeof navigator !== 'undefined' && navigator.onLine === false;
         if (isOffline || isAbortLikeError(rpcError)) {
-          enqueueRpc('confirm_order_delivery_with_credit', {
+          const name = isWholesaleCustomer ? 'confirm_order_delivery_with_credit' : 'confirm_order_delivery';
+          enqueueRpc(name, {
             p_payload: {
               p_order_id: updated.id,
               p_items: payloadItems,
