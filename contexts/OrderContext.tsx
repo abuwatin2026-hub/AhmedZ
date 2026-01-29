@@ -146,6 +146,14 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   const rpcReserveStockForOrder = async (supabase: any, input: { items: any[]; orderId?: string | null; warehouseId?: string | null }) => {
+    const tryDirect3 = async () => {
+      const { error } = await supabase.rpc('reserve_stock_for_order', {
+        p_items: input.items,
+        p_order_id: input.orderId ?? null,
+        p_warehouse_id: input.warehouseId ?? null,
+      });
+      return error;
+    };
     const tryWrapper = async () => {
       const { error } = await supabase.rpc('reserve_stock_for_order', {
         p_payload: {
@@ -156,14 +164,6 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       });
       return error;
     };
-    const tryDirect3 = async () => {
-      const { error } = await supabase.rpc('reserve_stock_for_order', {
-        p_items: input.items,
-        p_order_id: input.orderId ?? null,
-        p_warehouse_id: input.warehouseId ?? null,
-      });
-      return error;
-    };
     const tryLegacy1 = async () => {
       const { error } = await supabase.rpc('reserve_stock_for_order', {
         p_items: input.items,
@@ -171,9 +171,9 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       return error;
     };
 
-    let err = await tryWrapper();
+    let err = await tryDirect3();
     if (err && isRpcNotFoundError(err)) {
-      err = await tryDirect3();
+      err = await tryWrapper();
     }
     if (err && isRpcNotFoundError(err)) {
       err = await tryLegacy1();
@@ -182,6 +182,15 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   const rpcConfirmOrderDeliveryWithCredit = async (supabase: any, input: { orderId: string; items: any[]; updatedData: any; warehouseId: string }) => {
+    const tryDirect4 = async () => {
+      const { error } = await supabase.rpc('confirm_order_delivery_with_credit', {
+        p_order_id: input.orderId,
+        p_items: input.items,
+        p_updated_data: input.updatedData,
+        p_warehouse_id: input.warehouseId,
+      });
+      return error;
+    };
     const tryWrapper = async () => {
       const { error } = await supabase.rpc('confirm_order_delivery_with_credit', {
         p_payload: {
@@ -193,19 +202,10 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       });
       return error;
     };
-    const tryDirect4 = async () => {
-      const { error } = await supabase.rpc('confirm_order_delivery_with_credit', {
-        p_order_id: input.orderId,
-        p_items: input.items,
-        p_updated_data: input.updatedData,
-        p_warehouse_id: input.warehouseId,
-      });
-      return error;
-    };
 
-    let err = await tryWrapper();
+    let err = await tryDirect4();
     if (err && isRpcNotFoundError(err)) {
-      err = await tryDirect4();
+      err = await tryWrapper();
     }
     return err;
   };

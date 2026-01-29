@@ -32,6 +32,55 @@ export const StockProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const { isAuthenticated, hasPermission } = useAuth();
     const sessionScope = useSessionScope();
 
+    const isRpcNotFoundError = (err: any) => {
+        const code = String(err?.code || '');
+        const msg = String(err?.message || '');
+        const details = String(err?.details || '');
+        const status = (err as any)?.status;
+        return (
+            code === 'PGRST202' ||
+            status === 404 ||
+            /Could not find the function/i.test(msg) ||
+            /PGRST202/i.test(details)
+        );
+    };
+
+    const rpcReserveStockForOrder = async (supabase: any, input: { items: any[]; orderId?: string | null; warehouseId?: string | null }) => {
+        const tryDirect3 = async () => {
+            const { error } = await supabase.rpc('reserve_stock_for_order', {
+                p_items: input.items,
+                p_order_id: input.orderId ?? null,
+                p_warehouse_id: input.warehouseId ?? null,
+            });
+            return error;
+        };
+        const tryWrapper = async () => {
+            const { error } = await supabase.rpc('reserve_stock_for_order', {
+                p_payload: {
+                    p_items: input.items,
+                    p_order_id: input.orderId ?? null,
+                    p_warehouse_id: input.warehouseId ?? null,
+                }
+            });
+            return error;
+        };
+        const tryLegacy1 = async () => {
+            const { error } = await supabase.rpc('reserve_stock_for_order', {
+                p_items: input.items,
+            });
+            return error;
+        };
+
+        let err = await tryDirect3();
+        if (err && isRpcNotFoundError(err)) {
+            err = await tryWrapper();
+        }
+        if (err && isRpcNotFoundError(err)) {
+            err = await tryLegacy1();
+        }
+        return err;
+    };
+
     const toStockFromRow = (row: any): StockManagement | undefined => {
         const itemId = typeof row?.item_id === 'string' ? row.item_id : undefined;
         if (!itemId) return undefined;
@@ -293,13 +342,10 @@ export const StockProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             };
             const warehouseId = await resolveWarehouseId();
 
-            // Use RPC for atomic reservation
-            const { error } = await supabase.rpc('reserve_stock_for_order', {
-                p_payload: {
-                    p_items: [{ itemId, quantity }],
-                    p_order_id: safeOrderId,
-                    p_warehouse_id: warehouseId,
-                }
+            const error = await rpcReserveStockForOrder(supabase, {
+                items: [{ itemId, quantity }],
+                orderId: safeOrderId,
+                warehouseId,
             });
 
             if (error) {
