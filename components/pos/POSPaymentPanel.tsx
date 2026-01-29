@@ -16,6 +16,7 @@ type PaymentLine = {
 interface Props {
   total: number;
   canFinalize: boolean;
+  blockReason?: string;
   onHold: () => void;
   onFinalize: (payload: { paymentMethod: string; paymentBreakdown: PaymentLine[] }) => void;
   pendingOrderId: string | null;
@@ -30,7 +31,7 @@ type KeypadTarget =
   | { kind: 'cash_multi'; index: number }
   | { kind: 'declared_multi'; index: number };
 
-const POSPaymentPanel: React.FC<Props> = ({ total, canFinalize, onHold, onFinalize, pendingOrderId, onCancelHold, touchMode }) => {
+const POSPaymentPanel: React.FC<Props> = ({ total, canFinalize, blockReason, onHold, onFinalize, pendingOrderId, onCancelHold, touchMode }) => {
   const { settings } = useSettings();
   const availableMethods = useMemo(() => {
     const enabled = Object.entries(settings.paymentMethods || {})
@@ -99,7 +100,7 @@ const POSPaymentPanel: React.FC<Props> = ({ total, canFinalize, onHold, onFinali
   ]);
 
   const validation = useMemo(() => {
-    if (!canFinalize) return { ok: false, message: '' };
+    if (!canFinalize) return { ok: false, message: typeof blockReason === 'string' ? blockReason : '' };
     if (!(Number(total) > 0)) return { ok: false, message: 'الإجمالي يجب أن يكون أكبر من صفر.' };
     if (availableMethods.length === 0) return { ok: false, message: 'لا توجد طرق دفع مفعلة.' };
 
@@ -131,7 +132,7 @@ const POSPaymentPanel: React.FC<Props> = ({ total, canFinalize, onHold, onFinali
     if (cashCount > 1) return { ok: false, message: 'لا يمكن تكرار الدفع النقدي أكثر من مرة.' };
 
     return { ok: true, message: '' };
-  }, [availableMethods, canFinalize, normalizedLines, total]);
+  }, [availableMethods, blockReason, canFinalize, normalizedLines, total]);
 
   const breakdown = useMemo(() => {
     return normalizedLines.filter(l => l.method && (Number(l.amount) || 0) > 0);

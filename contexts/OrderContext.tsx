@@ -1331,19 +1331,53 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       const supabaseForPricing = getSupabaseClient();
       if (!supabaseForPricing) throw new Error('Supabase غير مهيأ.');
 
-      pricedItems = await Promise.all(items.map(async (item: any) => {
+      const canReuseServerPriced = items.every((item: any) => {
+        if (item?.lineType === 'promotion' || item?.promotionId) return true;
+        if ((item as any)?._pricedByRpc !== true) return false;
+        const unitPrice = Number(item?.price);
+        if (!Number.isFinite(unitPrice) || unitPrice < 0) return false;
+        if (item.unitType === 'gram') {
+          const per = Number(item?.pricePerUnit);
+          if (!Number.isFinite(per) || per <= 0) return false;
+        }
+        return true;
+      });
+
+      if (canReuseServerPriced) {
+        pricedItems = items.map((item: any) => {
+          if (item?.lineType === 'promotion' || item?.promotionId) return item as CartItem;
+          const unitPrice = Number(item.price);
+          if (item.unitType === 'gram') {
+            const per = Number(item.pricePerUnit) || unitPrice * 1000;
+            return { ...item, price: unitPrice, pricePerUnit: per };
+          }
+          return { ...item, price: unitPrice };
+        });
+      } else {
+        pricedItems = await Promise.all(items.map(async (item: any) => {
         if (item?.lineType === 'promotion' || item?.promotionId) return item as CartItem;
         const pricingQty = (item.unitType === 'kg' || item.unitType === 'gram')
           ? (item.weight || item.quantity)
           : item.quantity;
-        const { data, error } = await supabaseForPricing!.rpc('get_item_price_with_discount', {
-          p_item_id: item.id,
-          p_customer_id: input.customerId ? String(input.customerId) : null,
-          p_quantity: pricingQty,
-        });
+        const call = async (customerId: string | null) => {
+          return await supabaseForPricing!.rpc('get_item_price_with_discount', {
+            p_item_id: item.id,
+            p_customer_id: customerId,
+            p_quantity: pricingQty,
+          });
+        };
+        const rawCustomerId = input.customerId ? String(input.customerId) : null;
+        let { data, error } = await call(rawCustomerId);
         if (error) {
-          throw new Error(localizeSupabaseError(error));
+          const code = String((error as any)?.code || '');
+          const msg = String((error as any)?.message || '');
+          if (code === '42883' || /operator does not exist:\s*text\s*=\s*uuid/i.test(msg)) {
+            const retry = await call(null);
+            data = retry.data;
+            error = retry.error;
+          }
         }
+        if (error) throw new Error(localizeSupabaseError(error));
         const unitPrice = Number(data);
         if (!Number.isFinite(unitPrice) || unitPrice < 0) {
           throw new Error('تعذر احتساب السعر.');
@@ -1352,7 +1386,8 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           return { ...item, price: unitPrice, pricePerUnit: unitPrice * 1000 };
         }
         return { ...item, price: unitPrice };
-      }));
+        }));
+      }
     } else {
       pricedItems = items.map((item) => {
         if (!(item as any)?._pricedByRpc) {

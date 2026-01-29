@@ -6,7 +6,7 @@ import { useOrders } from '../contexts/OrderContext';
 import { useCashShift } from '../contexts/CashShiftContext';
 import { useUserAuth } from '../contexts/UserAuthContext';
 import { useSettings } from '../contexts/SettingsContext';
-import { getSupabaseClient } from '../supabase';
+import { getSupabaseClient, reloadPostgrestSchema } from '../supabase';
 import { isAbortLikeError, localizeSupabaseError } from '../utils/errorUtils';
 import POSHeaderShiftStatus from '../components/pos/POSHeaderShiftStatus';
 import POSItemSearch from '../components/pos/POSItemSearch';
@@ -193,14 +193,15 @@ const POSScreen: React.FC = () => {
 
   const pricingSignature = useMemo(() => {
     if (!items.length) return '';
-    return items
+    const base = items
       .map((i) => {
         if (isPromotionLine(i)) return `promo:${(i as any).promotionId || i.id}:${getPricingQty(i)}`;
         return `${i.id}:${i.unitType || ''}:${getPricingQty(i)}`;
       })
       .sort()
       .join('|');
-  }, [getPricingQty, isPromotionLine, items]);
+    return `${base}|cust:${selectedCustomerId || ''}`;
+  }, [getPricingQty, isPromotionLine, items, selectedCustomerId]);
 
   useEffect(() => {
     if (pendingOrderId) return;
@@ -223,7 +224,7 @@ const POSScreen: React.FC = () => {
           return item;
         }
         const pricingQty = getPricingQty(item);
-        const key = `${item.id}:${item.unitType || ''}:${pricingQty}`;
+        const key = `${item.id}:${item.unitType || ''}:${pricingQty}:${selectedCustomerId || ''}`;
         const cached = pricingCacheRef.current.get(key);
         if (!cached) {
           missing = true;
@@ -251,20 +252,44 @@ const POSScreen: React.FC = () => {
       return;
     }
 
+    const isRpcNotFoundError = (err: any) => {
+      const code = String(err?.code || '');
+      const msg = String(err?.message || '');
+      const details = String(err?.details || '');
+      const status = (err as any)?.status;
+      return (
+        code === 'PGRST202' ||
+        status === 404 ||
+        /Could not find the function/i.test(msg) ||
+        /PGRST202/i.test(details)
+      );
+    };
+
     const run = async () => {
       setPricingBusy(true);
       try {
         const pricingItems = items.filter((it) => !isPromotionLine(it));
         const results = await Promise.all(pricingItems.map(async (item) => {
           const pricingQty = getPricingQty(item);
-          const key = `${item.id}:${item.unitType || ''}:${pricingQty}`;
+          const key = `${item.id}:${item.unitType || ''}:${pricingQty}:${selectedCustomerId || ''}`;
           const cached = pricingCacheRef.current.get(key);
           if (cached) return { key, itemId: item.id, unitType: item.unitType, unitPrice: cached.unitPrice, unitPricePerKg: cached.unitPricePerKg };
-          const { data, error } = await supabase.rpc('get_item_price_with_discount', {
-            p_item_id: item.id,
-            p_customer_id: null,
-            p_quantity: pricingQty,
-          });
+          const call = async () => {
+            return await supabase.rpc('get_item_price_with_discount', {
+              p_item_id: item.id,
+              p_customer_id: selectedCustomerId || null,
+              p_quantity: pricingQty,
+            });
+          };
+          let { data, error } = await call();
+          if (error && isRpcNotFoundError(error)) {
+            const reloaded = await reloadPostgrestSchema();
+            if (reloaded) {
+              const retry = await call();
+              data = retry.data;
+              error = retry.error;
+            }
+          }
           if (error) throw error;
           const unitPrice = Number(data);
           if (!Number.isFinite(unitPrice) || unitPrice < 0) throw new Error('تعذر احتساب السعر.');
@@ -276,7 +301,7 @@ const POSScreen: React.FC = () => {
         const next = items.map((item) => {
           if (isPromotionLine(item)) return item;
           const pricingQty = getPricingQty(item);
-          const key = `${item.id}:${item.unitType || ''}:${pricingQty}`;
+          const key = `${item.id}:${item.unitType || ''}:${pricingQty}:${selectedCustomerId || ''}`;
           const priced = results.find((r) => r.key === key);
           if (!priced) return item;
           const nextItem: any = { ...item, price: priced.unitPrice, _pricedByRpc: true, _pricingKey: key };
@@ -309,6 +334,13 @@ const POSScreen: React.FC = () => {
 
     void run();
   }, [pendingOrderId, pricingSignature, showNotification]);
+
+  const pricingBlockReason = useMemo(() => {
+    if (!items.length) return '';
+    if (pricingBusy) return 'جارٍ تسعير الأصناف من الخادم...';
+    if (!pricingReady) return 'تعذر تسعير الأصناف من الخادم. تحقق من الاتصال ثم أعد المحاولة.';
+    return '';
+  }, [items.length, pricingBusy, pricingReady]);
 
   const addLine = (item: MenuItem, input: { quantity?: number; weight?: number }) => {
     if (pendingOrderId) return;
@@ -549,7 +581,7 @@ const POSScreen: React.FC = () => {
   const subtotal = useMemo(() => {
     return items.reduce((total, item) => {
       const addonsPrice = Object.values(item.selectedAddons || {}).reduce(
-        (sum, { addon, quantity }) => sum + addon.price * quantity,
+        (sum: number, entry: any) => sum + (Number(entry.addon?.price) || 0) * (Number(entry.quantity) || 0),
         0
       );
       let itemPrice = item.price;
@@ -1019,6 +1051,7 @@ const POSScreen: React.FC = () => {
               <POSPaymentPanel
                 total={total}
                 canFinalize={items.length > 0 && pricingReady && !pricingBusy}
+                blockReason={pricingBlockReason}
                 onHold={handleHold}
                 onFinalize={handleFinalize}
                 pendingOrderId={pendingOrderId}
