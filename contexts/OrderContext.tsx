@@ -6,7 +6,7 @@ import { useChallenges } from './ChallengeContext';
 import { useAuth } from './AuthContext';
 import { useSessionScope } from './SessionScopeContext';
 import { generateInvoiceNumber } from '../utils/orderUtils';
-import { getSupabaseClient, isRpcStrictMode, markRpcStrictModeEnabled, isRpcWrappersAvailable } from '../supabase';
+import { getSupabaseClient, isRpcStrictMode, markRpcStrictModeEnabled, isRpcWrappersAvailable, reloadPostgrestSchema } from '../supabase';
 import { createLogger } from '../utils/logger';
 import { localizeSupabaseError, isAbortLikeError } from '../utils/errorUtils';
 import { enqueueRpc, upsertOfflinePosOrder } from '../utils/offlineQueue';
@@ -189,7 +189,11 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
     const strict = isRpcStrictMode();
     if (strict) {
-      const err = await tryWrapper();
+      let err = await tryWrapper();
+      if (err && isRpcNotFoundError(err)) {
+        const reloaded = await reloadPostgrestSchema();
+        if (reloaded) err = await tryWrapper();
+      }
       if (!err || !isRpcNotFoundError(err)) {
         reserveStockRpcModeRef.current = 'wrapper';
         if (await isRpcWrappersAvailable()) markRpcStrictModeEnabled();
@@ -203,6 +207,18 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       reserveStockRpcModeRef.current = 'wrapper';
       if (await isRpcWrappersAvailable()) markRpcStrictModeEnabled();
       return err;
+    }
+
+    {
+      const reloaded = await reloadPostgrestSchema();
+      if (reloaded) {
+        err = await tryWrapper();
+        if (!err || !isRpcNotFoundError(err)) {
+          reserveStockRpcModeRef.current = 'wrapper';
+          if (await isRpcWrappersAvailable()) markRpcStrictModeEnabled();
+          return err;
+        }
+      }
     }
 
     err = await tryDirect3();
@@ -250,7 +266,11 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
     const strict = isRpcStrictMode();
     if (strict) {
-      const err = await tryWrapper();
+      let err = await tryWrapper();
+      if (err && isRpcNotFoundError(err)) {
+        const reloaded = await reloadPostgrestSchema();
+        if (reloaded) err = await tryWrapper();
+      }
       if (!err || !isRpcNotFoundError(err)) {
         confirmDeliveryWithCreditRpcModeRef.current = 'wrapper';
         if (await isRpcWrappersAvailable()) markRpcStrictModeEnabled();
@@ -264,6 +284,18 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       confirmDeliveryWithCreditRpcModeRef.current = 'wrapper';
       if (await isRpcWrappersAvailable()) markRpcStrictModeEnabled();
       return err;
+    }
+
+    {
+      const reloaded = await reloadPostgrestSchema();
+      if (reloaded) {
+        err = await tryWrapper();
+        if (!err || !isRpcNotFoundError(err)) {
+          confirmDeliveryWithCreditRpcModeRef.current = 'wrapper';
+          if (await isRpcWrappersAvailable()) markRpcStrictModeEnabled();
+          return err;
+        }
+      }
     }
 
     err = await tryDirect4();
@@ -305,7 +337,11 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
     const strict = isRpcStrictMode();
     if (strict) {
-      const err = await tryWrapper();
+      let err = await tryWrapper();
+      if (err && isRpcNotFoundError(err)) {
+        const reloaded = await reloadPostgrestSchema();
+        if (reloaded) err = await tryWrapper();
+      }
       if (!err || !isRpcNotFoundError(err)) {
         confirmDeliveryRpcModeRef.current = 'wrapper';
         if (await isRpcWrappersAvailable()) markRpcStrictModeEnabled();
@@ -319,6 +355,18 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       confirmDeliveryRpcModeRef.current = 'wrapper';
       if (await isRpcWrappersAvailable()) markRpcStrictModeEnabled();
       return err;
+    }
+
+    {
+      const reloaded = await reloadPostgrestSchema();
+      if (reloaded) {
+        err = await tryWrapper();
+        if (!err || !isRpcNotFoundError(err)) {
+          confirmDeliveryRpcModeRef.current = 'wrapper';
+          if (await isRpcWrappersAvailable()) markRpcStrictModeEnabled();
+          return err;
+        }
+      }
     }
 
     err = await tryDirect4();

@@ -2,6 +2,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 let client: SupabaseClient | null = null;
 const RPC_STRICT_MODE_KEY = 'RPC_STRICT_MODE';
+let postgrestReloadAttempt: Promise<boolean> | null = null;
 
 const createTimeoutFetch = (timeoutMs: number) => {
   return async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -172,4 +173,35 @@ export const isRpcWrappersAvailable = async (): Promise<boolean> => {
   } catch {
     return false;
   }
+};
+
+export const reloadPostgrestSchema = async (): Promise<boolean> => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return false;
+  if (postgrestReloadAttempt) return await postgrestReloadAttempt;
+
+  postgrestReloadAttempt = (async () => {
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData?.session) return false;
+
+      const start = new Date(0).toISOString();
+      const end = new Date().toISOString();
+      const { error } = await supabase.rpc('get_sales_report_orders', {
+        p_start_date: start,
+        p_end_date: end,
+        p_zone_id: null,
+        p_invoice_only: false,
+        p_search: '__pgrst_reload__',
+        p_limit: 1,
+        p_offset: 0,
+      } as any);
+
+      return !error;
+    } catch {
+      return false;
+    }
+  })();
+
+  return await postgrestReloadAttempt;
 };

@@ -4,7 +4,7 @@ import { useToast } from './ToastContext';
 import { useSettings } from './SettingsContext';
 import { useAuth } from './AuthContext';
 import { useSessionScope } from './SessionScopeContext';
-import { getSupabaseClient, isRpcStrictMode, markRpcStrictModeEnabled, isRpcWrappersAvailable } from '../supabase';
+import { getSupabaseClient, isRpcStrictMode, markRpcStrictModeEnabled, isRpcWrappersAvailable, reloadPostgrestSchema } from '../supabase';
 import { logger } from '../utils/logger';
 import { isAbortLikeError, localizeSupabaseError } from '../utils/errorUtils';
 
@@ -87,7 +87,11 @@ export const StockProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
         const strict = isRpcStrictMode();
         if (strict) {
-            const err = await tryWrapper();
+            let err = await tryWrapper();
+            if (err && isRpcNotFoundError(err)) {
+                const reloaded = await reloadPostgrestSchema();
+                if (reloaded) err = await tryWrapper();
+            }
             if (!err || !isRpcNotFoundError(err)) {
                 reserveRpcModeRef.current = 'wrapper';
                 if (await isRpcWrappersAvailable()) markRpcStrictModeEnabled();
@@ -101,6 +105,18 @@ export const StockProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             reserveRpcModeRef.current = 'wrapper';
             if (await isRpcWrappersAvailable()) markRpcStrictModeEnabled();
             return err;
+        }
+
+        {
+            const reloaded = await reloadPostgrestSchema();
+            if (reloaded) {
+                err = await tryWrapper();
+                if (!err || !isRpcNotFoundError(err)) {
+                    reserveRpcModeRef.current = 'wrapper';
+                    if (await isRpcWrappersAvailable()) markRpcStrictModeEnabled();
+                    return err;
+                }
+            }
         }
 
         err = await tryDirect3();
