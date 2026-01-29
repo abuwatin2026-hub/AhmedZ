@@ -1388,10 +1388,12 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const sb2 = supabase!;
     if (canMarkPaidUi) {
       const { error: rpcError } = await sb2.rpc('confirm_order_delivery_with_credit', {
-        p_order_id: newOrder.id,
-        p_items: payloadItems,
-        p_updated_data: newOrder,
-        p_warehouse_id: warehouseId,
+        p_payload: {
+          p_order_id: newOrder.id,
+          p_items: payloadItems,
+          p_updated_data: newOrder,
+          p_warehouse_id: warehouseId,
+        }
       });
 
       if (rpcError) {
@@ -1654,9 +1656,11 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       .filter((entry) => Number(entry.quantity) > 0);
     const sb3 = supabase!;
     const { error: reserveErr } = await sb3.rpc('reserve_stock_for_order', {
-      p_items: payloadItems,
-      p_order_id: newOrder.id,
-      p_warehouse_id: warehouseId,
+      p_payload: {
+        p_items: payloadItems,
+        p_order_id: newOrder.id,
+        p_warehouse_id: warehouseId,
+      }
     });
     if (reserveErr) {
       await sb3.from('orders').delete().eq('id', newOrder.id);
@@ -1839,10 +1843,12 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       .filter((entry) => Number(entry.quantity) > 0);
     const updatedDelivered: Order = { ...existing, status: 'delivered', deliveredAt: nowIso, paidAt: nowIso, paymentMethod: payment.paymentMethod };
     const { error: rpcError } = await supabase.rpc('confirm_order_delivery_with_credit', {
-      p_order_id: existing.id,
-      p_items: payloadItems,
-      p_updated_data: updatedDelivered,
-      p_warehouse_id: warehouseId,
+      p_payload: {
+        p_order_id: existing.id,
+        p_items: payloadItems,
+        p_updated_data: updatedDelivered,
+        p_warehouse_id: warehouseId,
+      }
     });
     if (rpcError) {
       throw new Error(localizeSupabaseError(rpcError));
@@ -2109,20 +2115,24 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       };
       const warehouseId = await resolveWarehouseId(updated.id);
       const { error: rpcError } = await supabase.rpc('confirm_order_delivery_with_credit', {
-        p_order_id: updated.id,
-        p_items: payloadItems,
-        p_updated_data: updated,
-        p_warehouse_id: warehouseId,
+        p_payload: {
+          p_order_id: updated.id,
+          p_items: payloadItems,
+          p_updated_data: updated,
+          p_warehouse_id: warehouseId,
+        }
       });
 
       if (rpcError) {
         const isOffline = typeof navigator !== 'undefined' && navigator.onLine === false;
         if (isOffline || isAbortLikeError(rpcError)) {
           enqueueRpc('confirm_order_delivery_with_credit', {
-            p_order_id: updated.id,
-            p_items: payloadItems,
-            p_updated_data: updated,
-            p_warehouse_id: warehouseId,
+            p_payload: {
+              p_order_id: updated.id,
+              p_items: payloadItems,
+              p_updated_data: updated,
+              p_warehouse_id: warehouseId,
+            }
           });
         } else {
           console.error('Delivery confirmation failed:', rpcError);

@@ -295,9 +295,11 @@ export const StockProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
             // Use RPC for atomic reservation
             const { error } = await supabase.rpc('reserve_stock_for_order', {
-                p_items: [{ itemId, quantity }],
-                p_order_id: safeOrderId,
-                p_warehouse_id: warehouseId
+                p_payload: {
+                    p_items: [{ itemId, quantity }],
+                    p_order_id: safeOrderId,
+                    p_warehouse_id: warehouseId,
+                }
             });
 
             if (error) {
