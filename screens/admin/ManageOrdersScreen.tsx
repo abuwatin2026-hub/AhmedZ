@@ -853,6 +853,13 @@ const ManageOrdersScreen: React.FC = () => {
         : canUpdateDeliveryStatuses
             ? ['out_for_delivery', 'delivered']
             : [];
+    const getEditableStatusesForOrder = (order: Order): OrderStatus[] => {
+        const base = editableStatusOptions;
+        if ((order.orderSource || '').trim() === 'in_store') {
+            return base.filter(s => s !== 'out_for_delivery');
+        }
+        return base;
+    };
 
     const handleConfirmCancel = async () => {
         if (!cancelOrderId) return;
@@ -1117,22 +1124,22 @@ const ManageOrdersScreen: React.FC = () => {
                             disabled={
                                 order.status === 'delivered' ||
                                 order.status === 'cancelled' ||
-                                editableStatusOptions.length === 0 ||
+                                getEditableStatusesForOrder(order).length === 0 ||
                                 (isDeliveryOnly && order.assignedDeliveryUserId === adminUser?.id && !order.deliveryAcceptedAt)
                             }
                             className={`w-full p-2 border-none rounded-md text-sm font-semibold text-center focus:ring-2 focus:ring-orange-500 transition ${adminStatusColors[order.status]}`}
                         >
                              {order.status === 'cancelled' ? (
                                 <option value="cancelled">ملغي</option>
-                            ) : editableStatusOptions.length > 0 && !editableStatusOptions.includes(order.status) ? (
+                            ) : getEditableStatusesForOrder(order).length > 0 && !getEditableStatusesForOrder(order).includes(order.status) ? (
                                 <>
                                     <option key={`current-${order.status}`} value={order.status}>{statusTranslations[order.status] || order.status}</option>
-                                    {editableStatusOptions.map(status => (
+                                    {getEditableStatusesForOrder(order).map(status => (
                                         <option key={status} value={status}>{statusTranslations[status] || status}</option>
                                     ))}
                                 </>
                             ) : (
-                                (editableStatusOptions.length > 0 ? editableStatusOptions : [order.status]).map(status => (
+                                (getEditableStatusesForOrder(order).length > 0 ? getEditableStatusesForOrder(order) : [order.status]).map(status => (
                                     <option key={status} value={status}>{statusTranslations[status] || status}</option>
                                 ))
                             )}
@@ -1140,7 +1147,7 @@ const ManageOrdersScreen: React.FC = () => {
                     </div>
 
                     {/* Delivery Accept Button */}
-                    {isDeliveryOnly && order.assignedDeliveryUserId === adminUser?.id && !order.deliveryAcceptedAt && order.status !== 'delivered' && order.status !== 'cancelled' && (
+                    {isDeliveryOnly && order.orderSource !== 'in_store' && order.assignedDeliveryUserId === adminUser?.id && !order.deliveryAcceptedAt && order.status !== 'delivered' && order.status !== 'cancelled' && (
                         <button
                             type="button"
                             onClick={() => handleAcceptDelivery(order.id)}
@@ -1151,7 +1158,7 @@ const ManageOrdersScreen: React.FC = () => {
                     )}
 
                     {/* Delivery Assignment (Admin only) */}
-                    {canAssignDelivery && (
+                    {canAssignDelivery && order.orderSource !== 'in_store' && (
                         <div className="col-span-2">
                             <select
                                 value={order.assignedDeliveryUserId || 'none'}
@@ -1508,13 +1515,15 @@ const ManageOrdersScreen: React.FC = () => {
                                                             ) : (
                                                                 <div className="text-xs text-gray-400">غير متاحة</div>
                                                             )}
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => handlePrintDeliveryNote(order)}
-                                                                className="px-3 py-1 bg-gray-800 text-white rounded hover:bg-gray-900 transition text-xs font-semibold"
-                                                            >
-                                                                طباعة سند تسليم
-                                                            </button>
+                                                            {order.orderSource !== 'in_store' && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handlePrintDeliveryNote(order)}
+                                                                    className="px-3 py-1 bg-gray-800 text-white rounded hover:bg-gray-900 transition text-xs font-semibold"
+                                                                >
+                                                                    طباعة سند تسليم
+                                                                </button>
+                                                            )}
                                                             {paymentActions}
                                                         </div>
                                                     );
@@ -1534,13 +1543,15 @@ const ManageOrdersScreen: React.FC = () => {
                                                                     </button>
                                                                 </div>
                                                             )}
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => handlePrintDeliveryNote(order)}
-                                                                className="px-3 py-1 bg-gray-800 text-white rounded hover:bg-gray-900 transition text-xs font-semibold"
-                                                            >
-                                                                طباعة سند تسليم
-                                                            </button>
+                                                            {order.orderSource !== 'in_store' && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handlePrintDeliveryNote(order)}
+                                                                    className="px-3 py-1 bg-gray-800 text-white rounded hover:bg-gray-900 transition text-xs font-semibold"
+                                                                >
+                                                                    طباعة سند تسليم
+                                                                </button>
+                                                            )}
                                                             {paymentActions}
                                                         </div>
                                                     );
@@ -1548,13 +1559,15 @@ const ManageOrdersScreen: React.FC = () => {
 
                                                 return (
                                                     <div className="flex flex-col gap-2">
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => handlePrintDeliveryNote(order)}
-                                                            className="px-3 py-1 bg-gray-800 text-white rounded hover:bg-gray-900 transition text-xs font-semibold"
-                                                        >
-                                                            طباعة سند تسليم
-                                                        </button>
+                                                        {order.orderSource !== 'in_store' && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handlePrintDeliveryNote(order)}
+                                                                className="px-3 py-1 bg-gray-800 text-white rounded hover:bg-gray-900 transition text-xs font-semibold"
+                                                            >
+                                                                طباعة سند تسليم
+                                                            </button>
+                                                        )}
                                                         <div className="text-xs text-gray-400">غير متاحة</div>
                                                     </div>
                                                 );
@@ -1567,22 +1580,22 @@ const ManageOrdersScreen: React.FC = () => {
                                                 disabled={
                                                     order.status === 'delivered' ||
                                                     order.status === 'cancelled' ||
-                                                    editableStatusOptions.length === 0 ||
+                                                    getEditableStatusesForOrder(order).length === 0 ||
                                                     (isDeliveryOnly && order.assignedDeliveryUserId === adminUser?.id && !order.deliveryAcceptedAt)
                                                 }
                                                 className={`w-full p-2 border-none rounded-md text-sm focus:ring-2 focus:ring-orange-500 transition ${adminStatusColors[order.status]}`}
                                             >
                                                 {order.status === 'cancelled' ? (
                                                     <option value="cancelled">ملغي</option>
-                                                ) : editableStatusOptions.length > 0 && !editableStatusOptions.includes(order.status) ? (
+                                                ) : getEditableStatusesForOrder(order).length > 0 && !getEditableStatusesForOrder(order).includes(order.status) ? (
                                                     <>
                                                         <option key={`current-${order.status}`} value={order.status}>{statusTranslations[order.status] || order.status}</option>
-                                                        {editableStatusOptions.map(status => (
+                                                        {getEditableStatusesForOrder(order).map(status => (
                                                             <option key={status} value={status}>{statusTranslations[status] || status}</option>
                                                         ))}
                                                     </>
                                                 ) : (
-                                                    (editableStatusOptions.length > 0 ? editableStatusOptions : [order.status]).map(status => (
+                                                    (getEditableStatusesForOrder(order).length > 0 ? getEditableStatusesForOrder(order) : [order.status]).map(status => (
                                                         <option key={status} value={status}>{statusTranslations[status] || status}</option>
                                                     ))
                                                 )}
@@ -1633,7 +1646,7 @@ const ManageOrdersScreen: React.FC = () => {
                                                     {language === 'ar' ? 'قبول مهمة التوصيل' : 'Accept delivery'}
                                                 </button>
                                             )}
-                                            {canAssignDelivery && (
+                                            {canAssignDelivery && order.orderSource !== 'in_store' && (
                                                 <div className="mt-2">
                                                     <select
                                                         value={order.assignedDeliveryUserId || 'none'}
