@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import { Order } from '../../types';
 import { formatDateForPrint } from '../../utils/printUtils';
-import { useDeliveryZones } from '../../contexts/DeliveryZoneContext';
 import { computeCartItemPricing } from '../../utils/orderUtils';
 
 // Helper to generate TLV base64 for ZATCA QR
@@ -56,6 +55,7 @@ interface PrintableInvoiceProps {
     cafeteriaAddress?: string;
     logoUrl?: string;
     vatNumber?: string; // Added VAT Number
+    deliveryZoneName?: string;
     thermal?: boolean;
     thermalPaperWidth?: '58mm' | '80mm';
     isCopy?: boolean;
@@ -71,6 +71,7 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
     cafeteriaAddress,
     logoUrl,
     vatNumber,
+    deliveryZoneName,
     thermal = false,
     thermalPaperWidth = '58mm',
     isCopy = false,
@@ -105,8 +106,6 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
     const resolvedCafeteriaAddress = cafeteriaAddress || '';
     const resolvedLogoUrl = logoUrl || '';
     const resolvedVatNumber = vatNumber || '';
-    const { getDeliveryZoneById } = useDeliveryZones();
-    const deliveryZone = invoiceOrder.deliveryZoneId ? getDeliveryZoneById(invoiceOrder.deliveryZoneId) : undefined;
     const resolvedThermalPaperWidth: '58mm' | '80mm' = thermalPaperWidth === '80mm' ? '80mm' : '58mm';
 
     const numericCellStyle: React.CSSProperties = {
@@ -184,7 +183,12 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
                     {invoiceOrder.address ? <div style={{ fontSize: thermal ? '11px' : '12px', color: '#444' }}>{invoiceOrder.address}</div> : null}
                     {invoiceOrder.deliveryZoneId && (
                         <div style={{ fontSize: thermal ? '11px' : '12px', color: '#444' }}>
-                            {language === 'ar' ? 'منطقة:' : 'Zone:'} {deliveryZone?.name[language] || invoiceOrder.deliveryZoneId.slice(-6).toUpperCase()}
+                            {language === 'ar' ? 'منطقة:' : 'Zone:'}{' '}
+                            {deliveryZoneName
+                                ? deliveryZoneName
+                                : (invoiceOrder.orderSource === 'in_store'
+                                    ? (language === 'ar' ? 'داخل المحل' : 'In-store')
+                                    : invoiceOrder.deliveryZoneId.slice(-6).toUpperCase())}
                         </div>
                     )}
                 </div>

@@ -18,6 +18,7 @@ import ConfirmationModal from '../components/admin/ConfirmationModal';
 import { useAuth } from '../contexts/AuthContext';
 import { useSessionScope } from '../contexts/SessionScopeContext';
 import { useWarehouses } from '../contexts/WarehouseContext';
+import { useDeliveryZones } from '../contexts/DeliveryZoneContext';
 
 
 const InvoiceScreen: React.FC = () => {
@@ -41,6 +42,7 @@ const InvoiceScreen: React.FC = () => {
     const { user: adminUser } = useAuth();
     const sessionScope = useSessionScope();
     const { getWarehouseById } = useWarehouses();
+    const { getDeliveryZoneById } = useDeliveryZones();
     const [selectedTemplate, setSelectedTemplate] = useState<'thermal' | 'a4'>(() => {
         if (adminUser?.role === 'cashier') {
             return settings.defaultInvoiceTemplateByRole?.pos === 'a4' ? 'a4' : 'thermal';
@@ -72,6 +74,18 @@ const InvoiceScreen: React.FC = () => {
             contactNumber: (override?.contactNumber || wh?.phone || fallback.contactNumber || '').trim(),
             logoUrl: (override?.logoUrl || fallback.logoUrl || '').trim(),
         };
+    };
+
+    const resolveDeliveryZoneName = (ord: any): string | undefined => {
+        if (!ord) return undefined;
+        const snap = ord.invoiceSnapshot;
+        const orderSource = snap?.orderSource ?? ord.orderSource;
+        const zoneId = snap?.deliveryZoneId ?? ord.deliveryZoneId;
+        if (!zoneId) return undefined;
+        if (orderSource === 'in_store') return language === 'ar' ? 'داخل المحل' : 'In-store';
+        const zone = getDeliveryZoneById(zoneId);
+        const name = zone?.name?.[language] || zone?.name?.ar || zone?.name?.en || '';
+        return name || undefined;
     };
 
     useEffect(() => {
@@ -132,6 +146,7 @@ const InvoiceScreen: React.FC = () => {
                     cafeteriaAddress={settings.address || ''}
                     logoUrl={settings.logoUrl || ''}
                     vatNumber={settings.taxSettings?.taxNumber}
+                    deliveryZoneName={resolveDeliveryZoneName(order)}
                     thermal
                     thermalPaperWidth={thermalPaperWidth}
                     isCopy={currentCount > 0}
@@ -200,6 +215,7 @@ const InvoiceScreen: React.FC = () => {
                 cafeteriaAddress={resolveBranding().address}
                 logoUrl={resolveBranding().logoUrl}
                 vatNumber={settings.taxSettings?.taxNumber}
+                deliveryZoneName={resolveDeliveryZoneName(order)}
                 thermal
                 thermalPaperWidth={thermalPaperWidth}
                 isCopy={currentCount > 0}
@@ -318,6 +334,7 @@ const InvoiceScreen: React.FC = () => {
                     cafeteriaAddress={resolveBranding().address}
                     logoUrl={resolveBranding().logoUrl}
                     vatNumber={settings.taxSettings?.taxNumber}
+                    deliveryZoneName={resolveDeliveryZoneName(order)}
                     thermal
                     thermalPaperWidth={thermalPaperWidth}
                     isCopy={currentCount > 0}

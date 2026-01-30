@@ -1577,10 +1577,6 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         promotionLineId: String(it.promotionLineId || crypto.randomUUID()),
       }));
 
-      // Calculate isFullyPaid based on actual payment breakdown vs total
-      const breakdownSum = paymentBreakdown.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
-      const isFullyPaid = Math.abs(breakdownSum - computedTotal) <= 0.01;
-
       // Only mark as paid if it is actually fully paid, or if we are skipping validation (e.g. forced by UI)
       // But for POS, we should rely on isFullyPaid.
       const actuallyPaidAt = (canMarkPaidUi && isFullyPaid) ? nowIso : undefined;
