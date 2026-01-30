@@ -1680,10 +1680,13 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const payloadItems = newOrder.items
       .filter((item: any) => !(item?.lineType === 'promotion' || item?.promotionId))
       .map((item) => ({
-        itemId: item.id,
+        itemId: String((item as any)?.itemId || item.id || ''),
         quantity: getRequestedItemQuantity(item),
       }))
       .filter((entry) => Number(entry.quantity) > 0);
+    if (shouldAttemptImmediatePayment && payloadItems.length === 0 && !hasPromoLines) {
+      throw new Error('لا يمكن إتمام البيع: تأكد من الكمية/الوزن للأصناف.');
+    }
 
     const queueOfflineSale = async () => {
       if (hasPromoLines) {
@@ -2274,7 +2277,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const merged = new Map<string, number>();
     const baseItems = (existing.items || []).filter((it: any) => !(it?.lineType === 'promotion' || it?.promotionId || it?.category === 'promotion'));
     for (const item of baseItems) {
-      const itemId = String((item as any)?.id || '');
+      const itemId = String((item as any)?.itemId || (item as any)?.id || '');
       const quantity = Number(getRequestedItemQuantity(item)) || 0;
       if (!itemId || !(quantity > 0)) continue;
       merged.set(itemId, (merged.get(itemId) || 0) + quantity);
@@ -2304,10 +2307,13 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
     const payloadItems = baseItems
       .map((item) => ({
-        itemId: item.id,
+        itemId: String((item as any)?.itemId || (item as any)?.id || ''),
         quantity: getRequestedItemQuantity(item),
       }))
       .filter((entry) => Number(entry.quantity) > 0);
+    if (payloadItems.length === 0 && promoLines.length === 0) {
+      throw new Error('لا يمكن إتمام الطلب: تأكد من الكمية/الوزن للأصناف.');
+    }
     const updatedDelivered: Order = { ...existing, status: 'delivered', deliveredAt: nowIso, paidAt: nowIso, paymentMethod: payment.paymentMethod };
     const rpcError = await rpcConfirmOrderDeliveryWithCredit(supabase, {
       orderId: existing.id,
@@ -2347,7 +2353,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     if (!supabase) throw new Error('Supabase غير مهيأ.');
     const payloadItems = existing.items
       .map((item) => ({
-        itemId: item.id,
+        itemId: String((item as any)?.itemId || (item as any)?.id || ''),
         quantity: getRequestedItemQuantity(item),
       }))
       .filter((entry) => Number(entry.quantity) > 0);
@@ -2568,7 +2574,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       const baseItems = (updated.items || []).filter((it: any) => !(it?.lineType === 'promotion' || it?.promotionId || it?.category === 'promotion'));
       const merged = new Map<string, number>();
       for (const item of baseItems) {
-        const itemId = String((item as any)?.id || '');
+        const itemId = String((item as any)?.itemId || (item as any)?.id || '');
         const quantity = Number(getRequestedItemQuantity(item)) || 0;
         if (!itemId || !(quantity > 0)) continue;
         merged.set(itemId, (merged.get(itemId) || 0) + quantity);
@@ -2588,10 +2594,13 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         .filter((x) => x.itemId && Number(x.quantity) > 0);
       const payloadItems = baseItems
         .map((item) => ({
-          itemId: item.id,
+          itemId: String((item as any)?.itemId || (item as any)?.id || ''),
           quantity: getRequestedItemQuantity(item),
         }))
         .filter((entry) => Number(entry.quantity) > 0);
+      if (baseItems.length > 0 && payloadItems.length === 0) {
+        throw new Error('لا يمكن تأكيد التسليم: تأكد من الكمية/الوزن للأصناف.');
+      }
 
       const supabase = getSupabaseClient();
       if (!supabase) throw new Error('Supabase غير مهيأ.');
@@ -2765,7 +2774,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
     const persistBase = deliveredSnapshot || remoteSnapshot || existing;
     const persisted = { ...persistBase, ...updates } as Order;
-    if (!willCancel) {
+    if (!willCancel && !willDeliver) {
       await updateRemoteOrder(persisted);
     }
     const display = await resolveOrderAddress(persisted);
