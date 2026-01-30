@@ -136,6 +136,10 @@ export const StockProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         const itemId = typeof row?.item_id === 'string' ? row.item_id : undefined;
         if (!itemId) return undefined;
         const data = (row?.data && typeof row.data === 'object') ? row.data : {};
+        const warehouseId = typeof row?.warehouse_id === 'string'
+            ? row.warehouse_id
+            : (typeof (data as any).warehouseId === 'string' ? (data as any).warehouseId : undefined);
+        if (!warehouseId) return undefined;
         const availableQuantity = Number.isFinite(Number(row?.available_quantity))
             ? Number(row.available_quantity)
             : (Number.isFinite(Number((data as any).availableQuantity)) ? Number((data as any).availableQuantity) : 0);
@@ -156,6 +160,7 @@ export const StockProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         return {
             id: itemId,
             itemId,
+            warehouseId,
             availableQuantity,
             reservedQuantity,
             unit: unit as any,
@@ -173,9 +178,15 @@ export const StockProvider: React.FC<{ children: ReactNode }> = ({ children }) =
                 setStockItems([]);
                 return;
             }
+            const warehouseId = sessionScope.scope?.warehouseId;
+            if (!warehouseId) {
+                setStockItems([]);
+                return;
+            }
             const { data: rows, error } = await supabase
                 .from('stock_management')
-                .select('item_id, available_quantity, reserved_quantity, unit, low_stock_threshold, last_updated, avg_cost, data');
+                .select('item_id, warehouse_id, available_quantity, reserved_quantity, unit, low_stock_threshold, last_updated, avg_cost, data')
+                .eq('warehouse_id', warehouseId);
             if (error) throw error;
             const remoteStock = (rows || []).map(toStockFromRow).filter(Boolean) as StockManagement[];
             setStockItems(remoteStock);
@@ -187,7 +198,7 @@ export const StockProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [sessionScope.scope?.warehouseId]);
 
     useEffect(() => {
         fetchStock();

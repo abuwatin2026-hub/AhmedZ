@@ -25,7 +25,7 @@ type StockRowProps = {
 };
 
 const StockRow = ({ item, stock, getCategoryLabel, getUnitLabel, handleUpdateStock, toggleHistory, expandedHistoryItemId, historyLoadingItemId, historyByItemId, setIsWastageModalOpen, setWastageItem }: StockRowProps) => {
-    const currentStock = Number(stock?.availableQuantity ?? item.availableStock ?? 0);
+    const currentStock = Number(stock?.availableQuantity ?? 0);
     const reserved = Number(stock?.reservedQuantity ?? 0);
     const available = currentStock - reserved;
     const unit = String(stock?.unit ?? item.unitType ?? 'piece');
@@ -464,7 +464,7 @@ const ManageStockScreen: React.FC = () => {
                     <p className="text-2xl font-bold text-green-600 dark:text-green-400">
                         {filteredItems.filter(item => {
                             const stock = getStockByItemId(item.id);
-                            const available = Number(stock?.availableQuantity ?? item.availableStock ?? 0) - Number(stock?.reservedQuantity ?? 0);
+                            const available = Number(stock?.availableQuantity ?? 0) - Number(stock?.reservedQuantity ?? 0);
                             return available > 5;
                         }).length}
                     </p>
@@ -476,7 +476,7 @@ const ManageStockScreen: React.FC = () => {
                     <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">
                         {filteredItems.filter(item => {
                             const stock = getStockByItemId(item.id);
-                            const available = Number(stock?.availableQuantity ?? item.availableStock ?? 0) - Number(stock?.reservedQuantity ?? 0);
+                            const available = Number(stock?.availableQuantity ?? 0) - Number(stock?.reservedQuantity ?? 0);
                             return available > 0 && available <= 5;
                         }).length}
                     </p>
@@ -488,7 +488,7 @@ const ManageStockScreen: React.FC = () => {
                     <p className="text-2xl font-bold text-red-600 dark:text-red-400">
                         {filteredItems.filter(item => {
                             const stock = getStockByItemId(item.id);
-                            const available = Number(stock?.availableQuantity ?? item.availableStock ?? 0) - Number(stock?.reservedQuantity ?? 0);
+                            const available = Number(stock?.availableQuantity ?? 0) - Number(stock?.reservedQuantity ?? 0);
                             return available <= 0;
                         }).length}
                     </p>

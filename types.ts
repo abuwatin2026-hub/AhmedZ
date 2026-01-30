@@ -657,6 +657,7 @@ export interface UserChallengeProgress {
 export interface StockManagement {
   id: string; // itemId
   itemId: string;
+  warehouseId: string;
   availableQuantity: number; // Available quantity in stock
   unit: UnitType; // Unit type (kg, piece, bundle, gram)
   reservedQuantity: number; // Reserved in active orders

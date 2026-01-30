@@ -8,6 +8,7 @@ import HorizontalBarChart from '../../../components/admin/charts/HorizontalBarCh
 import { getSupabaseClient } from '../../../supabase';
 import { localizeSupabaseError } from '../../../utils/errorUtils';
 import { endOfDayFromYmd, startOfDayFromYmd, toYmdLocal } from '../../../utils/dateUtils';
+import { useSessionScope } from '../../../contexts/SessionScopeContext';
 
 interface ProductSalesRow {
     item_id: string;
@@ -27,6 +28,7 @@ const ProductReports: React.FC = () => {
     const { settings } = useSettings();
     const { deliveryZones } = useDeliveryZones();
     const { showNotification } = useToast();
+    const sessionScope = useSessionScope();
     const [isSharing, setIsSharing] = useState(false);
     const [loading, setLoading] = useState(false);
     
@@ -131,6 +133,28 @@ const ProductReports: React.FC = () => {
                 const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
                 const zoneArg = (selectedZoneId && uuidRegex.test(selectedZoneId)) ? selectedZoneId : null;
 
+                const warehouseId = sessionScope.scope?.warehouseId;
+                const stockById = new Map<string, { current_stock: number; reserved_stock: number; current_cost_price: number }>();
+                {
+                    let stockQuery = supabase
+                        .from('stock_management')
+                        .select('item_id,available_quantity,reserved_quantity,avg_cost');
+                    if (warehouseId) {
+                        stockQuery = stockQuery.eq('warehouse_id', warehouseId);
+                    }
+                    const { data: stocks, error: smErr } = await stockQuery;
+                    if (smErr) throw smErr;
+                    for (const s of stocks || []) {
+                        const id = String((s as any)?.item_id || '');
+                        if (!id) continue;
+                        stockById.set(id, {
+                            current_stock: parseNumber((s as any)?.available_quantity),
+                            reserved_stock: parseNumber((s as any)?.reserved_quantity),
+                            current_cost_price: parseNumber((s as any)?.avg_cost),
+                        });
+                    }
+                }
+
                 let rpcRows: ProductSalesRow[] | null = null;
                 try {
                     const { data: rpcData, error: rpcErr } = await supabase.rpc('get_product_sales_report_v9', {
@@ -145,7 +169,17 @@ const ProductReports: React.FC = () => {
                 } catch (_) {}
 
                 if (rpcRows) {
-                    if (active) setReportData(rpcRows);
+                    const merged = rpcRows.map((r) => {
+                        const s = stockById.get(String(r.item_id || ''));
+                        if (!s) return r;
+                        return {
+                            ...r,
+                            current_stock: s.current_stock,
+                            reserved_stock: s.reserved_stock,
+                            current_cost_price: s.current_cost_price,
+                        };
+                    });
+                    if (active) setReportData(merged);
                     return;
                 }
 
@@ -198,21 +232,6 @@ const ProductReports: React.FC = () => {
                     const nameEn = String((mi as any)?.data?.name?.en || '').trim();
                     if (nameAr) menuByNameAr.set(nameAr, id);
                     if (nameEn) menuByNameEn.set(nameEn, id);
-                }
-
-                const { data: stocks, error: smErr } = await supabase
-                    .from('stock_management')
-                    .select('item_id,available_quantity,reserved_quantity,avg_cost');
-                if (smErr) throw smErr;
-                const stockById = new Map<string, { current_stock: number; reserved_stock: number; current_cost_price: number }>();
-                for (const s of stocks || []) {
-                    const id = String((s as any)?.item_id || '');
-                    if (!id) continue;
-                    stockById.set(id, {
-                        current_stock: parseNumber((s as any)?.available_quantity),
-                        reserved_stock: parseNumber((s as any)?.reserved_quantity),
-                        current_cost_price: parseNumber((s as any)?.avg_cost),
-                    });
                 }
 
                 const getItemAddonsTotal = (addons: any) => {
