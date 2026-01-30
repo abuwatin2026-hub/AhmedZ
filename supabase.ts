@@ -164,12 +164,22 @@ export const isRpcWrappersAvailable = async (): Promise<boolean> => {
   try {
     const { data: sessionData } = await supabase.auth.getSession();
     if (!sessionData?.session) return false;
-    const checks = await Promise.all([
-      rpcHasFunction('public.confirm_order_delivery(jsonb)'),
-      rpcHasFunction('public.confirm_order_delivery_with_credit(jsonb)'),
-      rpcHasFunction('public.reserve_stock_for_order(jsonb)'),
-    ]);
-    return checks.every(Boolean);
+    const checkWrappers = async () => {
+      const checks = await Promise.all([
+        rpcHasFunction('public.confirm_order_delivery(jsonb)'),
+        rpcHasFunction('public.confirm_order_delivery_with_credit(jsonb)'),
+        rpcHasFunction('public.reserve_stock_for_order(jsonb)'),
+      ]);
+      return checks.every(Boolean);
+    };
+    let ok = await checkWrappers();
+    if (!ok) {
+      const reloaded = await reloadPostgrestSchema();
+      if (reloaded) {
+        ok = await checkWrappers();
+      }
+    }
+    return ok;
   } catch {
     return false;
   }

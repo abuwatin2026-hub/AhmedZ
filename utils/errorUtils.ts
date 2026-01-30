@@ -32,6 +32,15 @@ export const localizeError = (message: string): string => {
   ) {
     return message;
   }
+  if (raw.includes('cannot mark delivered without stock movements')) {
+    return 'لا يمكن تأكيد التسليم بدون تسجيل حركة صرف للمخزون (sale_out) لهذا الطلب.';
+  }
+  if (raw.includes('warehouse_id is required')) {
+    return 'يجب تحديد المستودع الفعّال قبل تنفيذ العملية.';
+  }
+  if (raw.includes('stock record not found for item')) {
+    return 'تعذر العثور على سجل المخزون للصنف المطلوب. تأكد من تهيئة المخزون للمستودع الصحيح.';
+  }
   if (raw === 'unknown' || raw === 'unknown error' || raw === 'an unknown error has occurred') return 'حدث خطأ غير متوقع.';
   if (raw.includes('timeout') || raw.includes('timed out') || raw.includes('request timed out')) return 'انتهت مهلة الاتصال بالخادم. تحقق من الإنترنت ثم أعد المحاولة.';
   if (raw.includes('there is no unique or exclusion constraint matching the on conflict specification')) {

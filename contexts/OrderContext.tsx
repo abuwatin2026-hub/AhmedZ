@@ -520,9 +520,11 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       const supabase = getSupabaseClient();
       if (!supabase) return;
       const payload: Record<string, any> = {
-        status: order.status,
         data: order,
       };
+      if (order.status !== 'delivered') {
+        payload.status = order.status;
+      }
       if (typeof order.deliveryZoneId === 'string' && isUuid(order.deliveryZoneId)) {
         payload.delivery_zone_id = order.deliveryZoneId;
       }
@@ -597,9 +599,12 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const getRequestedItemQuantity = (item: CartItem) => {
     const unitType = item.unitType || item.unit || 'piece';
     if (unitType === 'kg' || unitType === 'gram') {
-      return typeof item.weight === 'number' ? item.weight : item.quantity;
+      const weight = typeof item.weight === 'number' ? item.weight : undefined;
+      if (typeof weight === 'number') return weight;
+      const qty = typeof item.quantity === 'number' ? item.quantity : (typeof (item as any)?.qty === 'number' ? (item as any).qty : undefined);
+      return qty;
     }
-    return item.quantity;
+    return typeof item.quantity === 'number' ? item.quantity : (typeof (item as any)?.qty === 'number' ? (item as any).qty : undefined);
   };
 
   const addOrderEvent = useCallback(
@@ -1680,7 +1685,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const payloadItems = newOrder.items
       .filter((item: any) => !(item?.lineType === 'promotion' || item?.promotionId))
       .map((item) => ({
-        itemId: String((item as any)?.itemId || item.id || ''),
+        itemId: String((item as any)?.itemId || (item as any)?.menuItemId || item.id || ''),
         quantity: getRequestedItemQuantity(item),
       }))
       .filter((entry) => Number(entry.quantity) > 0);
@@ -2277,7 +2282,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const merged = new Map<string, number>();
     const baseItems = (existing.items || []).filter((it: any) => !(it?.lineType === 'promotion' || it?.promotionId || it?.category === 'promotion'));
     for (const item of baseItems) {
-      const itemId = String((item as any)?.itemId || (item as any)?.id || '');
+      const itemId = String((item as any)?.itemId || (item as any)?.menuItemId || (item as any)?.id || '');
       const quantity = Number(getRequestedItemQuantity(item)) || 0;
       if (!itemId || !(quantity > 0)) continue;
       merged.set(itemId, (merged.get(itemId) || 0) + quantity);
@@ -2307,7 +2312,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
     const payloadItems = baseItems
       .map((item) => ({
-        itemId: String((item as any)?.itemId || (item as any)?.id || ''),
+        itemId: String((item as any)?.itemId || (item as any)?.menuItemId || (item as any)?.id || ''),
         quantity: getRequestedItemQuantity(item),
       }))
       .filter((entry) => Number(entry.quantity) > 0);
@@ -2353,7 +2358,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     if (!supabase) throw new Error('Supabase غير مهيأ.');
     const payloadItems = existing.items
       .map((item) => ({
-        itemId: String((item as any)?.itemId || (item as any)?.id || ''),
+        itemId: String((item as any)?.itemId || (item as any)?.menuItemId || (item as any)?.id || ''),
         quantity: getRequestedItemQuantity(item),
       }))
       .filter((entry) => Number(entry.quantity) > 0);
@@ -2574,7 +2579,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       const baseItems = (updated.items || []).filter((it: any) => !(it?.lineType === 'promotion' || it?.promotionId || it?.category === 'promotion'));
       const merged = new Map<string, number>();
       for (const item of baseItems) {
-        const itemId = String((item as any)?.itemId || (item as any)?.id || '');
+        const itemId = String((item as any)?.itemId || (item as any)?.menuItemId || (item as any)?.id || '');
         const quantity = Number(getRequestedItemQuantity(item)) || 0;
         if (!itemId || !(quantity > 0)) continue;
         merged.set(itemId, (merged.get(itemId) || 0) + quantity);
@@ -2594,7 +2599,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         .filter((x) => x.itemId && Number(x.quantity) > 0);
       const payloadItems = baseItems
         .map((item) => ({
-          itemId: String((item as any)?.itemId || (item as any)?.id || ''),
+          itemId: String((item as any)?.itemId || (item as any)?.menuItemId || (item as any)?.id || ''),
           quantity: getRequestedItemQuantity(item),
         }))
         .filter((entry) => Number(entry.quantity) > 0);
