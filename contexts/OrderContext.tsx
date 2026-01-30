@@ -1515,8 +1515,8 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       throw new Error('طريقة الدفع الرئيسية لا تطابق تقسيم الدفع.');
     }
 
-    const breakdownSum = paymentBreakdown.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
-    const isFullyPaid = Math.abs(breakdownSum - computedTotal) <= 0.01;
+    const paymentTotal = paymentBreakdown.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+    const isFullyPaid = Math.abs(paymentTotal - computedTotal) <= 0.01;
     
     if (!input.isCredit && !isFullyPaid) {
       throw new Error('مجموع تقسيم الدفع لا يطابق إجمالي البيع.');

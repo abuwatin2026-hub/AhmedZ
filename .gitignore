@@ -37,3 +37,7 @@ supabase/.temp/
 # Android signing files
 *.jks
 *.keystore
+
+# Environment files
+.env*
+!.env.example
