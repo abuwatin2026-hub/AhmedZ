@@ -89,6 +89,7 @@ const ManageOrdersScreen: React.FC = () => {
     const [isDeliverConfirming, setIsDeliverConfirming] = useState(false);
     const [isInStoreSaleOpen, setIsInStoreSaleOpen] = useState(false);
     const [isInStoreCreating, setIsInStoreCreating] = useState(false);
+    const [inStoreIsCredit, setInStoreIsCredit] = useState(false); // NEW: Credit Sale State
     const menuItems = useMemo(() => {
         const items = allMenuItems.filter(i => i.status !== 'archived');
         items.sort((a, b) => {
@@ -555,7 +556,7 @@ const ManageOrdersScreen: React.FC = () => {
         }
 
         const sum = normalizedPaymentLines.reduce((s, p) => s + (Number(p.amount) || 0), 0);
-        if (Math.abs(sum - total) > 0.01) {
+        if (!inStoreIsCredit && Math.abs(sum - total) > 0.01) {
             showNotification('مجموع الدفعات لا يطابق إجمالي البيع.', 'error');
             return;
         }
@@ -625,6 +626,7 @@ const ManageOrdersScreen: React.FC = () => {
                 paymentSenderPhone: inStorePaymentMethod === 'kuraimi' || inStorePaymentMethod === 'network' ? inStorePaymentSenderPhone.trim() : undefined,
                 paymentDeclaredAmount: inStorePaymentMethod === 'kuraimi' || inStorePaymentMethod === 'network' ? (Number(inStorePaymentDeclaredAmount) || 0) : undefined,
                 paymentAmountConfirmed: inStorePaymentMethod === 'kuraimi' || inStorePaymentMethod === 'network' ? Boolean(inStorePaymentAmountConfirmed) : undefined,
+                isCredit: inStoreIsCredit,
                 paymentBreakdown: normalizedPaymentLines.map((p) => ({
                     method: p.method,
                     amount: p.amount,
@@ -667,6 +669,7 @@ const ManageOrdersScreen: React.FC = () => {
             setInStoreMultiPaymentEnabled(false);
             setInStorePaymentLines([]);
             setInStoreLines([]);
+            setInStoreIsCredit(false);
         } catch (error) {
             const raw = error instanceof Error ? error.message : '';
             const message = language === 'ar'
@@ -1925,6 +1928,20 @@ const ManageOrdersScreen: React.FC = () => {
                                 step={inStoreDiscountType === 'percent' ? 1 : 1}
                             />
                         </div>
+                        <label className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300 md:pt-6">
+                            <input
+                                type="checkbox"
+                                checked={inStoreIsCredit}
+                                onChange={(e) => {
+                                    setInStoreIsCredit(e.target.checked);
+                                    // Disable multi-payment if credit is enabled (to simplify, or keep it?)
+                                    // Actually, we can keep multi-payment as "down payment".
+                                }}
+                                disabled={inStoreCustomerMode !== 'existing' || !inStoreSelectedCustomerId}
+                                className="form-checkbox h-5 w-5 text-purple-600 rounded focus:ring-purple-600 disabled:opacity-50"
+                            />
+                            بيع آجل / ذمم (يتطلب عميل مسجل)
+                        </label>
                         <label className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300 md:pt-6">
                             <input
                                 type="checkbox"

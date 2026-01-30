@@ -275,9 +275,11 @@ const POSScreen: React.FC = () => {
           const cached = pricingCacheRef.current.get(key);
           if (cached) return { key, itemId: item.id, unitType: item.unitType, unitPrice: cached.unitPrice, unitPricePerKg: cached.unitPricePerKg };
           const call = async () => {
+            // Ensure p_customer_id is treated as UUID or null (not empty string)
+            // Ensure p_item_id is treated as UUID (it is string in JS but UUID in DB)
             return await supabase.rpc('get_item_price_with_discount', {
               p_item_id: item.id,
-              p_customer_id: selectedCustomerId || null,
+              p_customer_id: (selectedCustomerId && selectedCustomerId.trim() !== '') ? selectedCustomerId : null,
               p_quantity: pricingQty,
             });
           };
@@ -910,6 +912,7 @@ const POSScreen: React.FC = () => {
         phoneNumber: phoneNumber.trim() || undefined,
         notes: notes.trim() || undefined,
         paymentMethod: payload.paymentMethod,
+        paymentAmountConfirmed: true, // Auto confirm for POS
         paymentBreakdown: breakdown.map(p => ({
           method: p.method,
           amount: Number(p.amount) || 0,

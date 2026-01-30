@@ -36,6 +36,7 @@ interface OrderContextType {
     paymentSenderPhone?: string;
     paymentDeclaredAmount?: number;
     paymentAmountConfirmed?: boolean;
+    isCredit?: boolean;
     paymentBreakdown?: Array<{
       method: string;
       amount: number;
@@ -1182,6 +1183,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     paymentSenderPhone?: string;
     paymentDeclaredAmount?: number;
     paymentAmountConfirmed?: boolean;
+    isCredit?: boolean;
     paymentBreakdown?: Array<{
       method: string;
       amount: number;
@@ -1366,8 +1368,18 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             p_quantity: pricingQty,
           });
         };
-        const rawCustomerId = input.customerId ? String(input.customerId) : null;
+        const rawCustomerId = (input.customerId && String(input.customerId).trim() !== '') ? String(input.customerId) : null;
         let { data, error } = await call(rawCustomerId);
+        
+        if (error && isRpcNotFoundError(error)) {
+            const reloaded = await reloadPostgrestSchema();
+            if (reloaded) {
+                const retry = await call(rawCustomerId);
+                data = retry.data;
+                error = retry.error;
+            }
+        }
+
         if (error) {
           const code = String((error as any)?.code || '');
           const msg = String((error as any)?.message || '');
@@ -1504,7 +1516,9 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
 
     const breakdownSum = paymentBreakdown.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
-    if (Math.abs(breakdownSum - computedTotal) > 0.01) {
+    const isFullyPaid = Math.abs(breakdownSum - computedTotal) <= 0.01;
+    
+    if (!input.isCredit && !isFullyPaid) {
       throw new Error('مجموع تقسيم الدفع لا يطابق إجمالي البيع.');
     }
 
@@ -1563,7 +1577,15 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         promotionLineId: String(it.promotionLineId || crypto.randomUUID()),
       }));
 
-    const newOrder: Order = {
+      // Calculate isFullyPaid based on actual payment breakdown vs total
+      const breakdownSum = paymentBreakdown.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+      const isFullyPaid = Math.abs(breakdownSum - computedTotal) <= 0.01;
+
+      // Only mark as paid if it is actually fully paid, or if we are skipping validation (e.g. forced by UI)
+      // But for POS, we should rely on isFullyPaid.
+      const actuallyPaidAt = (canMarkPaidUi && isFullyPaid) ? nowIso : undefined;
+
+      const newOrder: Order = {
       id: crypto.randomUUID(),
       userId: adminUser?.id,
       orderSource: 'in_store',
@@ -1603,7 +1625,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       status: offline ? 'pending' : (canMarkPaidUi ? 'delivered' : 'pending'),
       createdAt: nowIso,
       deliveredAt: offline ? undefined : (canMarkPaidUi ? nowIso : undefined),
-      paidAt: offline ? undefined : (canMarkPaidUi ? nowIso : undefined),
+      paidAt: offline ? undefined : actuallyPaidAt,
       reviewPointsAwarded: false,
       invoiceNumber,
       invoiceIssuedAt: offline ? undefined : (canMarkPaidUi ? nowIso : undefined),
