@@ -924,15 +924,23 @@ const POSScreen: React.FC = () => {
           cashReceived: p.cashReceived,
         })),
       }).then((order) => {
+        const isQueuedOffline = Boolean((order as any)?.offlineState === 'CREATED_OFFLINE');
         const isDelivered = String((order as any)?.status || '') === 'delivered';
         const isPaid = Boolean((order as any)?.paidAt);
-        const shouldAutoOpen = Boolean(autoOpenInvoice && order?.id && isDelivered && isPaid);
+        const shouldAutoOpen = Boolean(autoOpenInvoice && order?.id && isDelivered && isPaid && !isQueuedOffline);
 
         setItems([]);
         resetCustomerFields();
         setNotes('');
         setDraftInvoice(null);
         setPendingSelectedId(null);
+
+        if (isQueuedOffline) {
+          showNotification('تم تسجيل البيع بدون اتصال وسيتم خصم المخزون وتحديث التقارير بعد إرسال التحديثات.', 'info');
+          if (order?.id) setPendingSelectedId(order.id);
+          focusSearch();
+          return;
+        }
 
         if (isDelivered && isPaid) {
           showNotification('تم إتمام الطلب مباشرة', 'success');

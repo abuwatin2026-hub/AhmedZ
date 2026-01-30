@@ -488,13 +488,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       const base = (row.data || {}) as Order;
       const colStatus = (row.status as OrderStatus) || undefined;
       const dataStatus = (base as any).status as OrderStatus | undefined;
-      const resolvedStatus: OrderStatus =
-        (colStatus === 'pending' && dataStatus === 'delivered') ? 'delivered' : (colStatus || dataStatus || 'pending');
-      if (resolvedStatus === 'delivered' && colStatus !== 'delivered') {
-        try {
-          void supabase.from('orders').update({ status: 'delivered' }).eq('id', orderId);
-        } catch {}
-      }
+      const resolvedStatus: OrderStatus = colStatus || dataStatus || 'pending';
       const enriched: Order = {
         ...base,
         id: String(row.id),
@@ -577,17 +571,6 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       throw err;
     }
   }, []);
-
-  const ensureRemoteOrderStatus = useCallback(async (orderId: string, status: OrderStatus) => {
-    const supabase = getSupabaseClient();
-    if (!supabase) return;
-    try {
-      const { error } = await supabase.from('orders').update({ status }).eq('id', orderId);
-      if (error) throw error;
-    } catch {}
-  }, []);
-
-
 
   const upsertRemoteOrderEvent = useCallback(async (event: OrderAuditEvent) => {
     try {
@@ -905,7 +888,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
               const colStatus = (r?.status as OrderStatus) || undefined;
               const dataStatus = (base as any).status as OrderStatus | undefined;
               const resolvedStatus: OrderStatus =
-                (colStatus === 'pending' && dataStatus === 'delivered') ? 'delivered' : (colStatus || dataStatus || 'pending');
+                colStatus || dataStatus || 'pending';
               const enriched: Order = {
                 ...base,
                 id: String(r.id),
@@ -915,15 +898,6 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
               };
               return enriched;
             }).filter(Boolean);
-            const mismatchDeliveredIds = (rows || [])
-              .filter((r: any) => (String(r?.status || '').trim() === 'pending') && (String(r?.data?.status || '').trim() === 'delivered'))
-              .map((r: any) => String(r.id))
-              .filter(Boolean);
-            if (mismatchDeliveredIds.length > 0) {
-              try {
-                void supabase.from('orders').update({ status: 'delivered' }).in('id', mismatchDeliveredIds);
-              } catch {}
-            }
             merged.sort((a, b) => (String(b.createdAt || '')).localeCompare(String(a.createdAt || '')));
             setOrders(merged);
             setLoading(false);
@@ -1334,7 +1308,6 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       throw new Error('طريقة الدفع غير مفعلة في الإعدادات.');
     }
 
-    const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
     const rawLines = Array.isArray(input.lines) ? input.lines : [];
     const normalizedMenuLines = rawLines
       .filter((l: any) => typeof l?.menuItemId === 'string' && Boolean(l.menuItemId))
@@ -1355,10 +1328,6 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
     if (!normalizedMenuLines.length && !normalizedPromoLines.length) {
       throw new Error('يجب إضافة صنف واحد على الأقل.');
-    }
-
-    if (normalizedPromoLines.length > 0 && offline) {
-      throw new Error('لا يمكن إتمام بيع عرض بدون اتصال بالخادم.');
     }
 
     const menuItems = await Promise.all(normalizedMenuLines.map((l) => loadMenuItemById(l.menuItemId)));
@@ -1439,13 +1408,16 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       throw new Error('الكمية/الوزن يجب أن يكون أكبر من صفر.');
     }
 
-    if (!offline) {
+    const hasPromoLines =
+      Array.isArray((items as any[])) && (items as any[]).some((it: any) => it?.lineType === 'promotion' || it?.promotionId);
+    const offlineHint = typeof navigator !== 'undefined' && navigator.onLine === false;
+    if (!offlineHint) {
       const stockCheckItems = items.filter((it: any) => !(it?.lineType === 'promotion' || it?.promotionId));
       await ensureSufficientStockForOrderItems(stockCheckItems, warehouseId);
     }
 
     let pricedItems: CartItem[] = items;
-    if (!offline) {
+    if (!offlineHint) {
       const supabaseForPricing = getSupabaseClient();
       if (!supabaseForPricing) throw new Error('Supabase غير مهيأ.');
 
@@ -1664,7 +1636,6 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       orderSource: 'in_store',
       warehouseId,
       customerId: input.customerId || undefined,
-      offlineState: offline ? 'CREATED_OFFLINE' : undefined,
       items,
       ...(promotionLines.length ? ({ promotionLines } as any) : {}),
       subtotal: computedSubtotal,
@@ -1695,9 +1666,9 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       paymentDeclaredAmount: canMarkPaidUi && singleNeedsReference ? singleDeclaredAmount : undefined,
       paymentVerifiedBy: canMarkPaidUi && singleNeedsReference ? adminUser?.id : undefined,
       paymentVerifiedAt: canMarkPaidUi && singleNeedsReference ? nowIso : undefined,
-      status: offline ? 'pending' : (shouldAttemptImmediatePayment ? 'delivered' : 'pending'),
+      status: shouldAttemptImmediatePayment ? 'delivered' : 'pending',
       createdAt: nowIso,
-      deliveredAt: offline ? undefined : (shouldAttemptImmediatePayment ? nowIso : undefined),
+      deliveredAt: shouldAttemptImmediatePayment ? nowIso : undefined,
       paidAt: undefined,
       reviewPointsAwarded: false,
       invoiceNumber,
@@ -1714,13 +1685,24 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       }))
       .filter((entry) => Number(entry.quantity) > 0);
 
-    if (offline) {
-      newOrder.offlineId = newOrder.id;
-      upsertOfflinePosOrder({ offlineId: newOrder.id, orderId: newOrder.id, state: 'CREATED_OFFLINE' });
+    const queueOfflineSale = async () => {
+      if (hasPromoLines) {
+        throw new Error('لا يمكن إتمام بيع عرض دون اتصال بالخادم. أعد المحاولة عند توفر الاتصال.');
+      }
+      const offlineOrder: Order = {
+        ...newOrder,
+        offlineId: newOrder.id,
+        offlineState: 'CREATED_OFFLINE',
+        status: 'pending',
+        deliveredAt: undefined,
+        paidAt: undefined,
+        invoiceIssuedAt: undefined,
+      };
+      upsertOfflinePosOrder({ offlineId: offlineOrder.id, orderId: offlineOrder.id, state: 'CREATED_OFFLINE' });
       enqueueRpc('sync_offline_pos_sale', {
-        p_offline_id: newOrder.id,
-        p_order_id: newOrder.id,
-        p_order_data: newOrder,
+        p_offline_id: offlineOrder.id,
+        p_order_id: offlineOrder.id,
+        p_order_data: offlineOrder,
         p_items: payloadItems,
         p_warehouse_id: warehouseId,
         p_payments: (paymentBreakdown || []).map((p) => ({
@@ -1735,109 +1717,97 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           occurredAt: nowIso,
         })),
       });
-      setOrders(prev => [newOrder, ...prev]);
-      return newOrder;
-    }
+      setOrders(prev => [offlineOrder, ...prev]);
+      return offlineOrder;
+    };
 
-    // 1. Insert as pending (safe state)
-    await createRemoteOrder({ ...newOrder, status: 'pending' });
-
-    // 1.1 Assign official invoice number from sequence if online
     try {
-      const supabase = getSupabaseClient();
-      if (supabase) {
-        const sb1 = supabase!;
-        const { data: invNum } = await sb1.rpc('assign_invoice_number_if_missing', { p_order_id: newOrder.id });
-        if (typeof invNum === 'string' && invNum) {
-          invoiceNumber = invNum;
-          newOrder.invoiceNumber = invNum;
-        }
-      }
-    } catch {}
+      await createRemoteOrder({ ...newOrder, status: 'pending' });
 
-    const supabase = getSupabaseClient();
-    if (!supabase) throw new Error('Supabase غير مهيأ.');
-    const sb2 = supabase!;
-    if (canMarkPaidUi) {
-      const rpcError = await rpcConfirmOrderDeliveryWithCredit(sb2, {
-        orderId: newOrder.id,
-        items: payloadItems,
-        updatedData: newOrder,
-        warehouseId,
-      });
-
-      if (rpcError) {
-        const offlineNow = typeof navigator !== 'undefined' && navigator.onLine === false;
-        if (offlineNow || isAbortLikeError(rpcError)) {
-          const hasPromoLines =
-            Array.isArray((newOrder as any).promotionLines) && (newOrder as any).promotionLines.length > 0;
-          if (hasPromoLines) {
-            throw new Error('لا يمكن إتمام بيع عرض دون اتصال بالخادم. أعد المحاولة عند توفر الاتصال.');
+      try {
+        const supabase = getSupabaseClient();
+        if (supabase) {
+          const sb1 = supabase!;
+          const { data: invNum } = await sb1.rpc('assign_invoice_number_if_missing', { p_order_id: newOrder.id });
+          if (typeof invNum === 'string' && invNum) {
+            invoiceNumber = invNum;
+            newOrder.invoiceNumber = invNum;
           }
-          newOrder.offlineId = newOrder.id;
-          newOrder.offlineState = 'CREATED_OFFLINE';
-          newOrder.status = 'pending';
-          newOrder.deliveredAt = undefined;
-          newOrder.paidAt = undefined;
-          newOrder.invoiceIssuedAt = undefined;
-          upsertOfflinePosOrder({ offlineId: newOrder.id, orderId: newOrder.id, state: 'CREATED_OFFLINE' });
-          enqueueRpc('sync_offline_pos_sale', {
-            p_offline_id: newOrder.id,
-            p_order_id: newOrder.id,
-            p_order_data: newOrder,
-            p_items: payloadItems,
-            p_warehouse_id: warehouseId,
-            p_payments: (paymentBreakdown || []).map((p) => ({ ...p, occurredAt: nowIso })),
-          });
-          setOrders(prev => [newOrder, ...prev]);
-          return newOrder;
         }
-        await sb2.from('orders').delete().eq('id', newOrder.id);
-        console.error('In-store sale confirmation failed:', rpcError);
-        throw new Error(localizeSupabaseError(rpcError));
-      }
+      } catch {}
 
-      const refreshed = await fetchRemoteOrderById(newOrder.id);
-      if (refreshed?.status !== 'delivered') {
-        await ensureRemoteOrderStatus(newOrder.id, 'delivered');
-      }
-    } else {
-      const { data: sessionData, error: sessionError } = await sb2.auth.getSession();
-      if (sessionError || !sessionData.session) {
-        await sb2.from('orders').delete().eq('id', newOrder.id);
-        throw new Error('انتهت الجلسة. الرجاء تسجيل الدخول مرة أخرى.');
-      }
+      const supabase = getSupabaseClient();
+      if (!supabase) throw new Error('Supabase غير مهيأ.');
+      const sb2 = supabase!;
+      if (canMarkPaidUi) {
+        const rpcError = await rpcConfirmOrderDeliveryWithCredit(sb2, {
+          orderId: newOrder.id,
+          items: payloadItems,
+          updatedData: newOrder,
+          warehouseId,
+        });
 
-      const merged = new Map<string, number>();
-      for (const entry of payloadItems) {
-        const itemId = String((entry as any)?.itemId || '');
-        const quantity = Number((entry as any)?.quantity) || 0;
-        if (!itemId || !(quantity > 0)) continue;
-        merged.set(itemId, (merged.get(itemId) || 0) + quantity);
-      }
+        if (rpcError) {
+          const offlineNow = typeof navigator !== 'undefined' && navigator.onLine === false;
+          if (offlineNow || isAbortLikeError(rpcError)) {
+            await sb2.from('orders').delete().eq('id', newOrder.id);
+            return await queueOfflineSale();
+          }
+          await sb2.from('orders').delete().eq('id', newOrder.id);
+          console.error('In-store sale confirmation failed:', rpcError);
+          throw new Error(localizeSupabaseError(rpcError));
+        }
 
-      const promoLines = Array.isArray((newOrder as any).promotionLines) ? (newOrder as any).promotionLines : [];
-      for (const line of promoLines) {
-        const promoItems = Array.isArray((line as any)?.items) ? (line as any).items : [];
-        for (const pi of promoItems) {
-          const itemId = String((pi as any)?.itemId || (pi as any)?.id || '');
-          const quantity = Number((pi as any)?.quantity) || 0;
+        await fetchRemoteOrderById(newOrder.id);
+      } else {
+        const { data: sessionData, error: sessionError } = await sb2.auth.getSession();
+        if (sessionError || !sessionData.session) {
+          await sb2.from('orders').delete().eq('id', newOrder.id);
+          throw new Error('انتهت الجلسة. الرجاء تسجيل الدخول مرة أخرى.');
+        }
+
+        const merged = new Map<string, number>();
+        for (const entry of payloadItems) {
+          const itemId = String((entry as any)?.itemId || '');
+          const quantity = Number((entry as any)?.quantity) || 0;
           if (!itemId || !(quantity > 0)) continue;
           merged.set(itemId, (merged.get(itemId) || 0) + quantity);
         }
-      }
 
-      const reserveItems = Array.from(merged.entries())
-        .map(([itemId, quantity]) => ({ itemId, quantity }))
-        .filter((x) => x.itemId && Number(x.quantity) > 0);
+        const promoLines = Array.isArray((newOrder as any).promotionLines) ? (newOrder as any).promotionLines : [];
+        for (const line of promoLines) {
+          const promoItems = Array.isArray((line as any)?.items) ? (line as any).items : [];
+          for (const pi of promoItems) {
+            const itemId = String((pi as any)?.itemId || (pi as any)?.id || '');
+            const quantity = Number((pi as any)?.quantity) || 0;
+            if (!itemId || !(quantity > 0)) continue;
+            merged.set(itemId, (merged.get(itemId) || 0) + quantity);
+          }
+        }
 
-      if (reserveItems.length > 0) {
-        const reserveErr = await rpcReserveStockForOrder(sb2, { items: reserveItems, orderId: newOrder.id, warehouseId });
-        if (reserveErr) {
-          await sb2.from('orders').delete().eq('id', newOrder.id);
-          throw new Error(localizeSupabaseError(reserveErr));
+        const reserveItems = Array.from(merged.entries())
+          .map(([itemId, quantity]) => ({ itemId, quantity }))
+          .filter((x) => x.itemId && Number(x.quantity) > 0);
+
+        if (reserveItems.length > 0) {
+          const reserveErr = await rpcReserveStockForOrder(sb2, { items: reserveItems, orderId: newOrder.id, warehouseId });
+          if (reserveErr) {
+            const offlineNow = typeof navigator !== 'undefined' && navigator.onLine === false;
+            if (offlineNow || isAbortLikeError(reserveErr)) {
+              await sb2.from('orders').delete().eq('id', newOrder.id);
+              return await queueOfflineSale();
+            }
+            await sb2.from('orders').delete().eq('id', newOrder.id);
+            throw new Error(localizeSupabaseError(reserveErr));
+          }
         }
       }
+    } catch (err: any) {
+      const offlineNow = typeof navigator !== 'undefined' && navigator.onLine === false;
+      if (offlineNow || isAbortLikeError(err)) {
+        return await queueOfflineSale();
+      }
+      throw err;
     }
 
 
@@ -2348,10 +2318,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     if (rpcError) {
       throw new Error(localizeSupabaseError(rpcError));
     }
-    const refreshed = await fetchRemoteOrderById(existing.id);
-    if (refreshed?.status !== 'delivered') {
-      await ensureRemoteOrderStatus(existing.id, 'delivered');
-    }
+    await fetchRemoteOrderById(existing.id);
     const breakdown = (payment.paymentBreakdown || [
       { method: payment.paymentMethod, amount: existing.total || 0 }
     ]).filter(p => (Number(p.amount) || 0) > 0);
@@ -2593,6 +2560,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         : undefined,
     });
     let deliveredSnapshot: Order | undefined;
+    let deliveryQueued = false;
     if (willDeliver) {
       const updated = { ...existing, ...updates } as Order;
       
@@ -2687,14 +2655,10 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
               p_warehouse_id: warehouseId,
             }
           });
+          deliveryQueued = true;
         } else {
           console.error('Delivery confirmation failed:', rpcError);
           throw new Error(localizeSupabaseError(rpcError));
-        }
-      } else {
-        const refreshed = await fetchRemoteOrderById(updated.id);
-        if (refreshed?.status !== 'delivered') {
-          await ensureRemoteOrderStatus(updated.id, 'delivered');
         }
       }
     }
@@ -2720,6 +2684,9 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       }
     }
 
+    if (deliveryQueued) {
+      throw new Error('تمت إضافة عملية التسليم إلى الطابور. سيتم الخصم والتأكيد عند توفر الاتصال.');
+    }
     if (willDeliver) {
       let updated = { ...existing, ...updates } as Order;
       // بعد تأكيد التسليم، نتعامل مع مسار non-COD لضمان عدم ضبط paidAt بدون تسجيل Payment بنجاح.

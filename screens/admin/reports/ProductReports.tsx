@@ -516,6 +516,7 @@ const ProductReports: React.FC = () => {
             const totalProfit = Number(row.total_profit || (totalSales - totalCost));
             const qtySold = Number(row.quantity_sold || 0);
             const currentStock = Number(row.current_stock || 0);
+            const reservedStock = Number(row.reserved_stock || 0);
 
             // Derived metrics
             const profitMargin = totalSales > 0 ? (totalProfit / totalSales) * 100 : 0;
@@ -548,6 +549,7 @@ const ProductReports: React.FC = () => {
                 total_profit: totalProfit,
                 quantity_sold: qtySold,
                 current_stock: currentStock,
+                available_to_sell: currentStock - reservedStock,
                 name,
                 profitMargin,
                 turnoverRate,
@@ -593,25 +595,17 @@ const ProductReports: React.FC = () => {
     }, [processedData]);
 
     const lowStock = useMemo(() => {
-        // We need 'toSell' (available - reserved).
-        // RPC returns current_stock (available) and reserved_stock.
-        // Wait, check RPC logic for current_stock.
-        // "coalesce(sm.available_quantity, 0) as current_stock" -> This is usually physical - reserved? 
-        // In my schema: available_quantity IS the quantity available for sale (physical - reserved is handled implicitly or explicitly?).
-        // Let's check 'deduct_stock'. It updates available_quantity.
-        // Usually available_quantity = Physical - Reserved? 
-        // Or Physical = Available + Reserved?
-        // Schema: available_quantity, reserved_quantity.
-        // Usually 'Available' means 'Available for sale'.
-        // So I'll use it directly.
-        
         return processedData
-            .filter(p => p.current_stock <= 5 && p.current_stock > 0) // Arbitrary threshold 5 or get from item settings if I had joined it. RPC doesn't return threshold.
-            .sort((a, b) => a.current_stock - b.current_stock)
+            .map((p: any) => ({
+                ...p,
+                available_to_sell: Number(p.available_to_sell ?? (Number(p.current_stock || 0) - Number(p.reserved_stock || 0)))
+            }))
+            .filter((p: any) => p.available_to_sell <= 5 && p.available_to_sell > 0)
+            .sort((a: any, b: any) => a.available_to_sell - b.available_to_sell)
             .slice(0, 15)
             .map(p => ({
                 label: p.name,
-                value: Number(p.current_stock)
+                value: Number((p as any).available_to_sell)
             }));
     }, [processedData]);
 
@@ -637,7 +631,7 @@ const ProductReports: React.FC = () => {
             Number(p.total_cost || 0).toFixed(2),
             Number(p.total_profit || 0).toFixed(2),
             p.profitMargin.toFixed(1) + '%',
-            p.current_stock,
+            Number((p as any).available_to_sell ?? (Number(p.current_stock || 0) - Number(p.reserved_stock || 0))),
             p.reserved_stock,
             ((Number(p.current_stock || 0) + Number(p.reserved_stock || 0)) * Number(p.current_cost_price || 0)).toFixed(2)
         ]);
