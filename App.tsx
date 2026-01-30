@@ -111,14 +111,18 @@ const CustomerLayout: React.FC = () => {
 };
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isAuthenticated, loading } = useUserAuth();
+  const { isAuthenticated: isCustomerAuthenticated, loading: customerLoading } = useUserAuth();
+  const { isAuthenticated: isAdminAuthenticated, loading: adminLoading, hasPermission } = useAuth();
   const location = useLocation();
 
-  if (loading) {
+  if (customerLoading || adminLoading) {
     return <PageLoader />;
   }
 
-  if (!isAuthenticated) {
+  if (!isCustomerAuthenticated) {
+    if (isAdminAuthenticated) {
+      return <Navigate to={getAdminFallbackPath(hasPermission)} replace />;
+    }
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 

@@ -58,6 +58,16 @@ const ManageOrdersScreen: React.FC = () => {
     const { showNotification } = useToast();
     const language = 'ar';
     const { settings } = useSettings();
+    const IN_STORE_DELIVERY_ZONE_ID = '11111111-1111-4111-8111-111111111111';
+    const isInStoreOrder = (order: Order) => {
+        if (!order) return false;
+        const src = String((order as any).orderSource || '').trim();
+        if (src === 'in_store') return true;
+        const zone = String((order as any).deliveryZoneId || '').trim();
+        if (zone && zone === IN_STORE_DELIVERY_ZONE_ID) return true;
+        const addr = String((order as any).address || '').trim();
+        return addr === 'داخل المحل';
+    };
     
     // Return Logic State
     const [returnOrderId, setReturnOrderId] = useState<string | null>(null);
@@ -805,7 +815,7 @@ const ManageOrdersScreen: React.FC = () => {
         const remaining = Math.max(0, (Number(order.total) || 0) - paid);
         setPartialPaymentOrderId(orderId);
         setPartialPaymentAmount(remaining > 0 ? Number(remaining.toFixed(2)) : 0);
-        setPartialPaymentMethod(order.orderSource === 'in_store' ? 'cash' : ((order.paymentMethod || 'cash').trim() || 'cash'));
+        setPartialPaymentMethod(isInStoreOrder(order) ? 'cash' : ((order.paymentMethod || 'cash').trim() || 'cash'));
         setPartialPaymentOccurredAt(toDateTimeLocalInputValue());
     };
 
@@ -855,8 +865,12 @@ const ManageOrdersScreen: React.FC = () => {
             : [];
     const getEditableStatusesForOrder = (order: Order): OrderStatus[] => {
         const base = editableStatusOptions;
-        if ((order.orderSource || '').trim() === 'in_store') {
-            return base.filter(s => s !== 'out_for_delivery');
+        if (isInStoreOrder(order)) {
+            const allowed = base.filter(s => s !== 'out_for_delivery');
+            if (order.status === 'pending') {
+                return allowed.filter(s => s === 'pending' || s === 'delivered');
+            }
+            return allowed;
         }
         return base;
     };
@@ -1029,7 +1043,7 @@ const ManageOrdersScreen: React.FC = () => {
                             </div>
                         )}
                         {(() => {
-                            const isCod = order.paymentMethod === 'cash' && order.orderSource !== 'in_store' && Boolean(order.deliveryZoneId);
+                            const isCod = order.paymentMethod === 'cash' && !isInStoreOrder(order) && Boolean(order.deliveryZoneId);
                             if (!isCod) return null;
                             const driverId = String(order.deliveredBy || order.assignedDeliveryUserId || '');
                             const bal = driverId ? (Number(driverCashByDriverId[driverId]) || 0) : 0;
@@ -1065,7 +1079,7 @@ const ManageOrdersScreen: React.FC = () => {
                             📍 عرض الموقع على الخريطة
                         </button>
                     )}
-                    {order.deliveryZoneId && (
+                    {order.deliveryZoneId && !isInStoreOrder(order) && (
                         <div className="text-[10px] text-gray-500">
                             المنطقة: {getDeliveryZoneById(order.deliveryZoneId)?.name['ar'] || 'غير محدد'}
                         </div>
@@ -1147,7 +1161,7 @@ const ManageOrdersScreen: React.FC = () => {
                     </div>
 
                     {/* Delivery Accept Button */}
-                    {isDeliveryOnly && order.orderSource !== 'in_store' && order.assignedDeliveryUserId === adminUser?.id && !order.deliveryAcceptedAt && order.status !== 'delivered' && order.status !== 'cancelled' && (
+                    {isDeliveryOnly && !isInStoreOrder(order) && order.assignedDeliveryUserId === adminUser?.id && !order.deliveryAcceptedAt && order.status !== 'delivered' && order.status !== 'cancelled' && (
                         <button
                             type="button"
                             onClick={() => handleAcceptDelivery(order.id)}
@@ -1158,7 +1172,7 @@ const ManageOrdersScreen: React.FC = () => {
                     )}
 
                     {/* Delivery Assignment (Admin only) */}
-                    {canAssignDelivery && order.orderSource !== 'in_store' && (
+                    {canAssignDelivery && !isInStoreOrder(order) && (
                         <div className="col-span-2">
                             <select
                                 value={order.assignedDeliveryUserId || 'none'}
@@ -1202,7 +1216,7 @@ const ManageOrdersScreen: React.FC = () => {
                         </button>
                     )}
 
-                    {canViewAccounting && order.paymentMethod === 'cash' && order.orderSource !== 'in_store' && Boolean(order.deliveryZoneId) && (
+                    {canViewAccounting && order.paymentMethod === 'cash' && !isInStoreOrder(order) && Boolean(order.deliveryZoneId) && (
                         <button
                             onClick={() => openCodAudit(order.id)}
                             className="col-span-2 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition text-sm font-semibold"
@@ -1361,13 +1375,13 @@ const ManageOrdersScreen: React.FC = () => {
                                             <div className="text-sm font-medium text-gray-900 dark:text-white">{order.customerName}</div>
                                             <div className="text-sm text-gray-500 dark:text-gray-400" dir="ltr">{order.phoneNumber}</div>
                                             <div className="text-xs text-gray-500 dark:text-gray-400 max-w-xs truncate" title={order.address}>{order.address}</div>
-                                            {order.deliveryZoneId && (
+                                            {order.deliveryZoneId && !isInStoreOrder(order) && (
                                                 <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 max-w-xs truncate" title={getDeliveryZoneById(order.deliveryZoneId)?.name['ar'] || order.deliveryZoneId}>
                                                     منطقة التوصيل: {getDeliveryZoneById(order.deliveryZoneId)?.name['ar'] || order.deliveryZoneId.slice(-6).toUpperCase()}
                                                 </div>
                                             )}
                                             {(() => {
-                                                const isCod = order.paymentMethod === 'cash' && order.orderSource !== 'in_store' && Boolean(order.deliveryZoneId);
+                                                const isCod = order.paymentMethod === 'cash' && !isInStoreOrder(order) && Boolean(order.deliveryZoneId);
                                                 if (!isCod) return null;
                                                 const driverId = String(order.deliveredBy || order.assignedDeliveryUserId || '');
                                                 const bal = driverId ? (Number(driverCashByDriverId[driverId]) || 0) : 0;
@@ -1380,7 +1394,7 @@ const ManageOrdersScreen: React.FC = () => {
                                                     </div>
                                                 );
                                             })()}
-                                            {order.location && (
+                                            {order.location && !isInStoreOrder(order) && (
                                                 <div className="mt-1">
                                                     <button
                                                         type="button"
@@ -1515,7 +1529,7 @@ const ManageOrdersScreen: React.FC = () => {
                                                             ) : (
                                                                 <div className="text-xs text-gray-400">غير متاحة</div>
                                                             )}
-                                                            {order.orderSource !== 'in_store' && (
+                                                            {!isInStoreOrder(order) && (
                                                                 <button
                                                                     type="button"
                                                                     onClick={() => handlePrintDeliveryNote(order)}
@@ -1543,7 +1557,7 @@ const ManageOrdersScreen: React.FC = () => {
                                                                     </button>
                                                                 </div>
                                                             )}
-                                                            {order.orderSource !== 'in_store' && (
+                                                            {!isInStoreOrder(order) && (
                                                                 <button
                                                                     type="button"
                                                                     onClick={() => handlePrintDeliveryNote(order)}
@@ -1559,7 +1573,7 @@ const ManageOrdersScreen: React.FC = () => {
 
                                                 return (
                                                     <div className="flex flex-col gap-2">
-                                                        {order.orderSource !== 'in_store' && (
+                                                        {!isInStoreOrder(order) && (
                                                             <button
                                                                 type="button"
                                                                 onClick={() => handlePrintDeliveryNote(order)}
@@ -1637,7 +1651,7 @@ const ManageOrdersScreen: React.FC = () => {
                                                     </div>
                                                 );
                                             })()}
-                                            {isDeliveryOnly && order.assignedDeliveryUserId === adminUser?.id && !order.deliveryAcceptedAt && order.status !== 'delivered' && order.status !== 'cancelled' && (
+                                            {isDeliveryOnly && !isInStoreOrder(order) && order.assignedDeliveryUserId === adminUser?.id && !order.deliveryAcceptedAt && order.status !== 'delivered' && order.status !== 'cancelled' && (
                                                 <button
                                                     type="button"
                                                     onClick={() => handleAcceptDelivery(order.id)}
@@ -1646,7 +1660,7 @@ const ManageOrdersScreen: React.FC = () => {
                                                     {language === 'ar' ? 'قبول مهمة التوصيل' : 'Accept delivery'}
                                                 </button>
                                             )}
-                                            {canAssignDelivery && order.orderSource !== 'in_store' && (
+                                            {canAssignDelivery && !isInStoreOrder(order) && (
                                                 <div className="mt-2">
                                                     <select
                                                         value={order.assignedDeliveryUserId || 'none'}
@@ -1669,7 +1683,7 @@ const ManageOrdersScreen: React.FC = () => {
                                                     ? (language === 'ar' ? 'إخفاء السجل' : 'Hide log')
                                                     : (language === 'ar' ? 'سجل الإجراءات' : 'Audit log')}
                                             </button>
-                                            {canViewAccounting && order.paymentMethod === 'cash' && order.orderSource !== 'in_store' && Boolean(order.deliveryZoneId) && (
+                                            {canViewAccounting && order.paymentMethod === 'cash' && !isInStoreOrder(order) && Boolean(order.deliveryZoneId) && (
                                                 <button
                                                     type="button"
                                                     onClick={() => openCodAudit(order.id)}

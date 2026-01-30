@@ -924,18 +924,36 @@ const POSScreen: React.FC = () => {
           cashReceived: p.cashReceived,
         })),
       }).then((order) => {
+        const isDelivered = String((order as any)?.status || '') === 'delivered';
+        const isPaid = Boolean((order as any)?.paidAt);
+        const shouldAutoOpen = Boolean(autoOpenInvoice && order?.id && isDelivered && isPaid);
+
         setItems([]);
         resetCustomerFields();
         setNotes('');
         setDraftInvoice(null);
         setPendingSelectedId(null);
-        showNotification('تم إتمام الطلب مباشرة', 'success');
-        if (autoOpenInvoice && order?.id) {
-          const autoThermal = Boolean(settings?.posFlags?.autoPrintThermalEnabled);
-          const copies = Number(settings?.posFlags?.thermalCopies) || 1;
-          const q = autoThermal ? `?thermal=1&autoprint=1&copies=${copies}` : '';
-          navigate(`/admin/invoice/${order.id}${q}`);
+
+        if (isDelivered && isPaid) {
+          showNotification('تم إتمام الطلب مباشرة', 'success');
+          if (shouldAutoOpen) {
+            const autoThermal = Boolean(settings?.posFlags?.autoPrintThermalEnabled);
+            const copies = Number(settings?.posFlags?.thermalCopies) || 1;
+            const q = autoThermal ? `?thermal=1&autoprint=1&copies=${copies}` : '';
+            navigate(`/admin/invoice/${order.id}${q}`);
+          }
+          focusSearch();
+          return;
         }
+
+        if (isDelivered && !isPaid) {
+          showNotification('تم تسجيل البيع لكن التحصيل لم يُسجل بالكامل. افتح إدارة الطلبات لاستكمال التحصيل.', 'info');
+          navigate(`/admin/orders?orderId=${order.id}`);
+          return;
+        }
+
+        showNotification('تم إنشاء الطلب وبانتظار التحصيل.', 'info');
+        if (order?.id) setPendingSelectedId(order.id);
         focusSearch();
       }).catch(err => {
         const msg = err instanceof Error ? err.message : 'فشل إتمام الطلب';

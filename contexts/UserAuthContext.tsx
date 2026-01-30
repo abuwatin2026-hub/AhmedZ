@@ -146,6 +146,16 @@ export const UserAuthProvider: React.FC<{ children: ReactNode }> = ({ children }
       return null;
     }
     try {
+      const { data: adminRow } = await supabase
+        .from('admin_users')
+        .select('auth_user_id,is_active')
+        .eq('auth_user_id', authUserId)
+        .maybeSingle();
+      if (adminRow && Boolean((adminRow as any).is_active ?? true)) {
+        setCurrentUser(null);
+        return null;
+      }
+
       const { data: row, error } = await supabase
         .from('customers')
         .select('auth_user_id, full_name, phone_number, email, auth_provider, password_salt, password_hash, referral_code, referred_by, loyalty_points, loyalty_tier, total_spent, first_order_discount_applied, avatar_url, data')
@@ -232,8 +242,17 @@ export const UserAuthProvider: React.FC<{ children: ReactNode }> = ({ children }
         .from('customers')
         .select('auth_user_id, full_name, phone_number, email, auth_provider, password_salt, password_hash, referral_code, referred_by, loyalty_points, loyalty_tier, total_spent, first_order_discount_applied, avatar_url, data');
       if (error) throw error;
-      const remoteCustomers = (rows || []).map(toCustomerFromRow).filter(Boolean);
-      setCustomers(remoteCustomers);
+      let adminIds = new Set<string>();
+      try {
+        const { data: adminRows } = await supabase.from('admin_users').select('auth_user_id');
+        adminIds = new Set((adminRows || []).map((r: any) => String(r?.auth_user_id || '')).filter(Boolean));
+      } catch {
+      }
+      const remoteCustomers = (rows || [])
+        .map(toCustomerFromRow)
+        .filter(Boolean)
+        .filter((c) => !adminIds.has(String((c as any).id || '')));
+      setCustomers(remoteCustomers as Customer[]);
     } catch (error) {
       setCustomers([]);
       if (import.meta.env.DEV) {

@@ -178,7 +178,11 @@ export const isRpcWrappersAvailable = async (): Promise<boolean> => {
 export const reloadPostgrestSchema = async (): Promise<boolean> => {
   const supabase = getSupabaseClient();
   if (!supabase) return false;
-  if (postgrestReloadAttempt) return await postgrestReloadAttempt;
+  if (postgrestReloadAttempt) {
+    const previous = await postgrestReloadAttempt;
+    if (!previous) postgrestReloadAttempt = null;
+    return previous;
+  }
 
   postgrestReloadAttempt = (async () => {
     try {
@@ -203,5 +207,7 @@ export const reloadPostgrestSchema = async (): Promise<boolean> => {
     }
   })();
 
-  return await postgrestReloadAttempt;
+  const ok = await postgrestReloadAttempt;
+  if (!ok) postgrestReloadAttempt = null;
+  return ok;
 };

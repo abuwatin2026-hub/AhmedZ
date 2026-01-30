@@ -6,7 +6,7 @@ import { useChallenges } from './ChallengeContext';
 import { useAuth } from './AuthContext';
 import { useSessionScope } from './SessionScopeContext';
 import { generateInvoiceNumber } from '../utils/orderUtils';
-import { getSupabaseClient, isRpcStrictMode, markRpcStrictModeEnabled, isRpcWrappersAvailable, reloadPostgrestSchema } from '../supabase';
+import { getSupabaseClient, isRpcStrictMode, markRpcStrictModeEnabled, isRpcWrappersAvailable, reloadPostgrestSchema, rpcHasFunction } from '../supabase';
 import { createLogger } from '../utils/logger';
 import { localizeSupabaseError, isAbortLikeError } from '../utils/errorUtils';
 import { enqueueRpc, upsertOfflinePosOrder } from '../utils/offlineQueue';
@@ -143,10 +143,91 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const status = (err as any)?.status;
     return (
       code === 'PGRST202' ||
+      code === '42883' ||
       status === 404 ||
       /Could not find the function/i.test(msg) ||
       /PGRST202/i.test(details)
     );
+  };
+
+  const isRecordOrderPaymentNotFoundError = (err: any) => {
+    const code = String(err?.code || '');
+    const msg = String(err?.message || '');
+    return isRpcNotFoundError(err) || (code === '42883' && /record_order_payment/i.test(msg));
+  };
+
+  const attachRecordOrderPaymentDiagnostic = async (err: any) => {
+    if (!err || !isRecordOrderPaymentNotFoundError(err)) return err;
+    const existing = String((err as any)?.__diagnosticMessage || '').trim();
+    if (existing) return err;
+    try {
+      const checks = await Promise.all([
+        rpcHasFunction('public.record_order_payment'),
+        rpcHasFunction('public.record_order_payment(uuid,numeric,text,timestamptz,text)'),
+        rpcHasFunction('public.record_order_payment(uuid, numeric, text, timestamptz, text)'),
+        rpcHasFunction('public.record_order_payment(uuid,numeric,text,timestamptz)'),
+        rpcHasFunction('public.record_order_payment(uuid, numeric, text, timestamptz)'),
+      ]);
+      const exists = checks.some(Boolean);
+      (err as any).__diagnosticMessage = exists
+        ? 'خدمة تسجيل الدفعات موجودة على الخادم لكن غير متاحة عبر الـ API حالياً (صلاحية EXECUTE أو مخطط PostgREST قديم). ادفع/طبّق ترحيلات Supabase وتأكد من وجود: grant execute on function public.record_order_payment(...) to authenticated ثم أعد المحاولة.'
+        : 'خدمة تسجيل الدفعات غير موجودة على الخادم أو لم يتم تطبيق ترحيلات Supabase (migrations). ادفع/طبّق الترحيلات ثم أعد المحاولة.';
+    } catch {}
+    return err;
+  };
+
+  const rpcRecordOrderPayment = async (
+    supabase: any,
+    input: { orderId: string; amount: number; method: string; occurredAt: string; idempotencyKey?: string }
+  ): Promise<any> => {
+    const call = async (includeIdempotencyKey: boolean) => {
+      const base: any = {
+        p_order_id: input.orderId,
+        p_amount: input.amount,
+        p_method: input.method,
+        p_occurred_at: input.occurredAt,
+      };
+      if (includeIdempotencyKey) {
+        const key = String(input.idempotencyKey || '').trim();
+        if (key) {
+          base.p_idempotency_key = key;
+        } else {
+          includeIdempotencyKey = false;
+        }
+      }
+      const { error } = await supabase.rpc('record_order_payment', base);
+      return error;
+    };
+
+    let error = await call(true);
+    if (!error) return null;
+
+    if (isRecordOrderPaymentNotFoundError(error)) {
+      const reloaded = await reloadPostgrestSchema();
+      if (reloaded) error = await call(true);
+    }
+    if (!error) return null;
+
+    if (isRecordOrderPaymentNotFoundError(error)) {
+      error = await call(false);
+    }
+    if (!error) return null;
+
+    if (isRecordOrderPaymentNotFoundError(error)) {
+      const reloaded = await reloadPostgrestSchema();
+      if (reloaded) error = await call(false);
+    }
+    await attachRecordOrderPaymentDiagnostic(error);
+    return error;
+  };
+
+  const localizeRecordOrderPaymentError = (err: any) => {
+    const diag = String((err as any)?.__diagnosticMessage || '').trim();
+    if (diag) return diag;
+    if (isRecordOrderPaymentNotFoundError(err)) {
+      return 'خدمة تسجيل الدفعات غير مفعلة على الخادم أو لم يتم تحديث مخطط قاعدة البيانات. طبّق تحديثات Supabase (migrations) ثم أعد المحاولة.';
+    }
+    return localizeSupabaseError(err);
   };
 
   const rpcReserveStockForOrder = async (supabase: any, input: { items: any[]; orderId?: string | null; warehouseId?: string | null }) => {
@@ -405,10 +486,19 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       if (error) throw error;
       if (!row) return undefined;
       const base = (row.data || {}) as Order;
+      const colStatus = (row.status as OrderStatus) || undefined;
+      const dataStatus = (base as any).status as OrderStatus | undefined;
+      const resolvedStatus: OrderStatus =
+        (colStatus === 'pending' && dataStatus === 'delivered') ? 'delivered' : (colStatus || dataStatus || 'pending');
+      if (resolvedStatus === 'delivered' && colStatus !== 'delivered') {
+        try {
+          void supabase.from('orders').update({ status: 'delivered' }).eq('id', orderId);
+        } catch {}
+      }
       const enriched: Order = {
         ...base,
         id: String(row.id),
-        status: (row.status as OrderStatus) || base.status || 'pending',
+        status: resolvedStatus,
         createdAt: (row.created_at as string) || base.createdAt || new Date().toISOString(),
         deliveryZoneId: (row.delivery_zone_id as string) || base.deliveryZoneId,
       };
@@ -469,10 +559,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         warehouse_id: (order as any).warehouseId ?? null,
         data: order,
       };
-      payload.customer_auth_user_id = order.userId || (order.orderSource === 'in_store' ? adminUser?.id : undefined);
-      if (!payload.customer_auth_user_id) {
-        throw new Error('تعذر إنشاء الطلب: معرف المستخدم غير متوفر. تأكد من تسجيل الدخول (للبيع الحضوري: يجب أن تكون مسجلاً كمدير).');
-      }
+      payload.customer_auth_user_id = isUuid(order.userId) ? order.userId : null;
 
       const { error } = await supabase
         .from('orders')
@@ -489,6 +576,15 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       }
       throw err;
     }
+  }, []);
+
+  const ensureRemoteOrderStatus = useCallback(async (orderId: string, status: OrderStatus) => {
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+    try {
+      const { error } = await supabase.from('orders').update({ status }).eq('id', orderId);
+      if (error) throw error;
+    } catch {}
   }, []);
 
 
@@ -799,15 +895,28 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             if (error) throw error;
             const merged = (rows || []).map((r: any) => {
               const base = (r?.data || {}) as Order;
+              const colStatus = (r?.status as OrderStatus) || undefined;
+              const dataStatus = (base as any).status as OrderStatus | undefined;
+              const resolvedStatus: OrderStatus =
+                (colStatus === 'pending' && dataStatus === 'delivered') ? 'delivered' : (colStatus || dataStatus || 'pending');
               const enriched: Order = {
                 ...base,
                 id: String(r.id),
-                status: (r.status as OrderStatus) || base.status || 'pending',
+                status: resolvedStatus,
                 createdAt: typeof r.created_at === 'string' ? r.created_at : (base.createdAt || new Date().toISOString()),
                 deliveryZoneId: typeof r.delivery_zone_id === 'string' ? r.delivery_zone_id : base.deliveryZoneId,
               };
               return enriched;
             }).filter(Boolean);
+            const mismatchDeliveredIds = (rows || [])
+              .filter((r: any) => (String(r?.status || '').trim() === 'pending') && (String(r?.data?.status || '').trim() === 'delivered'))
+              .map((r: any) => String(r.id))
+              .filter(Boolean);
+            if (mismatchDeliveredIds.length > 0) {
+              try {
+                void supabase.from('orders').update({ status: 'delivered' }).in('id', mismatchDeliveredIds);
+              } catch {}
+            }
             merged.sort((a, b) => (String(b.createdAt || '')).localeCompare(String(a.createdAt || '')));
             setOrders(merged);
             setLoading(false);
@@ -1534,42 +1643,6 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const singleSenderPhone = paymentBreakdown.length === 1 ? (paymentBreakdown[0].senderPhone || '') : '';
     const singleDeclaredAmount = paymentBreakdown.length === 1 ? (Number(paymentBreakdown[0].declaredAmount) || 0) : 0;
 
-    // Prepare Invoice Snapshot immediately
-    const invoiceSnapshot: Order['invoiceSnapshot'] = {
-      issuedAt: nowIso,
-      invoiceNumber,
-      createdAt: nowIso,
-      orderSource: 'in_store',
-      items: items,
-      subtotal: computedSubtotal,
-      deliveryFee: 0,
-      deliveryZoneId: IN_STORE_DELIVERY_ZONE_ID,
-      discountAmount,
-      total: computedTotal,
-      paymentMethod: orderPaymentMethod,
-      paymentBreakdown: paymentBreakdown.map((p) => ({
-        method: p.method,
-        amount: p.amount,
-        referenceNumber: p.referenceNumber,
-        senderName: p.senderName,
-        senderPhone: p.senderPhone,
-        cashReceived: p.method === 'cash' ? (p.cashReceived > 0 ? p.cashReceived : undefined) : undefined,
-        cashChange: p.method === 'cash' && p.cashReceived > 0 ? Math.max(0, p.cashReceived - p.amount) : undefined,
-      })),
-      cashReceived,
-      cashChange,
-      paymentProofType: singleNeedsReference ? 'ref_number' : undefined,
-      paymentProof: singleNeedsReference ? singleReferenceNumber : undefined,
-      paymentSenderName: singleNeedsReference ? singleSenderName : undefined,
-      paymentSenderPhone: singleNeedsReference ? singleSenderPhone : undefined,
-      paymentDeclaredAmount: singleNeedsReference ? singleDeclaredAmount : undefined,
-      paymentVerifiedBy: singleNeedsReference ? adminUser?.id : undefined,
-      paymentVerifiedAt: singleNeedsReference ? nowIso : undefined,
-      customerName: input.customerName?.trim() || 'زبون حضوري',
-      phoneNumber: input.phoneNumber?.trim() || '',
-      address: 'داخل المحل',
-    };
-
     const promotionLines = (items as any[])
       .filter((it) => it?.lineType === 'promotion' || it?.promotionId)
       .map((it) => ({
@@ -1577,13 +1650,10 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         promotionLineId: String(it.promotionLineId || crypto.randomUUID()),
       }));
 
-      // Only mark as paid if it is actually fully paid, or if we are skipping validation (e.g. forced by UI)
-      // But for POS, we should rely on isFullyPaid.
-      const actuallyPaidAt = (canMarkPaidUi && isFullyPaid) ? nowIso : undefined;
-
-      const newOrder: Order = {
+    const shouldAttemptImmediatePayment = canMarkPaidUi;
+    const newOrder: Order = {
       id: crypto.randomUUID(),
-      userId: adminUser?.id,
+      userId: isUuid(input.customerId) ? input.customerId : undefined,
       orderSource: 'in_store',
       warehouseId,
       customerId: input.customerId || undefined,
@@ -1618,14 +1688,14 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       paymentDeclaredAmount: canMarkPaidUi && singleNeedsReference ? singleDeclaredAmount : undefined,
       paymentVerifiedBy: canMarkPaidUi && singleNeedsReference ? adminUser?.id : undefined,
       paymentVerifiedAt: canMarkPaidUi && singleNeedsReference ? nowIso : undefined,
-      status: offline ? 'pending' : (canMarkPaidUi ? 'delivered' : 'pending'),
+      status: offline ? 'pending' : (shouldAttemptImmediatePayment ? 'delivered' : 'pending'),
       createdAt: nowIso,
-      deliveredAt: offline ? undefined : (canMarkPaidUi ? nowIso : undefined),
-      paidAt: offline ? undefined : actuallyPaidAt,
+      deliveredAt: offline ? undefined : (shouldAttemptImmediatePayment ? nowIso : undefined),
+      paidAt: undefined,
       reviewPointsAwarded: false,
       invoiceNumber,
-      invoiceIssuedAt: offline ? undefined : (canMarkPaidUi ? nowIso : undefined),
-      invoiceSnapshot: canMarkPaidUi ? invoiceSnapshot : undefined,
+      invoiceIssuedAt: undefined,
+      invoiceSnapshot: undefined,
       invoicePrintCount: 0,
     };
 
@@ -1672,10 +1742,8 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         const sb1 = supabase!;
         const { data: invNum } = await sb1.rpc('assign_invoice_number_if_missing', { p_order_id: newOrder.id });
         if (typeof invNum === 'string' && invNum) {
+          invoiceNumber = invNum;
           newOrder.invoiceNumber = invNum;
-          if (newOrder.invoiceSnapshot) {
-            newOrder.invoiceSnapshot!.invoiceNumber = invNum;
-          }
         }
       }
     } catch {}
@@ -1721,67 +1789,126 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         console.error('In-store sale confirmation failed:', rpcError);
         throw new Error(localizeSupabaseError(rpcError));
       }
+
+      const refreshed = await fetchRemoteOrderById(newOrder.id);
+      if (refreshed?.status !== 'delivered') {
+        await ensureRemoteOrderStatus(newOrder.id, 'delivered');
+      }
     }
 
 
+    let paymentRecordOk = true;
     if (canMarkPaidUi) {
-      try {
-        const supabase = getSupabaseClient();
-        if (supabase) {
-          const sbPay = supabase!;
-          for (let i = 0; i < paymentBreakdown.length; i++) {
-            const p = paymentBreakdown[i];
-            const { error } = await sbPay.rpc('record_order_payment', {
-              p_order_id: newOrder.id,
-              p_amount: Number(p.amount) || 0,
-              p_method: p.method,
-              p_occurred_at: nowIso,
-              p_idempotency_key: `instore:${newOrder.id}:${nowIso}:${i}:${p.method}:${Number(p.amount) || 0}`,
-            });
-            if (error) {
-              if (import.meta.env.DEV) {
-                logger.warn('Failed to record payment for in-store sale:', error);
-              }
-            }
+      const sbPay = getSupabaseClient();
+      if (!sbPay) throw new Error('Supabase غير مهيأ.');
+      for (let i = 0; i < paymentBreakdown.length; i++) {
+        const p = paymentBreakdown[i];
+        const rpcErr = await rpcRecordOrderPayment(sbPay, {
+          orderId: newOrder.id,
+          amount: Number(p.amount) || 0,
+          method: p.method,
+          occurredAt: nowIso,
+          idempotencyKey: `instore:${newOrder.id}:${nowIso}:${i}:${p.method}:${Number(p.amount) || 0}`,
+        });
+        if (rpcErr) {
+          paymentRecordOk = false;
+          if (import.meta.env.DEV) {
+            logger.warn('Failed to record payment for in-store sale:', rpcErr);
           }
-        }
-      } catch (err) {
-        if (import.meta.env.DEV) {
-          logger.warn('Failed to record payment for in-store sale:', err);
+          break;
         }
       }
     }
 
-    if (canMarkPaidUi) {
-      await Promise.all([
-        addOrderEvent({
-          orderId: newOrder.id,
-          action: 'order.created',
-          actorType: 'admin',
-          actorId: adminUser?.id,
-          toStatus: newOrder.status,
-          createdAt: nowIso,
-          payload: {
-            orderSource: 'in_store',
-            paymentMethod: newOrder.paymentMethod,
-            paymentReferenceNumber: newOrder.paymentProof,
-            paymentSenderName: newOrder.paymentSenderName,
-            paymentDeclaredAmount: newOrder.paymentDeclaredAmount,
-            paymentBreakdown: newOrder.paymentBreakdown,
-            discountAmount,
-            total: newOrder.total,
-            invoiceNumber,
-          },
-        }),
-        addOrderEvent({
-          orderId: newOrder.id,
-          action: 'order.invoiceIssued',
-          actorType: 'system',
-          createdAt: nowIso,
-          payload: { invoiceNumber },
-        })
-      ]);
-    } else {
+    const paidAtIso = (canMarkPaidUi && paymentRecordOk && isFullyPaid) ? nowIso : undefined;
+    const shouldIssueInvoice = Boolean(paidAtIso);
+    const invoiceSnapshot: Order['invoiceSnapshot'] | undefined = shouldIssueInvoice ? {
+      issuedAt: nowIso,
+      invoiceNumber,
+      createdAt: nowIso,
+      orderSource: 'in_store',
+      items: items,
+      subtotal: computedSubtotal,
+      deliveryFee: 0,
+      deliveryZoneId: IN_STORE_DELIVERY_ZONE_ID,
+      discountAmount,
+      total: computedTotal,
+      paymentMethod: orderPaymentMethod,
+      paymentBreakdown: paymentBreakdown.map((p) => ({
+        method: p.method,
+        amount: p.amount,
+        referenceNumber: p.referenceNumber,
+        senderName: p.senderName,
+        senderPhone: p.senderPhone,
+        cashReceived: p.method === 'cash' ? (p.cashReceived > 0 ? p.cashReceived : undefined) : undefined,
+        cashChange: p.method === 'cash' && p.cashReceived > 0 ? Math.max(0, p.cashReceived - p.amount) : undefined,
+      })),
+      cashReceived,
+      cashChange,
+      paymentProofType: singleNeedsReference ? 'ref_number' : undefined,
+      paymentProof: singleNeedsReference ? singleReferenceNumber : undefined,
+      paymentSenderName: singleNeedsReference ? singleSenderName : undefined,
+      paymentSenderPhone: singleNeedsReference ? singleSenderPhone : undefined,
+      paymentDeclaredAmount: singleNeedsReference ? singleDeclaredAmount : undefined,
+      paymentVerifiedBy: singleNeedsReference ? adminUser?.id : undefined,
+      paymentVerifiedAt: singleNeedsReference ? nowIso : undefined,
+      customerName: input.customerName?.trim() || 'زبون حضوري',
+      phoneNumber: input.phoneNumber?.trim() || '',
+      address: 'داخل المحل',
+    } : undefined;
+
+    const finalized: Order = {
+      ...newOrder,
+      paidAt: paidAtIso,
+      invoiceIssuedAt: shouldIssueInvoice ? nowIso : undefined,
+      invoiceSnapshot: invoiceSnapshot,
+    };
+
+    await Promise.all([
+      addOrderEvent({
+        orderId: newOrder.id,
+        action: 'order.created',
+        actorType: 'admin',
+        actorId: adminUser?.id,
+        toStatus: newOrder.status,
+        createdAt: nowIso,
+        payload: {
+          orderSource: 'in_store',
+          paymentMethod: newOrder.paymentMethod,
+          paymentReferenceNumber: newOrder.paymentProof,
+          paymentSenderName: newOrder.paymentSenderName,
+          paymentDeclaredAmount: newOrder.paymentDeclaredAmount,
+          paymentBreakdown: newOrder.paymentBreakdown,
+          discountAmount,
+          total: newOrder.total,
+          invoiceNumber,
+          paymentRecordOk,
+        },
+      }),
+      ...(shouldIssueInvoice ? [addOrderEvent({
+        orderId: newOrder.id,
+        action: 'order.invoiceIssued',
+        actorType: 'system',
+        createdAt: nowIso,
+        payload: { invoiceNumber },
+      })] : []),
+    ]);
+
+    if (shouldIssueInvoice) {
+      await updateRemoteOrder(finalized);
+    }
+
+    if (canMarkPaidUi && !paymentRecordOk) {
+      setOrders(prev => [finalized, ...prev]);
+      return finalized;
+    }
+
+    if (shouldIssueInvoice) {
+      setOrders(prev => [finalized, ...prev]);
+      return finalized;
+    }
+
+    if (!canMarkPaidUi) {
       await addOrderEvent({
         orderId: newOrder.id,
         action: 'order.created',
@@ -1796,18 +1923,19 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           awaitingPayment: true,
         },
       });
+      setOrders(prev => [newOrder, ...prev]);
+      return newOrder;
     }
 
-    logAudit('instore_sale_created', `In-store sale created #${invoiceNumber}`, { 
-        orderId: newOrder.id, 
-        total: newOrder.total, 
-        itemsCount: items.length 
+    logAudit('instore_sale_created', `In-store sale created #${invoiceNumber}`, {
+      orderId: newOrder.id,
+      total: newOrder.total,
+      itemsCount: items.length
     });
 
-    setOrders(prev => [newOrder, ...prev]);
+    setOrders(prev => [finalized, ...prev]);
 
-    // await fetchOrders();
-    return newOrder;
+    return finalized;
   };
 
   const createInStorePendingOrder = async (input: {
@@ -1922,7 +2050,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const nowIso = new Date().toISOString();
     const newOrder: Order = {
       id: crypto.randomUUID(),
-      userId: adminUser?.id,
+      userId: isUuid(input.customerId) ? input.customerId : undefined,
       orderSource: 'in_store',
       warehouseId,
       customerId: input.customerId || undefined,
@@ -2061,7 +2189,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const nowIso = new Date().toISOString();
     const newOrder: Order = {
       id: crypto.randomUUID(),
-      userId: adminUser?.id,
+      userId: isUuid(input.customerId) ? input.customerId : undefined,
       orderSource: 'in_store',
       warehouseId,
       customerId: input.customerId || undefined,
@@ -2145,21 +2273,23 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     if (rpcError) {
       throw new Error(localizeSupabaseError(rpcError));
     }
+    const refreshed = await fetchRemoteOrderById(existing.id);
+    if (refreshed?.status !== 'delivered') {
+      await ensureRemoteOrderStatus(existing.id, 'delivered');
+    }
     const breakdown = (payment.paymentBreakdown || [
       { method: payment.paymentMethod, amount: existing.total || 0 }
     ]).filter(p => (Number(p.amount) || 0) > 0);
     for (let i = 0; i < breakdown.length; i++) {
       const p = breakdown[i];
-      const { error } = await supabase.rpc('record_order_payment', {
-        p_order_id: existing.id,
-        p_amount: Number(p.amount) || 0,
-        p_method: p.method,
-        p_occurred_at: payment.occurredAt || nowIso,
-        p_idempotency_key: `resume:${existing.id}:${payment.occurredAt || nowIso}:${i}:${p.method}:${Number(p.amount) || 0}`,
+      const error = await rpcRecordOrderPayment(supabase, {
+        orderId: existing.id,
+        amount: Number(p.amount) || 0,
+        method: p.method,
+        occurredAt: payment.occurredAt || nowIso,
+        idempotencyKey: `resume:${existing.id}:${payment.occurredAt || nowIso}:${i}:${p.method}:${Number(p.amount) || 0}`,
       });
-      if (error) {
-        throw new Error(localizeSupabaseError(error));
-      }
+      if (error) throw new Error(localizeRecordOrderPaymentError(error));
     }
     await ensureInvoiceIssued(updatedDelivered, nowIso);
     setOrders(prev => prev.map(o => (o.id === existing.id ? { ...updatedDelivered } : o)));
@@ -2302,7 +2432,12 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       }
     }
 
-    if (!isAllowedTransition(existing.status, status)) {
+    const isInStore = String((existing as any).orderSource || '').trim() === 'in_store';
+    if (isInStore && status === 'out_for_delivery') {
+      throw new Error('لا يمكن تعيين حالة "في الطريق" لبيع حضوري.');
+    }
+    const allowFastInStoreDelivery = isInStore && existing.status === 'pending' && status === 'delivered';
+    if (!allowFastInStoreDelivery && !isAllowedTransition(existing.status, status)) {
       throw new Error('تغيير الحالة غير مسموح.');
     }
 
@@ -2449,6 +2584,11 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           console.error('Delivery confirmation failed:', rpcError);
           throw new Error(localizeSupabaseError(rpcError));
         }
+      } else {
+        const refreshed = await fetchRemoteOrderById(updated.id);
+        if (refreshed?.status !== 'delivered') {
+          await ensureRemoteOrderStatus(updated.id, 'delivered');
+        }
       }
     }
     if (willCancel) {
@@ -2489,28 +2629,20 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             // Credit sale path: لا يتم التحصيل هنا، يبقى بانتظار التحصيل
             paidAtIso = undefined;
           } else if (remaining > 0) {
-            const { error } = await supabase.rpc('record_order_payment', {
-              p_order_id: updated.id,
-              p_amount: remaining,
-              p_method: updated.paymentMethod,
-              p_occurred_at: nowIso,
-              p_idempotency_key: `delivery:${updated.id}:${nowIso}:${Number(remaining) || 0}`,
+            const error = await rpcRecordOrderPayment(supabase, {
+              orderId: updated.id,
+              amount: remaining,
+              method: updated.paymentMethod,
+              occurredAt: nowIso,
+              idempotencyKey: `delivery:${updated.id}:${nowIso}:${Number(remaining) || 0}`,
             });
             if (error) {
               const isOffline = typeof navigator !== 'undefined' && navigator.onLine === false;
               if (isOffline || isAbortLikeError(error)) {
-                // Offline: إبقاء السلوك كما هو عبر الطابور، مع السماح بضبط paidAt
-                enqueueRpc('record_order_payment', {
-                  p_order_id: updated.id,
-                  p_amount: remaining,
-                  p_method: updated.paymentMethod,
-                  p_occurred_at: nowIso,
-                  p_idempotency_key: `delivery:${updated.id}:${nowIso}:${Number(remaining) || 0}`,
-                });
-                paidAtIso = nowIso;
-              } else {
-                // الأكثر أمانًا محاسبيًا: إيقاف العملية بدون ضبط paidAt إذا فشل تسجيل الدفع
-                throw new Error('تعذر تسجيل الدفعة عند التسليم (غير COD). لن يتم ضبط وقت الدفع paidAt.');
+                throw new Error('تعذر تسجيل الدفع بسبب الاتصال. أعد المحاولة عند توفر الإنترنت.');
+              }
+              if (!isRecordOrderPaymentNotFoundError(error)) {
+                throw new Error(localizeRecordOrderPaymentError(error));
               }
             } else {
               paidAtIso = nowIso;
@@ -2604,45 +2736,39 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           return;
         }
 
-        const updates: Partial<Order> = { paidAt: existing.paidAt || nowIso };
+        const paidAlready = await fetchOrderPaidAmount(existing.id);
+        const remaining = Math.max(0, (Number(existing.total) || 0) - paidAlready);
+        if (remaining > 0) {
+          const error = await rpcRecordOrderPayment(supabase, {
+            orderId: existing.id,
+            amount: remaining,
+            method: existing.paymentMethod,
+            occurredAt: nowIso,
+            idempotencyKey: `markPaid:${existing.id}:${nowIso}:${Number(remaining) || 0}`,
+          });
+          if (error) {
+            const isOffline = typeof navigator !== 'undefined' && navigator.onLine === false;
+            if (isOffline || isAbortLikeError(error)) {
+              throw new Error('تعذر تسجيل الدفع بسبب الاتصال. أعد المحاولة عند توفر الإنترنت.');
+            }
+            throw new Error(localizeRecordOrderPaymentError(error));
+          }
+        }
+
+        const paidAtIso = existing.paidAt || nowIso;
+        const updated = { ...existing, paidAt: paidAtIso } as Order;
+
         await addOrderEvent({
           orderId,
           action: 'order.markedPaid',
           actorType: 'admin',
           actorId: adminUser?.id,
-          createdAt: updates.paidAt,
+          createdAt: paidAtIso,
           payload: { paymentMethod: existing.paymentMethod },
         });
 
-        const updated = { ...existing, ...updates } as Order;
-        await ensureInvoiceIssued(updated, updates.paidAt);
+        await ensureInvoiceIssued(updated, paidAtIso);
         await updateRemoteOrder(updated);
-
-        const paidAlready = await fetchOrderPaidAmount(updated.id);
-        const remaining = Math.max(0, (Number(updated.total) || 0) - paidAlready);
-        if (remaining > 0) {
-          const { error } = await supabase.rpc('record_order_payment', {
-            p_order_id: updated.id,
-            p_amount: remaining,
-            p_method: updated.paymentMethod,
-            p_occurred_at: updates.paidAt,
-            p_idempotency_key: `markPaid:${updated.id}:${updates.paidAt}:${Number(remaining) || 0}`,
-          });
-          if (error) {
-            const isOffline = typeof navigator !== 'undefined' && navigator.onLine === false;
-            if (isOffline || isAbortLikeError(error)) {
-              enqueueRpc('record_order_payment', {
-                p_order_id: updated.id,
-                p_amount: remaining,
-                p_method: updated.paymentMethod,
-                p_occurred_at: updates.paidAt,
-                p_idempotency_key: `markPaid:${updated.id}:${updates.paidAt}:${Number(remaining) || 0}`,
-              });
-            } else {
-              throw error;
-            }
-          }
-        }
       }
     } catch (err) {
       if (import.meta.env.DEV) {
@@ -2650,8 +2776,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       }
       throw err;
     }
-    const updates: Partial<Order> = { paidAt: existing.paidAt || nowIso };
-    const updated = { ...existing, ...updates } as Order;
+    const updated = { ...existing, paidAt: existing.paidAt || nowIso } as Order;
     setOrders(prev => prev.map(o => (o.id === updated.id ? updated : o)));
     // await fetchOrders();
   };
@@ -2683,28 +2808,19 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       if (!supabase) {
         throw new Error('Supabase غير مهيأ.');
       }
-      try {
-        const { error } = await supabase.rpc('record_order_payment', {
-          p_order_id: existing.id,
-          p_amount: numericAmount,
-          p_method: methodValue,
-          p_occurred_at: occurredAtIso,
-          p_idempotency_key: `partial:${existing.id}:${occurredAtIso}:${Number(numericAmount) || 0}`,
-        });
-        if (error) throw error;
-      } catch (err) {
+      const error = await rpcRecordOrderPayment(supabase, {
+        orderId: existing.id,
+        amount: numericAmount,
+        method: methodValue,
+        occurredAt: occurredAtIso,
+        idempotencyKey: `partial:${existing.id}:${occurredAtIso}:${Number(numericAmount) || 0}`,
+      });
+      if (error) {
         const isOffline = typeof navigator !== 'undefined' && navigator.onLine === false;
-        if (isOffline || isAbortLikeError(err)) {
-          enqueueRpc('record_order_payment', {
-            p_order_id: existing.id,
-            p_amount: numericAmount,
-            p_method: methodValue,
-            p_occurred_at: occurredAtIso,
-            p_idempotency_key: `partial:${existing.id}:${occurredAtIso}:${Number(numericAmount) || 0}`,
-          });
-        } else {
-          throw new Error(localizeSupabaseError(err));
+        if (isOffline || isAbortLikeError(error)) {
+          throw new Error('تعذر تسجيل الدفع بسبب الاتصال. أعد المحاولة عند توفر الإنترنت.');
         }
+        throw new Error(localizeRecordOrderPaymentError(error));
       }
     },
     [addOrderEvent, adminUser?.id, fetchRemoteOrderById, orders]

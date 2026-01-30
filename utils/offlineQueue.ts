@@ -40,6 +40,7 @@ const isRpcNotFoundError = (err: any) => {
   const status = (err as any)?.status;
   return (
     code === 'PGRST202' ||
+    code === '42883' ||
     status === 404 ||
     /Could not find the function/i.test(msg) ||
     /PGRST202/i.test(details)
@@ -101,6 +102,15 @@ const callRpcWithFallback = async (
         p_updated_data: payload.p_updated_data ?? payload.updated_data ?? {},
         p_warehouse_id: payload.p_warehouse_id ?? payload.warehouse_id ?? payload.warehouseId,
       });
+      if (!res.error || !isRpcNotFoundError(res.error)) return res;
+    }
+  }
+
+  if (name === 'record_order_payment') {
+    if ((args as any) && typeof args === 'object' && 'p_idempotency_key' in (args as any)) {
+      const nextArgs: any = { ...(args as any) };
+      delete nextArgs.p_idempotency_key;
+      res = await run(nextArgs);
       if (!res.error || !isRpcNotFoundError(res.error)) return res;
     }
   }
