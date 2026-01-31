@@ -5,6 +5,7 @@ import { useToast } from '../contexts/ToastContext';
 import { useOrders } from '../contexts/OrderContext';
 import { useCashShift } from '../contexts/CashShiftContext';
 import { useUserAuth } from '../contexts/UserAuthContext';
+import { useAuth } from '../contexts/AuthContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { getSupabaseClient, reloadPostgrestSchema } from '../supabase';
 import { isAbortLikeError, localizeSupabaseError } from '../utils/errorUtils';
@@ -23,6 +24,7 @@ const POSScreen: React.FC = () => {
   const { orders, createInStoreSale, createInStorePendingOrder, resumeInStorePendingOrder, cancelInStorePendingOrder } = useOrders();
   const { currentShift } = useCashShift();
   const { customers, fetchCustomers } = useUserAuth();
+  const { hasPermission, user } = useAuth();
   const { settings } = useSettings();
   const { activePromotions, refreshActivePromotions, applyPromotionToCart } = usePromotions();
   const sessionScope = useSessionScope();
@@ -30,6 +32,7 @@ const POSScreen: React.FC = () => {
   const [discountType, setDiscountType] = useState<'amount' | 'percent'>('amount');
   const [discountValue, setDiscountValue] = useState<number>(0);
   const [pendingOrderId, setPendingOrderId] = useState<string | null>(null);
+  const [processing, setProcessing] = useState(false);
   const [customerName, setCustomerName] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [customerQuery, setCustomerQuery] = useState('');
@@ -616,6 +619,7 @@ const POSScreen: React.FC = () => {
   const handleHold = () => {
     if (items.length === 0) return;
     if (pendingOrderId) return;
+    if (processing) return;
     if (hasPromotionLines) {
       showNotification('لا يمكن تعليق فاتورة تحتوي عروض.', 'error');
       return;
@@ -624,6 +628,7 @@ const POSScreen: React.FC = () => {
       showNotification('لا يمكن تعليق الفاتورة قبل تأكيد التسعير من الخادم.', 'error');
       return;
     }
+    setProcessing(true);
     const lines = items.map(i => {
       const isWeight = i.unitType === 'kg' || i.unitType === 'gram';
       const addons: Record<string, number> = {};
@@ -652,11 +657,15 @@ const POSScreen: React.FC = () => {
     }).catch(err => {
       const msg = err instanceof Error ? err.message : 'فشل تعليق الفاتورة';
       showNotification(msg, 'error');
+    }).finally(() => {
+      setProcessing(false);
     });
   };
 
   const handleCancelHold = () => {
     if (!pendingOrderId) return;
+    if (processing) return;
+    setProcessing(true);
     cancelInStorePendingOrder(pendingOrderId).then(() => {
       showNotification('تم إلغاء التعليق وإفراج الحجز', 'info');
       if (draftInvoice) {
@@ -683,6 +692,8 @@ const POSScreen: React.FC = () => {
     }).catch(err => {
       const msg = err instanceof Error ? err.message : 'فشل إلغاء التعليق';
       showNotification(msg, 'error');
+    }).finally(() => {
+      setProcessing(false);
     });
   };
 
@@ -742,6 +753,14 @@ const POSScreen: React.FC = () => {
   const loadPendingTicket = (orderId: string) => {
     const ticket = pendingTickets.find(o => o.id === orderId);
     if (!ticket) return;
+    if (processing) return;
+    // Just state updates, no async needed here usually, but if there were, we'd use processing.
+    // However, loading a ticket is instant from memory.
+    // Wait, if pendingOrderId is already set, we might be switching.
+    // But let's check if we need to do anything async.
+    // It seems purely local.
+    // But to be safe against glitches if we add async later.
+    // Actually, no async call here.
     if (!pendingOrderId) {
       const hasDraftContent =
         items.length > 0 ||
@@ -789,6 +808,7 @@ const POSScreen: React.FC = () => {
 
   const handleFinalize = (payload: { paymentMethod: string; paymentBreakdown: Array<{ method: string; amount: number; referenceNumber?: string; senderName?: string; senderPhone?: string; declaredAmount?: number; amountConfirmed?: boolean; cashReceived?: number; }> }) => {
     if (items.length === 0) return;
+    if (processing) return;
     const breakdown = (payload.paymentBreakdown || []).filter(p => (Number(p.amount) || 0) > 0);
     const hasCash = breakdown.some(p => p.method === 'cash');
     if (!(total > 0)) return;
@@ -799,6 +819,7 @@ const POSScreen: React.FC = () => {
     if (!hasCash && !currentShift) {
       showNotification('تحذير: لا توجد وردية مفتوحة. الدفع غير النقدي مسموح.', 'info');
     }
+    setProcessing(true);
     const lines = items.map((i: any) => {
       if (isPromotionLine(i)) {
         return {
@@ -852,11 +873,15 @@ const POSScreen: React.FC = () => {
       }).catch(err => {
         const msg = err instanceof Error ? err.message : 'فشل إتمام الطلب المستأنف';
         showNotification(msg, 'error');
+      }).finally(() => {
+        setProcessing(false);
       });
     } else {
-      if (discountAmount > 0) {
+      const canBypassApproval = user?.role === 'owner' || user?.role === 'manager' || hasPermission('approvals.manage');
+      if (discountAmount > 0 && !canBypassApproval) {
         if (hasPromotionLines) {
           showNotification('لا يمكن طلب موافقة خصم لفاتورة تحتوي عروض.', 'error');
+          setProcessing(false);
           return;
         }
         createInStorePendingOrder({
@@ -901,6 +926,8 @@ const POSScreen: React.FC = () => {
         }).catch(err => {
           const msg = err instanceof Error ? err.message : 'فشل طلب موافقة الخصم';
           showNotification(msg, 'error');
+        }).finally(() => {
+          setProcessing(false);
         });
         return;
       }
@@ -966,6 +993,8 @@ const POSScreen: React.FC = () => {
       }).catch(err => {
         const msg = err instanceof Error ? err.message : 'فشل إتمام الطلب';
         showNotification(msg, 'error');
+      }).finally(() => {
+        setProcessing(false);
       });
     }
   };
@@ -1160,7 +1189,10 @@ const POSScreen: React.FC = () => {
                       </button>
                       <button
                         type="button"
+                        disabled={processing}
                         onClick={() => {
+                          if (processing) return;
+                          setProcessing(true);
                           cancelInStorePendingOrder(t.id)
                             .then(() => {
                               showNotification('تم إلغاء التعليق وإفراج الحجز', 'info');
@@ -1178,9 +1210,10 @@ const POSScreen: React.FC = () => {
                                 }
                               }
                             })
-                            .catch(err => showNotification(err instanceof Error ? err.message : 'فشل إلغاء التعليق', 'error'));
+                            .catch(err => showNotification(err instanceof Error ? err.message : 'فشل إلغاء التعليق', 'error'))
+                            .finally(() => setProcessing(false));
                         }}
-                        className={`${touchMode ? 'px-5 py-4 text-base' : 'px-3 py-2 text-sm'} rounded-lg bg-red-500 text-white font-semibold`}
+                        className={`${touchMode ? 'px-5 py-4 text-base' : 'px-3 py-2 text-sm'} rounded-lg bg-red-500 text-white font-semibold disabled:opacity-50`}
                       >
                         إلغاء
                       </button>

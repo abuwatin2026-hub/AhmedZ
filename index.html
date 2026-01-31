@@ -24,6 +24,28 @@
   <body class="bg-gray-50 dark:bg-gray-950">
     <div id="root"></div>
     
+    <!-- Error Overlay for debugging white screens -->
+    <div id="debug-error-overlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:white; color:red; z-index:99999; padding:20px; overflow:auto; font-family:monospace; white-space:pre-wrap; text-align:left; direction:ltr;"></div>
+    <script>
+      (function() {
+        var overlay = document.getElementById('debug-error-overlay');
+        function showError(title, details) {
+          if (!overlay) return;
+          overlay.style.display = 'block';
+          overlay.innerHTML += '<h3>' + title + '</h3><pre>' + details + '</pre><hr>';
+        }
+        window.addEventListener('error', function(e) {
+          showError('Uncaught Error', (e.message || e) + '\n' + (e.error ? e.error.stack : ''));
+        });
+        window.addEventListener('unhandledrejection', function(e) {
+          var reason = e.reason;
+          var msg = reason instanceof Error ? reason.message : String(reason);
+          var stack = reason instanceof Error ? reason.stack : '';
+          showError('Unhandled Promise Rejection', msg + '\n' + stack);
+        });
+      })();
+    </script>
+    
     <!-- Dev-only: Unregister any existing service workers and clear caches to avoid HMR issues -->
     <script type="module">
       if (import.meta && import.meta.env && import.meta.env.DEV) {
