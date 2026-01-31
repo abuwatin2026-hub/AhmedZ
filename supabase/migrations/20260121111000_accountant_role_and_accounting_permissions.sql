@@ -192,7 +192,7 @@ using (
         and au.is_active = true
         and au.role = 'delivery'
     )
-    and ((data->>'assignedDeliveryUserId') = auth.uid()::text)
+    and (nullif(data->>'assignedDeliveryUserId','')::uuid = auth.uid())
   )
 );
 
@@ -225,7 +225,7 @@ using (
               and au.is_active = true
               and au.role = 'delivery'
           )
-          and ((o.data->>'assignedDeliveryUserId') = auth.uid()::text)
+          and (nullif(o.data->>'assignedDeliveryUserId','')::uuid = auth.uid())
         )
       )
   )
@@ -771,4 +771,3 @@ $$;
 revoke all on function public.ap_aging_summary(date) from public;
 revoke execute on function public.ap_aging_summary(date) from anon;
 grant execute on function public.ap_aging_summary(date) to authenticated;
-

@@ -532,12 +532,17 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         payload.warehouse_id = (order as any).warehouseId;
       }
 
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('orders')
         .update(payload)
-        .eq('id', order.id);
+        .eq('id', order.id)
+        .select('id');
 
       if (error) throw error;
+      const updatedId = Array.isArray(data) && data[0] ? String((data[0] as any).id || '') : '';
+      if (!updatedId) {
+        throw new Error('لم يتم تحديث الطلب (قد تكون الصلاحيات تمنع التعديل).');
+      }
     } catch (err) {
       console.error('Failed to update order:', err);
       throw new Error(localizeSupabaseError(err));
@@ -2376,7 +2381,17 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     if (releaseErr) {
       throw new Error(localizeSupabaseError(releaseErr));
     }
-    await supabase.from('orders').delete().eq('id', existing.id);
+    const { data: deleted, error: deleteErr } = await supabase
+      .from('orders')
+      .delete()
+      .eq('id', existing.id)
+      .select('id');
+    if (deleteErr) {
+      throw new Error(localizeSupabaseError(deleteErr));
+    }
+    if (!Array.isArray(deleted) || deleted.length === 0) {
+      throw new Error('لم يتم حذف الطلب (قد تكون الصلاحيات تمنع الحذف).');
+    }
     setOrders(prev => prev.filter(o => o.id !== existing.id));
   };
 
@@ -2572,6 +2587,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     });
     let deliveredSnapshot: Order | undefined;
     let deliveryQueued = false;
+    let cancelQueued = false;
     if (willDeliver) {
       const updated = { ...existing, ...updates } as Order;
       
@@ -2691,6 +2707,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             p_order_id: updated.id,
             p_reason: '',
           });
+          cancelQueued = true;
         } else {
           console.error('Order cancellation failed:', rpcError);
           throw new Error(localizeSupabaseError(rpcError));
@@ -2700,6 +2717,9 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
     if (deliveryQueued) {
       throw new Error('تمت إضافة عملية التسليم إلى الطابور. سيتم الخصم والتأكيد عند توفر الاتصال.');
+    }
+    if (cancelQueued) {
+      throw new Error('تمت إضافة عملية الإلغاء إلى الطابور. سيتم تأكيد الإلغاء عند توفر الاتصال.');
     }
     if (willDeliver) {
       let updated = { ...existing, ...updates } as Order;

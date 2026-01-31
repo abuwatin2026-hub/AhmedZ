@@ -30,7 +30,7 @@ USING (
     where au.auth_user_id = auth.uid() 
       and au.is_active = true 
       and au.role = 'delivery'
-  ) AND ((data->>'assignedDeliveryUserId') = auth.uid()::text))
+  ) AND (nullif(data->>'assignedDeliveryUserId','')::uuid = auth.uid()))
 );
 
 -- 3) تحديث سياسة عرض أحداث الطلبات بما يتوافق مع سياسة الطلبات
@@ -60,7 +60,7 @@ USING (
             where au.auth_user_id = auth.uid() 
               and au.is_active = true 
               and au.role = 'delivery'
-        ) AND ((o.data->>'assignedDeliveryUserId') = auth.uid()::text))
+        ) AND (nullif(o.data->>'assignedDeliveryUserId','')::uuid = auth.uid()))
     )
   )
 );

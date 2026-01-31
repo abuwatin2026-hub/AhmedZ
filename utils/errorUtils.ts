@@ -17,7 +17,14 @@ export const isAbortLikeError = (error: unknown): boolean => {
   const msg = resolveErrorMessage(error);
   const raw = msg.trim().toLowerCase();
   if (!raw) return false;
-  return /(^|\b)(abort|aborted|aborterror)(\b|$)/i.test(raw) || raw.includes('err_aborted') || raw.includes('the user aborted') || raw.includes('request aborted') || raw.includes('canceled') || raw.includes('cancelled');
+  if (raw.includes('err_aborted')) return true;
+  if (raw.includes('the user aborted')) return true;
+  if (raw.includes('request aborted')) return true;
+  if (raw.includes('aborterror')) return true;
+  if (raw.includes('aborted a request')) return true;
+  // Some libs report request cancellation as "canceled"; avoid matching order status text like "cancelled".
+  if (raw.includes('canceled') && (raw.includes('request') || raw.includes('fetch') || raw.includes('navigation'))) return true;
+  return /(^|\b)abort(ed)?(\b|$)/i.test(raw);
 };
 
 export const localizeError = (message: string): string => {

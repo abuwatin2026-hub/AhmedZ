@@ -24,7 +24,7 @@ using (
     where au.auth_user_id = auth.uid() 
       and au.is_active = true 
       and au.role = 'delivery'
-  ) AND ((data->>'assignedDeliveryUserId') = auth.uid()::text))
+  ) AND (nullif(data->>'assignedDeliveryUserId','')::uuid = auth.uid()))
 );
 -- Also secure order_events
 drop policy if exists order_events_select_own_or_admin on public.order_events;
@@ -51,7 +51,7 @@ using (
             where au.auth_user_id = auth.uid() 
             and au.is_active = true 
             and au.role = 'delivery'
-        ) AND ((o.data->>'assignedDeliveryUserId') = auth.uid()::text))
+        ) AND (nullif(o.data->>'assignedDeliveryUserId','')::uuid = auth.uid()))
     )
   )
 );

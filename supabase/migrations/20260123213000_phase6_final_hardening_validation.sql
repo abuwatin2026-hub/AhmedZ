@@ -349,8 +349,14 @@ begin
       raise exception 'Stock record not found for item % in warehouse %', v_item_id_text, p_warehouse_id;
     end if;
 
-    if (v_available + 1e-9) < v_requested then
-      raise exception 'Insufficient stock for item % in warehouse % (available %, requested %)', v_item_id_text, p_warehouse_id, v_available, v_requested;
+    if coalesce(v_is_in_store, false) then
+      if ((v_available - v_reserved) + 1e-9) < v_requested then
+        raise exception 'Insufficient free stock for item % in warehouse % (available %, reserved %, requested %)', v_item_id_text, p_warehouse_id, v_available, v_reserved, v_requested;
+      end if;
+    else
+      if (v_available + 1e-9) < v_requested then
+        raise exception 'Insufficient stock for item % in warehouse % (available %, requested %)', v_item_id_text, p_warehouse_id, v_available, v_requested;
+      end if;
     end if;
 
     if not coalesce(v_is_in_store, false) then
