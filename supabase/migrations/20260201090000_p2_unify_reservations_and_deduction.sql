@@ -1,3 +1,6 @@
+drop function if exists public.deduct_stock_on_delivery_v2(uuid, jsonb, uuid);
+drop function if exists public.reserve_stock_for_order(jsonb, uuid, uuid);
+
 create or replace function public.reserve_stock_for_order(
   p_items jsonb,
   p_order_id uuid default null,

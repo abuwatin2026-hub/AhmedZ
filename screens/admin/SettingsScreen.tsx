@@ -18,6 +18,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import * as Icons from '../../components/icons';
 import { Link } from 'react-router-dom';
 import { useSessionScope } from '../../contexts/SessionScopeContext';
+import { localizeSupabaseError } from '../../utils/errorUtils';
 
 const SettingsScreen: React.FC = () => {
   const { settings, updateSettings } = useSettings();
@@ -46,6 +47,7 @@ const SettingsScreen: React.FC = () => {
     isActive: true,
   });
   const [accounts, setAccounts] = useState<any[]>([]);
+  const [accountsError, setAccountsError] = useState<string>('');
   const accountingLabels: Record<string, string> = {
     sales: 'مبيعات',
     sales_returns: 'مرتجعات المبيعات',
@@ -70,8 +72,26 @@ const SettingsScreen: React.FC = () => {
     const fetchAccounts = async () => {
         const supabase = getSupabaseClient();
         if(!supabase) return;
-        const { data } = await supabase.from('chart_of_accounts').select('*').eq('is_active', true);
-        if(data) setAccounts(data);
+        setAccountsError('');
+        try {
+          const { data, error } = await supabase
+            .from('chart_of_accounts')
+            .select('id,code,name,account_type,normal_balance,is_active')
+            .eq('is_active', true)
+            .order('code', { ascending: true });
+          if (error) {
+            setAccountsError(localizeSupabaseError(error));
+            const { data: rpcData, error: rpcError } = await supabase.rpc('list_active_accounts');
+            if (!rpcError && Array.isArray(rpcData)) {
+              setAccounts(rpcData as any[]);
+              setAccountsError('');
+            }
+            return;
+          }
+          if (Array.isArray(data)) setAccounts(data as any[]);
+        } catch (e) {
+          setAccountsError(localizeSupabaseError(e));
+        }
     };
     fetchAccounts();
   }, []);
@@ -1738,6 +1758,13 @@ const SettingsScreen: React.FC = () => {
           <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4 border-r-4 rtl:border-l-4 rtl:border-r-0 border-gold-500 pr-4 rtl:pr-0 rtl:pl-4">
             إعدادات الحسابات المحاسبية
           </h2>
+          {accountsError && (
+            <div className="mb-4 p-3 rounded-lg bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-200">
+              {accountsError}
+              <span className="mx-2">—</span>
+              <Link to="/admin/profile" className="underline text-blue-600 dark:text-blue-300">إدارة المستخدمين</Link>
+            </div>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
              {['sales', 'sales_returns', 'inventory', 'cogs', 'ar', 'ap', 'vat_payable', 'vat_recoverable', 'cash', 'bank', 'deposits', 'expenses', 'shrinkage', 'gain', 'delivery_income', 'sales_discounts', 'over_short'].map(key => (
                  <div key={key}>

@@ -99,6 +99,12 @@ serve(async (req) => {
                 { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
             )
         }
+        if (normalizedRole.toLowerCase() === 'owner') {
+            return new Response(
+                JSON.stringify({ error: 'لا يمكن إنشاء مستخدم بدور المالك.' }),
+                { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
+        }
 
         // 0. Verify Auth User (Security Layer) - Support both standard Bearer and custom header to bypass Gateway issues
         let token = req.headers.get('x-user-token')
