@@ -124,7 +124,26 @@ const ApprovalsScreen: React.FC = () => {
       showNotification('تم اعتماد الخطوة.', 'success');
       await load();
     } catch (e) {
-      showNotification(localizeSupabaseError(e) || 'تعذر اعتماد الخطوة.', 'error');
+      const localized = localizeSupabaseError(e) || '';
+      const rawMessage = String((e as any)?.message || '');
+      const raw = String(rawMessage || localized || '').toLowerCase();
+      const isSelfApproval =
+        raw.includes('self_approval_forbidden') ||
+        raw.includes('not authorized') ||
+        localized.includes('ليس لديك صلاحية تنفيذ هذا الإجراء');
+
+      if (isSelfApproval) {
+        try {
+          const { error: ownerErr } = await supabase.rpc('owner_finalize_approval_request', { p_request_id: requestId });
+          if (ownerErr) throw ownerErr;
+          showNotification('تم اعتماد الطلب بصلاحية المالك.', 'success');
+          await load();
+        } catch (ee) {
+          showNotification(localizeSupabaseError(ee) || (localized || 'تعذر اعتماد الخطوة.'), 'error');
+        }
+      } else {
+        showNotification(localized || 'تعذر اعتماد الخطوة.', 'error');
+      }
     } finally {
       setActionBusy(null);
     }

@@ -410,6 +410,37 @@ begin
     where item_id::text = v_item_id
       and warehouse_id = v_wh;
 
+    -- Ensure batch row exists to satisfy FK fk_inventory_movements_batch
+    insert into public.batches(
+      id,
+      item_id,
+      receipt_item_id,
+      receipt_id,
+      warehouse_id,
+      batch_code,
+      production_date,
+      expiry_date,
+      quantity_received,
+      quantity_consumed,
+      unit_cost,
+      data
+    )
+    values (
+      v_batch_id,
+      v_item_id,
+      null,
+      v_receipt_id,
+      v_wh,
+      null,
+      case when v_harvest_iso is null then null else v_harvest_iso::date end,
+      case when v_expiry_iso is null then null else v_expiry_iso::date end,
+      v_qty,
+      0,
+      v_effective_unit_cost,
+      jsonb_build_object('source','purchase_receipts','purchaseReceiptId', v_receipt_id, 'purchaseOrderId', p_order_id)
+    )
+    on conflict (id) do nothing;
+
     insert into public.batch_balances(item_id, batch_id, warehouse_id, quantity, expiry_date)
     values (v_item_id, v_batch_id, v_wh, v_qty, case when v_expiry_iso is null then null else v_expiry_iso::date end)
     on conflict (item_id, batch_id, warehouse_id)

@@ -207,12 +207,12 @@ begin
             if v_batch_remaining <= 0 then
               continue;
             end if;
-            v_entry := v_res_batches->(v_batch.batch_id::text);
+            v_existing_entry := v_res_batches->v_batch.batch_id::text;
             v_existing_list :=
               case
-                when v_entry is null then '[]'::jsonb
-                when jsonb_typeof(v_entry) = 'array' then v_entry
-                when jsonb_typeof(v_entry) = 'object' then jsonb_build_array(v_entry)
+                when v_existing_entry is null then '[]'::jsonb
+                when jsonb_typeof(v_existing_entry) = 'array' then v_existing_entry
+                when jsonb_typeof(v_existing_entry) = 'object' then jsonb_build_array(v_existing_entry)
                 else '[]'::jsonb
               end;
 

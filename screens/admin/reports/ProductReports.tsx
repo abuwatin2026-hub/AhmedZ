@@ -24,6 +24,19 @@ interface ProductSalesRow {
     avg_inventory?: number;
 }
 
+type RecallRow = {
+    order_id: string;
+    sold_at: string;
+    warehouse_id: string | null;
+    branch_id: string | null;
+    item_id: string;
+    item_name: any;
+    batch_id: string;
+    expiry_date: string | null;
+    supplier_name: string | null;
+    quantity: number;
+};
+
 const ProductReports: React.FC = () => {
     const { settings } = useSettings();
     const { deliveryZones } = useDeliveryZones();
@@ -40,6 +53,10 @@ const ProductReports: React.FC = () => {
     const [showAllProducts, setShowAllProducts] = useState(false);
     
     const [reportData, setReportData] = useState<ProductSalesRow[]>([]);
+    const [quantitySourceFromMovements, setQuantitySourceFromMovements] = useState(false);
+    const [recallBatchId, setRecallBatchId] = useState('');
+    const [recallLoading, setRecallLoading] = useState(false);
+    const [recallRows, setRecallRows] = useState<RecallRow[]>([]);
 
     const language = 'ar'; // Fixed for now or get from context if available
 
@@ -96,6 +113,7 @@ const ProductReports: React.FC = () => {
             if (!supabase) return;
 
             setLoading(true);
+            setQuantitySourceFromMovements(false);
             try {
                 let p_start = '2000-01-01T00:00:00Z';
                 let p_end = '2100-01-01T23:59:59Z';
@@ -168,18 +186,37 @@ const ProductReports: React.FC = () => {
                     }
                 } catch (_) {}
 
+                const quantityFromMovements = new Map<string, number>();
+                try {
+                    const { data: movData, error: movErr } = await supabase.rpc('get_product_sales_quantity_from_movements', {
+                        p_start_date: p_start,
+                        p_end_date: p_end,
+                        p_zone_id: zoneArg ?? null,
+                    });
+                    if (!movErr && Array.isArray(movData)) {
+                        for (const row of movData as any[]) {
+                            const id = String(row?.item_id ?? '');
+                            if (id) quantityFromMovements.set(id, parseNumber(row?.quantity_sold));
+                        }
+                    }
+                } catch (_) {}
+
                 if (rpcRows) {
                     const merged = rpcRows.map((r) => {
-                        const s = stockById.get(String(r.item_id || ''));
-                        if (!s) return r;
-                        return {
-                            ...r,
-                            current_stock: s.current_stock,
-                            reserved_stock: s.reserved_stock,
-                            current_cost_price: s.current_cost_price,
-                        };
+                        const itemId = String(r.item_id || '');
+                        const s = stockById.get(itemId);
+                        const qtyFromMov = quantityFromMovements.get(itemId);
+                        const base = s
+                            ? { ...r, current_stock: s.current_stock, reserved_stock: s.reserved_stock, current_cost_price: s.current_cost_price }
+                            : r;
+                        return qtyFromMov !== undefined
+                            ? { ...base, quantity_sold: qtyFromMov }
+                            : base;
                     });
-                    if (active) setReportData(merged);
+                    if (active) {
+                        setReportData(merged);
+                        setQuantitySourceFromMovements(quantityFromMovements.size > 0);
+                    }
                     return;
                 }
 
@@ -666,6 +703,44 @@ const ProductReports: React.FC = () => {
 
     const currency = 'ر.ي';
 
+    const runRecall = async () => {
+        const supabase = getSupabaseClient();
+        if (!supabase) return;
+        const b = recallBatchId.trim();
+        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(b)) {
+            showNotification('أدخل Batch ID صحيح (UUID).', 'error');
+            return;
+        }
+        setRecallLoading(true);
+        try {
+            const { data, error } = await supabase.rpc('get_batch_recall_orders', {
+                p_batch_id: b,
+                p_warehouse_id: sessionScope.scope?.warehouseId || null,
+                p_branch_id: sessionScope.scope?.branchId || null,
+            } as any);
+            if (error) throw error;
+            const list = (data || []) as any[];
+            setRecallRows(list.map((r: any) => ({
+                order_id: String(r.order_id),
+                sold_at: String(r.sold_at),
+                warehouse_id: r.warehouse_id ? String(r.warehouse_id) : null,
+                branch_id: r.branch_id ? String(r.branch_id) : null,
+                item_id: String(r.item_id),
+                item_name: r.item_name,
+                batch_id: String(r.batch_id),
+                expiry_date: r.expiry_date ? String(r.expiry_date) : null,
+                supplier_name: r.supplier_name ? String(r.supplier_name) : null,
+                quantity: Number(r.quantity) || 0,
+            })));
+        } catch (e) {
+            setRecallRows([]);
+            const msg = localizeSupabaseError(e) || 'تعذر تنفيذ Recall.';
+            if (msg) showNotification(msg, 'error');
+        } finally {
+            setRecallLoading(false);
+        }
+    };
+
     return (
         <div className="animate-fade-in space-y-6">
             <div className="flex flex-col md:flex-row justify-between items-center gap-3">
@@ -705,8 +780,13 @@ const ProductReports: React.FC = () => {
                         className="p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600"
                     />
                 </div>
-                <div className="text-xs text-gray-500 dark:text-gray-400 md:ml-auto">
-                    تاريخ التقرير: invoice_date → paid_at → delivered_at → created_at
+                <div className="text-xs text-gray-500 dark:text-gray-400 md:ml-auto flex flex-col gap-0.5">
+                    <span>تاريخ التقرير: invoice_date → paid_at → delivered_at → created_at</span>
+                    {quantitySourceFromMovements && (
+                        <span className="text-green-600 dark:text-green-400" title="الكميات المباعة معتمدة من حركات المخزون (sale_out) كمصدر حقيقة واحد">
+                            الكميات المباعة من حركات المخزون (مصدر موحّد)
+                        </span>
+                    )}
                 </div>
                 <div className="flex items-center gap-2">
                     <label htmlFor="zone">منطقة:</label>
@@ -729,6 +809,67 @@ const ProductReports: React.FC = () => {
                     <button type="button" onClick={() => applyPreset('year')} className={`px-3 py-2 rounded-lg text-sm font-semibold border ${rangePreset === 'year' ? 'bg-orange-500 text-white border-orange-500' : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600'}`}>هذه السنة</button>
                     <button type="button" onClick={() => applyPreset('all')} className={`px-3 py-2 rounded-lg text-sm font-semibold border ${rangePreset === 'all' ? 'bg-orange-500 text-white border-orange-500' : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600'}`}>الكل</button>
                 </div>
+            </div>
+
+            <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-md space-y-3">
+                <div className="text-sm font-semibold dark:text-white">Recall (استدعاء دفعة)</div>
+                <div className="flex flex-col md:flex-row gap-2 items-stretch md:items-end">
+                    <div className="flex-1">
+                        <label className="block text-xs mb-1 text-gray-600 dark:text-gray-300">Batch ID</label>
+                        <input
+                            value={recallBatchId}
+                            onChange={(e) => setRecallBatchId(e.target.value)}
+                            placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                            className="w-full p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono"
+                        />
+                    </div>
+                    <button
+                        type="button"
+                        onClick={runRecall}
+                        disabled={recallLoading}
+                        className="px-4 py-2 rounded-lg bg-orange-600 text-white hover:bg-orange-700 disabled:bg-gray-400"
+                    >
+                        {recallLoading ? 'جاري البحث...' : 'بحث'}
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => { setRecallRows([]); setRecallBatchId(''); }}
+                        className="px-4 py-2 rounded-lg bg-gray-200 text-gray-800 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+                    >
+                        مسح
+                    </button>
+                </div>
+                {recallRows.length > 0 && (
+                    <div className="overflow-auto">
+                        <table className="min-w-full text-sm">
+                            <thead className="bg-gray-50 dark:bg-gray-900/40">
+                                <tr>
+                                    <th className="p-2 text-right">وقت البيع</th>
+                                    <th className="p-2 text-right">الطلب</th>
+                                    <th className="p-2 text-right">الصنف</th>
+                                    <th className="p-2 text-right">الانتهاء</th>
+                                    <th className="p-2 text-right">المورد</th>
+                                    <th className="p-2 text-right">الكمية</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                                {recallRows.map((r) => (
+                                    <tr key={`${r.order_id}:${r.item_id}:${r.sold_at}`}>
+                                        <td className="p-2 whitespace-nowrap">{new Date(r.sold_at).toLocaleString('ar-EG-u-nu-latn')}</td>
+                                        <td className="p-2 font-mono">{String(r.order_id).slice(-6).toUpperCase()}</td>
+                                        <td className="p-2">{String(r.item_name?.ar || r.item_name?.en || r.item_id).slice(0, 64)}</td>
+                                        <td className="p-2 whitespace-nowrap">{r.expiry_date || '-'}</td>
+                                        <td className="p-2">{r.supplier_name || '-'}</td>
+                                        <td className="p-2 font-mono">{Number(r.quantity || 0).toFixed(3)}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+                {!recallLoading && recallBatchId.trim() && recallRows.length === 0 && (
+                    <div className="text-xs text-gray-600 dark:text-gray-300">لا توجد طلبات مرتبطة بهذه الدفعة ضمن نطاق الجلسة.</div>
+                )}
             </div>
 
             {loading && <div className="text-center py-4">جاري تحميل البيانات...</div>}

@@ -5,6 +5,7 @@ import { useToast } from '../../contexts/ToastContext';
 import { getSupabaseClient } from '../../supabase';
 import { useItemMeta } from '../../contexts/ItemMetaContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { useSessionScope } from '../../contexts/SessionScopeContext';
 
 interface RecordWastageModalProps {
     isOpen: boolean;
@@ -17,6 +18,8 @@ const RecordWastageModal: React.FC<RecordWastageModalProps> = ({ isOpen, onClose
     const { showNotification } = useToast();
     const { getUnitLabel } = useItemMeta();
     const { user } = useAuth();
+    const sessionScope = useSessionScope();
+    const warehouseId = sessionScope.scope?.warehouseId || '';
 
     const [quantity, setQuantity] = useState<number>(0);
     const [reason, setReason] = useState<string>('expired');
@@ -32,7 +35,7 @@ const RecordWastageModal: React.FC<RecordWastageModalProps> = ({ isOpen, onClose
             try {
                 const supabase = getSupabaseClient();
                 if (!supabase) return;
-                const { data, error } = await supabase.rpc('get_item_batches', { p_item_id: item.id });
+                const { data, error } = await supabase.rpc('get_item_batches', { p_item_id: item.id, p_warehouse_id: warehouseId || null } as any);
                 if (error) return;
                 const rows = (data || []) as any[];
                 const mapped = rows.map(r => ({
@@ -50,7 +53,7 @@ const RecordWastageModal: React.FC<RecordWastageModalProps> = ({ isOpen, onClose
         if (isOpen && item?.id) {
             loadBatches();
         }
-    }, [isOpen, item?.id]);
+    }, [isOpen, item?.id, warehouseId]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();

@@ -48,9 +48,12 @@ const OrderCard: React.FC<{ order: Order }> = ({ order }) => {
             <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
                 <h4 className="font-semibold dark:text-gray-200 mb-2">تفاصيل الطلب:</h4>
                 <ul className="space-y-1 text-sm">
-                    {order.items.map((item: CartItem, idx: number) => (
+                    {(order.items || []).map((item: CartItem, idx: number) => (
                         <li key={item.cartItemId || `${order.id}:${String(item.id)}:${idx}`} className="flex justify-between">
-                            <span className="text-gray-700 dark:text-gray-300">{item.name.ar} x{item.quantity}</span>
+                            <span className="text-gray-700 dark:text-gray-300">
+                                {String((item as any)?.name?.ar || (item as any)?.name?.en || (item as any)?.name || (item as any)?.itemName || (item as any)?.id || (item as any)?.itemId || 'منتج')}{' '}
+                                x{Number((item as any)?.quantity || 0)}
+                            </span>
                             <span className="text-gray-600 dark:text-gray-400 font-mono" dir="ltr">{Number(item.price * item.quantity).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {'ر.ي'}</span>
                         </li>
                     ))}

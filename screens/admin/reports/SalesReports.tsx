@@ -10,10 +10,12 @@ import { getSupabaseClient } from '../../../supabase';
 import { useSettings } from '../../../contexts/SettingsContext';
 import { localizeSupabaseError } from '../../../utils/errorUtils';
 import { endOfDayFromYmd, startOfDayFromYmd, toYmdLocal } from '../../../utils/dateUtils';
+import { useSessionScope } from '../../../contexts/SessionScopeContext';
 
 const SalesReports: React.FC = () => {
     const { showNotification } = useToast();
     const { deliveryZones } = useDeliveryZones();
+    const sessionScope = useSessionScope();
     
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
@@ -22,6 +24,9 @@ const SalesReports: React.FC = () => {
     const [invoiceOnly, setInvoiceOnly] = useState(false);
     const [orderSearch, setOrderSearch] = useState('');
     const [showAllOrders, setShowAllOrders] = useState(false);
+    const [recallBatchId, setRecallBatchId] = useState('');
+    const [recallLoading, setRecallLoading] = useState(false);
+    const [recallRows, setRecallRows] = useState<any[]>([]);
 
     // --- New State for Server-Side Data ---
     const [driverStats, setDriverStats] = useState<{name: string, count: number, avgTime: number}[]>([]);
@@ -496,6 +501,32 @@ const SalesReports: React.FC = () => {
 
     const currency = 'ر.ي';
 
+    const runRecall = async () => {
+        const supabase = getSupabaseClient();
+        if (!supabase) return;
+        const b = recallBatchId.trim();
+        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(b)) {
+            showNotification('أدخل Batch ID صحيح (UUID).', 'error');
+            return;
+        }
+        setRecallLoading(true);
+        try {
+            const { data, error } = await supabase.rpc('get_batch_recall_orders', {
+                p_batch_id: b,
+                p_warehouse_id: sessionScope.scope?.warehouseId || null,
+                p_branch_id: sessionScope.scope?.branchId || null,
+            } as any);
+            if (error) throw error;
+            setRecallRows((data || []) as any[]);
+        } catch (e) {
+            setRecallRows([]);
+            const msg = localizeSupabaseError(e) || 'تعذر تنفيذ Recall.';
+            if (msg) showNotification(msg, 'error');
+        } finally {
+            setRecallLoading(false);
+        }
+    };
+
     return (
         <div className="animate-fade-in space-y-6">
             <h1 className="text-3xl font-bold dark:text-white">تقرير المبيعات</h1>
@@ -568,6 +599,67 @@ const SalesReports: React.FC = () => {
                     </button>
                     <button onClick={handleExport} className="bg-green-600 text-white font-semibold py-2 px-4 rounded-lg shadow hover:bg-green-700 transition">تصدير Excel</button>
                 </div>
+            </div>
+
+            <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-md space-y-3">
+                <div className="text-sm font-semibold dark:text-white">Recall (استدعاء دفعة)</div>
+                <div className="flex flex-col md:flex-row gap-2 items-stretch md:items-end">
+                    <div className="flex-1">
+                        <label className="block text-xs mb-1 text-gray-600 dark:text-gray-300">Batch ID</label>
+                        <input
+                            value={recallBatchId}
+                            onChange={(e) => setRecallBatchId(e.target.value)}
+                            placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                            className="w-full p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono"
+                        />
+                    </div>
+                    <button
+                        type="button"
+                        onClick={runRecall}
+                        disabled={recallLoading}
+                        className="px-4 py-2 rounded-lg bg-orange-600 text-white hover:bg-orange-700 disabled:bg-gray-400"
+                    >
+                        {recallLoading ? 'جاري البحث...' : 'بحث'}
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => { setRecallRows([]); setRecallBatchId(''); }}
+                        className="px-4 py-2 rounded-lg bg-gray-200 text-gray-800 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+                    >
+                        مسح
+                    </button>
+                </div>
+                {recallRows.length > 0 && (
+                    <div className="overflow-auto">
+                        <table className="min-w-full text-sm">
+                            <thead className="bg-gray-50 dark:bg-gray-900/40">
+                                <tr>
+                                    <th className="p-2 text-right">وقت البيع</th>
+                                    <th className="p-2 text-right">الطلب</th>
+                                    <th className="p-2 text-right">الصنف</th>
+                                    <th className="p-2 text-right">الانتهاء</th>
+                                    <th className="p-2 text-right">المورد</th>
+                                    <th className="p-2 text-right">الكمية</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                                {recallRows.map((r: any) => (
+                                    <tr key={`${String(r.order_id)}:${String(r.item_id)}:${String(r.sold_at)}`}>
+                                        <td className="p-2 whitespace-nowrap">{new Date(String(r.sold_at)).toLocaleString('ar-EG-u-nu-latn')}</td>
+                                        <td className="p-2 font-mono">{String(r.order_id).slice(-6).toUpperCase()}</td>
+                                        <td className="p-2">{String(r.item_name?.ar || r.item_name?.en || r.item_id).slice(0, 64)}</td>
+                                        <td className="p-2 whitespace-nowrap">{r.expiry_date ? String(r.expiry_date) : '-'}</td>
+                                        <td className="p-2">{r.supplier_name ? String(r.supplier_name) : '-'}</td>
+                                        <td className="p-2 font-mono">{Number(r.quantity || 0).toFixed(3)}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+                {!recallLoading && recallBatchId.trim() && recallRows.length === 0 && (
+                    <div className="text-xs text-gray-600 dark:text-gray-300">لا توجد طلبات مرتبطة بهذه الدفعة ضمن نطاق الجلسة.</div>
+                )}
             </div>
 
             <div id="print-area">

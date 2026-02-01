@@ -146,6 +146,9 @@ export const StockProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         const reservedQuantity = Number.isFinite(Number(row?.reserved_quantity))
             ? Number(row.reserved_quantity)
             : (Number.isFinite(Number((data as any).reservedQuantity)) ? Number((data as any).reservedQuantity) : 0);
+        const qcHoldQuantity = Number.isFinite(Number(row?.qc_hold_quantity))
+            ? Number(row.qc_hold_quantity)
+            : (Number.isFinite(Number((data as any).qcHoldQuantity)) ? Number((data as any).qcHoldQuantity) : 0);
         const unit = typeof row?.unit === 'string' ? row.unit : (typeof (data as any).unit === 'string' ? (data as any).unit : 'piece');
         const lowStockThreshold = Number.isFinite(Number(row?.low_stock_threshold))
             ? Number(row.low_stock_threshold)
@@ -162,6 +165,7 @@ export const StockProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             itemId,
             warehouseId,
             availableQuantity,
+            qcHoldQuantity,
             reservedQuantity,
             unit: unit as any,
             lastUpdated,
@@ -185,7 +189,7 @@ export const StockProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             }
             const { data: rows, error } = await supabase
                 .from('stock_management')
-                .select('item_id, warehouse_id, available_quantity, reserved_quantity, unit, low_stock_threshold, last_updated, avg_cost, data')
+                .select('item_id, warehouse_id, available_quantity, qc_hold_quantity, reserved_quantity, unit, low_stock_threshold, last_updated, avg_cost, data')
                 .eq('warehouse_id', warehouseId);
             if (error) throw error;
             const remoteStock = (rows || []).map(toStockFromRow).filter(Boolean) as StockManagement[];

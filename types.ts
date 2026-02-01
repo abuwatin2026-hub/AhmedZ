@@ -659,6 +659,7 @@ export interface StockManagement {
   itemId: string;
   warehouseId: string;
   availableQuantity: number; // Available quantity in stock
+  qcHoldQuantity?: number;
   unit: UnitType; // Unit type (kg, piece, bundle, gram)
   reservedQuantity: number; // Reserved in active orders
   lastUpdated: string; // ISO string
@@ -690,6 +691,9 @@ export interface ItemBatch {
   receivedQuantity: number;
   consumedQuantity: number;
   remainingQuantity: number;
+  qcStatus?: string;
+  lastQcResult?: 'pass' | 'fail';
+  lastQcAt?: string;
 }
 
 export interface OrderItemCogs {
@@ -825,6 +829,8 @@ export type AdminPermission =
   | 'procurement.manage'
   | 'import.close'
   | 'inventory.manage'
+  | 'qc.inspect'
+  | 'qc.release'
   | 'prices.manage'
   | 'reports.view'
   | 'settings.manage'
@@ -868,6 +874,8 @@ export const ADMIN_PERMISSION_DEFS: Array<{ key: AdminPermission; labelAr: strin
   { key: 'procurement.manage', labelAr: 'إدارة الاستيراد/الشحنات' },
   { key: 'import.close', labelAr: 'إقفال/تسليم الشحنات' },
   { key: 'inventory.manage', labelAr: 'إدارة الحركات والمخزون الداخلي' },
+  { key: 'qc.inspect', labelAr: 'فحص الجودة (QC) - فحص' },
+  { key: 'qc.release', labelAr: 'فحص الجودة (QC) - إفراج' },
   { key: 'prices.manage', labelAr: 'إدارة الأسعار' },
   { key: 'reports.view', labelAr: 'عرض التقارير' },
   { key: 'settings.manage', labelAr: 'إدارة الإعدادات' },

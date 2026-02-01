@@ -54,7 +54,8 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, aud
             'card': 'حوالات',
             'bank': 'حسابات بنكية',
             'bank_transfer': 'حسابات بنكية',
-            'online': 'حوالات'
+            'online': 'حوالات',
+            'ar': 'آجل'
         };
         return methods[method] || method;
     };

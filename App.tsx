@@ -61,6 +61,7 @@ const ProductReports = lazy(() => import('./screens/admin/reports/ProductReports
 const CustomerReports = lazy(() => import('./screens/admin/reports/CustomerReports'));
 const FinancialReports = lazy(() => import('./screens/admin/reports/FinancialReports'));
 const ReservationsReports = lazy(() => import('./screens/admin/reports/ReservationsReports'));
+const FoodTraceReports = lazy(() => import('./screens/admin/reports/FoodTraceReports'));
 const AdminProfileScreen = lazy(() => import('./screens/admin/AdminProfileScreen'));
 const SettingsScreen = lazy(() => import('./screens/admin/SettingsScreen'));
 const SuppliersScreen = lazy(() => import('./screens/admin/SuppliersScreen'));
@@ -76,6 +77,7 @@ const WarehouseTransfersScreen = lazy(() => import('./screens/admin/WarehouseTra
 const PriceTiersScreen = lazy(() => import('./screens/admin/PriceTiersScreen'));
 const SupplierContractsScreen = lazy(() => import('./screens/admin/SupplierContractsScreen'));
 const SupplierEvaluationsScreen = lazy(() => import('./screens/admin/SupplierEvaluationsScreen'));
+const SupplierCreditNotesScreen = lazy(() => import('./screens/admin/SupplierCreditNotesScreen'));
 const ImportShipmentsScreen = lazy(() => import('./screens/admin/ImportShipmentsScreen'));
 const ImportShipmentDetailsScreen = lazy(() => import('./screens/admin/ImportShipmentDetailsScreen'));
 const POSTestConsole = lazy(() => import('./screens/admin/POSTestConsole'));
@@ -326,6 +328,7 @@ const App: React.FC = () => {
                 <Route path="purchases" element={<AdminProtectedRoute permissions={['stock.manage']}><PurchaseOrderScreen /></AdminProtectedRoute>} />
                 <Route path="supplier-contracts" element={<AdminProtectedRoute permissions={['stock.manage']}><SupplierContractsScreen /></AdminProtectedRoute>} />
                 <Route path="supplier-evaluations" element={<AdminProtectedRoute permissions={['stock.manage']}><SupplierEvaluationsScreen /></AdminProtectedRoute>} />
+                <Route path="supplier-credit-notes" element={<AdminProtectedRoute permissions={['accounting.manage']}><SupplierCreditNotesScreen /></AdminProtectedRoute>} />
                 <Route
                   path="import-shipments"
                   element={
@@ -353,6 +356,7 @@ const App: React.FC = () => {
                 <Route path="reports/products" element={<AdminProtectedRoute permissions={['reports.view']}><ProductReports /></AdminProtectedRoute>} />
                 <Route path="reports/customers" element={<AdminProtectedRoute permissions={['reports.view']}><CustomerReports /></AdminProtectedRoute>} />
                 <Route path="reports/reservations" element={<AdminProtectedRoute permissions={['reports.view']}><ReservationsReports /></AdminProtectedRoute>} />
+                <Route path="reports/food-trace" element={<AdminProtectedRoute permissions={['reports.view']}><FoodTraceReports /></AdminProtectedRoute>} />
                 <Route path="reports/financial" element={<AdminProtectedRoute permissions={['accounting.view']}><FinancialReports /></AdminProtectedRoute>} />
                 <Route path="accounting" element={<AdminProtectedRoute permissions={['accounting.view']}><FinancialReports /></AdminProtectedRoute>} />
                 <Route path="profile" element={<AdminProtectedRoute permissions={['profile.view']}><AdminProfileScreen /></AdminProtectedRoute>} />

@@ -571,7 +571,6 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             throw itemsErr;
           }
 
-          await ensureApprovalRequest(orderId, 'po', totalAmount);
           if (receiveNow) {
             await ensureApprovalRequest(orderId, 'receipt', totalAmount);
           }
@@ -596,6 +595,9 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                   } else {
                     throw new Error('يتطلب الاستلام موافقة. تعذر إنشاء طلب الموافقة تلقائياً؛ يرجى إنشائه من قسم الموافقات ثم إعادة المحاولة.');
                   }
+                }
+                if (/accounting_documents/i.test(msg) && /branch_id/i.test(msg)) {
+                  throw new Error('تم حفظ أمر الشراء، لكن فشل استلام المخزون بسبب إعدادات الفرع/الشركة في المحاسبة. تأكد من ضبط فرع للمستودع أو إنشاء فرع افتراضي ثم أعد المحاولة.');
                 }
                 throw receiveError;
               }

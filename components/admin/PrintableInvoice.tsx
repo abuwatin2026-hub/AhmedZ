@@ -132,6 +132,7 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
             card: 'حوالات',
             bank: 'حسابات بنكية',
             bank_transfer: 'حسابات بنكية',
+            ar: 'آجل',
             mixed: language === 'ar' ? 'متعدد' : 'Mixed',
         };
         return methodMap[method] || method;

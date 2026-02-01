@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { MenuItem } from '../../types';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useSessionScope } from '../../contexts/SessionScopeContext';
+import { useStock } from '../../contexts/StockContext';
 import { getSupabaseClient } from '../../supabase';
 
 interface Props {
@@ -14,7 +15,8 @@ interface Props {
 const POSItemSearch: React.FC<Props> = ({ onAddLine, inputRef, disabled, touchMode }) => {
   const { settings } = useSettings();
   const sessionScope = useSessionScope();
-  const [sellableItems, setSellableItems] = useState<MenuItem[]>([]);
+  const { getStockByItemId } = useStock();
+  const [baseItems, setBaseItems] = useState<MenuItem[]>([]);
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [quantity, setQuantity] = useState<number>(1);
@@ -38,35 +40,13 @@ const POSItemSearch: React.FC<Props> = ({ onAddLine, inputRef, disabled, touchMo
         .select('id, name, barcode, price, base_unit, data, available_quantity');
       if (!mounted) return;
       if (error) {
-        setSellableItems([]);
+        setBaseItems([]);
         return;
       }
       const toNum = (v: any) => {
         const n = typeof v === 'number' ? v : Number(v);
         return Number.isFinite(n) ? n : 0;
       };
-      const warehouseId = sessionScope.scope?.warehouseId;
-      const stockById = new Map<string, { available: number; reserved: number }>();
-      if (warehouseId) {
-        const ids = (data || []).map((r: any) => String(r?.id || '')).filter(Boolean);
-        if (ids.length > 0) {
-          const { data: smRows, error: smErr } = await supabase
-            .from('stock_management')
-            .select('item_id,available_quantity,reserved_quantity')
-            .eq('warehouse_id', warehouseId)
-            .in('item_id', ids);
-          if (!smErr) {
-            for (const r of smRows || []) {
-              const id = String((r as any)?.item_id || '');
-              if (!id) continue;
-              stockById.set(id, {
-                available: toNum((r as any)?.available_quantity),
-                reserved: toNum((r as any)?.reserved_quantity),
-              });
-            }
-          }
-        }
-      }
       const items = (data || []).map((row: any) => {
         const raw = row?.data && typeof row.data === 'object' ? row.data : {};
         const nameObj = row?.name && typeof row.name === 'object' ? row.name : (raw as any).name;
@@ -83,10 +63,6 @@ const POSItemSearch: React.FC<Props> = ({ onAddLine, inputRef, disabled, touchMo
         const price = Number.isFinite(Number(row?.price)) ? Number(row.price) : Number((raw as any).price || 0);
         const barcode = typeof row?.barcode === 'string' ? row.barcode : (raw as any).barcode;
         const id = String(row?.id || (raw as any).id || '');
-        const whStock = id ? stockById.get(id) : undefined;
-        const physical = whStock ? whStock.available : toNum(row?.available_quantity);
-        const reserved = whStock ? whStock.reserved : 0;
-        const availableStock = Math.max(0, physical - reserved);
         return {
           ...(raw as any),
           id,
@@ -94,12 +70,12 @@ const POSItemSearch: React.FC<Props> = ({ onAddLine, inputRef, disabled, touchMo
           description: safeDescription,
           unitType: baseUnit,
           price,
-          availableStock,
+          availableStock: toNum(row?.available_quantity),
           barcode: typeof barcode === 'string' ? barcode : undefined,
           status: 'active',
         } as MenuItem;
       });
-      setSellableItems(items.filter(i => i && i.id && Number(i.availableStock || 0) > 0));
+      setBaseItems(items.filter(i => i && i.id));
     };
     void run();
     return () => {
@@ -119,7 +95,14 @@ const POSItemSearch: React.FC<Props> = ({ onAddLine, inputRef, disabled, touchMo
   }, [debouncedQuery]);
 
   const indexedItems = useMemo(() => {
-    return (sellableItems || []).map((m) => {
+    const withStock = (baseItems || []).map((m) => {
+      const stock = getStockByItemId(String(m.id || ''));
+      const physical = stock ? Number(stock.availableQuantity || 0) : Number(m.availableStock || 0);
+      const reserved = stock ? Number(stock.reservedQuantity || 0) : 0;
+      const availableStock = Math.max(0, physical - reserved);
+      return { ...m, availableStock };
+    }).filter((m) => Number(m.availableStock || 0) > 0);
+    return withStock.map((m) => {
       const ar = String(m.name?.ar || '');
       const en = String(m.name?.en || '');
       const id = String(m.id || '');
@@ -136,7 +119,7 @@ const POSItemSearch: React.FC<Props> = ({ onAddLine, inputRef, disabled, touchMo
         label: ar || en || id,
       };
     });
-  }, [sellableItems]);
+  }, [baseItems, getStockByItemId]);
 
   const results = useMemo(() => {
     const qRaw = debouncedQuery.trim();

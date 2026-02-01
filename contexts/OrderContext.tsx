@@ -690,6 +690,9 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const reservedQuantity = Number.isFinite(Number(row?.reserved_quantity))
       ? Number(row.reserved_quantity)
       : (Number.isFinite(Number((data as any).reservedQuantity)) ? Number((data as any).reservedQuantity) : 0);
+    const qcHoldQuantity = Number.isFinite(Number(row?.qc_hold_quantity))
+      ? Number(row.qc_hold_quantity)
+      : (Number.isFinite(Number((data as any).qcHoldQuantity)) ? Number((data as any).qcHoldQuantity) : 0);
     const unit = typeof row?.unit === 'string' ? row.unit : (typeof (data as any).unit === 'string' ? (data as any).unit : 'piece');
     const lowStockThreshold = Number.isFinite(Number(row?.low_stock_threshold))
       ? Number(row.low_stock_threshold)
@@ -702,6 +705,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       itemId,
       warehouseId,
       availableQuantity,
+      qcHoldQuantity,
       reservedQuantity,
       unit: unit as any,
       lastUpdated,
@@ -722,7 +726,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     if (!supabase) throw new Error('Supabase غير مهيأ.');
     const { data: row, error } = await supabase
       .from('stock_management')
-      .select('item_id, warehouse_id, available_quantity, reserved_quantity, unit, low_stock_threshold, last_updated, data')
+      .select('item_id, warehouse_id, available_quantity, qc_hold_quantity, reserved_quantity, unit, low_stock_threshold, last_updated, data')
       .eq('item_id', itemId)
       .eq('warehouse_id', warehouseId)
       .maybeSingle();
@@ -1300,11 +1304,11 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
 
     const method = (input.paymentMethod || '').trim();
-    if (!method) {
+    if (!method && !input.isCredit) {
       throw new Error('يرجى اختيار طريقة الدفع.');
     }
 
-    if (!enabledPaymentMethods.includes(method)) {
+    if (!input.isCredit && !enabledPaymentMethods.includes(method)) {
       throw new Error('طريقة الدفع غير مفعلة في الإعدادات.');
     }
 
@@ -1562,7 +1566,9 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       },
     ];
 
-    const paymentBreakdown = normalizedBreakdown.length > 0 ? normalizedBreakdown : fallbackBreakdown;
+    const paymentBreakdown = input.isCredit
+      ? normalizedBreakdown
+      : (normalizedBreakdown.length > 0 ? normalizedBreakdown : fallbackBreakdown);
 
     const breakdownMethods = new Set(paymentBreakdown.map((p) => p.method));
     const cashLines = paymentBreakdown.filter((p) => p.method === 'cash');
@@ -1599,12 +1605,17 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       }
     }
 
-    if (!breakdownMethods.has(method)) {
+    if (!input.isCredit && !breakdownMethods.has(method)) {
       throw new Error('طريقة الدفع الرئيسية لا تطابق تقسيم الدفع.');
     }
 
     const paymentTotal = paymentBreakdown.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
-    const isFullyPaid = Math.abs(paymentTotal - computedTotal) <= 0.01;
+    if (input.isCredit && paymentTotal - computedTotal > 0.01) {
+      throw new Error('مجموع الدفعات أكبر من إجمالي البيع.');
+    }
+    const isFullyPaid = input.isCredit
+      ? (paymentTotal + 0.01 >= computedTotal)
+      : (Math.abs(paymentTotal - computedTotal) <= 0.01);
     
     if (!input.isCredit && !isFullyPaid) {
       throw new Error('مجموع تقسيم الدفع لا يطابق إجمالي البيع.');
@@ -1614,7 +1625,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const cashReceived = cashEntry && cashEntry.cashReceived > 0 ? cashEntry.cashReceived : undefined;
     const cashChange = cashEntry && cashEntry.cashReceived > 0 ? Math.max(0, cashEntry.cashReceived - cashEntry.amount) : undefined;
 
-    const orderPaymentMethod = paymentBreakdown.length === 1 ? paymentBreakdown[0].method : 'mixed';
+    const orderPaymentMethod = input.isCredit ? 'ar' : (paymentBreakdown.length === 1 ? paymentBreakdown[0].method : 'mixed');
     let invoiceNumber = generateInvoiceNumber(crypto.randomUUID(), nowIso);
     const singleNeedsReference = orderPaymentMethod === 'kuraimi' || orderPaymentMethod === 'network';
     const singleReferenceNumber = paymentBreakdown.length === 1 ? (paymentBreakdown[0].referenceNumber || '') : '';
@@ -1648,7 +1659,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       notes: input.notes?.trim() || undefined,
       address: 'داخل المحل',
       paymentMethod: canMarkPaidUi ? orderPaymentMethod : 'unknown',
-      paymentBreakdown: canMarkPaidUi ? paymentBreakdown.map((p) => ({
+      paymentBreakdown: canMarkPaidUi && paymentBreakdown.length > 0 ? paymentBreakdown.map((p) => ({
         method: p.method,
         amount: p.amount,
         referenceNumber: p.referenceNumber,
@@ -1675,6 +1686,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       invoiceIssuedAt: undefined,
       invoiceSnapshot: undefined,
       invoicePrintCount: 0,
+      isCreditSale: Boolean(input.isCredit),
     };
 
     const payloadItems = newOrder.items
@@ -1758,7 +1770,12 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           }
           await sb2.from('orders').delete().eq('id', newOrder.id);
           console.error('In-store sale confirmation failed:', rpcError);
-          throw new Error(localizeSupabaseError(rpcError));
+          const msg = localizeSupabaseError(rpcError);
+          throw new Error(
+            msg && msg.trim()
+              ? `لم يتم تنفيذ البيع. تم التراجع عن الطلب. السبب: ${msg}`
+              : 'لم يتم تنفيذ البيع (فشل خصم المخزون أو التأكيد). تم التراجع عن الطلب. تحقق من توفر الأصناف والمستودع ثم أعد المحاولة.'
+          );
         }
 
         await fetchRemoteOrderById(newOrder.id);

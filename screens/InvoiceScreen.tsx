@@ -56,6 +56,7 @@ const InvoiceScreen: React.FC = () => {
     const [previewKind, setPreviewKind] = useState<'thermal' | 'a4'>('thermal');
     const [previewHtml, setPreviewHtml] = useState<string>('');
     const [previewTitle, setPreviewTitle] = useState<string>('معاينة الطباعة');
+    const autoPrintRunKeyRef = useRef<string>('');
 
     const resolveBranding = () => {
         const fallback = {
@@ -355,10 +356,14 @@ const InvoiceScreen: React.FC = () => {
         const autoprint = params.get('autoprint') === '1';
         const thermal = params.get('thermal') === '1';
         const copies = Math.max(1, Number(params.get('copies') || 1));
-        if (order && order.invoiceIssuedAt && autoprint && thermal) {
+        const orderIdSafe = order?.id || '';
+        const invoiceIssuedAtSafe = (order as any)?.invoiceIssuedAt || '';
+        const runKey = `${orderIdSafe}|${invoiceIssuedAtSafe}|${location.search || ''}`;
+        if (orderIdSafe && invoiceIssuedAtSafe && autoprint && thermal) {
+            if (autoPrintRunKeyRef.current === runKey) return;
+            autoPrintRunKeyRef.current = runKey;
             let printed = 0;
             const run = () => {
-                if (!order) return;
                 handlePrint();
                 printed += 1;
                 if (printed < copies) {
@@ -367,7 +372,7 @@ const InvoiceScreen: React.FC = () => {
             };
             window.setTimeout(run, 100);
         }
-    }, [location.search, order]);
+    }, [location.search, order?.id, (order as any)?.invoiceIssuedAt]);
 
     if (!order && loading) {
         return <PageLoader />;

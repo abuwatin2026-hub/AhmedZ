@@ -6,6 +6,7 @@ import { useOrders } from '../contexts/OrderContext';
 import { useCashShift } from '../contexts/CashShiftContext';
 import { useUserAuth } from '../contexts/UserAuthContext';
 import { useSettings } from '../contexts/SettingsContext';
+import { useStock } from '../contexts/StockContext';
 import { getSupabaseClient, reloadPostgrestSchema } from '../supabase';
 import { isAbortLikeError, localizeSupabaseError } from '../utils/errorUtils';
 import POSHeaderShiftStatus from '../components/pos/POSHeaderShiftStatus';
@@ -24,6 +25,7 @@ const POSScreen: React.FC = () => {
   const { currentShift } = useCashShift();
   const { customers, fetchCustomers } = useUserAuth();
   const { settings } = useSettings();
+  const { fetchStock } = useStock();
   const { activePromotions, refreshActivePromotions, applyPromotionToCart } = usePromotions();
   const sessionScope = useSessionScope();
   const [items, setItems] = useState<CartItem[]>([]);
@@ -48,7 +50,18 @@ const POSScreen: React.FC = () => {
   const [selectedCartItemId, setSelectedCartItemId] = useState<string | null>(null);
   const [pendingSelectedId, setPendingSelectedId] = useState<string | null>(null);
   const [touchMode, setTouchMode] = useState<boolean>(false);
-  const pricingCacheRef = useRef<Map<string, { unitPrice: number; unitPricePerKg?: number }>>(new Map());
+  const pricingCacheRef = useRef<Map<string, {
+    unitPrice: number;
+    unitPricePerKg?: number;
+    batchId?: string;
+    batchCode?: string;
+    expiryDate?: string;
+    unitCost?: number;
+    minPrice?: number;
+    nextBatchMinPrice?: number;
+    warningNextBatchPriceDiff?: boolean;
+    reasonCode?: string;
+  }>>(new Map());
   const pricingRunIdRef = useRef(0);
   const [pricingBusy, setPricingBusy] = useState(false);
   const [pricingReady, setPricingReady] = useState(true);
@@ -269,16 +282,16 @@ const POSScreen: React.FC = () => {
       setPricingBusy(true);
       try {
         const pricingItems = items.filter((it) => !isPromotionLine(it));
+        const warehouseId = sessionScope.requireScope().warehouseId;
         const results = await Promise.all(pricingItems.map(async (item) => {
           const pricingQty = getPricingQty(item);
-          const key = `${item.id}:${item.unitType || ''}:${pricingQty}:${selectedCustomerId || ''}`;
+          const key = `${warehouseId}:${item.id}:${item.unitType || ''}:${pricingQty}:${selectedCustomerId || ''}`;
           const cached = pricingCacheRef.current.get(key);
-          if (cached) return { key, itemId: item.id, unitType: item.unitType, unitPrice: cached.unitPrice, unitPricePerKg: cached.unitPricePerKg };
+          if (cached) return { key, itemId: item.id, unitType: item.unitType, ...cached };
           const call = async () => {
-            // Ensure p_customer_id is treated as UUID or null (not empty string)
-            // Ensure p_item_id is treated as UUID (it is string in JS but UUID in DB)
-            return await supabase.rpc('get_item_price_with_discount', {
+            return await supabase.rpc('get_fefo_pricing', {
               p_item_id: item.id,
+              p_warehouse_id: warehouseId,
               p_customer_id: (selectedCustomerId && selectedCustomerId.trim() !== '') ? selectedCustomerId : null,
               p_quantity: pricingQty,
             });
@@ -293,20 +306,47 @@ const POSScreen: React.FC = () => {
             }
           }
           if (error) throw error;
-          const unitPrice = Number(data);
+          const row = (Array.isArray(data) ? data[0] : data) as any;
+          const unitPrice = Number(row?.suggested_price);
           if (!Number.isFinite(unitPrice) || unitPrice < 0) throw new Error('تعذر احتساب السعر.');
           const unitPricePerKg = item.unitType === 'gram' ? unitPrice * 1000 : undefined;
-          pricingCacheRef.current.set(key, { unitPrice, unitPricePerKg });
-          return { key, itemId: item.id, unitType: item.unitType, unitPrice, unitPricePerKg };
+          const entry = {
+            unitPrice,
+            unitPricePerKg,
+            batchId: row?.batch_id ? String(row.batch_id) : undefined,
+            batchCode: row?.batch_code ? String(row.batch_code) : undefined,
+            expiryDate: row?.expiry_date ? String(row.expiry_date) : undefined,
+            unitCost: Number(row?.unit_cost) || 0,
+            minPrice: Number(row?.min_price) || 0,
+            nextBatchMinPrice: row?.next_batch_min_price != null ? (Number(row.next_batch_min_price) || 0) : undefined,
+            warningNextBatchPriceDiff: Boolean(row?.warning_next_batch_price_diff),
+            reasonCode: row?.reason_code ? String(row.reason_code) : undefined,
+          };
+          pricingCacheRef.current.set(key, entry);
+          return { key, itemId: item.id, unitType: item.unitType, ...entry };
         }));
         if (pricingRunIdRef.current !== runId) return;
         const next = items.map((item) => {
           if (isPromotionLine(item)) return item;
           const pricingQty = getPricingQty(item);
-          const key = `${item.id}:${item.unitType || ''}:${pricingQty}:${selectedCustomerId || ''}`;
+          const warehouseId = sessionScope.requireScope().warehouseId;
+          const key = `${warehouseId}:${item.id}:${item.unitType || ''}:${pricingQty}:${selectedCustomerId || ''}`;
           const priced = results.find((r) => r.key === key);
           if (!priced) return item;
-          const nextItem: any = { ...item, price: priced.unitPrice, _pricedByRpc: true, _pricingKey: key };
+          const nextItem: any = {
+            ...item,
+            price: priced.unitPrice,
+            _pricedByRpc: true,
+            _pricingKey: key,
+            _fefoBatchId: priced.batchId,
+            _fefoBatchCode: priced.batchCode,
+            _fefoExpiryDate: priced.expiryDate,
+            _fefoUnitCost: priced.unitCost,
+            _fefoMinPrice: priced.minPrice,
+            _fefoNextBatchMinPrice: priced.nextBatchMinPrice,
+            _fefoWarningNextBatchPriceDiff: priced.warningNextBatchPriceDiff,
+            _fefoReasonCode: priced.reasonCode,
+          };
           if (item.unitType === 'gram') {
             nextItem.pricePerUnit = priced.unitPricePerKg;
           }
@@ -335,7 +375,7 @@ const POSScreen: React.FC = () => {
     };
 
     void run();
-  }, [pendingOrderId, pricingSignature, showNotification]);
+  }, [pendingOrderId, pricingSignature, sessionScope, showNotification]);
 
   const pricingBlockReason = useMemo(() => {
     if (!items.length) return '';
@@ -648,6 +688,7 @@ const POSScreen: React.FC = () => {
     }).then(order => {
       setPendingOrderId(order.id);
       showNotification('تم تعليق الفاتورة', 'info');
+      void fetchStock();
       focusSearch();
     }).catch(err => {
       const msg = err instanceof Error ? err.message : 'فشل تعليق الفاتورة';
@@ -659,6 +700,7 @@ const POSScreen: React.FC = () => {
     if (!pendingOrderId) return;
     cancelInStorePendingOrder(pendingOrderId).then(() => {
       showNotification('تم إلغاء التعليق وإفراج الحجز', 'info');
+      void fetchStock();
       if (draftInvoice) {
         const d = draftInvoice;
         setPendingOrderId(null);
@@ -761,15 +803,23 @@ const POSScreen: React.FC = () => {
         });
       }
     }
+    const normalizedItems = ((ticket.items || []) as any[]).map((it: any) => {
+      const id = String(it?.id || it?.itemId || it?.menuItemId || '');
+      if (!id) return null;
+      const cartItemId = String(it?.cartItemId || crypto.randomUUID());
+      const selectedAddons = (it?.selectedAddons && typeof it.selectedAddons === 'object') ? it.selectedAddons : {};
+      return { ...it, id, cartItemId, selectedAddons } as CartItem;
+    }).filter(Boolean) as CartItem[];
     setPendingOrderId(ticket.id);
-    setItems((ticket.items || []) as CartItem[]);
+    setItems(normalizedItems);
     setDiscountType('amount');
     setDiscountValue(Number((ticket as any).discountAmount) || 0);
     applyCustomerDraft(String((ticket as any).customerName || ''), String((ticket as any).phoneNumber || ''));
     setNotes(String((ticket as any).notes || ''));
-    setSelectedCartItemId(((ticket.items || []) as any[])[0]?.cartItemId || null);
+    setSelectedCartItemId(normalizedItems[0]?.cartItemId || null);
     setPendingSelectedId(ticket.id);
     showNotification(`تم تحميل الفاتورة المعلّقة #${ticket.id.slice(-6).toUpperCase()}`, 'info');
+    void fetchStock();
   };
 
   const restoreDraft = () => {
@@ -842,6 +892,7 @@ const POSScreen: React.FC = () => {
         setDraftInvoice(null);
         setPendingSelectedId(null);
         showNotification('تم إتمام الطلب المستأنف', 'success');
+        void fetchStock();
         if (autoOpenInvoice && order?.id) {
           const autoThermal = Boolean(settings?.posFlags?.autoPrintThermalEnabled);
           const copies = Number(settings?.posFlags?.thermalCopies) || 1;
@@ -1164,6 +1215,7 @@ const POSScreen: React.FC = () => {
                           cancelInStorePendingOrder(t.id)
                             .then(() => {
                               showNotification('تم إلغاء التعليق وإفراج الحجز', 'info');
+                              void fetchStock();
                               if (pendingOrderId === t.id) {
                                 if (draftInvoice) {
                                   restoreDraft();

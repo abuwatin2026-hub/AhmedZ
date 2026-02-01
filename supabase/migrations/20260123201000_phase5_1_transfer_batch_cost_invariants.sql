@@ -20,18 +20,12 @@ select
   ) as remaining_qty
 from public.batches b;
 
-create or replace view public.v_food_batch_balances(
-  item_id,
-  batch_id,
-  expiry_date,
-  received_qty,
-  consumed_qty,
-  remaining_qty,
-  warehouse_id
-) as
+drop view if exists public.v_food_batch_balances;
+create view public.v_food_batch_balances as
 select
   b.item_id,
   b.id as batch_id,
+  b.warehouse_id,
   b.expiry_date,
   coalesce(b.quantity_received, 0) as received_qty,
   coalesce(b.quantity_consumed, 0) as consumed_qty,
@@ -40,8 +34,7 @@ select
     - coalesce(b.quantity_consumed,0)
     - coalesce(b.quantity_transferred,0),
     0
-  ) as remaining_qty,
-  b.warehouse_id
+  ) as remaining_qty
 from public.batches b
 where b.id is not null;
 

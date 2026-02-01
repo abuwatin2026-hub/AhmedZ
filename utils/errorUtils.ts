@@ -23,6 +23,18 @@ export const isAbortLikeError = (error: unknown): boolean => {
 export const localizeError = (message: string): string => {
   const raw = message.trim().toLowerCase();
   if (!raw) return 'فشل العملية.';
+  if (raw === 'food_sale_requires_batch') return 'لا يمكن بيع صنف غذائي بدون تحديد دفعة.';
+  if (raw === 'sale_out_requires_batch') return 'لا يمكن تنفيذ الخصم بدون تحديد دفعة.';
+  if (raw === 'no_valid_batch') return 'NO_VALID_BATCH';
+  if (raw === 'insufficient_batch_quantity') return 'INSUFFICIENT_BATCH_QUANTITY';
+  if (raw === 'batch_not_released') return 'BATCH_NOT_RELEASED';
+  if (raw === 'below_cost_not_allowed') return 'BELOW_COST_NOT_ALLOWED';
+  if (raw === 'selling_below_cost_not_allowed') return 'BELOW_COST_NOT_ALLOWED';
+  if (raw === 'no_valid_batch_available') return 'لا توجد دفعة صالحة (غير منتهية) لهذا الصنف.';
+  if (raw.includes('insufficient_fefo_batch_stock_for_item_')) return 'لا توجد كمية كافية في الدفعات الصالحة (FEFO) لهذا الصنف.';
+  if (raw.includes('insufficient_reserved_batch_stock_for_item_')) return 'لا توجد كمية محجوزة كافية لهذا الصنف في الدفعات.';
+  if (raw.includes('insufficient_batch_stock_for_item_')) return 'لا توجد كمية كافية لهذا الصنف في الدفعات.';
+  if (raw.includes('batch not released or recalled')) return 'تم رفض البيع لأن الدفعة غير مجازة أو عليها استدعاء.';
   if (
     /^batch_expired$/i.test(message.trim()) ||
     /^batch_blocked$/i.test(message.trim()) ||

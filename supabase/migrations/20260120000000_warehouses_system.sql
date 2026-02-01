@@ -80,19 +80,9 @@ BEGIN
   END IF;
 END $$;
 
--- إنشاء مخزن افتراضي إذا لم يكن موجودًا
-INSERT INTO public.warehouses (code, name, type, is_active)
-VALUES ('MAIN', 'المخزن الرئيسي', 'main', true)
-ON CONFLICT (code) DO NOTHING;
+-- Clean install: لا يتم إنشاء مخزن افتراضي
 
--- تحديث السجلات الحالية لتشير للمخزن الرئيسي
-UPDATE public.stock_management 
-SET warehouse_id = (SELECT id FROM public.warehouses WHERE code = 'MAIN')
-WHERE warehouse_id IS NULL;
-
--- جعل warehouse_id إلزامي
-ALTER TABLE public.stock_management 
-ALTER COLUMN warehouse_id SET NOT NULL;
+-- إبقاء العمود، ويمكن جعله إلزامياً بعد وجود بيانات
 
 -- إنشاء فهرس مركب فريد
 DO $$

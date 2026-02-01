@@ -169,9 +169,18 @@ export const UserAuthProvider: React.FC<{ children: ReactNode }> = ({ children }
       }
       let authEmail: string | undefined;
       try {
-        const { data: userData } = await supabase.auth.getUser();
+        const { data: userData, error: userErr } = await supabase.auth.getUser();
+        if (userErr || !userData.user) {
+          try { await supabase.auth.signOut({ scope: 'local' }); } catch {}
+          setCurrentUser(null);
+          return null;
+        }
         authEmail = typeof userData.user?.email === 'string' ? userData.user?.email : undefined;
-      } catch {}
+      } catch {
+        try { await supabase.auth.signOut({ scope: 'local' }); } catch {}
+        setCurrentUser(null);
+        return null;
+      }
       let attempts = 0;
       while (attempts < 5) {
         attempts += 1;

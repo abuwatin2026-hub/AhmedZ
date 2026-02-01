@@ -9,6 +9,7 @@ const SalesIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-12 
 const ProductIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>;
 const CustomerIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.653-.124-1.282-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.653.124-1.282.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm-9 3a2 2 0 11-4 0 2 2 0 014 0z" /></svg>;
 const ReservationsIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V9m-6-4h2a2 2 0 012 2v2m-6-4V3m0 2v2m-3 8h6m-6 4h6" /></svg>;
+const TraceIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-cyan-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2a2 2 0 012-2h2a2 2 0 012 2v2m-8 0h8m-8 0a2 2 0 01-2-2V7a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2m-8 0v2m8-2v2" /></svg>;
 
 interface ReportCardProps {
     title: string;
@@ -69,6 +70,12 @@ const ReportsScreen: React.FC = () => {
             description: 'الحجوزات المفتوحة حسب الطلب والمخزن',
             icon: <ReservationsIcon />,
             linkTo: '/admin/reports/reservations',
+        },
+        {
+            title: 'تتبع دفعات الغذاء',
+            description: 'مبيعات الغذاء حسب الدفعة + Recall',
+            icon: <TraceIcon />,
+            linkTo: '/admin/reports/food-trace',
         },
         ...(canViewAccounting ? [{
             title: 'التقارير المالية',

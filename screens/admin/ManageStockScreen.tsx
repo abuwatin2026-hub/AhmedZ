@@ -6,13 +6,16 @@ import type { MenuItem, StockHistory, UnitType, StockManagement, ItemBatch } fro
 import { useItemMeta } from '../../contexts/ItemMetaContext';
 import { MinusIcon, PlusIcon } from '../../components/icons';
 import { useToast } from '../../contexts/ToastContext';
+import { useAuth } from '../../contexts/AuthContext';
 import { getSupabaseClient } from '../../supabase';
+import { useSessionScope } from '../../contexts/SessionScopeContext';
 
 import RecordWastageModal from '../../components/admin/RecordWastageModal';
 
 type StockRowProps = {
     item: MenuItem;
     stock: StockManagement | undefined;
+    warehouseId: string;
     getCategoryLabel: (categoryKey: string, language: 'ar' | 'en') => string;
     getUnitLabel: (unitKey: UnitType | undefined, language: 'ar' | 'en') => string;
     handleUpdateStock: (itemId: string, newQuantity: number, unit: string, batchId?: string) => Promise<void>;
@@ -24,8 +27,11 @@ type StockRowProps = {
     setWastageItem: (item: MenuItem | null) => void;
 };
 
-const StockRow = ({ item, stock, getCategoryLabel, getUnitLabel, handleUpdateStock, toggleHistory, expandedHistoryItemId, historyLoadingItemId, historyByItemId, setIsWastageModalOpen, setWastageItem }: StockRowProps) => {
+const StockRow = ({ item, stock, warehouseId, getCategoryLabel, getUnitLabel, handleUpdateStock, toggleHistory, expandedHistoryItemId, historyLoadingItemId, historyByItemId, setIsWastageModalOpen, setWastageItem }: StockRowProps) => {
+    const { hasPermission } = useAuth();
+    const { showNotification } = useToast();
     const currentStock = Number(stock?.availableQuantity ?? 0);
+    const qcHold = Number(stock?.qcHoldQuantity ?? 0);
     const reserved = Number(stock?.reservedQuantity ?? 0);
     const available = currentStock - reserved;
     const unit = String(stock?.unit ?? item.unitType ?? 'piece');
@@ -37,6 +43,7 @@ const StockRow = ({ item, stock, getCategoryLabel, getUnitLabel, handleUpdateSto
     const [batches, setBatches] = useState<ItemBatch[]>([]);
     const [selectedBatchId, setSelectedBatchId] = useState<string>('');
     const [showBatches, setShowBatches] = useState<boolean>(false);
+    const [qcBusyBatchId, setQcBusyBatchId] = useState<string | null>(null);
 
     useEffect(() => {
         setLocalStock(String(currentStock));
@@ -47,7 +54,7 @@ const StockRow = ({ item, stock, getCategoryLabel, getUnitLabel, handleUpdateSto
             try {
                 const supabase = getSupabaseClient();
                 if (!supabase) return;
-                const { data, error } = await supabase.rpc('get_item_batches', { p_item_id: item.id });
+                const { data, error } = await supabase.rpc('get_item_batches', { p_item_id: item.id, p_warehouse_id: warehouseId || null } as any);
                 if (error) return;
                 const rows = (data || []) as any[];
                 const mapped = rows.map(r => ({
@@ -57,13 +64,94 @@ const StockRow = ({ item, stock, getCategoryLabel, getUnitLabel, handleUpdateSto
                     receivedQuantity: Number(r.received_quantity) || 0,
                     consumedQuantity: Number(r.consumed_quantity) || 0,
                     remainingQuantity: Number(r.remaining_quantity) || 0,
+                    qcStatus: String(r.qc_status || ''),
+                    lastQcResult: (r.last_qc_result === 'pass' || r.last_qc_result === 'fail') ? r.last_qc_result : undefined,
+                    lastQcAt: r.last_qc_at ? String(r.last_qc_at) : undefined,
                 })) as ItemBatch[];
                 setBatches(mapped);
             } catch (_) {
             }
         };
         loadBatches();
-    }, [item.id]);
+    }, [item.id, warehouseId]);
+
+    const qcStatusLabel = (s: string) => {
+        const v = String(s || '').trim();
+        if (v === 'released') return 'مُفرج';
+        if (v === 'inspected') return 'مفحوص';
+        if (v === 'pending' || v === 'quarantined') return 'معلّق';
+        return v || 'غير محدد';
+    };
+
+    const runQcInspect = async (batchId: string, result: 'pass' | 'fail') => {
+        const supabase = getSupabaseClient();
+        if (!supabase) return;
+        setQcBusyBatchId(batchId);
+        try {
+            const { error } = await supabase.rpc('qc_inspect_batch', { p_batch_id: batchId, p_result: result, p_notes: null } as any);
+            if (error) throw error;
+            showNotification(result === 'pass' ? 'تم تسجيل فحص QC (نجح).' : 'تم تسجيل فحص QC (فشل).', 'success');
+        } catch (e) {
+            const msg = e instanceof Error ? e.message : '';
+            showNotification(msg && /[\u0600-\u06FF]/.test(msg) ? msg : 'فشل تنفيذ فحص QC.', 'error');
+        } finally {
+            setQcBusyBatchId(null);
+            try {
+                const { data, error } = await supabase.rpc('get_item_batches', { p_item_id: item.id, p_warehouse_id: warehouseId || null } as any);
+                if (!error) {
+                    const rows = (data || []) as any[];
+                    const mapped = rows.map(r => ({
+                        batchId: r.batch_id,
+                        occurredAt: r.occurred_at,
+                        unitCost: Number(r.unit_cost) || 0,
+                        receivedQuantity: Number(r.received_quantity) || 0,
+                        consumedQuantity: Number(r.consumed_quantity) || 0,
+                        remainingQuantity: Number(r.remaining_quantity) || 0,
+                        qcStatus: String(r.qc_status || ''),
+                        lastQcResult: (r.last_qc_result === 'pass' || r.last_qc_result === 'fail') ? r.last_qc_result : undefined,
+                        lastQcAt: r.last_qc_at ? String(r.last_qc_at) : undefined,
+                    })) as ItemBatch[];
+                    setBatches(mapped);
+                }
+            } catch {
+            }
+        }
+    };
+
+    const runQcRelease = async (batchId: string) => {
+        const supabase = getSupabaseClient();
+        if (!supabase) return;
+        setQcBusyBatchId(batchId);
+        try {
+            const { error } = await supabase.rpc('qc_release_batch', { p_batch_id: batchId } as any);
+            if (error) throw error;
+            showNotification('تم إفراج الدُفعة بنجاح.', 'success');
+        } catch (e) {
+            const msg = e instanceof Error ? e.message : '';
+            showNotification(msg && /[\u0600-\u06FF]/.test(msg) ? msg : 'فشل إفراج الدُفعة.', 'error');
+        } finally {
+            setQcBusyBatchId(null);
+            try {
+                const { data, error } = await supabase.rpc('get_item_batches', { p_item_id: item.id, p_warehouse_id: warehouseId || null } as any);
+                if (!error) {
+                    const rows = (data || []) as any[];
+                    const mapped = rows.map(r => ({
+                        batchId: r.batch_id,
+                        occurredAt: r.occurred_at,
+                        unitCost: Number(r.unit_cost) || 0,
+                        receivedQuantity: Number(r.received_quantity) || 0,
+                        consumedQuantity: Number(r.consumed_quantity) || 0,
+                        remainingQuantity: Number(r.remaining_quantity) || 0,
+                        qcStatus: String(r.qc_status || ''),
+                        lastQcResult: (r.last_qc_result === 'pass' || r.last_qc_result === 'fail') ? r.last_qc_result : undefined,
+                        lastQcAt: r.last_qc_at ? String(r.last_qc_at) : undefined,
+                    })) as ItemBatch[];
+                    setBatches(mapped);
+                }
+            } catch {
+            }
+        }
+    };
 
     const onStockChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setLocalStock(e.target.value);
@@ -106,6 +194,9 @@ const StockRow = ({ item, stock, getCategoryLabel, getUnitLabel, handleUpdateSto
                 <span className={`text-sm font-semibold ${isLowStock ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-white'}`}>
                     {Number(currentStock || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}
                 </span>
+            </td>
+            <td className="px-6 py-4 whitespace-nowrap text-sm text-purple-700 dark:text-purple-300 border-r dark:border-gray-700" dir="ltr">
+                {Number(qcHold || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}
             </td>
             <td className="px-6 py-4 whitespace-nowrap text-sm text-orange-600 dark:text-orange-400 border-r dark:border-gray-700" dir="ltr">
                 {Number(reserved || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}
@@ -152,7 +243,7 @@ const StockRow = ({ item, stock, getCategoryLabel, getUnitLabel, handleUpdateSto
                         <option value="">الدفعة الأخيرة</option>
                         {batches.map((b) => (
                             <option key={b.batchId} value={b.batchId}>
-                                {String(b.batchId).slice(0, 8)} • متبقٍ {Number(b.remainingQuantity || 0).toLocaleString('en-US')}
+                                {String(b.batchId).slice(0, 8)} • {qcStatusLabel(String((b as any).qcStatus || ''))} • متبقٍ {Number(b.remainingQuantity || 0).toLocaleString('en-US')}
                             </option>
                         ))}
                     </select>
@@ -177,6 +268,42 @@ const StockRow = ({ item, stock, getCategoryLabel, getUnitLabel, handleUpdateSto
                                                 </div>
                                                 <div className="text-gray-500 dark:text-gray-400">
                                                     وارد {Number(b.receivedQuantity || 0).toLocaleString('en-US')} • مستهلك {Number(b.consumedQuantity || 0).toLocaleString('en-US')} • متبقٍ {Number(b.remainingQuantity || 0).toLocaleString('en-US')}
+                                                </div>
+                                                <div className="text-gray-500 dark:text-gray-400 mt-1">
+                                                    QC: {qcStatusLabel(String((b as any).qcStatus || ''))}
+                                                    {(b as any).lastQcResult ? ` • آخر نتيجة: ${(b as any).lastQcResult === 'pass' ? 'نجح' : 'فشل'}` : ''}
+                                                </div>
+                                                <div className="flex items-center gap-2 mt-2">
+                                                    {(String((b as any).qcStatus || '') === 'pending' || String((b as any).qcStatus || '') === 'quarantined') && hasPermission('qc.inspect') && (
+                                                        <>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => runQcInspect(String(b.batchId), 'pass')}
+                                                                disabled={qcBusyBatchId === String(b.batchId)}
+                                                                className="px-2 py-1 rounded bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
+                                                            >
+                                                                فحص (نجح)
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => runQcInspect(String(b.batchId), 'fail')}
+                                                                disabled={qcBusyBatchId === String(b.batchId)}
+                                                                className="px-2 py-1 rounded bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+                                                            >
+                                                                فحص (فشل)
+                                                            </button>
+                                                        </>
+                                                    )}
+                                                    {String((b as any).qcStatus || '') === 'inspected' && (b as any).lastQcResult === 'pass' && hasPermission('qc.release') && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => runQcRelease(String(b.batchId))}
+                                                            disabled={qcBusyBatchId === String(b.batchId)}
+                                                            className="px-2 py-1 rounded bg-purple-700 text-white hover:bg-purple-800 disabled:opacity-50"
+                                                        >
+                                                            إفراج
+                                                        </button>
+                                                    )}
                                                 </div>
                                             </div>
                                             <div className="shrink-0 text-gray-500 dark:text-gray-400" dir="ltr">
@@ -250,6 +377,8 @@ const ManageStockScreen: React.FC = () => {
     // const { language } = useSettings();
     const { categories: categoryDefs, getCategoryLabel, getUnitLabel } = useItemMeta();
     const { showNotification } = useToast();
+    const sessionScope = useSessionScope();
+    const warehouseId = sessionScope.scope?.warehouseId || '';
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedCategory, setSelectedCategory] = useState('all');
     const [reason, setReason] = useState('');
@@ -412,6 +541,9 @@ const ManageStockScreen: React.FC = () => {
                                     المخزون الحالي
                                 </th>
                                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                                    قيد الفحص
+                                </th>
+                                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                                     محجوز
                                 </th>
                                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
@@ -430,6 +562,7 @@ const ManageStockScreen: React.FC = () => {
                                         key={item.id}
                                         item={item}
                                         stock={stock}
+                                        warehouseId={warehouseId}
                                         getCategoryLabel={getCategoryLabel}
                                         getUnitLabel={getUnitLabel}
                                         handleUpdateStock={handleUpdateStock}

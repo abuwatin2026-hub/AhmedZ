@@ -99,6 +99,8 @@ serve(async (req: Request) => {
       data: { isManual: true, business_customer_id: businessCustomerId, notes: notes || null },
     };
     insertPayload.customer_type = customerType;
+    insertPayload.payment_terms = customerType === 'wholesale' ? 'net_30' : 'cash';
+    insertPayload.current_balance = 0;
     if (customerType === 'wholesale' && creditLimit !== null) insertPayload.credit_limit = creditLimit;
 
     const { data: inserted, error: insErr } = await adminClient

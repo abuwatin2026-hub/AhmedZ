@@ -1,4 +1,4 @@
-import { getSupabaseClient, isRpcStrictMode } from '../supabase';
+import { getSupabaseClient } from '../supabase';
 
 type TableOp = 'insert' | 'upsert' | 'update' | 'delete';
 
@@ -33,89 +33,15 @@ let processorStarted = false;
 
 const isOffline = () => typeof navigator !== 'undefined' && navigator.onLine === false;
 
-const isRpcNotFoundError = (err: any) => {
-  const code = String(err?.code || '');
-  const msg = String(err?.message || '');
-  const details = String(err?.details || '');
-  const status = (err as any)?.status;
-  return (
-    code === 'PGRST202' ||
-    code === '42883' ||
-    status === 404 ||
-    /Could not find the function/i.test(msg) ||
-    /PGRST202/i.test(details)
-  );
-};
+// kept for backwards compatibility with earlier logic; now always strict
 
 const callRpcWithFallback = async (
   supabase: any,
   name: string,
   args: Record<string, any>
 ): Promise<{ data: any; error: any }> => {
-  const run = async (nextArgs: Record<string, any>) => {
-    const { data, error } = await supabase.rpc(name, nextArgs);
-    return { data, error };
-  };
-
-  const strict = isRpcStrictMode();
-  let res = await run(args);
-  if (!res.error || !isRpcNotFoundError(res.error)) return res;
-
-  if (strict) return res;
-
-  if (name === 'reserve_stock_for_order') {
-    const payload = (args as any)?.p_payload;
-    if (payload && typeof payload === 'object') {
-      res = await run({
-        p_items: payload.p_items ?? payload.items ?? [],
-        p_order_id: payload.p_order_id ?? payload.order_id ?? payload.orderId ?? null,
-        p_warehouse_id: payload.p_warehouse_id ?? payload.warehouse_id ?? payload.warehouseId ?? null,
-      });
-      if (!res.error || !isRpcNotFoundError(res.error)) return res;
-
-      res = await run({
-        p_items: payload.p_items ?? payload.items ?? [],
-      });
-      if (!res.error || !isRpcNotFoundError(res.error)) return res;
-    }
-  }
-
-  if (name === 'confirm_order_delivery_with_credit') {
-    const payload = (args as any)?.p_payload;
-    if (payload && typeof payload === 'object') {
-      res = await run({
-        p_order_id: payload.p_order_id ?? payload.order_id ?? payload.orderId,
-        p_items: payload.p_items ?? payload.items ?? [],
-        p_updated_data: payload.p_updated_data ?? payload.updated_data ?? {},
-        p_warehouse_id: payload.p_warehouse_id ?? payload.warehouse_id ?? payload.warehouseId,
-      });
-      if (!res.error || !isRpcNotFoundError(res.error)) return res;
-    }
-  }
-
-  if (name === 'confirm_order_delivery') {
-    const payload = (args as any)?.p_payload;
-    if (payload && typeof payload === 'object') {
-      res = await run({
-        p_order_id: payload.p_order_id ?? payload.order_id ?? payload.orderId,
-        p_items: payload.p_items ?? payload.items ?? [],
-        p_updated_data: payload.p_updated_data ?? payload.updated_data ?? {},
-        p_warehouse_id: payload.p_warehouse_id ?? payload.warehouse_id ?? payload.warehouseId,
-      });
-      if (!res.error || !isRpcNotFoundError(res.error)) return res;
-    }
-  }
-
-  if (name === 'record_order_payment') {
-    if ((args as any) && typeof args === 'object' && 'p_idempotency_key' in (args as any)) {
-      const nextArgs: any = { ...(args as any) };
-      delete nextArgs.p_idempotency_key;
-      res = await run(nextArgs);
-      if (!res.error || !isRpcNotFoundError(res.error)) return res;
-    }
-  }
-
-  return res;
+  const { data, error } = await supabase.rpc(name, args);
+  return { data, error };
 };
 
 const BLOCK_OFFLINE_RPC = new Set<string>([

@@ -148,7 +148,6 @@ export async function decrypt(ciphertext: string): Promise<string> {
 
         const combined = base64ToBytes(ciphertext);
         if (!combined || combined.length < 13) {
-            logger.warn('Invalid ciphertext, returning as-is');
             return ciphertext;
         }
 
@@ -166,14 +165,12 @@ export async function decrypt(ciphertext: string): Promise<string> {
                 data
             );
         } catch (e) {
-            logger.warn('SubtleCrypto decrypt failed', e as Error);
             return ciphertext;
         }
 
         const decoder = new TextDecoder();
         return decoder.decode(decrypted);
     } catch (error) {
-        logger.warn('Decryption failed', error as Error);
         return ciphertext;
     }
 }

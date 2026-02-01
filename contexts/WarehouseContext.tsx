@@ -207,7 +207,7 @@ export const WarehouseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     // Check if warehouse has stock
     const { data: stockData, error: stockError } = await supabase
       .from('stock_management')
-      .select('id')
+      .select('item_id')
       .eq('warehouse_id', id)
       .gt('available_quantity', 0)
       .limit(1);

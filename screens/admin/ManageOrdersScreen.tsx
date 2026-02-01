@@ -19,6 +19,7 @@ import { useWarehouses } from '../../contexts/WarehouseContext';
 import OsmMapEmbed from '../../components/OsmMapEmbed';
 import NumberInput from '../../components/NumberInput';
 import { useMenu } from '../../contexts/MenuContext';
+import { useItemMeta } from '../../contexts/ItemMetaContext';
 import { getSupabaseClient } from '../../supabase';
 import { printContent } from '../../utils/printUtils';
 import { toDateTimeLocalInputValue } from '../../utils/dateUtils';
@@ -39,6 +40,7 @@ const paymentTranslations: Record<string, string> = {
     card: 'حوالات',
     bank: 'حسابات بنكية',
     bank_transfer: 'حسابات بنكية',
+    ar: 'آجل',
     mixed: 'متعدد',
     unknown: 'غير محدد'
 };
@@ -75,6 +77,9 @@ const ManageOrdersScreen: React.FC = () => {
     const [isCreatingReturn, setIsCreatingReturn] = useState(false);
     const [returnReason, setReturnReason] = useState('');
     const [refundMethod, setRefundMethod] = useState<'cash' | 'network' | 'kuraimi'>('cash');
+    const [voidOrderId, setVoidOrderId] = useState<string | null>(null);
+    const [voidReason, setVoidReason] = useState('');
+    const [isVoidingOrder, setIsVoidingOrder] = useState(false);
     const [returnsOrderId, setReturnsOrderId] = useState<string | null>(null);
     const [returnsByOrderId, setReturnsByOrderId] = useState<Record<string, any[]>>({});
     const [returnsLoading, setReturnsLoading] = useState(false);
@@ -85,6 +90,7 @@ const ManageOrdersScreen: React.FC = () => {
     const sessionScope = useSessionScope();
     const { getWarehouseById } = useWarehouses();
     const { menuItems: allMenuItems } = useMenu();
+    const { isWeightBasedUnit } = useItemMeta();
     const [filterStatus, setFilterStatus] = useState<OrderStatus | 'all'>('all');
     const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
     const [customerUserIdFilter, setCustomerUserIdFilter] = useState<string>('');
@@ -100,6 +106,8 @@ const ManageOrdersScreen: React.FC = () => {
     const [isInStoreSaleOpen, setIsInStoreSaleOpen] = useState(false);
     const [isInStoreCreating, setIsInStoreCreating] = useState(false);
     const [inStoreIsCredit, setInStoreIsCredit] = useState(false); // NEW: Credit Sale State
+    const [inStoreCreditSummary, setInStoreCreditSummary] = useState<any | null>(null);
+    const [inStoreCreditSummaryLoading, setInStoreCreditSummaryLoading] = useState(false);
     const menuItems = useMemo(() => {
         const items = allMenuItems.filter(i => i.status !== 'archived');
         items.sort((a, b) => {
@@ -157,6 +165,7 @@ const ManageOrdersScreen: React.FC = () => {
     const highlightedOrderId = (searchParams.get('orderId') || '') || (typeof (location.state as any)?.orderId === 'string' ? (location.state as any).orderId : '');
 
     const canViewAccounting = hasPermission('accounting.view') || hasPermission('accounting.manage');
+    const canVoidDelivered = hasPermission('accounting.void');
 
     const canUseCash = hasPermission('orders.markPaid') && hasPermission('cashShifts.open');
     const inStoreAvailablePaymentMethods = useMemo(() => {
@@ -190,6 +199,28 @@ const ManageOrdersScreen: React.FC = () => {
         };
         fetchDriverBalances();
     }, [canViewAccounting]);
+
+    useEffect(() => {
+        const loadCreditSummary = async () => {
+            if (!isInStoreSaleOpen) return;
+            if (!inStoreIsCredit) return;
+            const customerId = String(inStoreSelectedCustomerId || '').trim();
+            if (!customerId) return;
+            const supabase = getSupabaseClient();
+            if (!supabase) return;
+            setInStoreCreditSummaryLoading(true);
+            try {
+                const { data, error } = await supabase.rpc('get_customer_credit_summary', { p_customer_id: customerId });
+                if (error) throw error;
+                setInStoreCreditSummary(data || null);
+            } catch {
+                setInStoreCreditSummary(null);
+            } finally {
+                setInStoreCreditSummaryLoading(false);
+            }
+        };
+        loadCreditSummary();
+    }, [inStoreIsCredit, inStoreSelectedCustomerId, isInStoreSaleOpen]);
 
     const openCodAudit = async (orderId: string) => {
         if (!canViewAccounting) return;
@@ -434,7 +465,7 @@ const ManageOrdersScreen: React.FC = () => {
         if (!id) return;
         const menuItem = menuItems.find(m => m.id === id);
         if (!menuItem) return;
-        const isWeightBased = menuItem.unitType === 'kg' || menuItem.unitType === 'gram';
+        const isWeightBased = isWeightBasedUnit(menuItem.unitType as any);
 
         // Filter out 0 quantity addons
         const addonsToAdd: Record<string, number> = {};
@@ -476,7 +507,7 @@ const ManageOrdersScreen: React.FC = () => {
             const menuItem = menuItems.find(m => m.id === line.menuItemId);
             if (!menuItem) return sum;
             const unitType = menuItem.unitType;
-            const isWeightBased = unitType === 'kg' || unitType === 'gram';
+            const isWeightBased = isWeightBasedUnit(unitType as any);
             const quantity = !isWeightBased ? (line.quantity || 0) : 1;
             const weight = isWeightBased ? (line.weight || 0) : 0;
             const unitPrice = unitType === 'gram' && menuItem.pricePerUnit ? menuItem.pricePerUnit / 1000 : menuItem.price;
@@ -508,6 +539,7 @@ const ManageOrdersScreen: React.FC = () => {
 
     useEffect(() => {
         if (!isInStoreSaleOpen) return;
+        if (inStoreIsCredit) return;
         if (!inStoreMultiPaymentEnabled) return;
         if (inStorePaymentLines.length !== 1) return;
         const total = Number(inStoreTotals.total) || 0;
@@ -518,16 +550,17 @@ const ManageOrdersScreen: React.FC = () => {
             if (Math.abs((Number(current.amount) || 0) - nextAmount) < 0.0001) return prev;
             return [{ ...current, amount: nextAmount }];
         });
-    }, [inStoreMultiPaymentEnabled, inStorePaymentLines.length, inStoreTotals.total, isInStoreSaleOpen]);
+    }, [inStoreIsCredit, inStoreMultiPaymentEnabled, inStorePaymentLines.length, inStoreTotals.total, isInStoreSaleOpen]);
 
     useEffect(() => {
         if (!isInStoreSaleOpen) return;
+        if (inStoreIsCredit) return;
         const total = Number(inStoreTotals.total) || 0;
         if (inStorePaymentMethod !== 'kuraimi' && inStorePaymentMethod !== 'network') return;
         if ((Number(inStorePaymentDeclaredAmount) || 0) > 0) return;
         if (!(total > 0)) return;
         setInStorePaymentDeclaredAmount(Number(total.toFixed(2)));
-    }, [inStorePaymentDeclaredAmount, inStorePaymentMethod, inStoreTotals.total, isInStoreSaleOpen]);
+    }, [inStoreIsCredit, inStorePaymentDeclaredAmount, inStorePaymentMethod, inStoreTotals.total, isInStoreSaleOpen]);
 
     const confirmInStoreSale = async () => {
         const total = Number(inStoreTotals.total) || 0;
@@ -551,7 +584,7 @@ const ManageOrdersScreen: React.FC = () => {
                 .filter(p => Boolean(p.method) && p.amount > 0)
             : [{
                 method: (inStorePaymentMethod || '').trim(),
-                amount: total,
+                amount: inStoreIsCredit ? 0 : total,
                 referenceNumber: (inStorePaymentReferenceNumber || '').trim() || undefined,
                 senderName: (inStorePaymentSenderName || '').trim() || undefined,
                 senderPhone: (inStorePaymentSenderPhone || '').trim() || undefined,
@@ -560,7 +593,7 @@ const ManageOrdersScreen: React.FC = () => {
                 cashReceived: Number(inStoreCashReceived) || 0,
             }];
 
-        if (!normalizedPaymentLines.length) {
+        if (!normalizedPaymentLines.length && !inStoreIsCredit) {
             showNotification('يرجى إدخال بيانات الدفع.', 'error');
             return;
         }
@@ -568,6 +601,10 @@ const ManageOrdersScreen: React.FC = () => {
         const sum = normalizedPaymentLines.reduce((s, p) => s + (Number(p.amount) || 0), 0);
         if (!inStoreIsCredit && Math.abs(sum - total) > 0.01) {
             showNotification('مجموع الدفعات لا يطابق إجمالي البيع.', 'error');
+            return;
+        }
+        if (inStoreIsCredit && sum - total > 0.01) {
+            showNotification('مجموع الدفعات أكبر من إجمالي البيع.', 'error');
             return;
         }
 
@@ -615,8 +652,10 @@ const ManageOrdersScreen: React.FC = () => {
             }
         }
 
-        const primaryPaymentMethod = (normalizedPaymentLines[0]?.method || '').trim();
-        if (!primaryPaymentMethod) {
+        const primaryPaymentMethod = inStoreIsCredit
+            ? ((inStorePaymentMethod || 'cash').trim())
+            : ((normalizedPaymentLines[0]?.method || '').trim());
+        if (!inStoreIsCredit && !primaryPaymentMethod) {
             showNotification('يرجى اختيار طريقة الدفع.', 'error');
             return;
         }
@@ -956,12 +995,12 @@ const ManageOrdersScreen: React.FC = () => {
         const itemsToReturn = Object.entries(returnItems)
             .filter(([_, qty]) => qty > 0)
             .map(([cartItemId, qty]) => {
-                const orderItem = order.items.find(i => i.cartItemId === cartItemId);
+                const orderItem = (order.items || []).find(i => i.cartItemId === cartItemId);
                 if (!orderItem) return null;
                 const menuItemId = orderItem.id || (orderItem as any).menuItemId;
 
                 const unitType = (orderItem as any).unitType;
-                const isWeightBased = unitType === 'kg' || unitType === 'gram';
+                const isWeightBased = isWeightBasedUnit(unitType as any);
                 const totalQty = isWeightBased ? (Number((orderItem as any).weight) || 0) : (Number(orderItem.quantity) || 0);
                 if (!(totalQty > 0)) return null;
 
@@ -1014,6 +1053,30 @@ const ManageOrdersScreen: React.FC = () => {
         }
     };
 
+    const handleConfirmVoidDelivered = async () => {
+        if (!voidOrderId) return;
+        if (!canVoidDelivered) return;
+        try {
+            setIsVoidingOrder(true);
+            const supabase = getSupabaseClient();
+            if (!supabase) throw new Error('Supabase غير مهيأ.');
+            const { error } = await supabase.rpc('void_delivered_order', {
+                p_order_id: voidOrderId,
+                p_reason: voidReason || null
+            } as any);
+            if (error) throw error;
+            showNotification('تم عكس البيع (إلغاء بعد التسليم) بنجاح.', 'success');
+            setVoidOrderId(null);
+            setVoidReason('');
+        } catch (error) {
+            const raw = error instanceof Error ? error.message : '';
+            const message = raw && /[\u0600-\u06FF]/.test(raw) ? raw : 'فشل تنفيذ الإلغاء بعد التسليم.';
+            showNotification(message, 'error');
+        } finally {
+            setIsVoidingOrder(false);
+        }
+    };
+
     const isDeliveredLocation = (value: unknown): value is { lat: number; lng: number; accuracy?: number } => {
         if (!value || typeof value !== 'object') return false;
         const rec = value as Record<string, unknown>;
@@ -1024,6 +1087,8 @@ const ManageOrdersScreen: React.FC = () => {
         const paid = Number(paidSumByOrderId[order.id]) || 0;
         const remaining = Math.max(0, (Number(order.total) || 0) - paid);
         const canReturn = order.status === 'delivered' && paid > 0.01;
+        const isVoided = Boolean((order as any)?.voidedAt || (order as any)?.data?.voidedAt);
+        const items = Array.isArray((order as any)?.items) ? (order as any).items : [];
         
         return (
             <div key={order.id} className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 border border-gray-100 dark:border-gray-700">
@@ -1088,14 +1153,14 @@ const ManageOrdersScreen: React.FC = () => {
 
                 {/* Items Summary */}
                 <div className="mb-3">
-                    <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">الأصناف ({order.items.length})</div>
+                    <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">الأصناف ({items.length})</div>
                     <ul className="text-sm text-gray-800 dark:text-gray-200 space-y-1 pl-2 border-l-2 border-gray-200 dark:border-gray-600">
-                        {order.items.slice(0, 3).map((item: any, idx: number) => (
+                        {items.slice(0, 3).map((item: any, idx: number) => (
                             <li key={item.cartItemId || item.id || `${item.menuItemId || 'item'}-${idx}`} className="truncate">
                                 {item.quantity}x {item.name?.ar || item.name?.en || 'Item'}
                             </li>
                         ))}
-                        {order.items.length > 3 && <li key="more-items" className="text-xs text-gray-500">+ {order.items.length - 3} المزيد...</li>}
+                        {items.length > 3 && <li key="more-items" className="text-xs text-gray-500">+ {items.length - 3} المزيد...</li>}
                     </ul>
                 </div>
 
@@ -1103,7 +1168,7 @@ const ManageOrdersScreen: React.FC = () => {
                 <div className="flex justify-between items-center mb-4 pt-3 border-t border-gray-100 dark:border-gray-700">
                     <div>
                         <div className="text-xs text-gray-500">الإجمالي</div>
-                        <div className="text-lg font-bold text-orange-600">{order.total.toFixed(2)} <span className="text-xs">ر.ي</span></div>
+                        <div className="text-lg font-bold text-orange-600">{(Number(order.total) || 0).toFixed(2)} <span className="text-xs">ر.ي</span></div>
                     </div>
                     <div className="text-right">
                         <div className="text-xs text-gray-500">طريقة الدفع</div>
@@ -1247,6 +1312,19 @@ const ManageOrdersScreen: React.FC = () => {
                                 ↩️ استرجاع
                             </button>
                         </div>
+                    )}
+
+                    {order.status === 'delivered' && canVoidDelivered && !isVoided && (
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setVoidOrderId(order.id);
+                                setVoidReason('');
+                            }}
+                            className="col-span-2 py-2 bg-purple-700 text-white rounded hover:bg-purple-800 transition text-sm font-semibold"
+                        >
+                            🧾 إلغاء بعد التسليم (عكس)
+                        </button>
                     )}
 
                     {/* Cancel Order */}
@@ -1438,23 +1516,43 @@ const ManageOrdersScreen: React.FC = () => {
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300 align-top border-r dark:border-gray-700">
                                             <ul className="space-y-1">
-                                                {order.items.map((item: CartItem, idx: number) => {
-                                                    const addonsArray = Object.values(item.selectedAddons);
-                                                    const itemName = item.name?.[language] || item.name?.ar || item.name?.en || '';
+                                                {(order.items || []).map((item: CartItem, idx: number) => {
+                                                    const selectedAddonsRaw = (item as any)?.selectedAddons;
+                                                    const selectedAddonsObj =
+                                                        selectedAddonsRaw && typeof selectedAddonsRaw === 'object' ? selectedAddonsRaw : {};
+                                                    const addonsArray = Object.values(selectedAddonsObj as Record<string, any>);
+                                                    const itemName = String(
+                                                        (item as any)?.name?.[language] ||
+                                                            (item as any)?.name?.ar ||
+                                                            (item as any)?.name?.en ||
+                                                            (item as any)?.name ||
+                                                            (item as any)?.itemName ||
+                                                            (item as any)?.id ||
+                                                            (item as any)?.itemId ||
+                                                            ''
+                                                    );
                                                     const key =
                                                         item.cartItemId ||
                                                         (item as any).id ||
                                                         `${(item as any).menuItemId || 'item'}-${idx}`;
                                                     return (
                                                         <li key={key}>
-                                                            <span className="font-semibold">{itemName} x{item.quantity}</span>
+                                                            <span className="font-semibold">{itemName || 'منتج'} x{Number((item as any)?.quantity || 0)}</span>
                                                             {addonsArray.length > 0 && (
                                                                 <div className="text-xs text-gray-500 dark:text-gray-400 pl-2 rtl:pr-2">
                                                                     {addonsArray
-                                                                        .map(({ addon }) => {
-                                                                            const addonName = addon.name?.[language] || addon.name?.ar || addon.name?.en || '';
-                                                                            return `+ ${addonName}`;
+                                                                        .map((entry: any) => {
+                                                                            const addon = entry?.addon || entry;
+                                                                            const addonName =
+                                                                                addon?.name?.[language] ||
+                                                                                addon?.name?.ar ||
+                                                                                addon?.name?.en ||
+                                                                                addon?.name ||
+                                                                                addon?.title ||
+                                                                                '';
+                                                                            return addonName ? `+ ${String(addonName)}` : '';
                                                                         })
+                                                                        .filter(Boolean)
                                                                         .join(', ')}
                                                                 </div>
                                                             )}
@@ -1651,6 +1749,18 @@ const ManageOrdersScreen: React.FC = () => {
                                                     </div>
                                                 );
                                             })()}
+                                            {order.status === 'delivered' && canVoidDelivered && !Boolean((order as any)?.voidedAt || (order as any)?.data?.voidedAt) && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setVoidOrderId(order.id);
+                                                        setVoidReason('');
+                                                    }}
+                                                    className="mt-2 w-full px-3 py-2 bg-purple-700 text-white rounded-md hover:bg-purple-800 transition text-sm font-semibold"
+                                                >
+                                                    🧾 إلغاء بعد التسليم (عكس)
+                                                </button>
+                                            )}
                                             {isDeliveryOnly && !isInStoreOrder(order) && order.assignedDeliveryUserId === adminUser?.id && !order.deliveryAcceptedAt && order.status !== 'delivered' && order.status !== 'cancelled' && (
                                                 <button
                                                     type="button"
@@ -1960,9 +2070,21 @@ const ManageOrdersScreen: React.FC = () => {
                                 type="checkbox"
                                 checked={inStoreIsCredit}
                                 onChange={(e) => {
-                                    setInStoreIsCredit(e.target.checked);
-                                    // Disable multi-payment if credit is enabled (to simplify, or keep it?)
-                                    // Actually, we can keep multi-payment as "down payment".
+                                    const checked = e.target.checked;
+                                    setInStoreIsCredit(checked);
+                                    if (checked) {
+                                        setInStoreMultiPaymentEnabled(true);
+                                        const initialMethod = inStorePaymentMethod && inStoreVisiblePaymentMethods.includes(inStorePaymentMethod)
+                                            ? inStorePaymentMethod
+                                            : (inStoreVisiblePaymentMethods[0] || 'cash');
+                                        setInStorePaymentLines([{
+                                            method: initialMethod,
+                                            amount: 0,
+                                            declaredAmount: 0,
+                                            amountConfirmed: initialMethod === 'cash',
+                                            cashReceived: 0,
+                                        }]);
+                                    }
                                 }}
                                 disabled={inStoreCustomerMode !== 'existing' || !inStoreSelectedCustomerId}
                                 className="form-checkbox h-5 w-5 text-purple-600 rounded focus:ring-purple-600 disabled:opacity-50"
@@ -1979,6 +2101,40 @@ const ManageOrdersScreen: React.FC = () => {
                             فتح الفاتورة بعد التسجيل
                         </label>
                     </div>
+
+                    {inStoreIsCredit && (
+                        <div className="mt-2 p-3 border border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-900/20 rounded-md">
+                            <div className="flex items-center justify-between gap-3">
+                                <div className="text-xs font-semibold text-purple-800 dark:text-purple-300">ملخص الائتمان</div>
+                                {inStoreCreditSummaryLoading && (
+                                    <div className="text-[11px] text-gray-600 dark:text-gray-300">جاري التحميل...</div>
+                                )}
+                            </div>
+                            {!inStoreCreditSummaryLoading && !(inStoreCreditSummary && inStoreCreditSummary.exists) && (
+                                <div className="text-[11px] text-gray-700 dark:text-gray-300 mt-1">تعذر تحميل بيانات الائتمان.</div>
+                            )}
+                            {!inStoreCreditSummaryLoading && (inStoreCreditSummary && inStoreCreditSummary.exists) && (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2 text-[11px] text-gray-800 dark:text-gray-200">
+                                    <div>سقف الائتمان: <span className="font-mono">{Number(inStoreCreditSummary.credit_limit || 0).toFixed(2)}</span> ر.ي</div>
+                                    <div>الرصيد الحالي: <span className="font-mono">{Number(inStoreCreditSummary.current_balance || 0).toFixed(2)}</span> ر.ي</div>
+                                    <div>المتاح الآن: <span className="font-mono">{Number(inStoreCreditSummary.available_credit || 0).toFixed(2)}</span> ر.ي</div>
+                                    <div>
+                                        المتاح بعد هذا البيع:{' '}
+                                        <span className="font-mono">
+                                            {Math.max(
+                                                0,
+                                                Number(inStoreCreditSummary.available_credit || 0) - Math.max(
+                                                    0,
+                                                    (Number(inStoreTotals.total) || 0) - (inStoreMultiPaymentEnabled ? inStorePaymentLines.reduce((s, p) => s + (Number(p.amount) || 0), 0) : 0)
+                                                )
+                                            ).toFixed(2)}
+                                        </span>{' '}
+                                        ر.ي
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
 
                     <div>
                         <label className="block text-xs text-gray-600 dark:text-gray-300 mb-1">{language === 'ar' ? 'طريقة الدفع' : 'Payment method'}</label>
@@ -1997,7 +2153,7 @@ const ManageOrdersScreen: React.FC = () => {
                                                 : (inStoreVisiblePaymentMethods[0] || '');
                                             setInStorePaymentLines([{
                                                 method: initialMethod,
-                                                amount: Number(total.toFixed(2)),
+                                                amount: inStoreIsCredit ? 0 : Number(total.toFixed(2)),
                                                 declaredAmount: 0,
                                                 amountConfirmed: initialMethod === 'cash',
                                                 cashReceived: 0,
@@ -2181,7 +2337,7 @@ const ManageOrdersScreen: React.FC = () => {
                         )}
                     </div>
 
-                    {!inStoreMultiPaymentEnabled && inStorePaymentMethod === 'cash' && (
+                    {!inStoreIsCredit && !inStoreMultiPaymentEnabled && inStorePaymentMethod === 'cash' && (
                         <div className="p-3 border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/30 rounded-md space-y-2">
                             <label className="block text-xs text-gray-700 dark:text-gray-300">
                                 المبلغ المستلم (اختياري)
@@ -2200,7 +2356,7 @@ const ManageOrdersScreen: React.FC = () => {
                         </div>
                     )}
 
-                    {!inStoreMultiPaymentEnabled && (inStorePaymentMethod === 'kuraimi' || inStorePaymentMethod === 'network') && (
+                    {!inStoreIsCredit && !inStoreMultiPaymentEnabled && (inStorePaymentMethod === 'kuraimi' || inStorePaymentMethod === 'network') && (
                         <div className="p-3 border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 rounded-md space-y-3">
                             <div className="text-xs font-semibold text-blue-800 dark:text-blue-300">
                                 {inStorePaymentMethod === 'kuraimi' ? 'بيانات الإيداع البنكي' : 'بيانات الحوالة'}
@@ -2705,10 +2861,10 @@ const ManageOrdersScreen: React.FC = () => {
                             </div>
                             
                             <div className="space-y-2 max-h-60 overflow-y-auto">
-                                {order.items.map((item: any) => {
+                                {(order.items || []).map((item: any) => {
                                     const itemId = item.cartItemId || item.id;
                                     const unitType = (item as any).unitType;
-                                    const isWeightBased = unitType === 'kg' || unitType === 'gram';
+                                    const isWeightBased = isWeightBasedUnit(unitType as any);
                                     const maxQty = isWeightBased ? (Number((item as any).weight) || 0) : item.quantity;
                                     const currentReturnQty = returnItems[itemId] || 0;
                                     const itemName = item.name?.ar || item.name?.en || 'Item';
@@ -2777,10 +2933,10 @@ const ManageOrdersScreen: React.FC = () => {
 
                                         const total = Object.entries(returnItems).reduce((sum, [cartItemId, qty]) => {
                                             if (!(qty > 0)) return sum;
-                                            const item = order.items.find(i => i.cartItemId === cartItemId);
+                                            const item = (order.items || []).find(i => i.cartItemId === cartItemId);
                                             if (!item) return sum;
                                             const unitType = (item as any).unitType;
-                                            const isWeightBased = unitType === 'kg' || unitType === 'gram';
+                                            const isWeightBased = isWeightBasedUnit(unitType as any);
                                             const totalQty = isWeightBased ? (Number((item as any).weight) || 0) : (Number(item.quantity) || 0);
                                             if (!(totalQty > 0)) return sum;
                                             const unitPrice = unitType === 'gram' && (item as any).pricePerUnit ? (Number((item as any).pricePerUnit) || 0) / 1000 : (Number(item.price) || 0);
@@ -2801,6 +2957,40 @@ const ManageOrdersScreen: React.FC = () => {
                         </div>
                     );
                 })()}
+            </ConfirmationModal>
+
+            <ConfirmationModal
+                isOpen={Boolean(voidOrderId)}
+                onClose={() => {
+                    if (isVoidingOrder) return;
+                    setVoidOrderId(null);
+                    setVoidReason('');
+                }}
+                onConfirm={handleConfirmVoidDelivered}
+                title="إلغاء بعد التسليم (عكس)"
+                message=""
+                isConfirming={isVoidingOrder}
+                confirmText="تأكيد العكس"
+                confirmingText="جاري التنفيذ..."
+                cancelText="إلغاء"
+                confirmButtonClassName="bg-purple-700 hover:bg-purple-800 disabled:bg-purple-400"
+                maxWidthClassName="max-w-2xl"
+            >
+                <div className="space-y-3">
+                    <div className="bg-purple-50 dark:bg-purple-900/20 p-3 rounded-md text-sm text-purple-900 dark:text-purple-200">
+                        هذا الإجراء يعكس قيود الإيراد/الضريبة/الذمم ويعيد المخزون، ويضع علامة “تم الإلغاء بعد التسليم” على الطلب.
+                    </div>
+                    <div>
+                        <label className="block text-xs text-gray-600 dark:text-gray-300 mb-1">سبب الإلغاء</label>
+                        <textarea
+                            value={voidReason}
+                            onChange={(e) => setVoidReason(e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
+                            rows={2}
+                            placeholder="مثال: إلغاء إداري، خطأ في الفاتورة..."
+                        />
+                    </div>
+                </div>
             </ConfirmationModal>
 
             <ConfirmationModal

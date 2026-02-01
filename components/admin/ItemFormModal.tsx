@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { MenuItem, Addon, UnitType, FreshnessLevel } from '../../types';
-import { useMenu } from '../../contexts/MenuContext';
 import { useAddons } from '../../contexts/AddonContext';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useAuth } from '../../contexts/AuthContext';
@@ -20,7 +19,6 @@ interface ItemFormModalProps {
 }
 
 const ItemFormModal: React.FC<ItemFormModalProps> = ({ isOpen, onClose, onSave, itemToEdit, isSaving, onManageMeta }) => {
-  const { menuItems } = useMenu();
   const { addons: availableAddons } = useAddons();
   const { t, language } = useSettings();
   const { hasPermission } = useAuth();
@@ -30,17 +28,12 @@ const ItemFormModal: React.FC<ItemFormModalProps> = ({ isOpen, onClose, onSave, 
   const getInitialFormState = (): Omit<MenuItem, 'id' | 'rating'> => ({
     ...((): Pick<MenuItem, 'category' | 'unitType' | 'freshnessLevel' | 'minWeight'> => {
       const activeCategoryKeys = categories.filter(c => c.isActive).map(c => c.key);
-      const fallbackCategoryKeys = [...new Set(menuItems.map(i => i.category))].filter(Boolean);
-      const category = activeCategoryKeys[0] || fallbackCategoryKeys[0] || 'grocery';
-
+      const category = activeCategoryKeys[0] || '';
       const activeUnitKeys = unitTypes.filter(u => u.isActive).map(u => String(u.key) as UnitType);
-      const unitType = activeUnitKeys[0] || ('kg' as UnitType);
-
+      const unitType = activeUnitKeys[0] || undefined;
       const activeFreshnessKeys = freshnessLevels.filter(f => f.isActive).map(f => String(f.key) as FreshnessLevel);
-      const freshnessLevel = activeFreshnessKeys[0] || ('fresh' as FreshnessLevel);
-
+      const freshnessLevel = activeFreshnessKeys[0] || undefined;
       const minWeight = unitType === 'kg' || unitType === 'gram' ? 0.5 : 1;
-
       return { category, unitType, freshnessLevel, minWeight };
     })(),
     name: { ar: '', en: '' },
@@ -75,9 +68,9 @@ const ItemFormModal: React.FC<ItemFormModalProps> = ({ isOpen, onClose, onSave, 
         status: itemToEdit.status || 'active',
         addons: itemToEdit.addons || [],
         isFeatured: itemToEdit.isFeatured || false,
-        unitType: itemToEdit.unitType || 'kg',
+        unitType: itemToEdit.unitType,
         availableStock: itemToEdit.availableStock || 0,
-        freshnessLevel: itemToEdit.freshnessLevel || 'fresh',
+        freshnessLevel: itemToEdit.freshnessLevel,
         minWeight: itemToEdit.minWeight || 0.5,
         pricePerUnit: itemToEdit.pricePerUnit,
         buyingPrice: itemToEdit.buyingPrice || 0,
@@ -163,7 +156,7 @@ const ItemFormModal: React.FC<ItemFormModalProps> = ({ isOpen, onClose, onSave, 
       setFormError(language === 'ar' ? 'أقل كمية للطلب يجب أن تكون أكبر من صفر' : 'Minimum order quantity must be > 0');
       return;
     }
-    if (unitType !== 'kg' && unitType !== 'gram' && !Number.isInteger(minWeight)) {
+    if (!(unitType === 'kg' || unitType === 'gram') && !Number.isInteger(minWeight)) {
       setFormError(language === 'ar' ? 'أقل كمية للطلب يجب أن تكون رقم صحيح للوحدات غير الوزنية' : 'Minimum order must be an integer for non-weight units');
       return;
     }
@@ -239,25 +232,21 @@ const ItemFormModal: React.FC<ItemFormModalProps> = ({ isOpen, onClose, onSave, 
     const active = categories.filter(c => c.isActive).map(c => c.key);
     const existing = itemToEdit?.category;
     if (existing && !active.includes(existing)) return [existing, ...active];
-    if (active.length > 0) return active;
-    const fallback = [...new Set(menuItems.map(i => i.category))].filter(Boolean);
-    return fallback.length > 0 ? fallback : ['grocery'];
-  }, [categories, itemToEdit?.category, menuItems]);
+    return active;
+  }, [categories, itemToEdit?.category]);
 
   const unitOptions = React.useMemo(() => {
     const active = unitTypes.filter(u => u.isActive).map(u => String(u.key));
     const existing = itemToEdit?.unitType ? String(itemToEdit.unitType) : undefined;
     if (existing && !active.includes(existing)) return [existing, ...active];
-    if (active.length > 0) return active;
-    return ['kg', 'gram', 'piece', 'bundle'];
+    return active;
   }, [unitTypes, itemToEdit?.unitType]);
 
   const freshnessOptions = React.useMemo(() => {
     const active = freshnessLevels.filter(f => f.isActive).map(f => String(f.key));
     const existing = itemToEdit?.freshnessLevel ? String(itemToEdit.freshnessLevel) : undefined;
     if (existing && !active.includes(existing)) return [existing, ...active];
-    if (active.length > 0) return active;
-    return ['fresh', 'good', 'acceptable'];
+    return active;
   }, [freshnessLevels, itemToEdit?.freshnessLevel]);
 
   if (!isOpen) return null;
@@ -309,6 +298,7 @@ const ItemFormModal: React.FC<ItemFormModalProps> = ({ isOpen, onClose, onSave, 
             <div>
               <label htmlFor="category" className="block text-sm font-medium text-gray-700 dark:text-gray-300">الفئة</label>
               <select name="category" id="category" value={item.category} onChange={handleChange} className="mt-1 w-full p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600">
+                <option value="">{language === 'ar' ? 'اختر فئة' : 'Select category'}</option>
                 {categoryOptions.map(cat => (
                   <option key={cat} value={cat}>
                     {getCategoryLabel(cat, language as 'ar' | 'en')}
@@ -322,11 +312,12 @@ const ItemFormModal: React.FC<ItemFormModalProps> = ({ isOpen, onClose, onSave, 
               <select
                 name="unitType"
                 id="unitType"
-                value={item.unitType || 'kg'}
+                value={item.unitType || ''}
                 onChange={handleChange}
                 className="mt-1 w-full p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600"
                 disabled={Boolean(itemToEdit) && hasReceipts}
               >
+                <option value="">{language === 'ar' ? 'اختر نوع وحدة' : 'Select unit type'}</option>
                 {unitOptions.map(unit => (
                   <option key={unit} value={unit}>
                     {getUnitLabel(unit as UnitType, language as 'ar' | 'en')}
@@ -384,13 +375,13 @@ const ItemFormModal: React.FC<ItemFormModalProps> = ({ isOpen, onClose, onSave, 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">الكمية المتوفرة</label>
-                    <NumberInput
+                      <NumberInput
                       id="availableStock"
                       name="availableStock"
                       value={item.availableStock || 0}
                       onChange={handleNumberChange}
                       min={0}
-                      step={item.unitType === 'kg' || item.unitType === 'gram' ? 0.5 : 1}
+                        step={(item.unitType === 'kg' || item.unitType === 'gram') ? 0.5 : 1}
                     />
                   </div>
                   <div>
@@ -409,7 +400,8 @@ const ItemFormModal: React.FC<ItemFormModalProps> = ({ isOpen, onClose, onSave, 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label htmlFor="freshnessLevel" className="block text-sm font-medium text-gray-700 dark:text-gray-300">مستوى الطازجية</label>
-                    <select name="freshnessLevel" id="freshnessLevel" value={item.freshnessLevel || 'fresh'} onChange={handleChange} className="mt-1 w-full p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600">
+                    <select name="freshnessLevel" id="freshnessLevel" value={item.freshnessLevel || ''} onChange={handleChange} className="mt-1 w-full p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600">
+                      <option value="">{language === 'ar' ? 'اختر مستوى' : 'Select freshness'}</option>
                       {freshnessOptions.map(level => (
                         <option key={level} value={level}>
                           {getFreshnessLabel(level as FreshnessLevel, language as 'ar' | 'en')}

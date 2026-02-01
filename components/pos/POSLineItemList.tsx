@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import type { CartItem } from '../../types';
 import NumericKeypadModal from './NumericKeypadModal';
+import { useStock } from '../../contexts/StockContext';
 
 interface Props {
   items: CartItem[];
@@ -18,6 +19,7 @@ const POSLineItemList: React.FC<Props> = ({ items, onUpdate, onRemove, onEditAdd
   const [keypadInitial, setKeypadInitial] = useState(0);
   const [keypadDecimal, setKeypadDecimal] = useState(true);
   const [keypadTarget, setKeypadTarget] = useState<{ id: string; kind: 'qty' | 'weight' } | null>(null);
+  const { getStockByItemId } = useStock();
 
   const openKeypad = (id: string, kind: 'qty' | 'weight', current: number) => {
     setKeypadTarget({ id, kind });
@@ -47,6 +49,9 @@ const POSLineItemList: React.FC<Props> = ({ items, onUpdate, onRemove, onEditAdd
         const qty = isWeight ? item.weight || 0 : item.quantity;
         const isSelected = !!selectedCartItemId && item.cartItemId === selectedCartItemId;
         const hasAddons = !isPromotionLine && Array.isArray((item as any).addons) && (item as any).addons.length > 0;
+        const stock = !isPromotionLine ? getStockByItemId(String((item as any)?.id || (item as any)?.itemId || '')) : undefined;
+        const availableToSell = stock ? (Number(stock.availableQuantity || 0) - Number(stock.reservedQuantity || 0)) : Number((item as any).availableStock || 0);
+        const reserved = stock ? Number(stock.reservedQuantity || 0) : Number((item as any).reservedQuantity || 0);
         const selectedAddonsCount = Object.values(item.selectedAddons || {}).reduce((sum, entry) => sum + (Number((entry as any)?.quantity) || 0), 0);
         const addonsPrice = isPromotionLine ? 0 : Object.values(item.selectedAddons || {}).reduce((sum, entry: any) => {
           const unit = Number(entry?.addon?.price) || 0;
@@ -85,9 +90,31 @@ const POSLineItemList: React.FC<Props> = ({ items, onUpdate, onRemove, onEditAdd
                 {addonsPrice > 0 && <span>+ إضافات {addonsPrice.toFixed(2)}</span>}
                 <span className="font-semibold text-indigo-600 dark:text-indigo-300">= {lineTotal.toFixed(2)}</span>
                 {!isPromotionLine && (
-                  <span className="text-[11px] text-gray-500 dark:text-gray-400">متاح: {Number((item as any).availableStock || 0)} • محجوز: {Number((item as any).reservedQuantity || 0)}</span>
+                  <span className="text-[11px] text-gray-500 dark:text-gray-400">متاح: {Math.max(0, Number(availableToSell || 0))} • محجوز: {Math.max(0, Number(reserved || 0))}</span>
                 )}
               </div>
+              {!isPromotionLine && ((item as any)?._fefoBatchCode || (item as any)?._fefoExpiryDate) && (
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-gray-600 dark:text-gray-300">
+                  <span className="px-2 py-1 rounded-full border border-gray-200 dark:border-gray-700">
+                    دفعة: {String((item as any)._fefoBatchCode || '').trim() || String((item as any)._fefoBatchId || '').slice(-6).toUpperCase()}
+                  </span>
+                  {(item as any)?._fefoExpiryDate && (
+                    <span className="px-2 py-1 rounded-full border border-gray-200 dark:border-gray-700" dir="ltr">
+                      EXP: {String((item as any)._fefoExpiryDate)}
+                    </span>
+                  )}
+                  {Number((item as any)?._fefoMinPrice) > 0 && (
+                    <span className="px-2 py-1 rounded-full border border-gray-200 dark:border-gray-700">
+                      Min: {Number((item as any)._fefoMinPrice).toFixed(2)}
+                    </span>
+                  )}
+                  {Boolean((item as any)?._fefoWarningNextBatchPriceDiff) && (
+                    <span className="px-2 py-1 rounded-full bg-amber-50 text-amber-800 border border-amber-200 dark:bg-amber-900/20 dark:text-amber-200 dark:border-amber-900">
+                      تنبيه: الدفعة التالية بسعر مختلف
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
             <div className="flex items-center gap-2">
               {hasAddons && (

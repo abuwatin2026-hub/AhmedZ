@@ -17,6 +17,7 @@ import { usePricing } from '../../contexts/PricingContext';
 import { useAuth } from '../../contexts/AuthContext';
 import * as Icons from '../../components/icons';
 import { Link } from 'react-router-dom';
+import { useSessionScope } from '../../contexts/SessionScopeContext';
 
 const SettingsScreen: React.FC = () => {
   const { settings, updateSettings } = useSettings();
@@ -90,13 +91,36 @@ const SettingsScreen: React.FC = () => {
   const { ads } = useAds();
   const { currentShift } = useCashShift();
   const { priceTiers, specialPrices } = usePricing();
-  const { hasPermission } = useAuth();
+  const { hasPermission, user } = useAuth();
+  const { refreshScope } = useSessionScope();
+  const [activeWarehouseId, setActiveWarehouseId] = useState<string>('');
 
   useEffect(() => {
     if (branchBrandingWarehouseId) return;
     const firstActive = warehouses.find(w => w.isActive);
     if (firstActive?.id) setBranchBrandingWarehouseId(firstActive.id);
   }, [branchBrandingWarehouseId, warehouses]);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadActiveWarehouse = async () => {
+      try {
+        const supabase = getSupabaseClient();
+        if (!supabase || !user?.id) return;
+        const { data } = await supabase
+          .from('admin_users')
+          .select('warehouse_id')
+          .eq('auth_user_id', user.id)
+          .maybeSingle();
+        const wid = typeof data?.warehouse_id === 'string' ? data?.warehouse_id : '';
+        if (mounted) setActiveWarehouseId(wid || '');
+      } catch {}
+    };
+    void loadActiveWarehouse();
+    return () => {
+      mounted = false;
+    };
+  }, [user?.id]);
 
   const checklist = useMemo(() => {
     const nameOk = Boolean((settings.cafeteriaName?.ar || settings.cafeteriaName?.en || '').trim());
@@ -871,6 +895,32 @@ const SettingsScreen: React.FC = () => {
     setIsMaintenanceSaving(false);
   };
 
+  const saveActiveWarehouse = async () => {
+    try {
+      const supabase = getSupabaseClient();
+      if (!supabase || !user?.id) return;
+      const wid = String(activeWarehouseId || '');
+      if (!wid) {
+        showNotification('اختر مستودعًا نشطًا أولاً.', 'error');
+        return;
+      }
+      const exists = warehouses.some(w => w.id === wid && w.isActive);
+      if (!exists) {
+        showNotification('المستودع المحدد غير نشط.', 'error');
+        return;
+      }
+      const { error } = await supabase
+        .from('admin_users')
+        .update({ warehouse_id: wid })
+        .eq('auth_user_id', user.id);
+      if (error) throw error;
+      await refreshScope();
+      showNotification('تم تعيين المستودع النشط للجلسة.', 'success');
+    } catch (e: any) {
+      showNotification(String(e?.message || 'تعذر تحديث المستودع النشط'), 'error');
+    }
+  };
+
   return (
     <div className="animate-fade-in space-y-8">
       <h1 className="text-3xl font-bold dark:text-white">الإعدادات العامة</h1>
@@ -899,6 +949,37 @@ const SettingsScreen: React.FC = () => {
         </div>
         <div className="mt-4 text-xs text-gray-500 dark:text-gray-400">
           يُنصح بإتمام البنود الحمراء قبل البدء الفعلي باستقبال الطلبات.
+        </div>
+      </section>
+
+      <section className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6">
+        <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4 border-r-4 rtl:border-l-4 rtl:border-r-0 border-gold-500 pr-4 rtl:pr-0 rtl:pl-4">
+          نطاق الجلسة: المستودع النشط
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="md:col-span-2">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">اختر المستودع</label>
+            <select
+              value={activeWarehouseId}
+              onChange={(e) => setActiveWarehouseId(e.target.value)}
+              className="w-full p-3 border border-gray-300 rounded-lg dark:bg-gray-700 dark:border-gray-600 focus:ring-2 focus:ring-gold-500 focus:border-gold-500 transition"
+            >
+              <option value="">—</option>
+              {warehouses.filter(w => w.isActive).map(w => (
+                <option key={w.id} value={w.id}>{w.name} ({w.code})</option>
+              ))}
+            </select>
+            <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">سيُستخدم المستودع المختار تلقائيًا في أوامر الشراء والاستلام والتحويلات.</p>
+          </div>
+          <div className="flex items-end">
+            <button
+              type="button"
+              onClick={saveActiveWarehouse}
+              className="px-4 py-2 rounded-md bg-primary-500 text-white font-semibold hover:bg-primary-600 transition"
+            >
+              تعيين المستودع
+            </button>
+          </div>
         </div>
       </section>
 

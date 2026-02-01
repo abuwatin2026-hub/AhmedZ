@@ -45,8 +45,11 @@ export const MenuProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const isSlow = eff === 'slow-2g' || eff === '2g';
       let isStaff = false;
       try {
-        const { data: staffFlag } = await supabase.rpc('is_staff');
-        isStaff = Boolean(staffFlag);
+        const { data: sessionData } = await supabase.auth.getSession();
+        if (sessionData?.session) {
+          const { data: staffFlag } = await supabase.rpc('is_staff');
+          isStaff = Boolean(staffFlag);
+        }
       } catch {}
 
       const source = isStaff ? 'menu_items' : 'v_sellable_products';
@@ -164,6 +167,17 @@ export const MenuProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     if (didInitialFetchRef.current) return;
     didInitialFetchRef.current = true;
     fetchMenuItems();
+  }, [fetchMenuItems]);
+
+  useEffect(() => {
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+    const { data: sub } = supabase.auth.onAuthStateChange(() => {
+      fetchMenuItems();
+    });
+    return () => {
+      sub?.subscription?.unsubscribe();
+    };
   }, [fetchMenuItems]);
 
   useEffect(() => {
@@ -315,7 +329,7 @@ export const MenuProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       try {
         const { data: stockRows, error: stockErr } = await supabase
           .from('stock_management')
-          .select('id, available_quantity, reserved_quantity')
+          .select('available_quantity, reserved_quantity')
           .eq('item_id', itemId)
           .limit(50);
         if (stockErr) throw stockErr;
