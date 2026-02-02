@@ -36,7 +36,7 @@ interface ReceiveRow {
 }
 
 const PurchaseOrderScreen: React.FC = () => {
-    const { purchaseOrders, suppliers, createPurchaseOrder, deletePurchaseOrder, cancelPurchaseOrder, recordPurchaseOrderPayment, receivePurchaseOrderPartial, createPurchaseReturn, getPurchaseReturnSummary, loading, error: purchasesError, fetchPurchaseOrders } = usePurchases();
+    const { purchaseOrders, suppliers, createPurchaseOrder, deletePurchaseOrder, cancelPurchaseOrder, recordPurchaseOrderPayment, receivePurchaseOrderPartial, createPurchaseReturn, updatePurchaseOrderInvoiceNumber, getPurchaseReturnSummary, loading, error: purchasesError, fetchPurchaseOrders } = usePurchases();
     const { menuItems } = useMenu();
     const { stockItems } = useStock();
     const { user } = useAuth();
@@ -62,6 +62,16 @@ const PurchaseOrderScreen: React.FC = () => {
         return d.toLocaleDateString('ar-EG-u-nu-latn');
     };
 
+    const addDaysToYmd = (ymd: string, days: number) => {
+        const safe = normalizeIsoDateOnly(ymd) || toDateInputValue();
+        const dt = new Date(`${safe}T00:00:00`);
+        dt.setDate(dt.getDate() + Math.max(0, Number(days) || 0));
+        const yyyy = dt.getFullYear();
+        const mm = String(dt.getMonth() + 1).padStart(2, '0');
+        const dd = String(dt.getDate()).padStart(2, '0');
+        return `${yyyy}-${mm}-${dd}`;
+    };
+
     const activeMenuItems = useMemo(() => {
         return (menuItems || []).filter(i => i && i.status === 'active');
     }, [menuItems]);
@@ -74,6 +84,9 @@ const PurchaseOrderScreen: React.FC = () => {
     const [purchaseDate, setPurchaseDate] = useState(toDateInputValue());
     const [supplierInvoiceNumber, setSupplierInvoiceNumber] = useState<string>('');
     const [warehouseId, setWarehouseId] = useState<string>('');
+    const [paymentTerms, setPaymentTerms] = useState<'cash' | 'credit'>('cash');
+    const [netDays, setNetDays] = useState<number>(0);
+    const [dueDate, setDueDate] = useState<string>(toDateInputValue());
     const [orderItems, setOrderItems] = useState<OrderItemRow[]>([]);
     const [receiveOnCreate, setReceiveOnCreate] = useState(true);
     const [quickAddCode, setQuickAddCode] = useState<string>('');
@@ -254,8 +267,8 @@ const PurchaseOrderScreen: React.FC = () => {
             const errors: string[] = [];
             if (!supplierId) errors.push('المورد مطلوب');
             if (!purchaseDate) errors.push('تاريخ الشراء مطلوب');
-            if (!invoiceRef) errors.push('رقم فاتورة المورد مطلوب');
             if (!warehouseId) errors.push('المستودع مطلوب');
+            if (paymentTerms === 'credit' && !dueDate) errors.push('تاريخ الاستحقاق مطلوب للفواتير الآجلة');
             if (orderItems.length === 0) errors.push('أضف صنف واحد على الأقل');
             const normalizedItems = orderItems.map((row) => ({
                 ...row,
@@ -284,11 +297,14 @@ const PurchaseOrderScreen: React.FC = () => {
                 return;
             }
             const validItems = normalizedItems.filter(i => i.itemId && i.quantity > 0);
-            await createPurchaseOrder(supplierId, purchaseDate, validItems, receiveOnCreate, invoiceRef, warehouseId);
+            await createPurchaseOrder(supplierId, purchaseDate, validItems, receiveOnCreate, invoiceRef || undefined, warehouseId, paymentTerms, netDays, dueDate);
             setIsModalOpen(false);
             // Reset form
             setSupplierId('');
             setSupplierInvoiceNumber('');
+            setPaymentTerms('cash');
+            setNetDays(0);
+            setDueDate(toDateInputValue());
             setOrderItems([]);
             setFormErrors([]);
         } catch (error) {
@@ -301,7 +317,6 @@ const PurchaseOrderScreen: React.FC = () => {
                         `تفاصيل الخطأ: ${message}`,
                         'تحقق من اختيار المورد',
                         'تحقق من إدخال تاريخ الشراء',
-                        'تحقق من إدخال رقم فاتورة المورد',
                         'تحقق من أن لكل سطر: الصنف والكمية وسعر الشراء',
                     ];
                     if (receiveOnCreate) {
@@ -613,6 +628,10 @@ const PurchaseOrderScreen: React.FC = () => {
                         setIsModalOpen(true);
                         setSupplierInvoiceNumber('');
                         setWarehouseId(String(scope?.warehouseId || warehouses.find(w => w.isActive)?.id || ''));
+                        setPurchaseDate(toDateInputValue());
+                        setPaymentTerms('cash');
+                        setNetDays(0);
+                        setDueDate(toDateInputValue());
                         setQuickAddCode('');
                         setQuickAddQuantity(1);
                         setQuickAddUnitCost(0);
@@ -680,13 +699,17 @@ const PurchaseOrderScreen: React.FC = () => {
                             if (paid > 0) return { label: 'مسدد جزئياً', className: 'bg-yellow-100 text-yellow-700' };
                             return { label: 'غير مسدد', className: 'bg-gray-100 text-gray-700' };
                         })();
+                        const inferredTerms: 'cash' | 'credit' = (order.paymentTerms === 'credit' || (!order.paymentTerms && remainingRaw > 0)) ? 'credit' : 'cash';
+                        const termsLabel = inferredTerms === 'credit' ? 'أجل' : 'نقد';
+                        const dueLabel = order.dueDate ? formatPurchaseDate(order.dueDate) : '-';
 
                         return (
                             <div key={order.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700 p-4">
                                 <div className="flex items-start justify-between gap-3">
                                     <div className="min-w-0">
-                                        <div className="text-sm text-gray-500 dark:text-gray-400">رقم المرجع (فاتورة المورد)</div>
-                                        <div className="font-mono text-sm dark:text-gray-200 break-all">{order.referenceNumber || '-'}</div>
+                                        <div className="text-sm text-gray-500 dark:text-gray-400">رقم أمر الشراء</div>
+                                        <div className="font-mono text-sm dark:text-gray-200 break-all">{order.poNumber || `PO-${order.id.slice(-6).toUpperCase()}`}</div>
+                                        <div className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">فاتورة المورد: <span className="font-mono dark:text-gray-300">{order.referenceNumber || 'بدون'}</span></div>
                                     </div>
                                     <div className="flex flex-col items-end gap-1">
                                         <span className={['px-2 py-1 rounded-full text-xs font-bold whitespace-nowrap', statusClass].join(' ')}>
@@ -711,6 +734,14 @@ const PurchaseOrderScreen: React.FC = () => {
                                     <div>
                                         <div className="text-gray-500 dark:text-gray-400">التاريخ</div>
                                         <div className="dark:text-gray-200">{formatPurchaseDate(order.purchaseDate)}</div>
+                                    </div>
+                                    <div>
+                                        <div className="text-gray-500 dark:text-gray-400">النوع</div>
+                                        <div className="dark:text-gray-200">{termsLabel}</div>
+                                    </div>
+                                    <div>
+                                        <div className="text-gray-500 dark:text-gray-400">الاستحقاق</div>
+                                        <div className="dark:text-gray-200">{dueLabel}</div>
                                     </div>
                                     <div>
                                         <div className="text-gray-500 dark:text-gray-400">الإجمالي</div>
@@ -761,11 +792,26 @@ const PurchaseOrderScreen: React.FC = () => {
                                     >
                                         {order.hasReturns ? 'تسجيل دفعة (بعد المرتجع)' : 'تسجيل دفعة'}
                                     </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const ref = order.poNumber || order.referenceNumber || order.id;
+                                            const current = order.referenceNumber || '';
+                                            const next = window.prompt(`رقم فاتورة المورد (يمكن تركه فارغًا): ${ref}`, current);
+                                            if (next === null) return;
+                                            updatePurchaseOrderInvoiceNumber(order.id, next)
+                                                .catch((e) => alert(getErrorMessage(e, 'فشل تحديث رقم فاتورة المورد.')));
+                                        }}
+                                        disabled={order.status === 'cancelled'}
+                                        className="px-3 py-2 rounded-lg text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                        فاتورة المورد
+                                    </button>
                                     {canCancelOrder ? (
                                         <button
                                             type="button"
                                             onClick={() => {
-                                                const ref = order.referenceNumber || order.id;
+                                                const ref = order.poNumber || order.referenceNumber || order.id;
                                                 const reason = window.prompt(`سبب الإلغاء (اختياري): ${ref}`) ?? '';
                                                 const ok = window.confirm(`سيتم إلغاء أمر الشراء: ${ref}\nهل أنت متأكد؟`);
                                                 if (!ok) return;
@@ -781,7 +827,7 @@ const PurchaseOrderScreen: React.FC = () => {
                                         <button
                                             type="button"
                                             onClick={() => {
-                                                const ref = order.referenceNumber || order.id;
+                                                const ref = order.poNumber || order.referenceNumber || order.id;
                                                 const ok = window.confirm(`سيتم حذف أمر الشراء نهائياً: ${ref}\nهل أنت متأكد؟`);
                                                 if (!ok) return;
                                                 deletePurchaseOrder(order.id)
@@ -800,12 +846,15 @@ const PurchaseOrderScreen: React.FC = () => {
             </div>
 
             <div className="hidden md:block bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700 overflow-x-auto">
-                <table className="min-w-[1200px] w-full text-right">
+                <table className="min-w-[1400px] w-full text-right">
                     <thead className="bg-gray-50 dark:bg-gray-700/50">
                         <tr>
-                            <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">رقم المرجع (فاتورة المورد)</th>
+                            <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">رقم أمر الشراء</th>
+                            <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">فاتورة المورد</th>
                             <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">المورد</th>
                             <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">المستودع</th>
+                            <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">النوع</th>
+                            <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">الاستحقاق</th>
                             <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">التاريخ</th>
                             <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">عدد الأصناف (سطور/كمية)</th>
                             <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">الإجمالي</th>
@@ -817,7 +866,7 @@ const PurchaseOrderScreen: React.FC = () => {
                     </thead>
                     <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                         {purchaseOrders.length === 0 ? (
-                            <tr><td colSpan={10} className="p-8 text-center text-gray-500">لا توجد أوامر شراء سابقة.</td></tr>
+                            <tr><td colSpan={13} className="p-8 text-center text-gray-500">لا توجد أوامر شراء سابقة.</td></tr>
                         ) : (
                             purchaseOrders.map((order) => (
                                 (() => {
@@ -837,11 +886,21 @@ const PurchaseOrderScreen: React.FC = () => {
                                         if (paid > 0) return { label: 'مسدد جزئياً', className: 'bg-yellow-100 text-yellow-700' };
                                         return { label: 'غير مسدد', className: 'bg-gray-100 text-gray-700' };
                                     })();
+                                    const inferredTerms: 'cash' | 'credit' = (order.paymentTerms === 'credit' || (!order.paymentTerms && remainingRaw > 0)) ? 'credit' : 'cash';
+                                    const termsLabel = inferredTerms === 'credit' ? 'أجل' : 'نقد';
+                                    const dueLabel = order.dueDate ? formatPurchaseDate(order.dueDate) : '-';
                                     return (
                                 <tr key={order.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30">
+                                    <td className="p-4 font-mono text-sm dark:text-gray-300">{order.poNumber || `PO-${order.id.slice(-6).toUpperCase()}`}</td>
                                     <td className="p-4 font-mono text-sm dark:text-gray-300">{order.referenceNumber || '-'}</td>
                                     <td className="p-4 font-medium dark:text-white">{order.supplierName}</td>
                                     <td className="p-4 text-sm dark:text-gray-300">{order.warehouseName || '-'}</td>
+                                    <td className="p-4 text-sm dark:text-gray-300">
+                                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${inferredTerms === 'credit' ? 'bg-amber-100 text-amber-900' : 'bg-emerald-100 text-emerald-900'}`}>
+                                            {termsLabel}
+                                        </span>
+                                    </td>
+                                    <td className="p-4 text-sm dark:text-gray-300">{dueLabel}</td>
                                     <td className="p-4 text-sm dark:text-gray-300">{formatPurchaseDate(order.purchaseDate)}</td>
                                     <td className="p-4 text-sm dark:text-gray-300 font-mono">{Number(order.itemsCount ?? 0)} / {totalQty}</td>
                                     <td className="p-4 font-bold text-primary-600 dark:text-primary-400">{order.totalAmount.toFixed(2)}</td>
@@ -900,11 +959,26 @@ const PurchaseOrderScreen: React.FC = () => {
                                             >
                                                 {order.hasReturns ? 'تسجيل دفعة (بعد المرتجع)' : 'تسجيل دفعة'}
                                             </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const ref = order.poNumber || order.referenceNumber || order.id;
+                                                    const current = order.referenceNumber || '';
+                                                    const next = window.prompt(`رقم فاتورة المورد (يمكن تركه فارغًا): ${ref}`, current);
+                                                    if (next === null) return;
+                                                    updatePurchaseOrderInvoiceNumber(order.id, next)
+                                                        .catch((e) => alert(getErrorMessage(e, 'فشل تحديث رقم فاتورة المورد.')));
+                                                }}
+                                                disabled={order.status === 'cancelled'}
+                                                className="px-3 py-2 rounded-lg text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                فاتورة المورد
+                                            </button>
                                             {canCancelOrder ? (
                                                 <button
                                                     type="button"
                                                     onClick={() => {
-                                                        const ref = order.referenceNumber || order.id;
+                                                        const ref = order.poNumber || order.referenceNumber || order.id;
                                                         const reason = window.prompt(`سبب الإلغاء (اختياري): ${ref}`) ?? '';
                                                         const ok = window.confirm(`سيتم إلغاء أمر الشراء: ${ref}\nهل أنت متأكد؟`);
                                                         if (!ok) return;
@@ -920,7 +994,7 @@ const PurchaseOrderScreen: React.FC = () => {
                                                 <button
                                                     type="button"
                                                     onClick={() => {
-                                                        const ref = order.referenceNumber || order.id;
+                                                        const ref = order.poNumber || order.referenceNumber || order.id;
                                                         const ok = window.confirm(`سيتم حذف أمر الشراء نهائياً: ${ref}\nهل أنت متأكد؟`);
                                                         if (!ok) return;
                                                         deletePurchaseOrder(order.id)
@@ -1001,18 +1075,78 @@ const PurchaseOrderScreen: React.FC = () => {
                                             className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                                             value={purchaseDate}
                                             required
-                                            onChange={(e) => setPurchaseDate(e.target.value)}
+                                            onChange={(e) => {
+                                                const next = e.target.value;
+                                                setPurchaseDate(next);
+                                                const base = normalizeIsoDateOnly(next) || toDateInputValue();
+                                                if (paymentTerms === 'credit') {
+                                                    setDueDate(addDaysToYmd(base, netDays));
+                                                } else {
+                                                    setDueDate(base);
+                                                }
+                                            }}
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-medium mb-1 dark:text-gray-300">رقم المرجع (فاتورة المورد)</label>
+                                        <label className="block text-sm font-medium mb-1 dark:text-gray-300">رقم فاتورة المورد (اختياري)</label>
                                         <input
                                             type="text"
                                             className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                                             value={supplierInvoiceNumber}
-                                            required
-                                            placeholder="أدخل رقم فاتورة المورد"
+                                            placeholder="يمكن إدخاله لاحقًا"
                                             onChange={(e) => setSupplierInvoiceNumber(e.target.value)}
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1 dark:text-gray-300">نوع الفاتورة</label>
+                                        <select
+                                            className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                            value={paymentTerms}
+                                            onChange={(e) => {
+                                                const next = (e.target.value === 'credit' ? 'credit' : 'cash') as 'cash' | 'credit';
+                                                setPaymentTerms(next);
+                                                const base = normalizeIsoDateOnly(purchaseDate) || toDateInputValue();
+                                                if (next === 'credit') {
+                                                    const days = Math.max(0, Number(netDays) || 0) || 30;
+                                                    setNetDays(days);
+                                                    setDueDate(addDaysToYmd(base, days));
+                                                } else {
+                                                    setNetDays(0);
+                                                    setDueDate(base);
+                                                }
+                                            }}
+                                        >
+                                            <option value="cash">نقد</option>
+                                            <option value="credit">أجل</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1 dark:text-gray-300">عدد أيام الأجل</label>
+                                        <input
+                                            type="number"
+                                            min={0}
+                                            className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                            value={paymentTerms === 'credit' ? netDays : 0}
+                                            disabled={paymentTerms !== 'credit'}
+                                            onChange={(e) => {
+                                                const days = Math.max(0, Number(e.target.value) || 0);
+                                                setNetDays(days);
+                                                const base = normalizeIsoDateOnly(purchaseDate) || toDateInputValue();
+                                                setDueDate(addDaysToYmd(base, days));
+                                            }}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1 dark:text-gray-300">تاريخ الاستحقاق</label>
+                                        <input
+                                            type="date"
+                                            className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                            value={dueDate}
+                                            disabled={paymentTerms !== 'credit'}
+                                            onChange={(e) => setDueDate(e.target.value)}
                                         />
                                     </div>
                                 </div>

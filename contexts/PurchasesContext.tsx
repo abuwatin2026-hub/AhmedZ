@@ -19,7 +19,10 @@ interface PurchasesContextType {
         items: Array<{ itemId: string; quantity: number; unitCost: number; productionDate?: string; expiryDate?: string }>,
         receiveNow?: boolean,
         referenceNumber?: string,
-        warehouseId?: string
+        warehouseId?: string,
+        paymentTerms?: 'cash' | 'credit',
+        netDays?: number,
+        dueDate?: string
     ) => Promise<void>;
     deletePurchaseOrder: (purchaseOrderId: string) => Promise<void>;
     cancelPurchaseOrder: (purchaseOrderId: string, reason?: string, occurredAt?: string) => Promise<void>;
@@ -41,6 +44,7 @@ interface PurchasesContextType {
         reason?: string,
         occurredAt?: string
     ) => Promise<void>;
+    updatePurchaseOrderInvoiceNumber: (purchaseOrderId: string, invoiceNumber: string | null) => Promise<void>;
     getPurchaseReturnSummary: (purchaseOrderId: string) => Promise<Record<string, number>>;
     fetchPurchaseOrders: () => Promise<void>;
 }
@@ -285,6 +289,7 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                 supplierId: order.supplier_id ?? order.supplierId,
                 supplierName: order.supplier?.name,
                 status: order.status,
+                poNumber: order.po_number ?? order.poNumber ?? undefined,
                 referenceNumber: order.reference_number ?? order.referenceNumber,
                 totalAmount: Number(order.total_amount ?? order.totalAmount ?? 0),
                 paidAmount: Number(order.paid_amount ?? order.paidAmount ?? 0),
@@ -292,6 +297,9 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                 itemsCount: Number(order.items_count ?? order.itemsCount ?? order.items?.length ?? 0),
                 warehouseId: order.warehouse_id ?? order.warehouseId,
                 warehouseName: order.warehouse?.name ?? order.warehouse_name ?? undefined,
+                paymentTerms: (order.payment_terms === 'credit' ? 'credit' : 'cash'),
+                netDays: Number(order.net_days ?? 0),
+                dueDate: order.due_date ?? undefined,
                 notes: order.notes,
                 createdBy: order.created_by ?? order.createdBy,
                 createdAt: order.created_at ?? order.createdAt,
@@ -459,7 +467,10 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         items: Array<{ itemId: string; quantity: number; unitCost: number; productionDate?: string; expiryDate?: string }>,
         receiveNow: boolean = true,
         referenceNumber?: string,
-        warehouseId?: string
+        warehouseId?: string,
+        paymentTerms?: 'cash' | 'credit',
+        netDays?: number,
+        dueDate?: string
     ) => {
         if (!supabase) throw new Error('Supabase غير مهيأ.');
         if (!user) throw new Error('لم يتم تسجيل الدخول.');
@@ -471,9 +482,6 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         try {
           setError(null);
           const providedRef = typeof referenceNumber === 'string' ? referenceNumber.trim() : '';
-          if (!providedRef) {
-            throw new Error('رقم فاتورة المورد مطلوب.');
-          }
 
           let scopeWarehouseId: string | null = null;
           let scopeBranchId: string | null = null;
@@ -500,6 +508,11 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           }
           const providedWarehouseId = typeof warehouseId === 'string' ? warehouseId.trim() : '';
           const effectiveWarehouseId = providedWarehouseId || scopeWarehouseId;
+          const effectiveTerms = paymentTerms === 'credit' ? 'credit' : 'cash';
+          const effectiveNetDays = effectiveTerms === 'credit' ? Math.max(0, Number(netDays) || 0) : 0;
+          const effectiveDueDate = effectiveTerms === 'credit'
+            ? (normalizeIsoDateOnly(String(dueDate || '')) || null)
+            : normalizedDate;
           const uniqueItemIds = Array.from(new Set(items.map(i => String(i.itemId || '').trim()).filter(Boolean)));
           await Promise.all(uniqueItemIds.map(async (id) => ensureItemUomRow(id)));
           if (receiveNow) {
@@ -507,15 +520,17 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             if (whErr) throw whErr;
           }
 
-          const { data: existingByRef, error: refErr } = await supabase
-            .from('purchase_orders')
-            .select('id')
-            .eq('reference_number', providedRef)
-            .limit(1)
-            .maybeSingle();
-          if (refErr) throw refErr;
-          if (existingByRef?.id) {
-            throw new Error('رقم فاتورة المورد مستخدم بالفعل.');
+          if (providedRef) {
+            const { data: existingByRef, error: refErr } = await supabase
+              .from('purchase_orders')
+              .select('id')
+              .eq('reference_number', providedRef)
+              .limit(1)
+              .maybeSingle();
+            if (refErr) throw refErr;
+            if (existingByRef?.id) {
+              throw new Error('رقم فاتورة المورد مستخدم بالفعل.');
+            }
           }
 
           let lastInsertError: unknown = null;
@@ -529,7 +544,7 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                 .insert([{
                   supplier_id: supplierId,
                   purchase_date: normalizedDate,
-                  reference_number: currentRef,
+                  reference_number: currentRef || null,
                   total_amount: totalAmount,
                   items_count: itemsCount,
                   created_by: user.id,
@@ -537,6 +552,9 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                   warehouse_id: effectiveWarehouseId,
                   branch_id: scopeBranchId ?? undefined,
                   company_id: scopeCompanyId ?? undefined,
+                  payment_terms: effectiveTerms,
+                  net_days: effectiveNetDays,
+                  due_date: effectiveDueDate,
                 }])
                 .select()
                 .single();
@@ -866,6 +884,39 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         }
     };
 
+    const updatePurchaseOrderInvoiceNumber = async (purchaseOrderId: string, invoiceNumber: string | null) => {
+        if (!supabase) throw new Error('Supabase غير مهيأ.');
+        if (!user) throw new Error('لم يتم تسجيل الدخول.');
+        const orderId = String(purchaseOrderId || '').trim();
+        if (!orderId) throw new Error('معرف أمر الشراء غير صالح.');
+        const normalized = typeof invoiceNumber === 'string' ? invoiceNumber.trim() : '';
+        const nextValue = normalized.length ? normalized : null;
+        try {
+            setError(null);
+            if (nextValue) {
+                const { data: existing, error: refErr } = await supabase
+                    .from('purchase_orders')
+                    .select('id')
+                    .eq('reference_number', nextValue)
+                    .limit(1)
+                    .maybeSingle();
+                if (refErr) throw refErr;
+                if (existing?.id && String(existing.id) !== orderId) {
+                    throw new Error('رقم فاتورة المورد مستخدم بالفعل.');
+                }
+            }
+
+            const { error } = await supabase
+                .from('purchase_orders')
+                .update({ reference_number: nextValue })
+                .eq('id', orderId);
+            if (error) throw error;
+            await fetchPurchaseOrders({ silent: true });
+        } catch (err) {
+            throw new Error(localizeSupabaseError(err));
+        }
+    };
+
     const getPurchaseReturnSummary = async (purchaseOrderId: string): Promise<Record<string, number>> => {
         const summary: Record<string, number> = {};
         if (!supabase) return summary;
@@ -909,6 +960,7 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             recordPurchaseOrderPayment,
             receivePurchaseOrderPartial,
             createPurchaseReturn,
+            updatePurchaseOrderInvoiceNumber,
             getPurchaseReturnSummary,
             fetchPurchaseOrders
         }}>

@@ -98,6 +98,9 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
             orderSource: invoiceSnapshot.orderSource,
             taxAmount: invoiceSnapshot.taxAmount,
             taxRate: invoiceSnapshot.taxRate,
+            invoiceTerms: invoiceSnapshot.invoiceTerms ?? (order as any).invoiceTerms,
+            netDays: invoiceSnapshot.netDays ?? (order as any).netDays,
+            dueDate: invoiceSnapshot.dueDate ?? (order as any).dueDate,
         }
         : order;
 
@@ -138,6 +141,10 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
         return methodMap[method] || method;
     };
 
+    const invoiceTerms: 'cash' | 'credit' = (invoiceOrder as any).invoiceTerms === 'credit' || invoiceOrder.paymentMethod === 'ar' ? 'credit' : 'cash';
+    const invoiceTermsLabel = invoiceTerms === 'credit' ? 'أجل' : 'نقد';
+    const invoiceDueDate = typeof (invoiceOrder as any).dueDate === 'string' ? String((invoiceOrder as any).dueDate) : '';
+
     return (
         <div style={{ maxWidth: thermal ? resolvedThermalPaperWidth : '800px', width: thermal ? resolvedThermalPaperWidth : 'auto', margin: '0 auto', color: '#000', fontFamily: thermal ? 'Tahoma, Arial, sans-serif' : 'inherit', fontSize: thermal ? '12px' : '14px' }}>
             {isCopy && (
@@ -176,6 +183,16 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
                         <span style={{ fontWeight: 700 }}>{language === 'ar' ? 'التاريخ:' : 'Date:'}</span>
                         <span>{formatDateForPrint(invoiceOrder.invoiceIssuedAt || invoiceOrder.createdAt)}</span>
                     </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ fontWeight: 700 }}>{language === 'ar' ? 'نوع الفاتورة:' : 'Terms:'}</span>
+                        <span>{invoiceTermsLabel}</span>
+                    </div>
+                    {invoiceTerms === 'credit' && invoiceDueDate ? (
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <span style={{ fontWeight: 700 }}>{language === 'ar' ? 'الاستحقاق:' : 'Due:'}</span>
+                            <span>{formatDateForPrint(invoiceDueDate)}</span>
+                        </div>
+                    ) : null}
                 </div>
                 <div>
                     <div style={{ fontWeight: 700, marginBottom: '4px' }}>{language === 'ar' ? 'إلى:' : 'To:'}</div>

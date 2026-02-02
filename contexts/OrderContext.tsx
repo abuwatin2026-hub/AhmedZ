@@ -37,6 +37,8 @@ interface OrderContextType {
     paymentDeclaredAmount?: number;
     paymentAmountConfirmed?: boolean;
     isCredit?: boolean;
+    creditDays?: number;
+    dueDate?: string;
     paymentBreakdown?: Array<{
       method: string;
       amount: number;
@@ -817,6 +819,9 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         phoneNumber: order.phoneNumber,
         address: order.address,
         deliveryZoneId: order.deliveryZoneId,
+        invoiceTerms: (order as any).invoiceTerms,
+        netDays: (order as any).netDays,
+        dueDate: (order as any).dueDate,
       }
       : undefined;
 
@@ -1278,6 +1283,8 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     paymentDeclaredAmount?: number;
     paymentAmountConfirmed?: boolean;
     isCredit?: boolean;
+    creditDays?: number;
+    dueDate?: string;
     paymentBreakdown?: Array<{
       method: string;
       amount: number;
@@ -1626,6 +1633,23 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const cashChange = cashEntry && cashEntry.cashReceived > 0 ? Math.max(0, cashEntry.cashReceived - cashEntry.amount) : undefined;
 
     const orderPaymentMethod = input.isCredit ? 'ar' : (paymentBreakdown.length === 1 ? paymentBreakdown[0].method : 'mixed');
+    const toYmd = (d: Date) => {
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      return `${yyyy}-${mm}-${dd}`;
+    };
+    const addDaysToYmd = (ymd: string, days: number) => {
+      const base = /^\d{4}-\d{2}-\d{2}$/.test(ymd) ? ymd : toYmd(new Date());
+      const dt = new Date(`${base}T00:00:00`);
+      dt.setDate(dt.getDate() + Math.max(0, Number(days) || 0));
+      return toYmd(dt);
+    };
+    const saleDateYmd = toYmd(new Date());
+    const creditDays = Math.max(0, Number(input.creditDays) || 0) || 30;
+    const dueYmd = input.isCredit
+      ? (typeof input.dueDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(input.dueDate) ? input.dueDate : addDaysToYmd(saleDateYmd, creditDays))
+      : saleDateYmd;
     let invoiceNumber = generateInvoiceNumber(crypto.randomUUID(), nowIso);
     const singleNeedsReference = orderPaymentMethod === 'kuraimi' || orderPaymentMethod === 'network';
     const singleReferenceNumber = paymentBreakdown.length === 1 ? (paymentBreakdown[0].referenceNumber || '') : '';
@@ -1687,6 +1711,9 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       invoiceSnapshot: undefined,
       invoicePrintCount: 0,
       isCreditSale: Boolean(input.isCredit),
+      invoiceTerms: input.isCredit ? 'credit' : 'cash',
+      netDays: input.isCredit ? creditDays : 0,
+      dueDate: dueYmd,
     };
 
     const payloadItems = newOrder.items

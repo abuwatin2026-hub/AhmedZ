@@ -36,6 +36,9 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, aud
             invoiceIssuedAt: invoiceSnapshot.issuedAt,
             invoiceNumber: invoiceSnapshot.invoiceNumber,
             orderSource: invoiceSnapshot.orderSource,
+            invoiceTerms: invoiceSnapshot.invoiceTerms ?? (order as any).invoiceTerms,
+            netDays: invoiceSnapshot.netDays ?? (order as any).netDays,
+            dueDate: invoiceSnapshot.dueDate ?? (order as any).dueDate,
         }
         : order;
     const deliveryZone = invoiceOrder.deliveryZoneId ? getDeliveryZoneById(invoiceOrder.deliveryZoneId) : undefined;
@@ -45,6 +48,9 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, aud
     const storeLogoUrl = branding?.logoUrl ?? settings.logoUrl;
     const isCopy = (invoiceOrder.invoicePrintCount || 0) > 0;
     const invoiceDate = invoiceOrder.invoiceIssuedAt || invoiceOrder.createdAt;
+    const invoiceTerms: 'cash' | 'credit' = (invoiceOrder as any).invoiceTerms === 'credit' || invoiceOrder.paymentMethod === 'ar' ? 'credit' : 'cash';
+    const invoiceTermsLabel = invoiceTerms === 'credit' ? 'أجل' : 'نقد';
+    const invoiceDueDate = typeof (invoiceOrder as any).dueDate === 'string' ? String((invoiceOrder as any).dueDate) : '';
 
     const getPaymentMethodName = (method: string) => {
         const methods: Record<string, string> = {
@@ -117,6 +123,12 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, aud
                 <p className="text-gray-600">
                     طريقة الدفع: {getPaymentMethodName(invoiceOrder.paymentMethod)}
                 </p>
+                <p className="text-gray-600">
+                    نوع الفاتورة: {invoiceTermsLabel}
+                </p>
+                {invoiceTerms === 'credit' && invoiceDueDate ? (
+                    <p className="text-gray-600">تاريخ الاستحقاق: {new Date(`${invoiceDueDate}T00:00:00`).toLocaleDateString('ar-EG-u-nu-latn')}</p>
+                ) : null}
                 {invoiceOrder.orderSource && (
                     <p className="text-gray-600">
                         مصدر الطلب: {invoiceOrder.orderSource === 'in_store' ? 'حضوري' : 'أونلاين'}

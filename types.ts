@@ -162,6 +162,7 @@ export interface PurchaseOrder {
   supplierId: string;
   supplierName?: string; // For display
   status: 'draft' | 'partial' | 'completed' | 'cancelled';
+  poNumber?: string;
   referenceNumber?: string;
   totalAmount: number;
   paidAmount: number;
@@ -169,6 +170,9 @@ export interface PurchaseOrder {
   itemsCount: number;
   warehouseId?: string;
   warehouseName?: string;
+  paymentTerms?: 'cash' | 'credit';
+  netDays?: number;
+  dueDate?: string;
   notes?: string;
   createdBy: string; // User ID
   createdAt: string;
@@ -405,6 +409,9 @@ export interface Order {
     deliveryZoneId?: string;
     taxAmount?: number;
     taxRate?: number;
+    invoiceTerms?: 'cash' | 'credit';
+    netDays?: number;
+    dueDate?: string;
   };
   appliedCouponCode?: string;
   discountAmount?: number;
@@ -416,6 +423,10 @@ export interface Order {
   scheduledAt?: string; // ISO string
   taxAmount?: number;
   taxRate?: number;
+  isCreditSale?: boolean;
+  invoiceTerms?: 'cash' | 'credit';
+  netDays?: number;
+  dueDate?: string;
 }
 
 export interface User {

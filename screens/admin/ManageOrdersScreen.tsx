@@ -106,6 +106,8 @@ const ManageOrdersScreen: React.FC = () => {
     const [isInStoreSaleOpen, setIsInStoreSaleOpen] = useState(false);
     const [isInStoreCreating, setIsInStoreCreating] = useState(false);
     const [inStoreIsCredit, setInStoreIsCredit] = useState(false); // NEW: Credit Sale State
+    const [inStoreCreditDays, setInStoreCreditDays] = useState<number>(30);
+    const [inStoreCreditDueDate, setInStoreCreditDueDate] = useState<string>('');
     const [inStoreCreditSummary, setInStoreCreditSummary] = useState<any | null>(null);
     const [inStoreCreditSummaryLoading, setInStoreCreditSummaryLoading] = useState(false);
     const menuItems = useMemo(() => {
@@ -366,6 +368,20 @@ const ManageOrdersScreen: React.FC = () => {
     const canAssignDelivery = hasPermission('orders.updateStatus.all');
     const isDeliveryOnly = adminUser?.role === 'delivery' && canUpdateDeliveryStatuses && !canUpdateAllStatuses;
     const canViewInvoice = canMarkPaid || canUpdateAllStatuses;
+
+    const toYmd = (d: Date) => {
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        return `${yyyy}-${mm}-${dd}`;
+    };
+
+    const addDaysToYmd = (ymd: string, days: number) => {
+        const base = /^\d{4}-\d{2}-\d{2}$/.test(ymd) ? ymd : toYmd(new Date());
+        const dt = new Date(`${base}T00:00:00`);
+        dt.setDate(dt.getDate() + Math.max(0, Number(days) || 0));
+        return toYmd(dt);
+    };
 
     const parseRefundMethod = useCallback((value: string): 'cash' | 'network' | 'kuraimi' => {
         if (value === 'cash' || value === 'network' || value === 'kuraimi') return value;
@@ -799,6 +815,8 @@ const ManageOrdersScreen: React.FC = () => {
                 paymentDeclaredAmount: inStorePaymentMethod === 'kuraimi' || inStorePaymentMethod === 'network' ? (Number(inStorePaymentDeclaredAmount) || 0) : undefined,
                 paymentAmountConfirmed: inStorePaymentMethod === 'kuraimi' || inStorePaymentMethod === 'network' ? Boolean(inStorePaymentAmountConfirmed) : undefined,
                 isCredit: inStoreIsCredit,
+                creditDays: inStoreIsCredit ? Math.max(0, Number(inStoreCreditDays) || 0) : 0,
+                dueDate: inStoreIsCredit ? (inStoreCreditDueDate || undefined) : undefined,
                 paymentBreakdown: normalizedPaymentLines.map((p) => ({
                     method: p.method,
                     amount: p.amount,
@@ -1765,9 +1783,11 @@ const ManageOrdersScreen: React.FC = () => {
                                                 }
 
                                                 if (order.status === 'delivered') {
+                                                    const isCod = order.paymentMethod === 'cash' && !isInStoreOrder(order) && Boolean(order.deliveryZoneId);
+                                                    const canIssueInvoice = !isCod && (Boolean(order.paidAt) || order.paymentMethod === 'ar');
                                                     return (
                                                         <div className="flex flex-col gap-2">
-                                                            {order.paidAt && (
+                                                            {canIssueInvoice && (
                                                                 <div className="flex items-center gap-2">
                                                                     <div className="text-xs text-gray-500 dark:text-gray-400">جاري إصدار الفاتورة...</div>
                                                                     <button
@@ -2196,6 +2216,10 @@ const ManageOrdersScreen: React.FC = () => {
                                     const checked = e.target.checked;
                                     setInStoreIsCredit(checked);
                                     if (checked) {
+                                        const base = toYmd(new Date());
+                                        const days = Math.max(0, Number(inStoreCreditDays) || 0) || 30;
+                                        setInStoreCreditDays(days);
+                                        setInStoreCreditDueDate(addDaysToYmd(base, days));
                                         setInStoreMultiPaymentEnabled(true);
                                         const initialMethod = inStorePaymentMethod && inStoreVisiblePaymentMethods.includes(inStorePaymentMethod)
                                             ? inStorePaymentMethod
@@ -2207,6 +2231,9 @@ const ManageOrdersScreen: React.FC = () => {
                                             amountConfirmed: initialMethod === 'cash',
                                             cashReceived: 0,
                                         }]);
+                                    } else {
+                                        setInStoreCreditDays(30);
+                                        setInStoreCreditDueDate('');
                                     }
                                 }}
                                 disabled={inStoreCustomerMode !== 'existing' || !inStoreSelectedCustomerId}
@@ -2232,6 +2259,33 @@ const ManageOrdersScreen: React.FC = () => {
                                 {inStoreCreditSummaryLoading && (
                                     <div className="text-[11px] text-gray-600 dark:text-gray-300">جاري التحميل...</div>
                                 )}
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
+                                <div>
+                                    <label className="block text-[11px] text-gray-700 dark:text-gray-300 mb-1">أيام الأجل</label>
+                                    <NumberInput
+                                        id="inStoreCreditDays"
+                                        name="inStoreCreditDays"
+                                        value={inStoreCreditDays}
+                                        onChange={(e) => {
+                                            const days = Math.max(0, Number(e.target.value) || 0);
+                                            setInStoreCreditDays(days);
+                                            const base = toYmd(new Date());
+                                            setInStoreCreditDueDate(addDaysToYmd(base, days));
+                                        }}
+                                        min={0}
+                                        step={1}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-[11px] text-gray-700 dark:text-gray-300 mb-1">تاريخ الاستحقاق</label>
+                                    <input
+                                        type="date"
+                                        value={inStoreCreditDueDate}
+                                        onChange={(e) => setInStoreCreditDueDate(e.target.value)}
+                                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                                    />
+                                </div>
                             </div>
                             {!inStoreCreditSummaryLoading && !(inStoreCreditSummary && inStoreCreditSummary.exists) && (
                                 <div className="text-[11px] text-gray-700 dark:text-gray-300 mt-1">تعذر تحميل بيانات الائتمان.</div>
