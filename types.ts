@@ -167,6 +167,8 @@ export interface PurchaseOrder {
   paidAmount: number;
   purchaseDate: string;
   itemsCount: number;
+  warehouseId?: string;
+  warehouseName?: string;
   notes?: string;
   createdBy: string; // User ID
   createdAt: string;

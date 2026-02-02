@@ -5,6 +5,8 @@ import { useStock } from '../../contexts/StockContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useToast } from '../../contexts/ToastContext';
+import { useWarehouses } from '../../contexts/WarehouseContext';
+import { useSessionScope } from '../../contexts/SessionScopeContext';
 import * as Icons from '../../components/icons';
 import { MenuItem } from '../../types';
 import { PurchaseOrder } from '../../types';
@@ -40,6 +42,8 @@ const PurchaseOrderScreen: React.FC = () => {
     const { user } = useAuth();
     const { settings } = useSettings();
     const { showNotification } = useToast();
+    const { warehouses } = useWarehouses();
+    const { scope } = useSessionScope();
     const canDelete = user?.role === 'owner';
     const canCancel = user?.role === 'owner' || user?.role === 'manager';
 
@@ -69,6 +73,7 @@ const PurchaseOrderScreen: React.FC = () => {
     const [supplierId, setSupplierId] = useState('');
     const [purchaseDate, setPurchaseDate] = useState(toDateInputValue());
     const [supplierInvoiceNumber, setSupplierInvoiceNumber] = useState<string>('');
+    const [warehouseId, setWarehouseId] = useState<string>('');
     const [orderItems, setOrderItems] = useState<OrderItemRow[]>([]);
     const [receiveOnCreate, setReceiveOnCreate] = useState(true);
     const [quickAddCode, setQuickAddCode] = useState<string>('');
@@ -250,6 +255,7 @@ const PurchaseOrderScreen: React.FC = () => {
             if (!supplierId) errors.push('المورد مطلوب');
             if (!purchaseDate) errors.push('تاريخ الشراء مطلوب');
             if (!invoiceRef) errors.push('رقم فاتورة المورد مطلوب');
+            if (!warehouseId) errors.push('المستودع مطلوب');
             if (orderItems.length === 0) errors.push('أضف صنف واحد على الأقل');
             const normalizedItems = orderItems.map((row) => ({
                 ...row,
@@ -278,7 +284,7 @@ const PurchaseOrderScreen: React.FC = () => {
                 return;
             }
             const validItems = normalizedItems.filter(i => i.itemId && i.quantity > 0);
-            await createPurchaseOrder(supplierId, purchaseDate, validItems, receiveOnCreate, invoiceRef);
+            await createPurchaseOrder(supplierId, purchaseDate, validItems, receiveOnCreate, invoiceRef, warehouseId);
             setIsModalOpen(false);
             // Reset form
             setSupplierId('');
@@ -606,6 +612,7 @@ const PurchaseOrderScreen: React.FC = () => {
                     onClick={() => {
                         setIsModalOpen(true);
                         setSupplierInvoiceNumber('');
+                        setWarehouseId(String(scope?.warehouseId || warehouses.find(w => w.isActive)?.id || ''));
                         setQuickAddCode('');
                         setQuickAddQuantity(1);
                         setQuickAddUnitCost(0);
@@ -793,11 +800,12 @@ const PurchaseOrderScreen: React.FC = () => {
             </div>
 
             <div className="hidden md:block bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700 overflow-x-auto">
-                <table className="min-w-[1100px] w-full text-right">
+                <table className="min-w-[1200px] w-full text-right">
                     <thead className="bg-gray-50 dark:bg-gray-700/50">
                         <tr>
                             <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">رقم المرجع (فاتورة المورد)</th>
                             <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">المورد</th>
+                            <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">المستودع</th>
                             <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">التاريخ</th>
                             <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">عدد الأصناف (سطور/كمية)</th>
                             <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">الإجمالي</th>
@@ -809,7 +817,7 @@ const PurchaseOrderScreen: React.FC = () => {
                     </thead>
                     <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                         {purchaseOrders.length === 0 ? (
-                            <tr><td colSpan={9} className="p-8 text-center text-gray-500">لا توجد أوامر شراء سابقة.</td></tr>
+                            <tr><td colSpan={10} className="p-8 text-center text-gray-500">لا توجد أوامر شراء سابقة.</td></tr>
                         ) : (
                             purchaseOrders.map((order) => (
                                 (() => {
@@ -833,6 +841,7 @@ const PurchaseOrderScreen: React.FC = () => {
                                 <tr key={order.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30">
                                     <td className="p-4 font-mono text-sm dark:text-gray-300">{order.referenceNumber || '-'}</td>
                                     <td className="p-4 font-medium dark:text-white">{order.supplierName}</td>
+                                    <td className="p-4 text-sm dark:text-gray-300">{order.warehouseName || '-'}</td>
                                     <td className="p-4 text-sm dark:text-gray-300">{formatPurchaseDate(order.purchaseDate)}</td>
                                     <td className="p-4 text-sm dark:text-gray-300 font-mono">{Number(order.itemsCount ?? 0)} / {totalQty}</td>
                                     <td className="p-4 font-bold text-primary-600 dark:text-primary-400">{order.totalAmount.toFixed(2)}</td>
@@ -958,7 +967,7 @@ const PurchaseOrderScreen: React.FC = () => {
                                     </div>
                                 )}
                                 {/* Header Info */}
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                                     <div>
                                         <label className="block text-sm font-medium mb-1 dark:text-gray-300">المورد</label>
                                         <select
@@ -969,6 +978,20 @@ const PurchaseOrderScreen: React.FC = () => {
                                         >
                                             <option value="">اختر المورد...</option>
                                             {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1 dark:text-gray-300">المستودع</label>
+                                        <select
+                                            className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                            value={warehouseId}
+                                            required
+                                            onChange={(e) => setWarehouseId(e.target.value)}
+                                        >
+                                            <option value="">اختر المستودع...</option>
+                                            {warehouses.filter(w => w.isActive).map(w => (
+                                                <option key={w.id} value={w.id}>{w.name}</option>
+                                            ))}
                                         </select>
                                     </div>
                                     <div>

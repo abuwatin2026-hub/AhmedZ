@@ -175,6 +175,7 @@ export const ImportProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             if (updates.referenceNumber) dbUpdates.reference_number = updates.referenceNumber;
             if (updates.actualArrivalDate) dbUpdates.actual_arrival_date = updates.actualArrivalDate;
             if (updates.notes) dbUpdates.notes = updates.notes;
+            if (updates.destinationWarehouseId !== undefined) dbUpdates.destination_warehouse_id = updates.destinationWarehouseId || null;
             dbUpdates.updated_at = new Date().toISOString();
 
             const { error } = await supabase

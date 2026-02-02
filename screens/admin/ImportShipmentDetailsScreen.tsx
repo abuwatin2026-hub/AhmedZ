@@ -4,6 +4,8 @@ import { useImport } from '../../contexts/ImportContext';
 import { useMenu } from '../../contexts/MenuContext';
 import { usePriceHistory } from '../../contexts/PriceContext';
 import { useToast } from '../../contexts/ToastContext';
+import { useWarehouses } from '../../contexts/WarehouseContext';
+import { useSessionScope } from '../../contexts/SessionScopeContext';
 import { ImportShipment, ImportShipmentItem, ImportExpense } from '../../types';
 import { Plus, X, DollarSign, ArrowLeft } from '../../components/icons';
 import { getSupabaseClient } from '../../supabase';
@@ -15,6 +17,8 @@ const ImportShipmentDetailsScreen: React.FC = () => {
     const { menuItems } = useMenu();
     const { updatePrice } = usePriceHistory();
     const { showNotification } = useToast();
+    const { warehouses } = useWarehouses();
+    const { scope } = useSessionScope();
 
     const [shipment, setShipment] = useState<ImportShipment | null>(null);
     const [loading, setLoading] = useState(true);
@@ -22,6 +26,7 @@ const ImportShipmentDetailsScreen: React.FC = () => {
     const isCreateMode = id === 'new' || !id;
     const [draftReferenceNumber, setDraftReferenceNumber] = useState('');
     const [draftStatus, setDraftStatus] = useState<ImportShipment['status']>('draft');
+    const [draftDestinationWarehouseId, setDraftDestinationWarehouseId] = useState<string>('');
     const [receiptRows, setReceiptRows] = useState<Array<any>>([]);
     const [receiptSelection, setReceiptSelection] = useState<Record<string, boolean>>({});
     const [receiptsLoading, setReceiptsLoading] = useState(false);
@@ -60,6 +65,13 @@ const ImportShipmentDetailsScreen: React.FC = () => {
         }
         loadShipment();
     }, [id]);
+
+    useEffect(() => {
+        if (!isCreateMode) return;
+        if (draftDestinationWarehouseId) return;
+        const wid = String(scope?.warehouseId || warehouses.find(w => w.isActive)?.id || '');
+        if (wid) setDraftDestinationWarehouseId(wid);
+    }, [isCreateMode, scope?.warehouseId, warehouses, draftDestinationWarehouseId]);
 
     const loadShipment = async () => {
         if (!id) return;
@@ -242,10 +254,15 @@ const ImportShipmentDetailsScreen: React.FC = () => {
     const handleCreateShipment = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!draftReferenceNumber.trim()) return;
+        if (!draftDestinationWarehouseId) {
+            showNotification('اختر مستودع الوصول أولاً.', 'error');
+            return;
+        }
         setLoading(true);
         const created = await addShipment({
             referenceNumber: draftReferenceNumber.trim(),
             status: draftStatus,
+            destinationWarehouseId: draftDestinationWarehouseId,
             totalWeightKg: 0,
             notes: '',
             items: [],
@@ -371,6 +388,21 @@ const ImportShipmentDetailsScreen: React.FC = () => {
                     </div>
 
                     <div>
+                        <label className="block text-sm font-medium mb-1">مستودع الوصول</label>
+                        <select
+                            value={draftDestinationWarehouseId}
+                            onChange={(e) => setDraftDestinationWarehouseId(e.target.value)}
+                            className="w-full px-4 py-2 border rounded-lg"
+                            required
+                        >
+                            <option value="">اختر المستودع...</option>
+                            {warehouses.filter(w => w.isActive).map(w => (
+                                <option key={w.id} value={w.id}>{w.name}</option>
+                            ))}
+                        </select>
+                    </div>
+
+                    <div>
                         <label className="block text-sm font-medium mb-1">الحالة</label>
                         <select
                             value={draftStatus}
@@ -434,6 +466,28 @@ const ImportShipmentDetailsScreen: React.FC = () => {
                     </div>
 
                     <div className="flex gap-2">
+                        <select
+                            value={shipment.destinationWarehouseId || ''}
+                            onChange={async (e) => {
+                                const wid = e.target.value;
+                                if (shipment.status === 'closed') {
+                                    showNotification('لا يمكن تغيير المستودع بعد إغلاق الشحنة.', 'error');
+                                    return;
+                                }
+                                if (!shipment.id) return;
+                                await updateShipment(shipment.id, { destinationWarehouseId: wid || undefined });
+                                setShipment((prev) => (prev ? { ...prev, destinationWarehouseId: wid || undefined } : prev));
+                                setReceiptRows([]);
+                                setReceiptSelection({});
+                            }}
+                            disabled={shipment.status === 'closed'}
+                            className="px-4 py-2 border rounded-lg"
+                        >
+                            <option value="">مستودع الوصول...</option>
+                            {warehouses.filter(w => w.isActive).map(w => (
+                                <option key={w.id} value={w.id}>{w.name}</option>
+                            ))}
+                        </select>
                         <select
                             value={shipment.status}
                             onChange={(e) => handleUpdateStatus(e.target.value as ImportShipment['status'])}

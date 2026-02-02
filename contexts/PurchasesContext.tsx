@@ -18,7 +18,8 @@ interface PurchasesContextType {
         purchaseDate: string,
         items: Array<{ itemId: string; quantity: number; unitCost: number; productionDate?: string; expiryDate?: string }>,
         receiveNow?: boolean,
-        referenceNumber?: string
+        referenceNumber?: string,
+        warehouseId?: string
     ) => Promise<void>;
     deletePurchaseOrder: (purchaseOrderId: string) => Promise<void>;
     cancelPurchaseOrder: (purchaseOrderId: string, reason?: string, occurredAt?: string) => Promise<void>;
@@ -269,6 +270,7 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                 .select(`
           *,
           supplier:suppliers(name),
+          warehouse:warehouses(name),
           items:purchase_items(
              *,
              item:menu_items(id,data)
@@ -288,6 +290,8 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                 paidAmount: Number(order.paid_amount ?? order.paidAmount ?? 0),
                 purchaseDate: order.purchase_date ?? order.purchaseDate,
                 itemsCount: Number(order.items_count ?? order.itemsCount ?? order.items?.length ?? 0),
+                warehouseId: order.warehouse_id ?? order.warehouseId,
+                warehouseName: order.warehouse?.name ?? order.warehouse_name ?? undefined,
                 notes: order.notes,
                 createdBy: order.created_by ?? order.createdBy,
                 createdAt: order.created_at ?? order.createdAt,
@@ -454,7 +458,8 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         purchaseDate: string,
         items: Array<{ itemId: string; quantity: number; unitCost: number; productionDate?: string; expiryDate?: string }>,
         receiveNow: boolean = true,
-        referenceNumber?: string
+        referenceNumber?: string,
+        warehouseId?: string
     ) => {
         if (!supabase) throw new Error('Supabase غير مهيأ.');
         if (!user) throw new Error('لم يتم تسجيل الدخول.');
@@ -493,6 +498,8 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           if (!scopeWarehouseId) {
             throw new Error('لا يوجد مستودع نشط. أضف مستودع (MAIN) ثم أعد المحاولة.');
           }
+          const providedWarehouseId = typeof warehouseId === 'string' ? warehouseId.trim() : '';
+          const effectiveWarehouseId = providedWarehouseId || scopeWarehouseId;
           const uniqueItemIds = Array.from(new Set(items.map(i => String(i.itemId || '').trim()).filter(Boolean)));
           await Promise.all(uniqueItemIds.map(async (id) => ensureItemUomRow(id)));
           if (receiveNow) {
@@ -527,7 +534,7 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                   items_count: itemsCount,
                   created_by: user.id,
                   status: 'draft',
-                  warehouse_id: scopeWarehouseId,
+                  warehouse_id: effectiveWarehouseId,
                   branch_id: scopeBranchId ?? undefined,
                   company_id: scopeCompanyId ?? undefined,
                 }])
