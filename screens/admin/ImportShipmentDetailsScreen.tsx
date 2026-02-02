@@ -2,21 +2,32 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useImport } from '../../contexts/ImportContext';
 import { useMenu } from '../../contexts/MenuContext';
+import { usePriceHistory } from '../../contexts/PriceContext';
+import { useToast } from '../../contexts/ToastContext';
 import { ImportShipment, ImportShipmentItem, ImportExpense } from '../../types';
 import { Plus, X, DollarSign, ArrowLeft } from '../../components/icons';
+import { getSupabaseClient } from '../../supabase';
 
 const ImportShipmentDetailsScreen: React.FC = () => {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
     const { getShipmentDetails, addShipment, updateShipment, addShipmentItem, deleteShipmentItem, addExpense, deleteExpense, calculateLandedCost } = useImport();
     const { menuItems } = useMenu();
+    const { updatePrice } = usePriceHistory();
+    const { showNotification } = useToast();
 
     const [shipment, setShipment] = useState<ImportShipment | null>(null);
     const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState<'items' | 'expenses'>('items');
+    const [activeTab, setActiveTab] = useState<'items' | 'expenses' | 'receipts' | 'pricing'>('items');
     const isCreateMode = id === 'new' || !id;
     const [draftReferenceNumber, setDraftReferenceNumber] = useState('');
     const [draftStatus, setDraftStatus] = useState<ImportShipment['status']>('draft');
+    const [receiptRows, setReceiptRows] = useState<Array<any>>([]);
+    const [receiptSelection, setReceiptSelection] = useState<Record<string, boolean>>({});
+    const [receiptsLoading, setReceiptsLoading] = useState(false);
+    const [pricingLoading, setPricingLoading] = useState(false);
+    const [pricingRows, setPricingRows] = useState<Array<any>>([]);
+    const [pricingTierType, setPricingTierType] = useState<'retail' | 'wholesale' | 'distributor' | 'vip'>('wholesale');
 
     // Form states for adding items
     const [showItemForm, setShowItemForm] = useState(false);
@@ -56,6 +67,176 @@ const ImportShipmentDetailsScreen: React.FC = () => {
         const data = await getShipmentDetails(id);
         setShipment(data);
         setLoading(false);
+    };
+
+    const moneyRound = (v: number) => {
+        const n = Number(v);
+        if (!Number.isFinite(n)) return 0;
+        return Math.round(n * 100) / 100;
+    };
+
+    const loadPricing = async () => {
+        if (!id) return;
+        if (!shipment?.destinationWarehouseId) return;
+        const supabase = getSupabaseClient();
+        if (!supabase) return;
+        setPricingLoading(true);
+        try {
+            const { data: receiptIdsRows, error: receiptIdsError } = await supabase
+                .from('purchase_receipts')
+                .select('id')
+                .eq('import_shipment_id', id)
+                .eq('warehouse_id', shipment.destinationWarehouseId);
+            if (receiptIdsError) throw receiptIdsError;
+            const receiptIds = (receiptIdsRows || []).map((r: any) => String(r?.id || '')).filter(Boolean);
+            if (receiptIds.length === 0) {
+                setPricingRows([]);
+                return;
+            }
+
+            const { data: batchRows, error: batchError } = await supabase
+                .from('batches')
+                .select('id,item_id,unit_cost,cost_per_unit,min_margin_pct,min_selling_price,expiry_date,quantity_received,quantity_consumed,receipt_id')
+                .in('receipt_id', receiptIds);
+            if (batchError) throw batchError;
+
+            const batches = Array.isArray(batchRows) ? batchRows : [];
+            const grouped: Record<string, any[]> = {};
+            for (const b of batches) {
+                const itemId = String((b as any)?.item_id || '');
+                if (!itemId) continue;
+                grouped[itemId] = grouped[itemId] || [];
+                grouped[itemId].push(b);
+            }
+
+            const itemIds = Object.keys(grouped);
+            const marginByItem: Record<string, number> = {};
+            await Promise.all(itemIds.map(async (itemId) => {
+                try {
+                    const { data, error } = await supabase.rpc('_resolve_default_min_margin_pct', {
+                        p_item_id: itemId,
+                        p_warehouse_id: shipment.destinationWarehouseId,
+                    });
+                    if (error) throw error;
+                    const pct = Number(data);
+                    marginByItem[itemId] = Number.isFinite(pct) ? pct : 0;
+                } catch {
+                    marginByItem[itemId] = 0;
+                }
+            }));
+
+            const rows = itemIds.map((itemId) => {
+                const item = menuItems.find((m: any) => m.id === itemId);
+                const name = item?.name?.ar || item?.name?.en || itemId;
+                const unitType = item?.unitType || 'piece';
+                const currentPrice = Number(item?.price || 0);
+                const list = grouped[itemId] || [];
+                let qtySum = 0;
+                let costWeighted = 0;
+                const normalizedBatches = list.map((b: any) => {
+                    const qty = Number(b?.quantity_received || 0);
+                    const consumed = Number(b?.quantity_consumed || 0);
+                    const remaining = Math.max(0, qty - consumed);
+                    const unitCost = Number(b?.unit_cost ?? b?.cost_per_unit ?? 0);
+                    qtySum += qty;
+                    costWeighted += qty * unitCost;
+                    return {
+                        id: String(b?.id || ''),
+                        expiryDate: b?.expiry_date || null,
+                        quantityReceived: qty,
+                        quantityConsumed: consumed,
+                        remaining,
+                        unitCost: unitCost,
+                        minMarginPct: Number(b?.min_margin_pct || 0),
+                        minSellingPrice: Number(b?.min_selling_price || 0),
+                    };
+                });
+                const avgCost = qtySum > 0 ? (costWeighted / qtySum) : 0;
+                const marginPct = Number.isFinite(Number(marginByItem[itemId])) ? Number(marginByItem[itemId]) : 0;
+                const suggestedPrice = moneyRound(avgCost * (1 + (marginPct / 100)));
+                return {
+                    itemId,
+                    name,
+                    unitType,
+                    currentPrice,
+                    avgCost: moneyRound(avgCost),
+                    marginPct: moneyRound(marginPct),
+                    suggestedPrice,
+                    batches: normalizedBatches,
+                };
+            });
+            rows.sort((a: any, b: any) => String(a.name).localeCompare(String(b.name)));
+            setPricingRows(rows);
+        } catch (err: any) {
+            const raw = err instanceof Error ? err.message : '';
+            const msg = raw && /[\u0600-\u06FF]/.test(raw) ? raw : 'فشل تحميل بيانات التسعير';
+            showNotification(msg, 'error');
+        } finally {
+            setPricingLoading(false);
+        }
+    };
+
+    const loadReceipts = async (opts?: { silent?: boolean }) => {
+        if (!id) return;
+        if (!shipment?.destinationWarehouseId) return;
+        const supabase = getSupabaseClient();
+        if (!supabase) return;
+        if (!opts?.silent) setReceiptsLoading(true);
+        try {
+            const { data, error } = await supabase
+                .from('purchase_receipts')
+                .select('id, received_at, purchase_order_id, import_shipment_id, purchase_order:purchase_orders(reference_number, supplier:suppliers(name))')
+                .eq('warehouse_id', shipment.destinationWarehouseId)
+                .or(`import_shipment_id.is.null,import_shipment_id.eq.${id}`)
+                .order('received_at', { ascending: false })
+                .limit(100);
+            if (error) throw error;
+            const rows = Array.isArray(data) ? data : [];
+            setReceiptRows(rows);
+            const nextSel: Record<string, boolean> = {};
+            for (const r of rows) {
+                const rid = String((r as any)?.id || '');
+                if (!rid) continue;
+                const linked = String((r as any)?.import_shipment_id || '') === id;
+                nextSel[rid] = linked;
+            }
+            setReceiptSelection(nextSel);
+        } catch {
+        } finally {
+            if (!opts?.silent) setReceiptsLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        if (!shipment?.id || isCreateMode) return;
+        loadReceipts({ silent: true });
+    }, [shipment?.id, shipment?.destinationWarehouseId, isCreateMode]);
+
+    const applyReceiptLinking = async (mode: 'link' | 'unlink') => {
+        if (!id || !shipment?.destinationWarehouseId) return;
+        if (shipment.status === 'closed') return;
+        const supabase = getSupabaseClient();
+        if (!supabase) return;
+        const selectedIds = Object.entries(receiptSelection).filter(([, v]) => Boolean(v)).map(([k]) => k);
+        const linkedIds = receiptRows
+            .filter((r: any) => String(r?.import_shipment_id || '') === id)
+            .map((r: any) => String(r?.id || ''))
+            .filter(Boolean);
+
+        const targetIds = mode === 'link' ? selectedIds : linkedIds;
+        if (targetIds.length === 0) return;
+        setReceiptsLoading(true);
+        try {
+            const { error } = await supabase
+                .from('purchase_receipts')
+                .update({ import_shipment_id: mode === 'link' ? id : null })
+                .in('id', targetIds);
+            if (error) throw error;
+            await loadReceipts({ silent: true });
+        } catch {
+        } finally {
+            setReceiptsLoading(false);
+        }
     };
 
     const handleCreateShipment = async (e: React.FormEvent) => {
@@ -264,6 +445,7 @@ const ImportShipmentDetailsScreen: React.FC = () => {
                             <option value="at_customs">في الجمارك</option>
                             <option value="cleared">تم التخليص</option>
                             <option value="delivered">تم التسليم</option>
+                            <option value="closed">مغلقة</option>
                             <option value="cancelled">ملغي</option>
                         </select>
 
@@ -274,6 +456,14 @@ const ImportShipmentDetailsScreen: React.FC = () => {
                             <DollarSign className="w-5 h-5" />
                             احتساب التكلفة
                         </button>
+                        {shipment.status !== 'closed' && (
+                            <button
+                                onClick={() => handleUpdateStatus('closed')}
+                                className="bg-orange-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-orange-700"
+                            >
+                                إغلاق الشحنة
+                            </button>
+                        )}
                     </div>
                 </div>
             </div>
@@ -308,6 +498,18 @@ const ImportShipmentDetailsScreen: React.FC = () => {
                         className={`pb-2 px-4 ${activeTab === 'expenses' ? 'border-b-2 border-blue-600 text-blue-600 font-semibold' : 'text-gray-600'}`}
                     >
                         المصاريف ({shipment.expenses?.length || 0})
+                    </button>
+                    <button
+                        onClick={() => { setActiveTab('receipts'); loadReceipts(); }}
+                        className={`pb-2 px-4 ${activeTab === 'receipts' ? 'border-b-2 border-blue-600 text-blue-600 font-semibold' : 'text-gray-600'}`}
+                    >
+                        الاستلامات
+                    </button>
+                    <button
+                        onClick={() => { setActiveTab('pricing'); loadPricing(); }}
+                        className={`pb-2 px-4 ${activeTab === 'pricing' ? 'border-b-2 border-blue-600 text-blue-600 font-semibold' : 'text-gray-600'}`}
+                    >
+                        التسعير
                     </button>
                 </div>
             </div>
@@ -530,6 +732,307 @@ const ImportShipmentDetailsScreen: React.FC = () => {
                         ))}
                         {(!shipment.expenses || shipment.expenses.length === 0) && (
                             <div className="text-center py-8 text-gray-500">لا توجد مصاريف</div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {activeTab === 'receipts' && (
+                <div>
+                    <div className="flex items-center justify-between mb-4">
+                        <h2 className="text-xl font-semibold">استلامات مرتبطة بالشحنة</h2>
+                        <div className="flex gap-2">
+                            <button
+                                onClick={() => loadReceipts()}
+                                className="bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300"
+                                disabled={receiptsLoading}
+                            >
+                                تحديث
+                            </button>
+                            <button
+                                onClick={() => applyReceiptLinking('link')}
+                                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+                                disabled={receiptsLoading || shipment.status === 'closed'}
+                            >
+                                ربط المحدد
+                            </button>
+                            <button
+                                onClick={() => applyReceiptLinking('unlink')}
+                                className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700"
+                                disabled={receiptsLoading || shipment.status === 'closed'}
+                            >
+                                فصل الربط
+                            </button>
+                        </div>
+                    </div>
+
+                    {shipment.status === 'closed' && (
+                        <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 p-3 rounded-lg mb-4">
+                            الشحنة مغلقة. لا يمكن تعديل ربط الاستلامات.
+                        </div>
+                    )}
+
+                    <div className="space-y-2">
+                        {receiptRows.map((r: any) => {
+                            const rid = String(r?.id || '');
+                            const receivedAt = r?.received_at ? new Date(String(r.received_at)).toLocaleString('ar-EG-u-nu-latn') : '-';
+                            const ref = r?.purchase_order?.reference_number || r?.purchase_order_id || '-';
+                            const supplierName = r?.purchase_order?.supplier?.name || '-';
+                            const isLinked = String(r?.import_shipment_id || '') === id;
+                            return (
+                                <div key={rid} className="bg-white border rounded-lg p-4 flex items-center justify-between gap-4">
+                                    <label className="flex items-center gap-3 flex-1 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={Boolean(receiptSelection[rid])}
+                                            onChange={(e) => setReceiptSelection(prev => ({ ...prev, [rid]: e.target.checked }))}
+                                            disabled={shipment.status === 'closed'}
+                                        />
+                                        <div className="flex-1">
+                                            <div className="font-semibold">{supplierName}</div>
+                                            <div className="text-sm text-gray-600">
+                                                {receivedAt} {` | `} {ref}
+                                            </div>
+                                        </div>
+                                    </label>
+                                    <div className={`px-2 py-1 rounded-full text-xs font-semibold ${isLinked ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700'}`}>
+                                        {isLinked ? 'مرتبط' : 'غير مرتبط'}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                        {receiptRows.length === 0 && (
+                            <div className="text-center py-8 text-gray-500">لا توجد استلامات</div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {activeTab === 'pricing' && (
+                <div>
+                    <div className="flex items-center justify-between mb-4">
+                        <h2 className="text-xl font-semibold">التكلفة الكاملة والسعر المقترح</h2>
+                        <div className="flex gap-2">
+                            <select
+                                value={pricingTierType}
+                                onChange={(e) => setPricingTierType(e.target.value as any)}
+                                className="px-4 py-2 border rounded-lg bg-white"
+                                disabled={pricingLoading}
+                            >
+                                <option value="retail">تجزئة</option>
+                                <option value="wholesale">جملة</option>
+                                <option value="distributor">موزع</option>
+                                <option value="vip">VIP</option>
+                            </select>
+                            <button
+                                onClick={() => loadPricing()}
+                                className="bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300"
+                                disabled={pricingLoading}
+                            >
+                                تحديث
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="space-y-4">
+                        {pricingRows.map((row: any) => (
+                            <div key={row.itemId} className="bg-white border rounded-lg p-4">
+                                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                                    <div>
+                                        <div className="font-semibold">{row.name}</div>
+                                        <div className="text-sm text-gray-600">
+                                            {row.unitType} {` | `}
+                                            التكلفة/وحدة: {row.avgCost} {` | `}
+                                            السعر الحالي: {row.currentPrice}
+                                        </div>
+                                    </div>
+                                    <div className="flex flex-col sm:flex-row gap-2 items-start sm:items-center">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-sm text-gray-700">نسبة ربح فوق التكلفة %</span>
+                                            <input
+                                                type="number"
+                                                min={0}
+                                                step="0.01"
+                                                value={row.marginPct}
+                                                onChange={(e) => {
+                                                    const val = moneyRound(parseFloat(e.target.value));
+                                                    setPricingRows((prev) => prev.map((p: any) => {
+                                                        if (p.itemId !== row.itemId) return p;
+                                                        const suggested = moneyRound(Number(p.avgCost || 0) * (1 + ((Number.isFinite(val) ? val : 0) / 100)));
+                                                        return { ...p, marginPct: Number.isFinite(val) ? val : 0, suggestedPrice: suggested };
+                                                    }));
+                                                }}
+                                                className="w-28 p-2 border rounded-lg text-center font-mono"
+                                            />
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-sm text-gray-700">السعر المقترح</span>
+                                            <span className="px-3 py-2 bg-green-50 border border-green-200 rounded-lg font-mono">
+                                                {row.suggestedPrice}
+                                            </span>
+                                        </div>
+                                        <button
+                                            onClick={async () => {
+                                                try {
+                                                    const suggested = Number(row.suggestedPrice || 0);
+                                                    if (!(suggested > 0)) return;
+                                                    const reason = `اعتماد سعر مقترح من تكلفة الشحنة ${shipment.referenceNumber || shipment.id}`;
+                                                    await updatePrice(row.itemId, suggested, reason);
+                                                    showNotification('تم اعتماد السعر للصنف', 'success');
+                                                    await loadPricing();
+                                                } catch (err: any) {
+                                                    const raw = err instanceof Error ? err.message : '';
+                                                    const msg = raw && /[\u0600-\u06FF]/.test(raw) ? raw : 'فشل اعتماد السعر';
+                                                    showNotification(msg, 'error');
+                                                }
+                                            }}
+                                            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+                                            disabled={pricingLoading}
+                                        >
+                                            اعتماد للصنف
+                                        </button>
+                                        <button
+                                            onClick={async () => {
+                                                const supabase = getSupabaseClient();
+                                                if (!supabase) return;
+                                                try {
+                                                    const suggested = Number(row.suggestedPrice || 0);
+                                                    if (!(suggested > 0)) return;
+                                                    setPricingLoading(true);
+                                                    const tierMinQty = (row.unitType === 'kg' || row.unitType === 'gram') ? 0 : 1;
+                                                    const payload: any = {
+                                                        item_id: row.itemId,
+                                                        customer_type: pricingTierType,
+                                                        min_quantity: tierMinQty,
+                                                        max_quantity: null,
+                                                        price: suggested,
+                                                        discount_percentage: null,
+                                                        is_active: true,
+                                                        valid_from: null,
+                                                        valid_to: null,
+                                                        notes: `اعتماد سعر مقترح من الشحنة ${shipment.referenceNumber || shipment.id}`,
+                                                        updated_at: new Date().toISOString(),
+                                                    };
+                                                    const { error } = await supabase
+                                                        .from('price_tiers')
+                                                        .upsert(payload, { onConflict: 'item_id,customer_type,min_quantity' });
+                                                    if (error) throw error;
+                                                    showNotification('تم اعتماد السعر على الشريحة', 'success');
+                                                } catch (err: any) {
+                                                    const raw = err instanceof Error ? err.message : '';
+                                                    const msg = raw && /[\u0600-\u06FF]/.test(raw) ? raw : 'فشل اعتماد السعر على الشريحة';
+                                                    showNotification(msg, 'error');
+                                                } finally {
+                                                    setPricingLoading(false);
+                                                }
+                                            }}
+                                            className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700"
+                                            disabled={pricingLoading}
+                                        >
+                                            اعتماد للشريحة
+                                        </button>
+                                        <button
+                                            onClick={async () => {
+                                                const supabase = getSupabaseClient();
+                                                if (!supabase) return;
+                                                const pct = Number(row.marginPct || 0);
+                                                const ids = (row.batches || []).map((b: any) => String(b?.id || '')).filter(Boolean);
+                                                if (ids.length === 0) return;
+                                                try {
+                                                    setPricingLoading(true);
+                                                    const { error } = await supabase
+                                                        .from('batches')
+                                                        .update({ min_margin_pct: pct })
+                                                        .in('id', ids);
+                                                    if (error) throw error;
+                                                    showNotification('تم تطبيق الحد الأدنى للدفعات', 'success');
+                                                    await loadPricing();
+                                                } catch (err: any) {
+                                                    const raw = err instanceof Error ? err.message : '';
+                                                    const msg = raw && /[\u0600-\u06FF]/.test(raw) ? raw : 'فشل تطبيق الحد الأدنى للدفعات';
+                                                    showNotification(msg, 'error');
+                                                } finally {
+                                                    setPricingLoading(false);
+                                                }
+                                            }}
+                                            className="bg-gray-900 text-white px-4 py-2 rounded-lg hover:bg-black"
+                                            disabled={pricingLoading}
+                                        >
+                                            حد أدنى للدفعات
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="mt-4 overflow-x-auto">
+                                    <table className="min-w-[900px] w-full text-right text-sm">
+                                        <thead className="bg-gray-50">
+                                            <tr>
+                                                <th className="p-2">الدفعة</th>
+                                                <th className="p-2">انتهاء</th>
+                                                <th className="p-2">مستلم</th>
+                                                <th className="p-2">مستهلك</th>
+                                                <th className="p-2">متبقي</th>
+                                                <th className="p-2">تكلفة/وحدة</th>
+                                                <th className="p-2">حد أدنى</th>
+                                                <th className="p-2">إجراء</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y">
+                                            {(row.batches || []).map((b: any) => (
+                                                <tr key={b.id}>
+                                                    <td className="p-2 font-mono">{String(b.id).slice(0, 8)}</td>
+                                                    <td className="p-2">{b.expiryDate || '-'}</td>
+                                                    <td className="p-2 font-mono">{b.quantityReceived}</td>
+                                                    <td className="p-2 font-mono">{b.quantityConsumed}</td>
+                                                    <td className="p-2 font-mono">{b.remaining}</td>
+                                                    <td className="p-2 font-mono">{moneyRound(b.unitCost)}</td>
+                                                    <td className="p-2 font-mono">{moneyRound(b.minSellingPrice)}</td>
+                                                    <td className="p-2">
+                                                        <button
+                                                            onClick={async () => {
+                                                                const supabase = getSupabaseClient();
+                                                                if (!supabase) return;
+                                                                const pct = Number(row.marginPct || 0);
+                                                                try {
+                                                                    setPricingLoading(true);
+                                                                    const { error } = await supabase
+                                                                        .from('batches')
+                                                                        .update({ min_margin_pct: pct })
+                                                                        .eq('id', b.id);
+                                                                    if (error) throw error;
+                                                                    showNotification('تم تحديث حد الدفعة', 'success');
+                                                                    await loadPricing();
+                                                                } catch (err: any) {
+                                                                    const raw = err instanceof Error ? err.message : '';
+                                                                    const msg = raw && /[\u0600-\u06FF]/.test(raw) ? raw : 'فشل تحديث حد الدفعة';
+                                                                    showNotification(msg, 'error');
+                                                                } finally {
+                                                                    setPricingLoading(false);
+                                                                }
+                                                            }}
+                                                            className="bg-gray-200 text-gray-800 px-3 py-1 rounded hover:bg-gray-300"
+                                                            disabled={pricingLoading}
+                                                        >
+                                                            تطبيق
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                            {(row.batches || []).length === 0 && (
+                                                <tr>
+                                                    <td className="p-4 text-center text-gray-500" colSpan={8}>لا توجد دفعات مرتبطة</td>
+                                                </tr>
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        ))}
+
+                        {pricingRows.length === 0 && (
+                            <div className="text-center py-10 text-gray-500">
+                                اربط الاستلامات بالشحنة أولاً ثم افتح تبويب التسعير.
+                            </div>
                         )}
                     </div>
                 </div>

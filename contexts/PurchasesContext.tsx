@@ -728,6 +728,8 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                   quantity: i.quantity,
                   harvestDate: i.productionDate,
                   expiryDate: i.expiryDate,
+                  transportCost: (i as any).transportCost,
+                  supplyTaxCost: (i as any).supplyTaxCost,
               })),
               p_occurred_at: occurredAt ? (toUtcIsoFromLocalDateTimeInput(occurredAt) || new Date(occurredAt).toISOString()) : new Date().toISOString()
           });

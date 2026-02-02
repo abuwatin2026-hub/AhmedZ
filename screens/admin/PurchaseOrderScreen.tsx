@@ -29,6 +29,8 @@ interface ReceiveRow {
     expiryDate?: string;
     previousReturned?: number;
     available?: number;
+    transportCost?: number;
+    supplyTaxCost?: number;
 }
 
 const PurchaseOrderScreen: React.FC = () => {
@@ -323,6 +325,8 @@ const PurchaseOrderScreen: React.FC = () => {
                 receiveNow: remaining,
                 productionDate: (base?.productionDate || (base as any)?.harvestDate || ''),
                 expiryDate: base?.expiryDate || '',
+                transportCost: Number(base?.transportCost || 0),
+                supplyTaxCost: Number(base?.supplyTaxCost || 0),
             };
         });
         setReceiveOrder(order);
@@ -346,6 +350,16 @@ const PurchaseOrderScreen: React.FC = () => {
     const updateReceiveExpiry = (index: number, value: string) => {
         const next = [...receiveRows];
         next[index] = { ...next[index], expiryDate: value || '' };
+        setReceiveRows(next);
+    };
+    const updateReceiveTransport = (index: number, value: number) => {
+        const next = [...receiveRows];
+        next[index] = { ...next[index], transportCost: Number(value) || 0 };
+        setReceiveRows(next);
+    };
+    const updateReceiveSupplyTax = (index: number, value: number) => {
+        const next = [...receiveRows];
+        next[index] = { ...next[index], supplyTaxCost: Number(value) || 0 };
         setReceiveRows(next);
     };
 
@@ -388,6 +402,8 @@ const PurchaseOrderScreen: React.FC = () => {
                     quantity: Number(r.receiveNow),
                     productionDate: r.productionDate || undefined,
                     expiryDate: r.expiryDate || undefined,
+                    transportCost: Number(r.transportCost || 0),
+                    supplyTaxCost: Number(r.supplyTaxCost || 0),
                 }));
             if (items.length === 0) {
                 alert('الرجاء إدخال كمية للاستلام.');
@@ -1411,7 +1427,7 @@ const PurchaseOrderScreen: React.FC = () => {
                             </div>
                             <div className="border rounded-lg overflow-hidden dark:border-gray-700">
                                 <div className="overflow-x-auto">
-                                <table className="min-w-[980px] w-full text-right text-sm">
+                                <table className="min-w-[1200px] w-full text-right text-sm">
                                     <thead className="bg-gray-50 dark:bg-gray-700">
                                         <tr>
                                             <th className="p-2 sm:p-3">الصنف</th>
@@ -1421,6 +1437,8 @@ const PurchaseOrderScreen: React.FC = () => {
                                                     <th className="p-2 sm:p-3 w-32">استلام الآن</th>
                                                     <th className="p-2 sm:p-3 w-40">تاريخ الإنتاج</th>
                                                     <th className="p-2 sm:p-3 w-40">تاريخ الانتهاء</th>
+                                                    <th className="p-2 sm:p-3 w-32">تكلفة النقل/وحدة</th>
+                                                    <th className="p-2 sm:p-3 w-32">ضريبة المورد/وحدة</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
@@ -1456,6 +1474,26 @@ const PurchaseOrderScreen: React.FC = () => {
                                                                 className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                                                             />
                                                         </td>
+                                                            <td className="p-2 sm:p-2">
+                                                                <input
+                                                                    type="number"
+                                                                    min={0}
+                                                                    step="0.01"
+                                                                    value={Number(r.transportCost || 0)}
+                                                                    onChange={(e) => updateReceiveTransport(idx, parseFloat(e.target.value))}
+                                                                    className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white text-center font-mono"
+                                                                />
+                                                            </td>
+                                                            <td className="p-2 sm:p-2">
+                                                                <input
+                                                                    type="number"
+                                                                    min={0}
+                                                                    step="0.01"
+                                                                    value={Number(r.supplyTaxCost || 0)}
+                                                                    onChange={(e) => updateReceiveSupplyTax(idx, parseFloat(e.target.value))}
+                                                                    className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white text-center font-mono"
+                                                                />
+                                                            </td>
                                                     </tr>
                                                 ))}
                                             </tbody>

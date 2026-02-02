@@ -149,6 +149,8 @@ const ManageOrdersScreen: React.FC = () => {
     const [inStoreCustomerPhoneSearch, setInStoreCustomerPhoneSearch] = useState('');
     const [inStoreCustomerSearchResult, setInStoreCustomerSearchResult] = useState<{ id: string; fullName?: string; phoneNumber?: string } | null>(null);
     const [inStoreSelectedCustomerId, setInStoreSelectedCustomerId] = useState<string>('');
+    const [inStorePricingBusy, setInStorePricingBusy] = useState(false);
+    const [inStorePricingMap, setInStorePricingMap] = useState<Record<string, { unitPrice: number; unitPricePerKg?: number }>>({});
     const [mapModal, setMapModal] = useState<{ title: string; coords: { lat: number; lng: number } } | null>(null);
     const [paidSumByOrderId, setPaidSumByOrderId] = useState<Record<string, number>>({});
     const [partialPaymentOrderId, setPartialPaymentOrderId] = useState<string | null>(null);
@@ -178,6 +180,121 @@ const ManageOrdersScreen: React.FC = () => {
         const enabled = inStoreAvailablePaymentMethods;
         return canUseCash ? enabled : enabled.filter(m => m !== 'cash');
     }, [inStoreAvailablePaymentMethods, canUseCash]);
+
+    const isUuidText = (v: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(v || '').trim());
+
+    const inStorePricingSignature = useMemo(() => {
+        if (!isInStoreSaleOpen) return '';
+        if (!inStoreLines.length) return '';
+        const base = inStoreLines.map((l) => {
+            const mi = menuItems.find(m => m.id === l.menuItemId);
+            const unitType = mi?.unitType || 'piece';
+            const qty = (unitType === 'kg' || unitType === 'gram')
+                ? (Number(l.weight) || Number(l.quantity) || 0)
+                : (Number(l.quantity) || 0);
+            return `${l.menuItemId}:${unitType}:${qty}`;
+        }).sort().join('|');
+        const wh = sessionScope.scope?.warehouseId || '';
+        return `${base}|cust:${inStoreSelectedCustomerId || ''}|wh:${wh}`;
+    }, [inStoreLines, inStoreSelectedCustomerId, isInStoreSaleOpen, menuItems, sessionScope.scope?.warehouseId]);
+
+    useEffect(() => {
+        if (!isInStoreSaleOpen || !inStoreLines.length) {
+            setInStorePricingBusy(false);
+            setInStorePricingMap({});
+            return;
+        }
+
+        const isOnline = typeof navigator !== 'undefined' && navigator.onLine !== false;
+        const supabase = isOnline ? getSupabaseClient() : null;
+        if (!supabase) {
+            setInStorePricingBusy(false);
+            setInStorePricingMap({});
+            return;
+        }
+
+        const warehouseId = sessionScope.scope?.warehouseId || '';
+        let cancelled = false;
+
+        const run = async () => {
+            setInStorePricingBusy(true);
+            try {
+                const requests = inStoreLines.map((l) => {
+                    const mi = menuItems.find(m => m.id === l.menuItemId);
+                    const unitType = mi?.unitType || 'piece';
+                    const pricingQty = (unitType === 'kg' || unitType === 'gram')
+                        ? (Number(l.weight) || Number(l.quantity) || 0)
+                        : (Number(l.quantity) || 0);
+                    const key = `${l.menuItemId}:${unitType}:${pricingQty}:${inStoreSelectedCustomerId || ''}`;
+                    return { key, itemId: l.menuItemId, unitType, pricingQty };
+                }).filter(r => r.pricingQty > 0);
+
+                const uniq = new Map<string, { key: string; itemId: string; unitType: string; pricingQty: number }>();
+                for (const r of requests) {
+                    const compact = `${r.itemId}:${r.unitType}:${r.pricingQty}:${inStoreSelectedCustomerId || ''}`;
+                    if (!uniq.has(compact)) uniq.set(compact, r);
+                }
+
+                const results = await Promise.all(Array.from(uniq.values()).map(async (r) => {
+                    const fallback = async () => {
+                        const { data, error } = await supabase.rpc('get_item_price_with_discount', {
+                            p_item_id: r.itemId,
+                            p_customer_id: inStoreSelectedCustomerId ? String(inStoreSelectedCustomerId) : null,
+                            p_quantity: r.pricingQty,
+                        });
+                        if (error) throw error;
+                        const unitPrice = Number(data);
+                        if (!Number.isFinite(unitPrice) || unitPrice < 0) return { key: r.key, unitPrice: 0, unitType: r.unitType };
+                        const unitPricePerKg = r.unitType === 'gram' ? unitPrice * 1000 : undefined;
+                        return { key: r.key, unitPrice, unitPricePerKg, unitType: r.unitType };
+                    };
+
+                    if (warehouseId && isUuidText(r.itemId)) {
+                        try {
+                            const { data, error } = await supabase.rpc('get_fefo_pricing', {
+                                p_item_id: r.itemId,
+                                p_warehouse_id: warehouseId,
+                                p_quantity: r.pricingQty,
+                            });
+                            if (error) throw error;
+                            const row = (Array.isArray(data) ? data[0] : data) as any;
+                            const unitPrice = Number(row?.suggested_price);
+                            if (!Number.isFinite(unitPrice) || unitPrice < 0) return await fallback();
+                            const unitPricePerKg = r.unitType === 'gram' ? unitPrice * 1000 : undefined;
+                            return { key: r.key, unitPrice, unitPricePerKg, unitType: r.unitType };
+                        } catch {
+                            return await fallback();
+                        }
+                    }
+
+                    return await fallback();
+                }));
+
+                if (cancelled) return;
+                const next: Record<string, { unitPrice: number; unitPricePerKg?: number }> = {};
+                for (const row of results) {
+                    if (!row?.key) continue;
+                    next[String(row.key)] = {
+                        unitPrice: Number(row.unitPrice) || 0,
+                        unitPricePerKg: row.unitPricePerKg != null ? (Number(row.unitPricePerKg) || 0) : undefined
+                    };
+                }
+                setInStorePricingMap(next);
+            } catch (err) {
+                if (cancelled) return;
+                const msg = localizeSupabaseError(err) || 'تعذر تسعير الأصناف من الخادم.';
+                showNotification(msg, 'error');
+                setInStorePricingMap({});
+            } finally {
+                if (!cancelled) setInStorePricingBusy(false);
+            }
+        };
+
+        void run();
+        return () => {
+            cancelled = true;
+        };
+    }, [inStorePricingSignature]);
 
     useEffect(() => {
         const fetchDriverBalances = async () => {
@@ -510,7 +627,13 @@ const ManageOrdersScreen: React.FC = () => {
             const isWeightBased = isWeightBasedUnit(unitType as any);
             const quantity = !isWeightBased ? (line.quantity || 0) : 1;
             const weight = isWeightBased ? (line.weight || 0) : 0;
-            const unitPrice = unitType === 'gram' && menuItem.pricePerUnit ? menuItem.pricePerUnit / 1000 : menuItem.price;
+            const pricingQty = isWeightBased ? (Number(weight) || Number(quantity) || 0) : (Number(quantity) || 0);
+            const pricingKey = `${line.menuItemId}:${unitType || 'piece'}:${pricingQty}:${inStoreSelectedCustomerId || ''}`;
+            const priced = inStorePricingMap[pricingKey];
+            const fallbackUnitPrice = unitType === 'gram' && menuItem.pricePerUnit ? menuItem.pricePerUnit / 1000 : menuItem.price;
+            const unitPrice = unitType === 'gram'
+                ? (priced?.unitPricePerKg ? (priced.unitPricePerKg / 1000) : (Number(priced?.unitPrice) || fallbackUnitPrice))
+                : (Number(priced?.unitPrice) || fallbackUnitPrice);
 
             // Addons cost
             let addonsCost = 0;
@@ -535,7 +658,7 @@ const ManageOrdersScreen: React.FC = () => {
             : Math.max(0, Math.min(subtotal, discountValue));
         const total = Math.max(0, subtotal - discountAmount);
         return { subtotal, discountAmount, total };
-    }, [inStoreDiscountType, inStoreDiscountValue, inStoreLines, menuItems]);
+    }, [inStoreDiscountType, inStoreDiscountValue, inStoreLines, inStorePricingMap, inStoreSelectedCustomerId, isWeightBasedUnit, menuItems]);
 
     useEffect(() => {
         if (!isInStoreSaleOpen) return;
@@ -2532,7 +2655,13 @@ const ManageOrdersScreen: React.FC = () => {
                                     if (!mi) return null;
                                     const name = mi.name?.[language] || mi.name?.ar || mi.name?.en || mi.id;
                                     const isWeightBased = mi.unitType === 'kg' || mi.unitType === 'gram';
-                                    const unitPrice = mi.unitType === 'gram' && mi.pricePerUnit ? mi.pricePerUnit / 1000 : mi.price;
+                                    const pricingQty = isWeightBased ? (Number(line.weight ?? 0) || 0) : (Number(line.quantity ?? 0) || 0);
+                                    const pricingKey = `${line.menuItemId}:${mi.unitType || 'piece'}:${pricingQty}:${inStoreSelectedCustomerId || ''}`;
+                                    const priced = inStorePricingMap[pricingKey];
+                                    const fallbackUnitPrice = mi.unitType === 'gram' && mi.pricePerUnit ? mi.pricePerUnit / 1000 : mi.price;
+                                    const unitPrice = mi.unitType === 'gram'
+                                        ? (priced?.unitPricePerKg ? (priced.unitPricePerKg / 1000) : (Number(priced?.unitPrice) || fallbackUnitPrice))
+                                        : (Number(priced?.unitPrice) || fallbackUnitPrice);
                                     const available = typeof mi.availableStock === 'number' ? mi.availableStock : undefined;
                                     let addonsCost = 0;
                                     if (line.selectedAddons && mi.addons) {
@@ -2562,6 +2691,10 @@ const ManageOrdersScreen: React.FC = () => {
                                                 <div className="flex-1 min-w-0">
                                                     <div className="text-sm font-semibold text-gray-900 dark:text-white truncate">{name}</div>
                                                     <div className="text-xs text-gray-500 dark:text-gray-400">{unitTranslations[mi.unitType || 'piece'] || (mi.unitType === 'piece' ? 'قطعة' : mi.unitType)}</div>
+                                                    <div className="text-[11px] text-gray-600 dark:text-gray-400">
+                                                        السعر المطبق: <span className="font-mono">{unitPrice.toFixed(2)}</span> ر.ي
+                                                        {inStorePricingBusy ? <span>{' '}…</span> : null}
+                                                    </div>
                                                     {addonNames && <div className="text-xs text-orange-600 dark:text-orange-400">+{addonNames}</div>}
                                                 </div>
                                                 <div className="text-sm font-mono text-orange-600 dark:text-orange-400 whitespace-nowrap">

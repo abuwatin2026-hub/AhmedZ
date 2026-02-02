@@ -99,7 +99,7 @@ export interface ImportShipment {
   id: string;
   referenceNumber: string;
   supplierId?: string;
-  status: 'draft' | 'ordered' | 'shipped' | 'at_customs' | 'cleared' | 'delivered' | 'cancelled';
+  status: 'draft' | 'ordered' | 'shipped' | 'at_customs' | 'cleared' | 'delivered' | 'closed' | 'cancelled';
   originCountry?: string;
   destinationWarehouseId?: string;
   shippingCarrier?: string;
@@ -137,6 +137,7 @@ export interface ImportExpense {
   amount: number;
   currency: string;
   exchangeRate: number;
+  paymentMethod?: 'cash' | 'bank';
   description?: string;
   invoiceNumber?: string;
   paidAt?: string;

@@ -21,6 +21,7 @@ declare
   v_reserved_other numeric;
   v_free numeric;
   v_alloc numeric;
+  v_rows integer;
 begin
   if auth.uid() is null then
     raise exception 'not authenticated';
@@ -106,6 +107,12 @@ begin
       raise exception 'INSUFFICIENT_FEFO_BATCH_STOCK_FOR_ITEM_%', v_item_id;
     end if;
 
+    insert into public.stock_management(item_id, warehouse_id, available_quantity, reserved_quantity, unit, low_stock_threshold, avg_cost, last_updated, updated_at, data)
+    select mi.id, p_warehouse_id, 0, 0, coalesce(mi.unit_type,'piece'), 5, 0, now(), now(), '{}'::jsonb
+    from public.menu_items mi
+    where mi.id = v_item_id::text
+    on conflict (item_id, warehouse_id) do nothing;
+
     update public.stock_management sm
     set reserved_quantity = coalesce((
           select sum(r.quantity)
@@ -130,6 +137,10 @@ begin
         updated_at = now()
     where sm.item_id::text = v_item_id::text
       and sm.warehouse_id = p_warehouse_id;
+    get diagnostics v_rows = row_count;
+    if coalesce(v_rows, 0) = 0 then
+      raise exception 'STOCK_ROW_NOT_FOUND_FOR_ITEM_%_WAREHOUSE_%', v_item_id, p_warehouse_id;
+    end if;
   end loop;
 end;
 $$;

@@ -21,6 +21,7 @@ const ImportShipmentsScreen: React.FC = () => {
             at_customs: { label: 'في الجمارك', color: 'bg-orange-100 text-orange-800' },
             cleared: { label: 'تم التخليص', color: 'bg-green-100 text-green-800' },
             delivered: { label: 'تم التسليم', color: 'bg-green-600 text-white' },
+            closed: { label: 'مغلقة', color: 'bg-gray-900 text-white' },
             cancelled: { label: 'ملغي', color: 'bg-red-100 text-red-800' }
         };
         const config = statusConfig[status];
@@ -65,7 +66,7 @@ const ImportShipmentsScreen: React.FC = () => {
 
             {/* Filters */}
             <div className="mb-6 flex gap-2 flex-wrap">
-                {['all', 'draft', 'ordered', 'shipped', 'at_customs', 'cleared', 'delivered'].map(status => (
+                {['all', 'draft', 'ordered', 'shipped', 'at_customs', 'cleared', 'delivered', 'closed'].map(status => (
                     <button
                         key={status}
                         onClick={() => setFilter(status)}

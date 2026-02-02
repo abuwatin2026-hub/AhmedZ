@@ -85,9 +85,15 @@ export const PriceProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         }
         try {
             let item: MenuItem | undefined;
-            const { data: row, error } = await supabase.from('menu_items').select('id,data').eq('id', itemId).maybeSingle();
+            const { data: row, error } = await supabase.from('menu_items').select('id,data,price').eq('id', itemId).maybeSingle();
             if (error) throw error;
-            item = row?.data as MenuItem | undefined;
+            const dataItem = row?.data as MenuItem | undefined;
+            if (dataItem) {
+                const normalizedPrice = Number.isFinite(Number((row as any)?.price))
+                    ? Number((row as any)?.price)
+                    : (Number.isFinite(Number((dataItem as any)?.price)) ? Number((dataItem as any).price) : 0);
+                item = { ...dataItem, price: normalizedPrice };
+            }
             if (!item) return;
 
             if (item.price !== newPrice) {
@@ -110,18 +116,10 @@ export const PriceProvider: React.FC<{ children: ReactNode }> = ({ children }) =
                 });
                 if (historyError) throw historyError;
 
-                const { error: itemError } = await supabase.from('menu_items').upsert(
-                  {
-                    id: updatedItem.id,
-                    category: updatedItem.category,
-                    is_featured: Boolean(updatedItem.isFeatured ?? false),
-                    unit_type: typeof updatedItem.unitType === 'string' ? updatedItem.unitType : null,
-                    freshness_level: typeof updatedItem.freshnessLevel === 'string' ? updatedItem.freshnessLevel : null,
-                    status: updatedItem.status,
-                    data: updatedItem,
-                  },
-                  { onConflict: 'id' }
-                );
+                const { error: itemError } = await supabase
+                    .from('menu_items')
+                    .update({ price: newPrice, data: updatedItem })
+                    .eq('id', updatedItem.id);
                 if (itemError) throw itemError;
 
                 await fetchPriceHistory();
