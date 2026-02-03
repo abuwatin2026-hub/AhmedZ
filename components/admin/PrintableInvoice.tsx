@@ -101,6 +101,8 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
             invoiceTerms: invoiceSnapshot.invoiceTerms ?? (order as any).invoiceTerms,
             netDays: invoiceSnapshot.netDays ?? (order as any).netDays,
             dueDate: invoiceSnapshot.dueDate ?? (order as any).dueDate,
+            currency: invoiceSnapshot.currency ?? (order as any).currency,
+            fxRate: invoiceSnapshot.fxRate ?? (order as any).fxRate,
         }
         : order;
 
@@ -116,6 +118,17 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
         direction: 'ltr',
         fontVariantNumeric: 'tabular-nums',
         fontFeatureSettings: '"tnum"',
+    };
+
+    const currencyCode = String((invoiceOrder as any).currency || '').toUpperCase();
+    const currencyLabel = currencyCode || '—';
+    const formatAmount = (value: number) => {
+        const n = Number(value) || 0;
+        try {
+            return n.toLocaleString(language === 'ar' ? 'ar-EG-u-nu-latn' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        } catch {
+            return n.toFixed(2);
+        }
     };
 
     // Generate ZATCA QR Code Data
@@ -239,15 +252,15 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
                                             <div style={{ fontSize: thermal ? '10px' : '12px', color: '#666', marginTop: '2px' }}>
                                                 {Object.values(item.selectedAddons).map(({ addon, quantity }, i) => (
                                                     <div key={i}>
-                                                        + {quantity > 1 && `${quantity}x `}{addon.name[language]} ({addon.price} ر.ي)
+                                                        + {quantity > 1 && `${quantity}x `}{addon.name[language]} ({addon.price} {currencyLabel})
                                                     </div>
                                                 ))}
                                             </div>
                                         ) : null}
                                     </td>
                                     <td style={numericCellStyle}>{displayQty}</td>
-                                    <td style={numericCellStyle}>{pricing.unitPrice.toFixed(2)}</td>
-                                    <td style={{ ...numericCellStyle, fontWeight: 700 }}>{pricing.lineTotal.toFixed(2)}</td>
+                                    <td style={numericCellStyle}>{formatAmount(pricing.unitPrice)} {currencyLabel}</td>
+                                    <td style={{ ...numericCellStyle, fontWeight: 700 }}>{formatAmount(pricing.lineTotal)} {currencyLabel}</td>
                                 </tr>
                             </React.Fragment>
                         );
@@ -258,25 +271,25 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
             <div style={{ marginLeft: 'auto', width: thermal ? '100%' : '300px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span>{language === 'ar' ? 'المجموع الفرعي:' : 'Subtotal:'}</span>
-                    <span style={numericCellStyle}>{invoiceOrder.subtotal.toFixed(2)} ر.ي</span>
+                    <span style={numericCellStyle}>{formatAmount(invoiceOrder.subtotal)} {currencyLabel}</span>
                 </div>
 
                 {invoiceOrder.discountAmount && invoiceOrder.discountAmount > 0 && (
                     <div style={{ display: 'flex', justifyContent: 'space-between', color: '#16a34a' }}>
                         <span>{language === 'ar' ? 'الخصم:' : 'Discount:'}</span>
-                        <span style={numericCellStyle}>- {invoiceOrder.discountAmount.toFixed(2)} ر.ي</span>
+                        <span style={numericCellStyle}>- {formatAmount(invoiceOrder.discountAmount)} {currencyLabel}</span>
                     </div>
                 )}
 
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span>{language === 'ar' ? 'رسوم التوصيل:' : 'Delivery fee:'}</span>
-                    <span style={numericCellStyle}>{(Number(invoiceOrder.deliveryFee) || 0).toFixed(2)} ر.ي</span>
+                    <span style={numericCellStyle}>{formatAmount(Number(invoiceOrder.deliveryFee) || 0)} {currencyLabel}</span>
                 </div>
 
                 {invoiceOrder.taxAmount && invoiceOrder.taxAmount > 0 && (
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                         <span>{language === 'ar' ? `الضريبة (${invoiceOrder.taxRate || 0}%):` : `Tax (${invoiceOrder.taxRate || 0}%):`}</span>
-                        <span style={numericCellStyle}>{invoiceOrder.taxAmount.toFixed(2)} ر.ي</span>
+                        <span style={numericCellStyle}>{formatAmount(invoiceOrder.taxAmount)} {currencyLabel}</span>
                     </div>
                 )}
 
@@ -284,7 +297,7 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: thermal ? '14px' : '18px', padding: thermal ? '6px' : '10px' }}>
                     <span>{language === 'ar' ? 'الإجمالي:' : 'Total:'}</span>
-                    <span style={{ ...numericCellStyle, color: '#000' }}>{invoiceOrder.total.toFixed(2)} ر.ي</span>
+                    <span style={{ ...numericCellStyle, color: '#000' }}>{formatAmount(invoiceOrder.total)} {currencyLabel}</span>
                 </div>
             </div>
 
@@ -310,7 +323,7 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
                             return (
                                 <div key={`${method}-${idx}`} style={{ display: 'flex', justifyContent: 'space-between', gap: '10px' }}>
                                     <span>{left}</span>
-                                    <span style={{ fontWeight: 700 }}>{amount.toFixed(2)} ر.ي</span>
+                                    <span style={{ fontWeight: 700 }}>{formatAmount(amount)} {currencyLabel}</span>
                                 </div>
                             );
                         })}

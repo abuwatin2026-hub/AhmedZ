@@ -42,7 +42,7 @@ const OrderHistoryCard: React.FC<{
                 </div>
             </div>
             <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 flex flex-wrap justify-between items-center gap-4">
-                <p className="text-gray-600 dark:text-gray-300">الإجمالي: <span className="font-bold text-gold-500">{order.total.toFixed(2)} ر.ي</span></p>
+                <p className="text-gray-600 dark:text-gray-300">الإجمالي: <span className="font-bold text-gold-500">{order.total.toFixed(2)} {String((order as any).currency || '').toUpperCase() || '—'}</span></p>
                 <div className="flex items-center gap-2 flex-wrap">
                     <button onClick={() => onReorder(order)} className="text-sm font-semibold text-green-600 hover:text-green-800 bg-green-50 hover:bg-green-100 dark:bg-green-900/50 dark:hover:bg-green-900/80 px-3 py-1 rounded-md transition-colors">اطلب مرة أخرى</button>
                     {order.status === 'delivered' && !order.reviewPointsAwarded && (

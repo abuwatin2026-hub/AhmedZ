@@ -24,6 +24,7 @@ interface OrderContextType {
       | { menuItemId: string; quantity?: number; weight?: number; selectedAddons?: Record<string, number> }
       | { promotionId: string; bundleQty?: number; promotionLineId?: string; promotionSnapshot?: any }
     >;
+    currency?: string;
     customerId?: string;
     customerName?: string;
     phoneNumber?: string;
@@ -55,6 +56,7 @@ interface OrderContextType {
       | { menuItemId: string; quantity?: number; weight?: number; selectedAddons?: Record<string, number> }
       | { promotionId: string; bundleQty?: number; promotionLineId?: string; promotionSnapshot?: any }
     >;
+    currency?: string;
     customerId?: string;
     discountType?: 'amount' | 'percent';
     discountValue?: number;
@@ -180,7 +182,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const rpcRecordOrderPayment = async (
     supabase: any,
-    input: { orderId: string; amount: number; method: string; occurredAt: string; idempotencyKey?: string }
+    input: { orderId: string; amount: number; method: string; occurredAt: string; currency?: string; idempotencyKey?: string }
   ): Promise<any> => {
     const call = async (includeIdempotencyKey: boolean) => {
       const base: any = {
@@ -189,6 +191,9 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         p_method: input.method,
         p_occurred_at: input.occurredAt,
       };
+      if (typeof input.currency === 'string' && input.currency.trim()) {
+        base.p_currency = input.currency.trim().toUpperCase();
+      }
       if (includeIdempotencyKey) {
         const key = String(input.idempotencyKey || '').trim();
         if (key) {
@@ -1270,6 +1275,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       | { menuItemId: string; quantity?: number; weight?: number; selectedAddons?: Record<string, number> }
       | { promotionId: string; bundleQty?: number; promotionLineId?: string; promotionSnapshot?: any }
     >;
+    currency?: string;
     customerId?: string;
     customerName?: string;
     phoneNumber?: string;
@@ -1869,6 +1875,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           amount: Number(p.amount) || 0,
           method: p.method,
           occurredAt: nowIso,
+          currency: settings.baseCurrency || '',
           idempotencyKey: `instore:${newOrder.id}:${nowIso}:${i}:${p.method}:${Number(p.amount) || 0}`,
         });
         if (rpcErr) {
@@ -2004,6 +2011,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       | { menuItemId: string; quantity?: number; weight?: number; selectedAddons?: Record<string, number> }
       | { promotionId: string; bundleQty?: number; promotionLineId?: string; promotionSnapshot?: any }
     >;
+    currency?: string;
     customerId?: string;
     discountType?: 'amount' | 'percent';
     discountValue?: number;
@@ -2114,6 +2122,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       userId: isUuid(input.customerId) ? input.customerId : undefined,
       orderSource: 'in_store',
       warehouseId,
+      currency: settings.baseCurrency || '',
       customerId: input.customerId || undefined,
       items,
       subtotal: computedSubtotal,
@@ -2248,11 +2257,13 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       : Math.max(0, Math.min(computedSubtotal, discountValue));
     const computedTotal = Math.max(0, computedSubtotal - discountAmount);
     const nowIso = new Date().toISOString();
+    const desiredCurrency = String(((input as any).currency || settings.baseCurrency || '')).toUpperCase();
     const newOrder: Order = {
       id: crypto.randomUUID(),
       userId: isUuid(input.customerId) ? input.customerId : undefined,
       orderSource: 'in_store',
       warehouseId,
+      currency: desiredCurrency,
       customerId: input.customerId || undefined,
       items,
       subtotal: computedSubtotal,
@@ -2761,6 +2772,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
               amount: remaining,
               method: updated.paymentMethod,
               occurredAt: nowIso,
+              currency: settings.baseCurrency || '',
               idempotencyKey: `delivery:${updated.id}:${nowIso}:${Number(remaining) || 0}`,
             });
             if (error) {

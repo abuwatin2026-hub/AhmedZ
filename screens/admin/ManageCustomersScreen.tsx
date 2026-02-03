@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useUserAuth } from '../../contexts/UserAuthContext';
-// import { useSettings } from '../../contexts/SettingsContext';
+import { useSettings } from '../../contexts/SettingsContext';
 import { useOrders } from '../../contexts/OrderContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
@@ -11,6 +11,7 @@ import { StarIcon } from '../../components/icons';
 import Spinner from '../../components/Spinner';
 import { getSupabaseClient } from '../../supabase';
 import ConfirmationModal from '../../components/admin/ConfirmationModal';
+import CurrencyDualAmount from '../../components/common/CurrencyDualAmount';
 
 const ManageCustomersScreen: React.FC = () => {
   const navigate = useNavigate();
@@ -18,6 +19,8 @@ const ManageCustomersScreen: React.FC = () => {
   const { updateOrderStatus, markOrderPaid } = useOrders();
   const { hasPermission, listAdminUsers } = useAuth();
   const { showNotification } = useToast();
+  const { settings } = useSettings();
+  const baseCode = String((settings as any)?.baseCurrency || '').toUpperCase();
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [customerOrders, setCustomerOrders] = useState<Order[]>([]);
@@ -25,11 +28,13 @@ const ManageCustomersScreen: React.FC = () => {
   const [ordersError, setOrdersError] = useState<string | null>(null);
   const [detailsTab, setDetailsTab] = useState<'overview' | 'orders' | 'actions'>('overview');
   const [isSelectedCustomerAppLinked, setIsSelectedCustomerAppLinked] = useState<boolean>(true);
-  const [customerDraft, setCustomerDraft] = useState<{ fullName: string; phoneNumber: string; loyaltyTier: Customer['loyaltyTier']; firstOrderDiscountApplied: boolean }>({
+  const [currencyOptions, setCurrencyOptions] = useState<string[]>([]);
+  const [customerDraft, setCustomerDraft] = useState<{ fullName: string; phoneNumber: string; loyaltyTier: Customer['loyaltyTier']; firstOrderDiscountApplied: boolean; preferredCurrency: string }>({
     fullName: '',
     phoneNumber: '',
     loyaltyTier: 'regular',
     firstOrderDiscountApplied: false,
+    preferredCurrency: '',
   });
   const [savingCustomer, setSavingCustomer] = useState(false);
   const [cancelOrderId, setCancelOrderId] = useState<string | null>(null);
@@ -79,9 +84,28 @@ const ManageCustomersScreen: React.FC = () => {
       phoneNumber: customer.phoneNumber || '',
       loyaltyTier: customer.loyaltyTier || 'regular',
       firstOrderDiscountApplied: Boolean(customer.firstOrderDiscountApplied),
+      preferredCurrency: String((customer as any).preferredCurrency || ''),
     });
     setDetailsTab('overview');
   };
+
+  useEffect(() => {
+    let active = true;
+    const loadCurrencies = async () => {
+      try {
+        const supabase = getSupabaseClient();
+        if (!supabase) return;
+        const { data, error } = await supabase.from('currencies').select('code').order('code', { ascending: true });
+        if (error) throw error;
+        const codes = (Array.isArray(data) ? data : []).map((r: any) => String(r.code || '').toUpperCase()).filter(Boolean);
+        if (active) setCurrencyOptions(codes);
+      } catch {
+        if (active) setCurrencyOptions([]);
+      }
+    };
+    void loadCurrencies();
+    return () => { active = false; };
+  }, []);
 
   const closeCustomerDetails = () => {
     setSelectedCustomer(null);
@@ -194,9 +218,14 @@ const ManageCustomersScreen: React.FC = () => {
 
   const customerOrderStats = useMemo(() => {
     const count = customerOrders.length;
-    const totalSpent = customerOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
+    const totalSpentBase = customerOrders.reduce((sum, o: any) => sum + (Number(o?.baseTotal) || 0), 0);
+    const totalsByCurrency = customerOrders.reduce((acc: Record<string, number>, o: any) => {
+      const c = String(o?.currency || '').toUpperCase() || '—';
+      acc[c] = (acc[c] || 0) + (Number(o?.total) || 0);
+      return acc;
+    }, {});
     const lastOrderAt = customerOrders[0]?.createdAt || null;
-    return { count, totalSpent, lastOrderAt };
+    return { count, totalSpentBase, totalsByCurrency, lastOrderAt };
   }, [customerOrders]);
 
   const handleSaveCustomer = async () => {
@@ -205,12 +234,14 @@ const ManageCustomersScreen: React.FC = () => {
     if (!supabase) return;
     setSavingCustomer(true);
     try {
+      const pref = String(customerDraft.preferredCurrency || '').trim().toUpperCase();
       const next: Customer = {
         ...selectedCustomer,
         fullName: customerDraft.fullName.trim() ? customerDraft.fullName.trim() : undefined,
         phoneNumber: customerDraft.phoneNumber.trim() ? customerDraft.phoneNumber.trim() : undefined,
         loyaltyTier: customerDraft.loyaltyTier,
         firstOrderDiscountApplied: Boolean(customerDraft.firstOrderDiscountApplied),
+        preferredCurrency: pref || undefined,
       };
       const { error } = await supabase.from('customers').upsert({
         auth_user_id: next.id,
@@ -227,6 +258,7 @@ const ManageCustomersScreen: React.FC = () => {
         total_spent: next.totalSpent ?? 0,
         first_order_discount_applied: Boolean(next.firstOrderDiscountApplied ?? false),
         avatar_url: next.avatarUrl ?? null,
+        preferred_currency: next.preferredCurrency ?? null,
         data: next,
       }, { onConflict: 'auth_user_id' });
       if (error) throw error;
@@ -624,7 +656,11 @@ const ManageCustomersScreen: React.FC = () => {
                       </div>
                       <div className="text-gray-700 dark:text-gray-200">
                         <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">إجمالي المصروف</div>
-                        <div className="font-mono">{Number(selectedCustomer.totalSpent || 0).toFixed(2)}</div>
+                        <CurrencyDualAmount amount={Number(selectedCustomer.totalSpent || 0)} currencyCode={baseCode} compact />
+                      </div>
+                      <div className="text-gray-700 dark:text-gray-200">
+                        <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">العملة المفضلة</div>
+                        <div className="font-mono">{String((selectedCustomer as any).preferredCurrency || '') || '-'}</div>
                       </div>
                       <div className="text-gray-700 dark:text-gray-200">
                         <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">كود الدعوة</div>
@@ -668,8 +704,18 @@ const ManageCustomersScreen: React.FC = () => {
                           <div className="text-xl font-bold text-gray-900 dark:text-white">{customerOrderStats.count}</div>
                         </div>
                         <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-600">
-                          <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">إجمالي الطلبات</div>
-                          <div className="text-xl font-bold text-gray-900 dark:text-white">{customerOrderStats.totalSpent.toFixed(2)}</div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">إجمالي الطلبات (بالأساس)</div>
+                          <div className="text-gray-900 dark:text-white">
+                            <CurrencyDualAmount amount={Number(customerOrderStats.totalSpentBase || 0)} currencyCode={baseCode} />
+                          </div>
+                          <div className="mt-2 text-xs text-gray-600 dark:text-gray-300 space-y-1">
+                            {Object.entries(customerOrderStats.totalsByCurrency || {}).map(([c, amt]) => (
+                              <div key={c} className="flex items-center justify-between gap-2" dir="ltr">
+                                <span className="font-mono">{c}</span>
+                                <span className="font-mono">{Number(amt || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                              </div>
+                            ))}
+                          </div>
                         </div>
                         <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-600">
                           <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">آخر طلب</div>
@@ -834,6 +880,19 @@ const ManageCustomersScreen: React.FC = () => {
                           <option value="bronze">bronze</option>
                           <option value="silver">silver</option>
                           <option value="gold">gold</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">العملة المفضلة</label>
+                        <select
+                          value={String(customerDraft.preferredCurrency || '').toUpperCase()}
+                          onChange={(e) => setCustomerDraft(prev => ({ ...prev, preferredCurrency: String(e.target.value || '').toUpperCase() }))}
+                          className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-gold-500 focus:border-gold-500 transition"
+                        >
+                          <option value="">—</option>
+                          {currencyOptions.map((c) => (
+                            <option key={c} value={c}>{c}{baseCode && c === baseCode ? ' (أساسية)' : ''}</option>
+                          ))}
                         </select>
                       </div>
                       <label className="flex items-center gap-2 text-sm text-gray-800 dark:text-gray-200">

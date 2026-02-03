@@ -3,6 +3,7 @@ import type { CartItem, Coupon } from '../types';
 import { useCoupons } from './CouponContext';
 import { useToast } from './ToastContext';
 import { usePromotions } from './PromotionContext';
+import { useSettings } from './SettingsContext';
 import { getSupabaseClient } from '../supabase';
 import { localizeSupabaseError } from '../utils/errorUtils';
 
@@ -38,6 +39,8 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const { validateCoupon } = useCoupons();
   const { showNotification } = useToast();
   const { applyPromotionToCart } = usePromotions();
+  const { settings } = useSettings();
+  const baseCode = String((settings as any)?.baseCurrency || '').toUpperCase() || '—';
 
 
   const addToCart = (item: CartItem) => {
@@ -184,7 +187,7 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       // Validate Min Order Amount
       const subtotal = getCartSubtotal();
       if (coupon.minOrderAmount && subtotal < coupon.minOrderAmount) {
-        showNotification(`الحد الأدنى للطلب لاستخدام الكوبون هو ${coupon.minOrderAmount} ر.ي`, 'error');
+        showNotification(`الحد الأدنى للطلب لاستخدام الكوبون هو ${coupon.minOrderAmount} ${baseCode}`, 'error');
         setAppliedCoupon(null);
         return;
       }

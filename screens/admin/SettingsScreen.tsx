@@ -24,6 +24,8 @@ const SettingsScreen: React.FC = () => {
   const { settings, updateSettings } = useSettings();
   const { showNotification } = useToast();
   const [formState, setFormState] = useState<AppSettings>(settings);
+  const [currencyRows, setCurrencyRows] = useState<Array<{ code: string; is_base?: boolean; is_high_inflation?: boolean }>>([]);
+  const [currenciesLoading, setCurrenciesLoading] = useState(false);
   const [branchBrandingWarehouseId, setBranchBrandingWarehouseId] = useState<string>('');
   const [isSaving, setIsSaving] = useState(false);
   const [isMaintenanceSaving, setIsMaintenanceSaving] = useState(false);
@@ -100,6 +102,36 @@ const SettingsScreen: React.FC = () => {
   useEffect(() => {
     setFormState(settings);
   }, [settings]);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadCurrencies = async () => {
+      try {
+        const supabase = getSupabaseClient();
+        if (!supabase) return;
+        if (mounted) setCurrenciesLoading(true);
+        const { data, error } = await supabase
+          .from('currencies')
+          .select('code,is_base,is_high_inflation')
+          .order('code', { ascending: true });
+        if (error) throw error;
+        const rows = (Array.isArray(data) ? data : []).map((r: any) => ({
+          code: String(r.code || '').toUpperCase(),
+          is_base: Boolean(r.is_base),
+          is_high_inflation: Boolean(r.is_high_inflation),
+        })).filter((r: any) => r.code);
+        if (mounted) setCurrencyRows(rows);
+      } catch (e) {
+        showNotification(localizeSupabaseError(e) || 'تعذر تحميل العملات.', 'error');
+      } finally {
+        if (mounted) setCurrenciesLoading(false);
+      }
+    };
+    void loadCurrencies();
+    return () => {
+      mounted = false;
+    };
+  }, [showNotification]);
 
   const { menuItems } = useMenu();
   const { deliveryZones } = useDeliveryZones();
@@ -866,6 +898,22 @@ const SettingsScreen: React.FC = () => {
     e.preventDefault();
     setIsSaving(true);
     try {
+      const baseCode = String(formState.baseCurrency || '').toUpperCase();
+      if (!baseCode) {
+        showNotification('اختر العملة الأساسية أولاً.', 'error');
+        return;
+      }
+      const known = new Set(currencyRows.map(c => String(c.code || '').toUpperCase()).filter(Boolean));
+      if (known.size > 0 && !known.has(baseCode)) {
+        showNotification('العملة الأساسية غير موجودة في جدول currencies.', 'error');
+        return;
+      }
+      const op = (formState.operationalCurrencies || []).map(c => String(c || '').toUpperCase()).filter(Boolean);
+      const invalid = op.filter(c => known.size > 0 && !known.has(c));
+      if (invalid.length > 0) {
+        showNotification(`عملات تشغيلية غير معرفة: ${invalid.join(', ')}`, 'error');
+        return;
+      }
       await updateSettings(formState);
       showNotification('تم حفظ الإعدادات بنجاح!', 'success');
     } catch (err: any) {
@@ -1159,7 +1207,7 @@ const SettingsScreen: React.FC = () => {
                     onChange={handleChange}
                     step={0.0001}
                   />
-                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{`سيحصل العميل على ${Math.round(formState.loyaltySettings.pointsPerCurrencyUnit * 10000) / 1000} نقطة مقابل كل 10 ر.ي ينفقها.`}</p>
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{`سيحصل العميل على ${Math.round(formState.loyaltySettings.pointsPerCurrencyUnit * 10000) / 1000} نقطة مقابل كل 10 ${String(formState.baseCurrency || '').toUpperCase() || '—'} ينفقها.`}</p>
                 </div>
                 <div>
                   <label htmlFor="currencyValuePerPoint" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">قيمة النقطة بالعملة</label>
@@ -1170,7 +1218,7 @@ const SettingsScreen: React.FC = () => {
                     onChange={handleChange}
                     step={1}
                   />
-                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{`كل نقطة تساوي ${formState.loyaltySettings.currencyValuePerPoint} ر.ي عند الاستبدال.`}</p>
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{`كل نقطة تساوي ${formState.loyaltySettings.currencyValuePerPoint} ${String(formState.baseCurrency || '').toUpperCase() || '—'} عند الاستبدال.`}</p>
                 </div>
               </div>
 
@@ -1381,6 +1429,188 @@ const SettingsScreen: React.FC = () => {
                   <option value="a4">A4</option>
                   <option value="thermal">حراري</option>
                 </select>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4 border-r-4 rtl:border-l-4 rtl:border-r-0 border-gold-500 pr-4 rtl:pr-0 rtl:pl-4">
+            إعدادات العملة
+          </h2>
+          <div className="p-4 border rounded-lg dark:border-gray-600 space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">العملة الأساسية للنظام</label>
+                <select
+                  value={String(formState.baseCurrency || '').toUpperCase()}
+                  onChange={(e) => handleChange({ target: { name: 'baseCurrency', value: e.target.value } } as any)}
+                  className="w-full p-3 border border-gray-300 rounded-lg dark:bg-gray-700 dark:border-gray-600 focus:ring-2 focus:ring-gold-500 focus:border-gold-500 transition"
+                >
+                  <option value="">—</option>
+                  {currencyRows.map((c) => (
+                    <option key={c.code} value={c.code}>{c.code}{c.is_base ? ' (أساسية)' : ''}{c.is_high_inflation ? ' (تضخم مرتفع)' : ''}</option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">تحدد هذه العملة عملة الدفاتر والتقارير المحاسبية.</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">العملات التشغيلية</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    placeholder="رمز العملة (ISO 4217)"
+                    className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                    onKeyDown={async (e) => {
+                      if (e.key === 'Enter') {
+                        const code = (e.currentTarget.value || '').trim().toUpperCase();
+                        if (!code) return;
+                        const next = Array.from(new Set([...(formState.operationalCurrencies || []), code]));
+                        handleChange({ target: { name: 'operationalCurrencies', value: next } } as any);
+                        try {
+                          const supabase = getSupabaseClient();
+                          if (supabase) {
+                            await supabase.from('currencies').upsert({ code, name: code, is_base: false }, { onConflict: 'code' });
+                          }
+                        } catch {}
+                        (e.currentTarget as HTMLInputElement).value = '';
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="px-3 py-2 bg-blue-600 text-white rounded-md"
+                    onClick={async () => {
+                      try {
+                        const supabase = getSupabaseClient();
+                          const baseCode = String(formState.baseCurrency || '').toUpperCase();
+                          if (!baseCode) {
+                            showNotification('اختر العملة الأساسية أولاً.', 'error');
+                            return;
+                          }
+                        if (supabase) {
+                          const { error } = await supabase.rpc('set_base_currency', { p_code: baseCode });
+                          if (error) throw error;
+                        }
+                        showNotification('تم تعيين العملة الأساسية.', 'success');
+                      } catch {
+                        showNotification('تعذر حفظ العملة الأساسية.', 'error');
+                      }
+                    }}
+                  >
+                    حفظ العملة الأساسية
+                  </button>
+                  <Link
+                    to="/admin/fx-rates"
+                    className="px-3 py-2 bg-gray-100 text-gray-800 rounded-md hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600 font-semibold"
+                    title="إدارة أسعار الصرف"
+                  >
+                    أسعار الصرف
+                  </Link>
+                </div>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">أضف رموز العملات التي ستتعامل بها. اضغط Enter للإضافة.</p>
+              </div>
+            </div>
+            <div className="border-t pt-4">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="font-semibold text-gray-800 dark:text-gray-200">العملات (من جدول currencies)</h3>
+                <button
+                  type="button"
+                  className="px-3 py-2 bg-gray-100 text-gray-800 rounded-md hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600 font-semibold"
+                  disabled={currenciesLoading}
+                  onClick={async () => {
+                    try {
+                      const supabase = getSupabaseClient();
+                      if (!supabase) return;
+                      setCurrenciesLoading(true);
+                      const { data, error } = await supabase.from('currencies').select('code,is_base,is_high_inflation').order('code', { ascending: true });
+                      if (error) throw error;
+                      const rows = (Array.isArray(data) ? data : []).map((r: any) => ({
+                        code: String(r.code || '').toUpperCase(),
+                        is_base: Boolean(r.is_base),
+                        is_high_inflation: Boolean(r.is_high_inflation),
+                      })).filter((r: any) => r.code);
+                      setCurrencyRows(rows);
+                    } catch (e) {
+                      showNotification(localizeSupabaseError(e) || 'تعذر تحميل العملات.', 'error');
+                    } finally {
+                      setCurrenciesLoading(false);
+                    }
+                  }}
+                >
+                  {currenciesLoading ? '...' : 'تحديث'}
+                </button>
+              </div>
+              <div className="mt-3 text-sm">
+                {(() => {
+                  const set = new Set(currencyRows.map(c => c.code));
+                  const invalid = (formState.operationalCurrencies || []).filter((c) => !set.has(String(c || '').toUpperCase()));
+                  if (invalid.length === 0) return null;
+                  return (
+                    <div className="mb-3 p-3 rounded-md bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-200">
+                      عملات تشغيلية غير معرفة في جدول currencies: {invalid.map(c => String(c || '').toUpperCase()).join(', ')}
+                    </div>
+                  );
+                })()}
+              </div>
+              <div className="overflow-x-auto mt-2">
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr className="bg-gray-50 dark:bg-gray-700/50 text-gray-700 dark:text-gray-200">
+                      <th className="p-3 text-right">الرمز</th>
+                      <th className="p-3 text-right">أساسية</th>
+                      <th className="p-3 text-right">تضخم مرتفع</th>
+                      <th className="p-3 text-right">إجراء</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                    {currencyRows.map((c) => (
+                      <tr key={c.code} className="hover:bg-gray-50 dark:hover:bg-gray-700/30">
+                        <td className="p-3 font-mono">{c.code}</td>
+                        <td className="p-3">{c.is_base ? 'نعم' : 'لا'}</td>
+                        <td className="p-3">
+                          <label className="inline-flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={Boolean(c.is_high_inflation)}
+                              onChange={async (e) => {
+                                try {
+                                  const supabase = getSupabaseClient();
+                                  if (!supabase) return;
+                                  const next = Boolean(e.target.checked);
+                                  const { error } = await supabase.from('currencies').update({ is_high_inflation: next }).eq('code', c.code);
+                                  if (error) throw error;
+                                  setCurrencyRows((prev) => prev.map((x) => x.code === c.code ? { ...x, is_high_inflation: next } : x));
+                                } catch (err) {
+                                  showNotification(localizeSupabaseError(err) || 'تعذر تحديث حالة التضخم.', 'error');
+                                }
+                              }}
+                            />
+                            <span className="text-xs text-gray-600 dark:text-gray-300">تفعيل</span>
+                          </label>
+                        </td>
+                        <td className="p-3">
+                          <button
+                            type="button"
+                            className="px-3 py-1 rounded bg-gray-100 text-gray-800 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600 font-semibold"
+                            onClick={() => {
+                              handleChange({ target: { name: 'baseCurrency', value: c.code } } as any);
+                            }}
+                          >
+                            اختيار كأساسية
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {currencyRows.length === 0 && (
+                      <tr>
+                        <td colSpan={4} className="p-6 text-center text-gray-600 dark:text-gray-300">
+                          لا توجد عملات.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>

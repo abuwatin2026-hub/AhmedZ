@@ -78,6 +78,7 @@ const PriceTiersScreen = lazy(() => import('./screens/admin/PriceTiersScreen'));
 const SupplierContractsScreen = lazy(() => import('./screens/admin/SupplierContractsScreen'));
 const SupplierEvaluationsScreen = lazy(() => import('./screens/admin/SupplierEvaluationsScreen'));
 const SupplierCreditNotesScreen = lazy(() => import('./screens/admin/SupplierCreditNotesScreen'));
+const FxRatesScreen = lazy(() => import('./screens/admin/FxRatesScreen'));
 const ImportShipmentsScreen = lazy(() => import('./screens/admin/ImportShipmentsScreen'));
 const ImportShipmentDetailsScreen = lazy(() => import('./screens/admin/ImportShipmentDetailsScreen'));
 const POSTestConsole = lazy(() => import('./screens/admin/POSTestConsole'));
@@ -359,6 +360,7 @@ const App: React.FC = () => {
                 <Route path="reports/food-trace" element={<AdminProtectedRoute permissions={['reports.view']}><FoodTraceReports /></AdminProtectedRoute>} />
                 <Route path="reports/financial" element={<AdminProtectedRoute permissions={['accounting.view']}><FinancialReports /></AdminProtectedRoute>} />
                 <Route path="accounting" element={<AdminProtectedRoute permissions={['accounting.view']}><FinancialReports /></AdminProtectedRoute>} />
+                <Route path="fx-rates" element={<AdminProtectedRoute permissions={['accounting.manage']}><FxRatesScreen /></AdminProtectedRoute>} />
                 <Route path="profile" element={<AdminProtectedRoute permissions={['profile.view']}><AdminProfileScreen /></AdminProtectedRoute>} />
                 <Route path="settings" element={<AdminProtectedRoute permissions={['settings.manage']}><SettingsScreen /></AdminProtectedRoute>} />
                 <Route path="approvals" element={<AdminProtectedRoute permissions={['approvals.manage']}><ApprovalsScreen /></AdminProtectedRoute>} />

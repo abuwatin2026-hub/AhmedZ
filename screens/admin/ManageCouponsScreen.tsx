@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useCoupons } from '../../contexts/CouponContext';
 import { useToast } from '../../contexts/ToastContext';
+import { useSettings } from '../../contexts/SettingsContext';
 import { Coupon } from '../../types';
 import ConfirmationModal from '../../components/admin/ConfirmationModal';
 import CouponFormModal from '../../components/admin/CouponFormModal';
@@ -9,6 +10,8 @@ import { EditIcon, TrashIcon } from '../../components/icons';
 const ManageCouponsScreen: React.FC = () => {
   const { coupons, addCoupon, updateCoupon, deleteCoupon } = useCoupons();
   const { showNotification } = useToast();
+  const { settings } = useSettings();
+  const baseCode = String((settings as any)?.baseCurrency || '').toUpperCase() || '—';
 
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -85,7 +88,7 @@ const ManageCouponsScreen: React.FC = () => {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{getCouponTypeLabel(coupon.type)}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white font-bold">
-                    {coupon.type === 'percentage' ? `${coupon.value}%` : `${coupon.value.toFixed(2)} ر.ي`}
+                    {coupon.type === 'percentage' ? `${coupon.value}%` : `${coupon.value.toFixed(2)} ${baseCode}`}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2 rtl:space-x-reverse">
                     <button onClick={() => handleOpenFormModal(coupon)} className="text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-200 p-1"><EditIcon /></button>

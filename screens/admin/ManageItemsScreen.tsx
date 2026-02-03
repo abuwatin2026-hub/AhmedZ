@@ -866,7 +866,7 @@ const ManageItemsScreen: React.FC = () => {
                         );
                       })()}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.price.toFixed(2)} ر.ي</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.price.toFixed(2)} {String((settings as any)?.baseCurrency || '').toUpperCase() || '—'}</td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${item.status === 'archived'
                         ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300'

@@ -128,9 +128,9 @@ const HomeScreen: React.FC = () => {
                         <span>{countdown}</span>
                       </div>
                       <div className="mt-1 text-sm text-gray-600 dark:text-gray-300">
-                        <span className="line-through text-gray-400 dark:text-gray-500">{original.toFixed(2)} ر.ي</span>
+                        <span className="line-through text-gray-400 dark:text-gray-500">{original.toFixed(2)} {String((p as any).currency || '').toUpperCase() || '—'}</span>
                         <span className="mx-2">→</span>
-                        <span className="text-red-600 dark:text-red-400 font-extrabold">{Number(p.finalTotal || 0).toFixed(2)} ر.ي</span>
+                        <span className="text-red-600 dark:text-red-400 font-extrabold">{Number(p.finalTotal || 0).toFixed(2)} {String((p as any).currency || '').toUpperCase() || '—'}</span>
                       </div>
                       {Array.isArray(p.items) && p.items.length > 0 && (
                         <div className="mt-3 flex items-center gap-2">

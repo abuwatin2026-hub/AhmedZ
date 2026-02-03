@@ -51,13 +51,13 @@ const OrderCard: React.FC<{ order: Order }> = ({ order }) => {
                     {order.items.map((item: CartItem, idx: number) => (
                         <li key={item.cartItemId || `${item.id}:${idx}`} className="flex justify-between">
                             <span className="text-gray-700 dark:text-gray-300">{item.name.ar} x{item.quantity}</span>
-                            <span className="text-gray-600 dark:text-gray-400 font-mono">{(item.price * item.quantity).toFixed(2)} ر.ي</span>
+                            <span className="text-gray-600 dark:text-gray-400 font-mono">{(item.price * item.quantity).toFixed(2)} {String((order as any).currency || '').toUpperCase() || '—'}</span>
                         </li>
                     ))}
                 </ul>
                 <div className="flex justify-between font-bold mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
                     <span className="dark:text-white">الإجمالي:</span>
-                    <span className="text-orange-500">{order.total.toFixed(2)} ر.ي</span>
+                    <span className="text-orange-500">{order.total.toFixed(2)} {String((order as any).currency || '').toUpperCase() || '—'}</span>
                 </div>
             </div>
             <div className="border-t border-gray-200 dark:border-gray-700 pt-4">

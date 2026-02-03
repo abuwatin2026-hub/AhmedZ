@@ -3,6 +3,7 @@ import { usePricing } from '../../contexts/PricingContext';
 import { useMenu } from '../../contexts/MenuContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
+import { useSettings } from '../../contexts/SettingsContext';
 import * as Icons from '../../components/icons';
 import type { PriceTier, CustomerType } from '../../types';
 
@@ -11,6 +12,8 @@ const PriceTiersScreen: React.FC = () => {
     const { menuItems } = useMenu();
     const { hasPermission } = useAuth();
     const { showNotification } = useToast();
+    const { settings } = useSettings();
+    const baseCode = String((settings as any)?.baseCurrency || '').toUpperCase() || '—';
 
     const [showModal, setShowModal] = useState(false);
     const [editingTier, setEditingTier] = useState<PriceTier | null>(null);
@@ -290,7 +293,7 @@ const PriceTiersScreen: React.FC = () => {
                                                 </td>
                                                 <td className="py-3">{tier.minQuantity}</td>
                                                 <td className="py-3">{tier.maxQuantity || '∞'}</td>
-                                                <td className="py-3 font-medium">{tier.price.toLocaleString('en-US')} ر.ي</td>
+                                                <td className="py-3 font-medium">{tier.price.toLocaleString('en-US')} {baseCode}</td>
                                                 <td className="py-3">{tier.discountPercentage ? `${tier.discountPercentage}%` : '-'}</td>
                                                 <td className="py-3">
                                                     {tier.isActive ? (

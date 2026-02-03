@@ -54,13 +54,13 @@ const OrderCard: React.FC<{ order: Order }> = ({ order }) => {
                                 {String((item as any)?.name?.ar || (item as any)?.name?.en || (item as any)?.name || (item as any)?.itemName || (item as any)?.id || (item as any)?.itemId || 'منتج')}{' '}
                                 x{Number((item as any)?.quantity || 0)}
                             </span>
-                            <span className="text-gray-600 dark:text-gray-400 font-mono" dir="ltr">{Number(item.price * item.quantity).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {'ر.ي'}</span>
+                            <span className="text-gray-600 dark:text-gray-400 font-mono" dir="ltr">{Number(item.price * item.quantity).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {String((order as any).currency || '').toUpperCase() || '—'}</span>
                         </li>
                     ))}
                 </ul>
                 <div className="flex justify-between font-bold mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
                     <span className="dark:text-white">الإجمالي:</span>
-                    <span className="text-orange-500" dir="ltr">{Number(order.total || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {'ر.ي'}</span>
+                    <span className="text-orange-500" dir="ltr">{Number(order.total || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {String((order as any).currency || '').toUpperCase() || '—'}</span>
                 </div>
             </div>
             <div className="border-t border-gray-200 dark:border-gray-700 pt-4">

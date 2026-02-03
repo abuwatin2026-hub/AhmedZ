@@ -1,12 +1,15 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import type { MenuItem } from '../types';
+import { useSettings } from '../contexts/SettingsContext';
 
 interface FeaturedMenuItemCardProps {
   item: MenuItem;
 }
 
 const FeaturedMenuItemCard: React.FC<FeaturedMenuItemCardProps> = ({ item }) => {
+  const { settings } = useSettings();
+  const baseCode = String((settings as any)?.baseCurrency || '').toUpperCase() || '—';
 
   return (
     <Link to={`/item/${item.id}`} className="block group">
@@ -32,7 +35,7 @@ const FeaturedMenuItemCard: React.FC<FeaturedMenuItemCardProps> = ({ item }) => 
             {item.description?.ar || item.description?.en || ''}
           </p>
           <div className="mt-2">
-            <span className="text-lg font-bold bg-red-gradient bg-clip-text text-transparent">{Number(item.price || 0).toFixed(2)} ر.ي</span>
+            <span className="text-lg font-bold bg-red-gradient bg-clip-text text-transparent">{Number(item.price || 0).toFixed(2)} {baseCode}</span>
           </div>
         </div>
 

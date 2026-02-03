@@ -14,14 +14,14 @@ begin
   where n.nspname = 'public'
     and r.relname = 'import_shipments'
     and c.contype = 'c'
-    and pg_get_constraintdef(c.oid) ilike '%status%'
-    and pg_get_constraintdef(c.oid) ilike '%in (%';
+    and pg_get_constraintdef(c.oid) ilike '%status%';
 
   if v_constraint_name is not null then
     execute format('alter table public.import_shipments drop constraint %I', v_constraint_name);
   end if;
 
   alter table public.import_shipments
+    drop constraint if exists import_shipments_status_check,
     add constraint import_shipments_status_check
     check (status in ('draft', 'ordered', 'shipped', 'at_customs', 'cleared', 'delivered', 'closed', 'cancelled'));
 end $$;

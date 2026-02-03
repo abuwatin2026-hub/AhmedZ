@@ -211,7 +211,7 @@ const OrderConfirmationScreen: React.FC = () => {
                                 <div key={item.cartItemId} className="pb-2 mb-2 border-b border-gray-200 dark:border-gray-600 last:border-b-0">
                                     <div className="flex justify-between text-sm">
                                         <span className="dark:text-gray-300 font-semibold">{itemName} x{item.quantity}</span>
-                                        <span className="dark:text-gray-400 font-mono">{Number(((item as any).total ?? (Number(item.price || 0) * Number(item.quantity || 0)))).toFixed(2)} {'ر.ي'}</span>
+                                        <span className="dark:text-gray-400 font-mono">{Number(((item as any).total ?? (Number(item.price || 0) * Number(item.quantity || 0)))).toFixed(2)} {String((order as any).currency || '').toUpperCase() || '—'}</span>
                                     </div>
                                     {addonsArray.length > 0 && (
                                         <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 space-y-0.5 pr-4 rtl:pr-0 rtl:pl-4">
@@ -229,7 +229,7 @@ const OrderConfirmationScreen: React.FC = () => {
                         <div className="border-t border-gray-200 dark:border-gray-600 my-2 pt-2"></div>
                         <div className="flex justify-between items-center font-bold text-lg">
                             <span className="dark:text-white">الإجمالي المدفوع:</span>
-                            <span className="text-gold-500">{order.total.toFixed(2)} {'ر.ي'}</span>
+                            <span className="text-gold-500">{order.total.toFixed(2)} {String((order as any).currency || '').toUpperCase() || '—'}</span>
                         </div>
                     </div>
                 </div>

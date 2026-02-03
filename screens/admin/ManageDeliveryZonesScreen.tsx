@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { DeliveryZone } from '../../types';
 import { useDeliveryZones } from '../../contexts/DeliveryZoneContext';
 import { useToast } from '../../contexts/ToastContext';
-// import { useSettings } from '../../contexts/SettingsContext';
+import { useSettings } from '../../contexts/SettingsContext';
 import ConfirmationModal from '../../components/admin/ConfirmationModal';
 import { EditIcon, TrashIcon } from '../../components/icons';
 import { translateArToEn } from '../../utils/translations';
@@ -25,7 +25,8 @@ const DeliveryZoneFormModal: React.FC<{
   zoneToEdit: DeliveryZone | null;
   isSaving: boolean;
 }> = ({ isOpen, onClose, onSave, zoneToEdit, isSaving }) => {
-  // const { t } = useSettings();
+  const { settings } = useSettings();
+  const baseCode = String((settings as any)?.baseCurrency || '').toUpperCase() || '—';
   const [draft, setDraft] = useState<ZoneDraft>(emptyDraft);
   const [nameEnTouched, setNameEnTouched] = useState(false);
   const translateTimer = useRef<number | null>(null);
@@ -98,7 +99,7 @@ const DeliveryZoneFormModal: React.FC<{
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                رسوم التوصيل (ر.ي)
+                رسوم التوصيل {baseCode !== '—' ? `(${baseCode})` : ''}
               </label>
               <input
                 type="number"
@@ -169,7 +170,8 @@ const DeliveryZoneFormModal: React.FC<{
 const ManageDeliveryZonesScreen: React.FC = () => {
   const { deliveryZones, loading, addDeliveryZone, updateDeliveryZone, deleteDeliveryZone, fetchDeliveryZones } = useDeliveryZones();
   const { showNotification } = useToast();
-  // const { t, language } = useSettings();
+  const { settings } = useSettings();
+  const baseCode = String((settings as any)?.baseCurrency || '').toUpperCase() || '—';
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
@@ -301,7 +303,7 @@ const ManageDeliveryZonesScreen: React.FC = () => {
                       <div className="text-xs text-gray-500 dark:text-gray-400">{zone.name.en}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white font-bold">
-                      {(Number(zone.deliveryFee) || 0).toFixed(2)} ر.ي
+                      {(Number(zone.deliveryFee) || 0).toFixed(2)} {baseCode}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
                       {zone.estimatedTime} دقيقة
@@ -311,7 +313,7 @@ const ManageDeliveryZonesScreen: React.FC = () => {
                         <div className="flex flex-col gap-1">
                           <span title='إجمالي الطلبات'>📦 {zone.statistics.totalOrders}</span>
                           <span title='متوسط وقت التوصيل'>⏱️ {zone.statistics.averageDeliveryTime} دقيقة</span>
-                          <span title='إجمالي الإيرادات' className="text-green-600 dark:text-green-400 font-bold">💰 {zone.statistics.totalRevenue.toLocaleString('en-US')} ر.ي</span>
+                          <span title='إجمالي الإيرادات' className="text-green-600 dark:text-green-400 font-bold">💰 {zone.statistics.totalRevenue.toLocaleString('en-US')} {baseCode}</span>
                         </div>
                       ) : (
                         <span className="italic text-gray-400">لا توجد بيانات</span>

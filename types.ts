@@ -50,6 +50,7 @@ export interface Addon {
 export interface Supplier {
   id: string;
   name: string;
+  preferredCurrency?: string;
   contactPerson?: string;
   phone?: string;
   email?: string;
@@ -164,8 +165,11 @@ export interface PurchaseOrder {
   status: 'draft' | 'partial' | 'completed' | 'cancelled';
   poNumber?: string;
   referenceNumber?: string;
+  currency?: string;
+  fxRate?: number;
   totalAmount: number;
   paidAmount: number;
+  baseTotal?: number;
   purchaseDate: string;
   itemsCount: number;
   warehouseId?: string;
@@ -174,6 +178,7 @@ export interface PurchaseOrder {
   netDays?: number;
   dueDate?: string;
   notes?: string;
+  fxLocked?: boolean;
   createdBy: string; // User ID
   createdAt: string;
   updatedAt?: string;
@@ -293,6 +298,8 @@ export interface Order {
   userId?: string;
   orderSource?: 'online' | 'in_store';
   warehouseId?: string;
+  currency?: string;
+  fxRate?: number;
   customerId?: string;
   offlineId?: string;
   offlineState?: 'CREATED_OFFLINE' | 'SYNCED' | 'DELIVERED' | 'FAILED' | 'CONFLICT';
@@ -368,6 +375,8 @@ export interface Order {
     invoiceNumber: string;
     createdAt: string;
     orderSource?: 'online' | 'in_store';
+    currency?: string;
+    fxRate?: number;
     items: CartItem[];
     subtotal: number;
     deliveryFee: number;
@@ -446,6 +455,7 @@ export interface Customer {
   email?: string;
   fullName?: string;
   avatarUrl?: string;
+  preferredCurrency?: string;
   authProvider: 'password' | 'phone' | 'google';
   passwordSalt?: string;
   passwordHash?: string;
@@ -473,6 +483,8 @@ export interface AppSettings {
   logoUrl: string;
   contactNumber: string;
   address: string;
+  baseCurrency?: string;
+  operationalCurrencies?: string[];
   maintenanceEnabled?: boolean;
   maintenanceMessage?: string;
   brandColors?: {
@@ -509,7 +521,7 @@ export interface AppSettings {
   loyaltySettings: {
     enabled: boolean;
     pointsPerCurrencyUnit: number; // e.g., 0.1 for 1 point per 10 currency
-    currencyValuePerPoint: number; // e.g., 1 for 1 point = 1 YER
+    currencyValuePerPoint: number;
     tiers: {
       regular: { name: LocalizedString; threshold: number; discountPercentage: number; };
       bronze: { name: LocalizedString; threshold: number; discountPercentage: number; };

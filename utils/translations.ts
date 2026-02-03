@@ -531,7 +531,7 @@ const arTranslations = {
     unknown: 'غير معروف',
 
     // Shared
-    currency: 'ر.ي',
+    currency: 'العملة',
     price: 'السعر',
 
     // Order Statuses

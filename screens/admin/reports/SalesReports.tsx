@@ -499,7 +499,7 @@ const SalesReports: React.FC = () => {
         setIsSharing(false);
     };
 
-    const currency = 'ر.ي';
+    const currency = String((settings as any)?.baseCurrency || '').toUpperCase() || '—';
 
     const runRecall = async () => {
         const supabase = getSupabaseClient();

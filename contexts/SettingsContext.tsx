@@ -131,6 +131,8 @@ const defaultSettings: AppSettings = {
   logoUrl: defaultLogoImage,
   contactNumber: '967782681999',
   address: 'مأرب، اليمن',
+  baseCurrency: '',
+  operationalCurrencies: [],
   maintenanceEnabled: false,
   maintenanceMessage: 'التطبيق في وضع الصيانة مؤقتًا. الرجاء المحاولة لاحقًا.',
   brandColors: {
@@ -160,8 +162,8 @@ const defaultSettings: AppSettings = {
   defaultLanguage: 'ar',
   loyaltySettings: {
     enabled: true,
-    pointsPerCurrencyUnit: 0.1, // 1 point for every 10 YER
-    currencyValuePerPoint: 1, // 1 point = 1 YER
+    pointsPerCurrencyUnit: 0.1,
+    currencyValuePerPoint: 1,
     tiers: {
       regular: { name: { ar: 'عادي', en: 'Regular' }, threshold: 0, discountPercentage: 0 },
       bronze: { name: { ar: 'البرونزي', en: 'Bronze' }, threshold: 1000, discountPercentage: 2 },
@@ -191,6 +193,10 @@ const mergeSettings = (base: AppSettings, incoming: unknown): AppSettings => {
   const merged: AppSettings = {
     ...base,
     ...(candidateNoDelivery as any),
+    baseCurrency: (candidateNoDelivery as any)?.baseCurrency || base.baseCurrency,
+    operationalCurrencies: Array.isArray((candidateNoDelivery as any)?.operationalCurrencies)
+      ? ((candidateNoDelivery as any)?.operationalCurrencies as string[])
+      : (base.operationalCurrencies || []),
     cafeteriaName: {
       ...base.cafeteriaName,
       ...(isRecord(candidate.cafeteriaName) ? (candidate.cafeteriaName as any) : {}),
@@ -438,6 +444,15 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
     if (!supabase) {
       setSettings(previous);
       throw new Error('Supabase غير مهيأ.');
+    }
+    const prevBase = String(previous.baseCurrency || '').toUpperCase();
+    const nextBase = String(merged.baseCurrency || '').toUpperCase();
+    if (nextBase && nextBase !== prevBase) {
+      const { error: baseErr } = await supabase.rpc('set_base_currency', { p_code: nextBase });
+      if (baseErr) {
+        setSettings(previous);
+        throw new Error(localizeSupabaseError(baseErr));
+      }
     }
     const { error } = await supabase
       .from('app_settings')

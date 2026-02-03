@@ -6,6 +6,7 @@ import { usePriceHistory } from '../../contexts/PriceContext';
 import { useToast } from '../../contexts/ToastContext';
 import { useWarehouses } from '../../contexts/WarehouseContext';
 import { useSessionScope } from '../../contexts/SessionScopeContext';
+import { useSettings } from '../../contexts/SettingsContext';
 import { ImportShipment, ImportShipmentItem, ImportExpense } from '../../types';
 import { Plus, X, DollarSign, ArrowLeft } from '../../components/icons';
 import { getSupabaseClient } from '../../supabase';
@@ -19,6 +20,9 @@ const ImportShipmentDetailsScreen: React.FC = () => {
     const { showNotification } = useToast();
     const { warehouses } = useWarehouses();
     const { scope } = useSessionScope();
+    const { settings } = useSettings();
+    const baseCode = String((settings as any)?.baseCurrency || '').toUpperCase();
+    const [currencyOptions, setCurrencyOptions] = useState<string[]>([]);
 
     const [shipment, setShipment] = useState<ImportShipment | null>(null);
     const [loading, setLoading] = useState(true);
@@ -40,7 +44,7 @@ const ImportShipmentDetailsScreen: React.FC = () => {
         itemId: '',
         quantity: 0,
         unitPriceFob: 0,
-        currency: 'USD',
+        currency: '',
         expiryDate: '',
         notes: ''
     });
@@ -50,7 +54,7 @@ const ImportShipmentDetailsScreen: React.FC = () => {
     const [newExpense, setNewExpense] = useState({
         expenseType: 'shipping' as ImportExpense['expenseType'],
         amount: 0,
-        currency: 'YER',
+        currency: '',
         exchangeRate: 1,
         description: '',
         invoiceNumber: '',
@@ -65,6 +69,34 @@ const ImportShipmentDetailsScreen: React.FC = () => {
         }
         loadShipment();
     }, [id]);
+
+    useEffect(() => {
+        let active = true;
+        const loadCurrencies = async () => {
+            try {
+                const supabase = getSupabaseClient();
+                if (!supabase) return;
+                const { data, error } = await supabase
+                    .from('currencies')
+                    .select('code')
+                    .order('code', { ascending: true });
+                if (error) throw error;
+                const codes = (Array.isArray(data) ? data : [])
+                    .map((r: any) => String(r.code || '').toUpperCase())
+                    .filter(Boolean);
+                if (active) setCurrencyOptions(codes);
+            } catch {
+                if (active) setCurrencyOptions([]);
+            }
+        };
+        void loadCurrencies();
+        return () => { active = false; };
+    }, []);
+
+    useEffect(() => {
+        if (!baseCode) return;
+        setNewExpense((prev) => (prev.currency ? prev : { ...prev, currency: baseCode, exchangeRate: 1 }));
+    }, [baseCode]);
 
     useEffect(() => {
         if (!isCreateMode) return;
@@ -276,19 +308,28 @@ const ImportShipmentDetailsScreen: React.FC = () => {
 
     const handleAddItem = async () => {
         if (!id || !newItem.itemId || newItem.quantity <= 0) return;
+        const currency = String(newItem.currency || '').trim().toUpperCase();
+        if (!currency) {
+            showNotification('اختر عملة للصنف.', 'error');
+            return;
+        }
+        if (currencyOptions.length > 0 && !currencyOptions.includes(currency)) {
+            showNotification('عملة الصنف غير معرفة.', 'error');
+            return;
+        }
 
         await addShipmentItem({
             shipmentId: id,
             itemId: newItem.itemId,
             quantity: newItem.quantity,
             unitPriceFob: newItem.unitPriceFob,
-            currency: newItem.currency,
+            currency,
             expiryDate: newItem.expiryDate || undefined,
             notes: newItem.notes || undefined
         });
 
         setShowItemForm(false);
-        setNewItem({ itemId: '', quantity: 0, unitPriceFob: 0, currency: 'USD', expiryDate: '', notes: '' });
+        setNewItem({ itemId: '', quantity: 0, unitPriceFob: 0, currency: '', expiryDate: '', notes: '' });
         loadShipment();
     };
 
@@ -301,20 +342,34 @@ const ImportShipmentDetailsScreen: React.FC = () => {
 
     const handleAddExpense = async () => {
         if (!id || newExpense.amount <= 0) return;
+        const currency = String(newExpense.currency || '').trim().toUpperCase();
+        if (!currency) {
+            showNotification('اختر عملة للمصروف.', 'error');
+            return;
+        }
+        if (currencyOptions.length > 0 && !currencyOptions.includes(currency)) {
+            showNotification('عملة المصروف غير معرفة.', 'error');
+            return;
+        }
+        const rate = Number(newExpense.exchangeRate);
+        if (!Number.isFinite(rate) || rate <= 0) {
+            showNotification('سعر الصرف غير صالح.', 'error');
+            return;
+        }
 
         await addExpense({
             shipmentId: id,
             expenseType: newExpense.expenseType,
             amount: newExpense.amount,
-            currency: newExpense.currency,
-            exchangeRate: newExpense.exchangeRate,
+            currency,
+            exchangeRate: rate,
             description: newExpense.description || undefined,
             invoiceNumber: newExpense.invoiceNumber || undefined,
             paidAt: newExpense.paidAt || undefined
         });
 
         setShowExpenseForm(false);
-        setNewExpense({ expenseType: 'shipping', amount: 0, currency: 'YER', exchangeRate: 1, description: '', invoiceNumber: '', paidAt: '' });
+        setNewExpense({ expenseType: 'shipping', amount: 0, currency: baseCode || '', exchangeRate: 1, description: '', invoiceNumber: '', paidAt: '' });
         loadShipment();
     };
 
@@ -624,9 +679,10 @@ const ImportShipmentDetailsScreen: React.FC = () => {
                                         onChange={(e) => setNewItem({ ...newItem, currency: e.target.value })}
                                         className="w-full px-3 py-2 border rounded-lg"
                                     >
-                                        <option value="USD">USD</option>
-                                        <option value="EUR">EUR</option>
-                                        <option value="YER">YER</option>
+                                        <option value="">اختر عملة</option>
+                                        {currencyOptions.map((c) => (
+                                            <option key={c} value={c}>{c}{baseCode && c === baseCode ? ' (أساسية)' : ''}</option>
+                                        ))}
                                     </select>
                                 </div>
                             </div>
@@ -724,9 +780,10 @@ const ImportShipmentDetailsScreen: React.FC = () => {
                                         onChange={(e) => setNewExpense({ ...newExpense, currency: e.target.value })}
                                         className="w-full px-3 py-2 border rounded-lg"
                                     >
-                                        <option value="YER">YER</option>
-                                        <option value="USD">USD</option>
-                                        <option value="EUR">EUR</option>
+                                        <option value="">اختر عملة</option>
+                                        {currencyOptions.map((c) => (
+                                            <option key={c} value={c}>{c}{baseCode && c === baseCode ? ' (أساسية)' : ''}</option>
+                                        ))}
                                     </select>
                                 </div>
                                 <div>

@@ -356,6 +356,7 @@ const FinancialReports: React.FC = () => {
   const { showNotification } = useToast();
   const { user, hasPermission } = useAuth();
   const { settings } = useSettings();
+  const baseCode = String((settings as any)?.baseCurrency || '').toUpperCase() || '—';
   const ledgerSectionRef = useRef<HTMLDivElement | null>(null);
   const canViewAccounting = hasPermission('accounting.view');
   const canManageAccounting = hasPermission('accounting.manage');
@@ -1758,7 +1759,7 @@ const FinancialReports: React.FC = () => {
               </div>
             </div>
             <div className="bg-white dark:bg-gray-800 rounded-xl shadow p-2">
-              <LineChart data={incomeTrend} title="" unit="ر.ي" color="#22c55e" showArea={true} />
+              <LineChart data={incomeTrend} title="" unit={baseCode} color="#22c55e" showArea={true} />
             </div>
           </div>
         </div>

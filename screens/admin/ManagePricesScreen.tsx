@@ -4,13 +4,16 @@ import { usePriceHistory } from '../../contexts/PriceContext';
 import type { MenuItem, PriceHistory } from '../../types';
 import { useItemMeta } from '../../contexts/ItemMetaContext';
 import { useToast } from '../../contexts/ToastContext';
+import { useSettings } from '../../contexts/SettingsContext';
+import CurrencyDualAmount from '../../components/common/CurrencyDualAmount';
 
 const ManagePricesScreen: React.FC = () => {
     const { menuItems } = useMenu();
     const { updatePrice, getPriceHistoryByItemId } = usePriceHistory();
-    // const { language, t } = useSettings();
+    const { settings } = useSettings();
     const { categories: categoryDefs, getCategoryLabel, getUnitLabel } = useItemMeta();
     const { showNotification } = useToast();
+    const baseCode = String((settings as any)?.baseCurrency || '').toUpperCase();
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedCategory, setSelectedCategory] = useState('all');
     const [selectedItem, setSelectedItem] = useState<string | null>(null);
@@ -143,8 +146,8 @@ const ManagePricesScreen: React.FC = () => {
                                                 </div>
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap">
-                                                <span className="text-lg font-bold text-gold-600 dark:text-gold-400">
-                                                    {item.price.toFixed(2)} ر.ي
+                                                <span className="text-gold-600 dark:text-gold-400">
+                                                    <CurrencyDualAmount amount={Number(item.price || 0)} currencyCode={baseCode} compact />
                                                 </span>
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
@@ -224,8 +227,8 @@ const ManagePricesScreen: React.FC = () => {
                                                                         <span className="text-gray-600 dark:text-gray-400">
                                                                             {new Date(h.date).toLocaleString('ar-SA-u-nu-latn')}
                                                                         </span>
-                                                                        <span className="font-bold text-gray-900 dark:text-white">
-                                                                            {h.price.toFixed(2)} ر.ي
+                                                                        <span className="text-gray-900 dark:text-white">
+                                                                            <CurrencyDualAmount amount={Number(h.price || 0)} currencyCode={baseCode} compact />
                                                                         </span>
                                                                         {h.reason && (
                                                                             <span className="text-gray-500 dark:text-gray-400 italic">

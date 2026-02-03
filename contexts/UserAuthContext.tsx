@@ -103,6 +103,7 @@ const toCustomerFromRow = (row: any): Customer => {
     email: typeof row?.email === 'string' ? row.email : (typeof (data as any).email === 'string' ? (data as any).email : undefined),
     fullName: typeof row?.full_name === 'string' ? row.full_name : (typeof (data as any).fullName === 'string' ? (data as any).fullName : undefined),
     avatarUrl: typeof row?.avatar_url === 'string' ? row.avatar_url : (typeof (data as any).avatarUrl === 'string' ? (data as any).avatarUrl : undefined),
+    preferredCurrency: typeof row?.preferred_currency === 'string' ? row.preferred_currency : (typeof (data as any).preferredCurrency === 'string' ? (data as any).preferredCurrency : undefined),
     authProvider: (typeof row?.auth_provider === 'string' ? row.auth_provider : (data as any).authProvider) === 'google'
       ? 'google'
       : ((typeof row?.auth_provider === 'string' ? row.auth_provider : (data as any).authProvider) === 'phone' ? 'phone' : 'password'),
@@ -158,7 +159,7 @@ export const UserAuthProvider: React.FC<{ children: ReactNode }> = ({ children }
 
       const { data: row, error } = await supabase
         .from('customers')
-        .select('auth_user_id, full_name, phone_number, email, auth_provider, password_salt, password_hash, referral_code, referred_by, loyalty_points, loyalty_tier, total_spent, first_order_discount_applied, avatar_url, data')
+        .select('auth_user_id, full_name, phone_number, email, auth_provider, password_salt, password_hash, referral_code, referred_by, loyalty_points, loyalty_tier, total_spent, first_order_discount_applied, avatar_url, preferred_currency, data')
         .eq('auth_user_id', authUserId)
         .maybeSingle();
       if (error) throw error;
@@ -249,7 +250,7 @@ export const UserAuthProvider: React.FC<{ children: ReactNode }> = ({ children }
       }
       const { data: rows, error } = await supabase
         .from('customers')
-        .select('auth_user_id, full_name, phone_number, email, auth_provider, password_salt, password_hash, referral_code, referred_by, loyalty_points, loyalty_tier, total_spent, first_order_discount_applied, avatar_url, data');
+        .select('auth_user_id, full_name, phone_number, email, auth_provider, password_salt, password_hash, referral_code, referred_by, loyalty_points, loyalty_tier, total_spent, first_order_discount_applied, avatar_url, preferred_currency, data');
       if (error) throw error;
       let adminIds = new Set<string>();
       try {

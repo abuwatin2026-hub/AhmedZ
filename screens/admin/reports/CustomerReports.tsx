@@ -94,7 +94,7 @@ const CustomerReports: React.FC = () => {
             const stat = byId.get(order.userId);
             if (!stat) continue;
             stat.totalOrders += 1;
-            stat.totalSpent += order.total;
+            stat.totalSpent += Number((order as any).baseTotal ?? 0) || 0;
         }
 
         return Array.from(byId.values()).sort((a, b) => b.totalSpent - a.totalSpent);
@@ -170,7 +170,7 @@ const CustomerReports: React.FC = () => {
         setIsSharing(false);
     };
 
-    const currency = 'ر.ي';
+    const currency = String((settings as any)?.baseCurrency || '').toUpperCase() || '—';
 
     return (
         <div className="animate-fade-in space-y-6">

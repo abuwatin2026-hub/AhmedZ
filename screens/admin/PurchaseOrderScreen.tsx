@@ -903,7 +903,22 @@ const PurchaseOrderScreen: React.FC = () => {
                                     <td className="p-4 text-sm dark:text-gray-300">{dueLabel}</td>
                                     <td className="p-4 text-sm dark:text-gray-300">{formatPurchaseDate(order.purchaseDate)}</td>
                                     <td className="p-4 text-sm dark:text-gray-300 font-mono">{Number(order.itemsCount ?? 0)} / {totalQty}</td>
-                                    <td className="p-4 font-bold text-primary-600 dark:text-primary-400">{order.totalAmount.toFixed(2)}</td>
+                                    <td className="p-4 font-bold text-primary-600 dark:text-primary-400">
+                                        {(() => {
+                                            const code = String(order.currency || '').toUpperCase();
+                                            const baseCode = String((settings as any)?.baseCurrency || '').toUpperCase() || '—';
+                                            const fmt = (n: number) => { try { return n.toLocaleString('ar-EG-u-nu-latn', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); } catch { return n.toFixed(2); } };
+                                            const totalCur = fmt(Number(order.totalAmount || 0));
+                                            const totalBase = fmt(Number(order.baseTotal || 0));
+                                            const rate = Number(order.fxRate || 0);
+                                            return (
+                                                <div className="space-y-1">
+                                                    <div>{totalCur} <span className="text-xs">{code || '—'}</span></div>
+                                                    <div className="text-xs text-gray-600 dark:text-gray-300">{`FX=${rate > 0 ? rate.toFixed(6) : '—'} • ${totalBase} ${baseCode}`}</div>
+                                                </div>
+                                            );
+                                        })()}
+                                    </td>
                                     <td className="p-4 font-mono text-sm dark:text-gray-300">{paid.toFixed(2)}</td>
                                     <td className="p-4 font-mono text-sm dark:text-gray-300">{remaining.toFixed(2)}</td>
                                     <td className="p-4">

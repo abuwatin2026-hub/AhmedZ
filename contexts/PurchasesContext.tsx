@@ -4,6 +4,7 @@ import { isAbortLikeError, localizeSupabaseError } from '../utils/errorUtils';
 import { normalizeIsoDateOnly, toDateInputValue, toUtcIsoAtMiddayFromYmd, toUtcIsoFromLocalDateTimeInput } from '../utils/dateUtils';
 import { Supplier, PurchaseOrder } from '../types';
 import { useAuth } from './AuthContext';
+import { useSettings } from './SettingsContext';
 
 interface PurchasesContextType {
     suppliers: Supplier[];
@@ -58,12 +59,14 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const [error, setError] = useState<string | null>(null);
     const { user } = useAuth();
   const supabase = getSupabaseClient();
+  const { settings } = useSettings();
 
   const mapSupplierRow = (row: any): Supplier => {
     const now = new Date().toISOString();
     return {
       id: String(row?.id),
       name: String(row?.name || ''),
+      preferredCurrency: typeof row?.preferred_currency === 'string' ? row.preferred_currency : (typeof row?.preferredCurrency === 'string' ? row.preferredCurrency : undefined),
       contactPerson: typeof row?.contact_person === 'string' ? row.contact_person : (typeof row?.contactPerson === 'string' ? row.contactPerson : undefined),
       phone: typeof row?.phone === 'string' ? row.phone : (typeof row?.phone === 'string' ? row.phone : undefined),
       email: typeof row?.email === 'string' ? row.email : (typeof row?.email === 'string' ? row.email : undefined),
@@ -78,6 +81,10 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const payload: Record<string, unknown> = {};
     if (Object.prototype.hasOwnProperty.call(obj, 'name')) payload.name = obj.name ?? null;
     if (Object.prototype.hasOwnProperty.call(obj, 'contactPerson')) payload.contact_person = obj.contactPerson ?? null;
+    if (Object.prototype.hasOwnProperty.call(obj, 'preferredCurrency')) {
+      const v = typeof obj.preferredCurrency === 'string' ? obj.preferredCurrency.trim().toUpperCase() : obj.preferredCurrency;
+      payload.preferred_currency = typeof v === 'string' && v.length === 0 ? null : v ?? null;
+    }
     if (Object.prototype.hasOwnProperty.call(obj, 'phone')) {
       const v = typeof obj.phone === 'string' ? obj.phone.trim() : obj.phone;
       payload.phone = typeof v === 'string' && v.length === 0 ? null : v ?? null;
@@ -291,8 +298,11 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                 status: order.status,
                 poNumber: order.po_number ?? order.poNumber ?? undefined,
                 referenceNumber: order.reference_number ?? order.referenceNumber,
+                currency: order.currency ?? order.currency,
+                fxRate: Number(order.fx_rate ?? order.fxRate ?? 0) || undefined,
                 totalAmount: Number(order.total_amount ?? order.totalAmount ?? 0),
                 paidAmount: Number(order.paid_amount ?? order.paidAmount ?? 0),
+                baseTotal: Number(order.base_total ?? order.baseTotal ?? 0) || undefined,
                 purchaseDate: order.purchase_date ?? order.purchaseDate,
                 itemsCount: Number(order.items_count ?? order.itemsCount ?? order.items?.length ?? 0),
                 warehouseId: order.warehouse_id ?? order.warehouseId,
@@ -697,12 +707,15 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             return parsed.toISOString();
           })();
           const payloadData = data && typeof data === 'object' ? data : {};
+          const baseCode = String((settings as any)?.baseCurrency || '').toUpperCase();
+          if (!baseCode) throw new Error('العملة الأساسية غير محددة.');
 
           const argsWithData = {
             p_purchase_order_id: id,
             p_amount: numericAmount,
             p_method: methodValue,
             p_occurred_at: occurredAtIso,
+            p_currency: baseCode,
             p_data: payloadData,
           } as any;
 
@@ -715,6 +728,7 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                 p_amount: numericAmount,
                 p_method: methodValue,
                 p_occurred_at: occurredAtIso,
+                p_currency: baseCode,
               } as any);
               if (retryErr) throw retryErr;
               error = null as any;

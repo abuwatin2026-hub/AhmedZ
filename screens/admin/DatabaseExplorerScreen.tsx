@@ -27,6 +27,8 @@ const TABLES: TableDef[] = [
   { key: 'stock_management', label: 'إدارة المخزون' },
   { key: 'stock_history', label: 'سجل المخزون' },
   { key: 'price_history', label: 'سجل الأسعار' },
+  { key: 'currencies', label: 'العملات' },
+  { key: 'fx_rates', label: 'أسعار الصرف' },
   { key: 'inventory_movements', label: 'حركات المخزون' },
   { key: 'order_item_cogs', label: 'تكلفة أصناف الطلب' },
   { key: 'payments', label: 'المدفوعات' },

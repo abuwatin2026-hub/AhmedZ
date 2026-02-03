@@ -1,22 +1,50 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { usePurchases } from '../../contexts/PurchasesContext';
 import * as Icons from '../../components/icons';
 import { Supplier } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
+import CurrencyDualAmount from '../../components/common/CurrencyDualAmount';
+import { getSupabaseClient } from '../../supabase';
+import { useSettings } from '../../contexts/SettingsContext';
 
 const SuppliersScreen: React.FC = () => {
     const { suppliers, loading, addSupplier, updateSupplier, deleteSupplier, purchaseOrders } = usePurchases();
     const { user } = useAuth();
+    const { settings } = useSettings();
+    const baseCode = String((settings as any)?.baseCurrency || '').toUpperCase();
     const canManage = user?.role === 'owner' || user?.role === 'manager';
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
     const [formData, setFormData] = useState<Partial<Supplier>>({});
+    const [currencyOptions, setCurrencyOptions] = useState<string[]>([]);
+
+    useEffect(() => {
+        let active = true;
+        const loadCurrencies = async () => {
+            try {
+                const supabase = getSupabaseClient();
+                if (!supabase) return;
+                const { data, error } = await supabase.from('currencies').select('code').order('code', { ascending: true });
+                if (error) throw error;
+                const codes = (Array.isArray(data) ? data : []).map((r: any) => String(r.code || '').toUpperCase()).filter(Boolean);
+                if (active) setCurrencyOptions(codes);
+            } catch {
+                if (active) setCurrencyOptions([]);
+            }
+        };
+        void loadCurrencies();
+        return () => { active = false; };
+    }, []);
 
     const supplierBalances = React.useMemo(() => {
-        const map = new Map<string, number>();
-        (purchaseOrders || []).forEach(po => {
-            const prev = map.get(po.supplierId) || 0;
-            map.set(po.supplierId, prev + ((po.totalAmount || 0) - (po.paidAmount || 0)));
+        const map = new Map<string, Record<string, number>>();
+        (purchaseOrders || []).forEach((po: any) => {
+            const sid = String(po.supplierId || '');
+            if (!sid) return;
+            const c = String(po.currency || '').toUpperCase() || '—';
+            const outstanding = (Number(po.totalAmount) || 0) - (Number(po.paidAmount) || 0);
+            const prev = map.get(sid) || {};
+            map.set(sid, { ...prev, [c]: (prev[c] || 0) + outstanding });
         });
         return map;
     }, [purchaseOrders]);
@@ -41,6 +69,8 @@ const SuppliersScreen: React.FC = () => {
         if (phone && !/^[0-9+\-()\s]{6,}$/.test(phone)) return 'رقم الهاتف غير صالح';
         const tax = (formData.taxNumber || '').trim();
         if (tax && !/^[0-9A-Za-z\-]+$/.test(tax)) return 'الرقم الضريبي غير صالح';
+        const pref = String((formData as any).preferredCurrency || '').trim().toUpperCase();
+        if (pref && currencyOptions.length > 0 && !currencyOptions.includes(pref)) return 'العملة المفضلة غير معرفة';
         return null;
     };
 
@@ -107,6 +137,7 @@ const SuppliersScreen: React.FC = () => {
                                 <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">الشخص المسؤول</th>
                                 <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">الهاتف</th>
                                 <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">العنوان</th>
+                                <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">العملة المفضلة</th>
                                 <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">الرصيد المستحق</th>
                                 <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">الإجراءات</th>
                             </tr>
@@ -114,7 +145,7 @@ const SuppliersScreen: React.FC = () => {
                         <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                             {suppliers.length === 0 ? (
                                 <tr>
-                                    <td colSpan={5} className="p-8 text-center text-gray-500 dark:text-gray-400">
+                                    <td colSpan={7} className="p-8 text-center text-gray-500 dark:text-gray-400">
                                         لا يوجد موردين مضافين حالياً.
                                     </td>
                                 </tr>
@@ -125,8 +156,20 @@ const SuppliersScreen: React.FC = () => {
                                         <td className="p-4 text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">{supplier.contactPerson || '-'}</td>
                                         <td className="p-4 text-gray-600 dark:text-gray-300 border-r dark:border-gray-700" dir="ltr">{supplier.phone || '-'}</td>
                                         <td className="p-4 text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">{supplier.address || '-'}</td>
-                                        <td className="p-4 text-gray-800 dark:text-gray-200 border-r dark:border-gray-700" dir="ltr">
-                                            {Number(supplierBalances.get(supplier.id) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                        <td className="p-4 text-gray-600 dark:text-gray-300 border-r dark:border-gray-700 font-mono">{String((supplier as any).preferredCurrency || '') || '-'}</td>
+                                        <td className="p-4 text-gray-800 dark:text-gray-200 border-r dark:border-gray-700">
+                                            {(() => {
+                                                const b = supplierBalances.get(supplier.id) || {};
+                                                const entries = Object.entries(b).filter(([, v]) => Math.abs(Number(v || 0)) > 0.0000001);
+                                                if (entries.length === 0) return <span dir="ltr" className="font-mono">0.00</span>;
+                                                return (
+                                                    <div className="space-y-1">
+                                                        {entries.map(([c, amt]) => (
+                                                            <CurrencyDualAmount key={c} amount={Number(amt || 0)} currencyCode={c} compact />
+                                                        ))}
+                                                    </div>
+                                                );
+                                            })()}
                                         </td>
                                         <td className="p-4 flex gap-2">
                                             {canManage && (
@@ -212,6 +255,19 @@ const SuppliersScreen: React.FC = () => {
                                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                                     className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                                 />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-1 dark:text-gray-300">العملة المفضلة</label>
+                                <select
+                                    value={String((formData as any).preferredCurrency || '').toUpperCase()}
+                                    onChange={(e) => setFormData({ ...formData, preferredCurrency: String(e.target.value || '').toUpperCase() } as any)}
+                                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                >
+                                    <option value="">—</option>
+                                    {currencyOptions.map((c) => (
+                                        <option key={c} value={c}>{c}{baseCode && c === baseCode ? ' (أساسية)' : ''}</option>
+                                    ))}
+                                </select>
                             </div>
                             <div>
                                 <label className="block text-sm font-medium mb-1 dark:text-gray-300">الرقم الضريبي</label>

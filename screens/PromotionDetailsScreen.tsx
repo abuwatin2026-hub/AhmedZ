@@ -32,6 +32,7 @@ const PromotionDetailsScreen: React.FC = () => {
   const isActive = Boolean(promoSnapshot);
   const name = promoSnapshot?.name || promoMeta?.name || '';
   const imageUrl = promoSnapshot?.imageUrl || promoMeta?.imageUrl || '';
+  const currencyCode = String((promoSnapshot?.currency || promoMeta?.currency || '')).toUpperCase() || '—';
   const original = promoSnapshot ? (typeof promoSnapshot.displayOriginalTotal === 'number' && promoSnapshot.displayOriginalTotal > 0 ? promoSnapshot.displayOriginalTotal : promoSnapshot.computedOriginalTotal) : undefined;
   const finalTotal = promoSnapshot?.finalTotal ?? undefined;
 
@@ -78,9 +79,9 @@ const PromotionDetailsScreen: React.FC = () => {
                   <div className="text-xl font-bold text-gray-900 dark:text-white">{name}</div>
                   {isActive && (
                     <div className="mt-1 text-sm text-gray-600 dark:text-gray-300">
-                      {typeof original === 'number' ? <span className="line-through text-gray-400 dark:text-gray-500">{original.toFixed(2)} ر.ي</span> : null}
+                      {typeof original === 'number' ? <span className="line-through text-gray-400 dark:text-gray-500">{original.toFixed(2)} {currencyCode}</span> : null}
                       {typeof finalTotal === 'number' ? <span className="mx-2">→</span> : null}
-                      {typeof finalTotal === 'number' ? <span className="text-red-600 dark:text-red-400 font-extrabold">{Number(finalTotal || 0).toFixed(2)} ر.ي</span> : null}
+                      {typeof finalTotal === 'number' ? <span className="text-red-600 dark:text-red-400 font-extrabold">{Number(finalTotal || 0).toFixed(2)} {currencyCode}</span> : null}
                     </div>
                   )}
                 </div>

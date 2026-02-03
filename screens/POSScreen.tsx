@@ -7,6 +7,7 @@ import { useCashShift } from '../contexts/CashShiftContext';
 import { useUserAuth } from '../contexts/UserAuthContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { useStock } from '../contexts/StockContext';
+import CurrencyDualAmount from '../components/common/CurrencyDualAmount';
 import { getSupabaseClient, reloadPostgrestSchema } from '../supabase';
 import { isAbortLikeError, localizeSupabaseError } from '../utils/errorUtils';
 import POSHeaderShiftStatus from '../components/pos/POSHeaderShiftStatus';
@@ -50,6 +51,12 @@ const POSScreen: React.FC = () => {
   const [selectedCartItemId, setSelectedCartItemId] = useState<string | null>(null);
   const [pendingSelectedId, setPendingSelectedId] = useState<string | null>(null);
   const [touchMode, setTouchMode] = useState<boolean>(false);
+  const [transactionCurrency, setTransactionCurrency] = useState<string>(() => {
+    const ops = (settings as any)?.operationalCurrencies;
+    const first = Array.isArray(ops) ? String(ops[0] || '') : '';
+    const base = String((settings as any)?.baseCurrency || '');
+    return first || base || '';
+  });
   const pricingCacheRef = useRef<Map<string, {
     unitPrice: number;
     unitPricePerKg?: number;
@@ -92,6 +99,10 @@ const POSScreen: React.FC = () => {
   const hasPromotionLines = useMemo(() => {
     return items.some((i) => isPromotionLine(i));
   }, [isPromotionLine, items]);
+
+  const operationalCurrencies = Array.isArray(settings.operationalCurrencies) && settings.operationalCurrencies.length
+    ? settings.operationalCurrencies
+    : (transactionCurrency ? [transactionCurrency] : []);
 
   useEffect(() => {
     if (!hasPromotionLines) return;
@@ -912,6 +923,7 @@ const POSScreen: React.FC = () => {
         }
         createInStorePendingOrder({
           lines,
+          currency: transactionCurrency,
           discountType,
           discountValue,
           customerName: customerName.trim() || undefined,
@@ -957,6 +969,7 @@ const POSScreen: React.FC = () => {
       }
       createInStoreSale({
         lines,
+        currency: transactionCurrency,
         discountType,
         discountValue,
         customerName: customerName.trim() || undefined,
@@ -1084,6 +1097,18 @@ const POSScreen: React.FC = () => {
         <div className="text-[11px] text-gray-500 dark:text-gray-400">
           Ctrl+K بحث • Ctrl+P معلّق • F8 تعليق • F9 إتمام
         </div>
+        <div className="flex items-center gap-2 ml-auto">
+          <label className="text-xs text-gray-600 dark:text-gray-300">عملة المعاملة</label>
+          <select
+            value={transactionCurrency}
+            onChange={(e) => setTransactionCurrency(e.target.value)}
+            className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-xs"
+          >
+            {operationalCurrencies.map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+        </div>
       </div>
       <div className={`grid grid-cols-1 gap-6 ${touchMode ? 'xl:grid-cols-3 xl:gap-8' : 'lg:grid-cols-3'}`}>
         <div className={`${touchMode ? 'xl:col-span-2' : 'lg:col-span-2'} space-y-6`}>
@@ -1193,7 +1218,13 @@ const POSScreen: React.FC = () => {
                         )}
                       </div>
                       <div className="text-xs text-gray-500 dark:text-gray-400">
-                        {Number(t.total || 0).toFixed(2)} ر.ي
+                        <CurrencyDualAmount
+                          amount={Number(t.total || 0)}
+                          currencyCode={String((t as any)?.currency || '')}
+                          baseAmount={undefined}
+                          fxRate={undefined}
+                          compact
+                        />
                       </div>
                       <div className="text-[11px] text-gray-500 dark:text-gray-400 truncate">
                         {String((t as any).customerName || 'زبون حضوري')}
@@ -1448,7 +1479,13 @@ const POSScreen: React.FC = () => {
                     <div className="min-w-0">
                       <div className="font-semibold truncate dark:text-white">{p.name}</div>
                       <div className="text-xs text-gray-500 dark:text-gray-400">
-                        {Number(p.finalTotal || 0).toFixed(2)} ر.ي
+                        <CurrencyDualAmount
+                          amount={Number(p.finalTotal || 0)}
+                          currencyCode={String((p as any)?.currency || '')}
+                          baseAmount={undefined}
+                          fxRate={undefined}
+                          compact
+                        />
                       </div>
                     </div>
                     <button
