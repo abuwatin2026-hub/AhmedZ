@@ -724,13 +724,22 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           }
 
           if (receiveNow) {
+            const idempotencyKey = (() => {
+              try {
+                const anyCrypto: any = (globalThis as any)?.crypto;
+                if (anyCrypto && typeof anyCrypto.randomUUID === 'function') return String(anyCrypto.randomUUID());
+              } catch {
+              }
+              return `rcv_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+            })();
               const { error: receiveError } = await supabase.rpc('receive_purchase_order_partial', {
                   p_order_id: orderId,
                   p_items: items.map(i => ({
                       itemId: i.itemId,
                       quantity: i.quantity,
                       harvestDate: toIsoDateOnlyOrNull(i.productionDate),
-                      expiryDate: toIsoDateOnlyOrNull(i.expiryDate)
+                  expiryDate: toIsoDateOnlyOrNull(i.expiryDate),
+                  idempotencyKey,
                   })),
                   p_occurred_at: toUtcIsoAtMiddayFromYmd(normalizedDate)
               });
@@ -901,6 +910,14 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     ) => {
         if (!supabase || !user) return;
         try {
+          const idempotencyKey = (() => {
+            try {
+              const anyCrypto: any = (globalThis as any)?.crypto;
+              if (anyCrypto && typeof anyCrypto.randomUUID === 'function') return String(anyCrypto.randomUUID());
+            } catch {
+            }
+            return `rcv_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+          })();
           const orderId = String(purchaseOrderId || '').trim();
           if (!isUuid(orderId)) throw new Error('معرف أمر الشراء غير صالح.');
           const normalizedItems = (items || []).map((i) => {
@@ -915,6 +932,7 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               expiryDate: toIsoDateOnlyOrNull((i as any)?.expiryDate),
               transportCost: (i as any).transportCost,
               supplyTaxCost: (i as any).supplyTaxCost,
+              idempotencyKey,
             };
           });
           const { error: whErr } = await supabase.rpc('_resolve_default_warehouse_id');

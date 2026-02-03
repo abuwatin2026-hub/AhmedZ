@@ -1,6 +1,9 @@
 $ErrorActionPreference = "Stop"
 
-$projectRef = "twcjjisnxmfpseksqnhb"
+$projectRef = $env:SUPABASE_PROJECT_REF
+if (-not $projectRef -or -not $projectRef.Trim()) {
+  $projectRef = "twcjjisnxmfpseksqnhb"
+}
 
 function Require-Command {
   param([string]$Name)
@@ -11,23 +14,35 @@ function Require-Command {
 }
 
 Require-Command "node"
+Require-Command "npx"
 
 Write-Host "Target project ref: $projectRef"
 
 if (-not $env:SUPABASE_ACCESS_TOKEN) {
-  Write-Host "SUPABASE_ACCESS_TOKEN is not set."
-  Write-Host "Run one of the following, then re-run this script:"
-  Write-Host "  npx supabase login"
-  Write-Host "  or set SUPABASE_ACCESS_TOKEN in your environment"
-  exit 1
+  Write-Host "SUPABASE_ACCESS_TOKEN is not set. Trying Supabase CLI stored login..."
+  try {
+    & npx supabase projects list | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "not logged in" }
+    Write-Host "Supabase CLI login detected."
+  } catch {
+    Write-Host "Supabase CLI login not detected."
+    Write-Host "Run one of the following, then re-run this script:"
+    Write-Host "  npx supabase login"
+    Write-Host "  or set SUPABASE_ACCESS_TOKEN in your environment"
+    exit 1
+  }
 }
 
-$secure = Read-Host "Enter production DB password (will not be stored)" -AsSecureString
-$bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
-try {
-  $plain = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
-} finally {
-  [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
+$plain = $env:SUPABASE_DB_PASSWORD
+if (-not $plain -or -not $plain.Trim()) { $plain = $env:SUPABASE_PASSWORD }
+if (-not $plain -or -not $plain.Trim()) {
+  $secure = Read-Host "Enter production DB password (will not be stored)" -AsSecureString
+  $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
+  try {
+    $plain = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
+  } finally {
+    [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
+  }
 }
 
 if (-not $plain -or -not $plain.Trim()) {
@@ -38,6 +53,6 @@ Write-Host "Linking project..."
 & npx supabase link --project-ref $projectRef --password $plain
 
 Write-Host "Pushing migrations to production..."
-& npx supabase db push
+& npx supabase db push --include-all
 
 Write-Host "Done."
