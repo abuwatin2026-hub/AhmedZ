@@ -249,14 +249,91 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const row: any = existingRows[0];
       return String(row.id);
     }
-    const { data: reqId, error: createErr } = await supabase.rpc('create_approval_request', {
+    const seedPolicy = async () => {
+      try {
+        const { data: rows, error: polErr } = await supabase
+          .from('approval_policies')
+          .select('id')
+          .eq('request_type', type)
+          .eq('is_active', true)
+          .order('min_amount', { ascending: false })
+          .limit(1);
+        if (!polErr && Array.isArray(rows) && rows.length > 0) {
+          const pid = String((rows[0] as any)?.id || '');
+          if (pid) {
+            await supabase.from('approval_policy_steps').upsert(
+              { policy_id: pid, step_no: 1, approver_role: 'manager' } as any,
+              { onConflict: 'policy_id,step_no' } as any
+            );
+            return;
+          }
+        }
+      } catch {
+      }
+
+      try {
+        const { data: inserted, error: insertErr } = await supabase
+          .from('approval_policies')
+          .insert([{ request_type: type, min_amount: 0, max_amount: null, steps_count: 1, is_active: true }] as any)
+          .select('id')
+          .single();
+        if (insertErr) throw insertErr;
+        const policyId = String((inserted as any)?.id || '');
+        if (policyId) {
+          await supabase.from('approval_policy_steps').upsert(
+            { policy_id: policyId, step_no: 1, approver_role: 'manager' } as any,
+            { onConflict: 'policy_id,step_no' } as any
+          );
+        }
+      } catch {
+      }
+    };
+
+    const tryCreate = async () => await supabase.rpc('create_approval_request', {
       p_target_table: 'purchase_orders',
       p_target_id: orderId,
       p_request_type: type,
       p_amount: amount,
       p_payload: { purchaseOrderId: orderId },
     } as any);
+
+    let { data: reqId, error: createErr } = await tryCreate();
     if (createErr) {
+      const msg = String((createErr as any)?.message || '');
+      const code = String((createErr as any)?.code || '');
+      if (/schema cache|could not find the function|PGRST202/i.test(msg) || code === 'PGRST202') {
+        const reloaded = await reloadPostgrestSchema();
+        if (reloaded) {
+          const retry = await tryCreate();
+          reqId = retry.data as any;
+          createErr = retry.error as any;
+        }
+      }
+    }
+    if (createErr) {
+      const msg = String((createErr as any)?.message || '');
+      const code = String((createErr as any)?.code || '');
+      if (/approval policy not found/i.test(msg)) {
+        await seedPolicy();
+        const retry = await tryCreate();
+        if (!retry.error) {
+          return typeof retry.data === 'string' ? retry.data : null;
+        }
+      }
+      if (code === '23505' || /duplicate key|unique/i.test(msg)) {
+        const { data: afterRows } = await supabase
+          .from('approval_requests')
+          .select('id,status')
+          .eq('target_table', 'purchase_orders')
+          .eq('target_id', orderId)
+          .eq('request_type', type)
+          .in('status', ['pending', 'approved'] as any)
+          .order('created_at', { ascending: false })
+          .limit(1);
+        if (Array.isArray(afterRows) && afterRows.length > 0) {
+          return String((afterRows[0] as any)?.id || '') || null;
+        }
+      }
       return null;
     }
     return typeof reqId === 'string' ? reqId : null;
@@ -829,7 +906,7 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           const normalizedItems = (items || []).map((i) => {
             const itemId = String((i as any)?.itemId || '').trim();
             const qty = Number((i as any)?.quantity || 0);
-            if (!isUuid(itemId)) throw new Error('معرّف الصنف غير صالح.');
+            if (!itemId) throw new Error('معرّف الصنف غير صالح.');
             if (!Number.isFinite(qty) || qty <= 0) throw new Error('كمية الاستلام غير صالحة.');
             return {
               itemId,

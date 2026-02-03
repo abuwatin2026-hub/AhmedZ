@@ -128,13 +128,16 @@ const ImportShipmentDetailsScreen: React.FC = () => {
         if (!supabase) return null;
         const d = new Date().toISOString().slice(0, 10);
         try {
-            const { data, error } = await supabase.rpc('get_fx_rate', {
-                p_currency: code,
-                p_date: d,
-                p_rate_type: 'operational',
-            });
+            const { data: rows, error } = await supabase
+                .from('fx_rates')
+                .select('rate,rate_date')
+                .eq('currency_code', code)
+                .eq('rate_type', 'operational')
+                .lte('rate_date', d)
+                .order('rate_date', { ascending: false })
+                .limit(1);
             if (error) return null;
-            const n = Number(data);
+            const n = Number((Array.isArray(rows) && rows.length > 0 ? (rows[0] as any)?.rate : null));
             return Number.isFinite(n) && n > 0 ? n : null;
         } catch {
             return null;

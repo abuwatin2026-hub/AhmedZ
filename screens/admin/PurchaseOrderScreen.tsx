@@ -171,16 +171,28 @@ const PurchaseOrderScreen: React.FC = () => {
             setPoFxSource('unknown');
             return;
         }
+        let cancelled = false;
         void (async () => {
             try {
                 const onDate = normalizeIsoDateOnly(purchaseDate) || toDateInputValue();
-                const { data, error } = await supabase.rpc('get_fx_rate', {
-                    p_currency_code: code,
-                    p_rate_type: 'accounting',
-                    p_on_date: onDate,
-                } as any);
-                if (error) throw error;
-                const rate = Number((data as any)?.rate ?? data);
+                let rate = Number.NaN;
+                try {
+                    const { data: rows, error: fxErr } = await supabase
+                        .from('fx_rates')
+                        .select('rate,rate_date')
+                        .eq('currency_code', code)
+                        .eq('rate_type', 'accounting')
+                        .lte('rate_date', onDate)
+                        .order('rate_date', { ascending: false })
+                        .limit(1);
+                    if (!fxErr && Array.isArray(rows) && rows.length > 0) {
+                        const r = Number((rows[0] as any)?.rate);
+                        if (Number.isFinite(r) && r > 0) rate = r;
+                    }
+                } catch {
+                }
+
+                if (cancelled) return;
                 if (!Number.isFinite(rate) || rate <= 0) {
                     setPoFxSource('unknown');
                     return;
@@ -188,9 +200,13 @@ const PurchaseOrderScreen: React.FC = () => {
                 setPoFxRate(rate);
                 setPoFxSource('system');
             } catch {
+                if (cancelled) return;
                 setPoFxSource('unknown');
             }
         })();
+        return () => {
+            cancelled = true;
+        };
     }, [baseCode, isModalOpen, poCurrency, purchaseDate]);
 
     // Helper to add a new row
@@ -493,7 +509,8 @@ const PurchaseOrderScreen: React.FC = () => {
             for (const r of normalizedRows) {
                 if (Number(r.receiveNow) <= 0) continue;
                 const item = getItemById(r.itemId);
-                if (item && item.category === 'food') {
+                const isFood = Boolean((item as any)?.isFood ?? (item as any)?.is_food ?? (item as any)?.expiryRequired ?? (item as any)?.expiry_required) || (item && item.category === 'food');
+                if (item && isFood) {
                     const exp = typeof r.expiryDate === 'string' ? r.expiryDate.trim() : '';
                     if (!exp) {
                         alert(`يرجى إدخال تاريخ الانتهاء للصنف الغذائي: ${item.name.ar}`);
