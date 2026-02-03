@@ -6,7 +6,7 @@ import { buildPdfBrandOptions, buildXlsxBrandOptions } from '../../../utils/bran
 import BarChart from '../../../components/admin/charts/BarChart';
 import HorizontalBarChart from '../../../components/admin/charts/HorizontalBarChart';
 import LineChart from '../../../components/admin/charts/LineChart';
-import { getSupabaseClient } from '../../../supabase';
+import { getBaseCurrencyCode, getSupabaseClient } from '../../../supabase';
 import { useSettings } from '../../../contexts/SettingsContext';
 import { localizeSupabaseError } from '../../../utils/errorUtils';
 import { endOfDayFromYmd, startOfDayFromYmd, toYmdLocal } from '../../../utils/dateUtils';
@@ -52,6 +52,7 @@ const SalesReports: React.FC = () => {
     const language = 'ar';
     const [isSharing, setIsSharing] = useState(false);
     const { settings } = useSettings();
+    const [currency, setCurrency] = useState('—');
     // Removed zoneOrders state (unused)
     const [serverSummary, setServerSummary] = useState<any | null>(null);
     const methodLabel = (method: string) => {
@@ -99,6 +100,13 @@ const SalesReports: React.FC = () => {
         setStartDate(toYmdLocal(start));
         setEndDate(toYmdLocal(end));
     };
+
+    useEffect(() => {
+        void getBaseCurrencyCode().then((c) => {
+            if (!c) return;
+            setCurrency(c);
+        });
+    }, []);
 
 
     useEffect(() => {
@@ -499,8 +507,6 @@ const SalesReports: React.FC = () => {
         setIsSharing(false);
     };
 
-    const currency = String((settings as any)?.baseCurrency || '').toUpperCase() || '—';
-
     const runRecall = async () => {
         const supabase = getSupabaseClient();
         if (!supabase) return;
@@ -676,11 +682,11 @@ const SalesReports: React.FC = () => {
                     <p className="text-base text-black mt-1">التقرير للفترة من {startDate} إلى {endDate}</p>
                 )}
                 <div className="flex gap-4 mt-2 text-sm border-t pt-2">
-                    <span>الإيراد: {reportData.netRevenue.toFixed(2)}</span>
+                    <span>الإيراد: {reportData.netRevenue.toFixed(2)} {currency}</span>
                     <span>|</span>
-                    <span>التكلفة: {reportData.cogs.toFixed(2)}</span>
+                    <span>التكلفة: {reportData.cogs.toFixed(2)} {currency}</span>
                     <span>|</span>
-                    <span>صافي الربح: {reportData.netProfit.toFixed(2)}</span>
+                    <span>صافي الربح: {reportData.netProfit.toFixed(2)} {currency}</span>
                 </div>
             </div>
 
@@ -804,7 +810,7 @@ const SalesReports: React.FC = () => {
                                     <details className="mt-3">
                                         <summary className="cursor-pointer text-sm font-semibold">تفاصيل المقارنة</summary>
                                         <div className="mt-2 text-sm text-gray-700 dark:text-gray-300">
-                                            <div>إجمالي التحصيل (خادم/قائمة): {sc.toFixed(2)} / {cc.toFixed(2)} • فرق {(rc * 100).toFixed(1)}%</div>
+                                            <div>إجمالي التحصيل (خادم/قائمة): {sc.toFixed(2)} {currency} / {cc.toFixed(2)} {currency} • فرق {(rc * 100).toFixed(1)}%</div>
                                             <div>عدد الطلبات المسلّمة (خادم/قائمة): {delivered.toLocaleString('en-US')} / {listCount.toLocaleString('en-US')} • فرق {(rcount * 100).toFixed(1)}%</div>
                                         </div>
                                     </details>

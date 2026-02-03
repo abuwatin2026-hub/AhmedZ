@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { usePurchases } from '../../contexts/PurchasesContext';
 import { useMenu } from '../../contexts/MenuContext';
 import { useStock } from '../../contexts/StockContext';
@@ -8,6 +8,8 @@ import { useToast } from '../../contexts/ToastContext';
 import { useWarehouses } from '../../contexts/WarehouseContext';
 import { useSessionScope } from '../../contexts/SessionScopeContext';
 import * as Icons from '../../components/icons';
+import CurrencyDualAmount from '../../components/common/CurrencyDualAmount';
+import { getBaseCurrencyCode, getSupabaseClient } from '../../supabase';
 import { MenuItem } from '../../types';
 import { PurchaseOrder } from '../../types';
 import { isIsoDate, normalizeIsoDateOnly, toDateInputValue, toDateTimeLocalInputValue } from '../../utils/dateUtils';
@@ -41,11 +43,41 @@ const PurchaseOrderScreen: React.FC = () => {
     const { stockItems } = useStock();
     const { user } = useAuth();
     const { settings } = useSettings();
+    const [baseCode, setBaseCode] = useState('—');
+    const [poCurrency, setPoCurrency] = useState<string>('');
+    const [poFxRate, setPoFxRate] = useState<number>(1);
+    const [poFxSource, setPoFxSource] = useState<'base' | 'system' | 'manual' | 'unknown'>('unknown');
+    const [currencyOptions, setCurrencyOptions] = useState<string[]>([]);
     const { showNotification } = useToast();
     const { warehouses } = useWarehouses();
     const { scope } = useSessionScope();
     const canDelete = user?.role === 'owner';
     const canCancel = user?.role === 'owner' || user?.role === 'manager';
+
+    useEffect(() => {
+        void getBaseCurrencyCode().then((c) => {
+            if (!c) return;
+            setBaseCode(c);
+        });
+    }, []);
+
+    useEffect(() => {
+        let active = true;
+        const loadCurrencies = async () => {
+            try {
+                const supabase = getSupabaseClient();
+                if (!supabase) return;
+                const { data, error } = await supabase.from('currencies').select('code').order('code', { ascending: true });
+                if (error) throw error;
+                const codes = (Array.isArray(data) ? data : []).map((r: any) => String(r.code || '').toUpperCase()).filter(Boolean);
+                if (active) setCurrencyOptions(codes);
+            } catch {
+                if (active) setCurrencyOptions([]);
+            }
+        };
+        void loadCurrencies();
+        return () => { active = false; };
+    }, []);
 
     const getErrorMessage = (error: unknown, fallback: string) => {
         if (error instanceof Error && error.message) return error.message;
@@ -114,6 +146,52 @@ const PurchaseOrderScreen: React.FC = () => {
     const [isCreatingReturn, setIsCreatingReturn] = useState<boolean>(false);
     const createReturnInFlightRef = useRef(false);
     const [formErrors, setFormErrors] = useState<string[]>([]);
+
+    useEffect(() => {
+        if (!isModalOpen) return;
+        const supplier = suppliers.find(s => s.id === supplierId);
+        const preferred = String((supplier as any)?.preferredCurrency || '').trim().toUpperCase();
+        const nextCurrency = preferred || baseCode || '';
+        if (nextCurrency && nextCurrency !== poCurrency) {
+            setPoCurrency(nextCurrency);
+        }
+    }, [baseCode, isModalOpen, poCurrency, supplierId, suppliers]);
+
+    useEffect(() => {
+        if (!isModalOpen) return;
+        const code = String(poCurrency || '').trim().toUpperCase();
+        if (!code) return;
+        if (baseCode && code === baseCode) {
+            setPoFxRate(1);
+            setPoFxSource('base');
+            return;
+        }
+        const supabase = getSupabaseClient();
+        if (!supabase) {
+            setPoFxSource('unknown');
+            return;
+        }
+        void (async () => {
+            try {
+                const onDate = normalizeIsoDateOnly(purchaseDate) || toDateInputValue();
+                const { data, error } = await supabase.rpc('get_fx_rate', {
+                    p_currency_code: code,
+                    p_rate_type: 'accounting',
+                    p_on_date: onDate,
+                } as any);
+                if (error) throw error;
+                const rate = Number((data as any)?.rate ?? data);
+                if (!Number.isFinite(rate) || rate <= 0) {
+                    setPoFxSource('unknown');
+                    return;
+                }
+                setPoFxRate(rate);
+                setPoFxSource('system');
+            } catch {
+                setPoFxSource('unknown');
+            }
+        })();
+    }, [baseCode, isModalOpen, poCurrency, purchaseDate]);
 
     // Helper to add a new row
     const addRow = () => {
@@ -268,6 +346,8 @@ const PurchaseOrderScreen: React.FC = () => {
             if (!supplierId) errors.push('المورد مطلوب');
             if (!purchaseDate) errors.push('تاريخ الشراء مطلوب');
             if (!warehouseId) errors.push('المستودع مطلوب');
+            if (!String(poCurrency || '').trim()) errors.push('عملة أمر الشراء مطلوبة');
+            if (!Number.isFinite(Number(poFxRate)) || Number(poFxRate) <= 0) errors.push('سعر الصرف مطلوب ويجب أن يكون أكبر من صفر');
             if (paymentTerms === 'credit' && !dueDate) errors.push('تاريخ الاستحقاق مطلوب للفواتير الآجلة');
             if (orderItems.length === 0) errors.push('أضف صنف واحد على الأقل');
             const normalizedItems = orderItems.map((row) => ({
@@ -297,7 +377,19 @@ const PurchaseOrderScreen: React.FC = () => {
                 return;
             }
             const validItems = normalizedItems.filter(i => i.itemId && i.quantity > 0);
-            await createPurchaseOrder(supplierId, purchaseDate, validItems, receiveOnCreate, invoiceRef || undefined, warehouseId, paymentTerms, netDays, dueDate);
+            await createPurchaseOrder(
+                supplierId,
+                purchaseDate,
+                String(poCurrency || '').toUpperCase(),
+                Number(poFxRate),
+                validItems,
+                receiveOnCreate,
+                invoiceRef || undefined,
+                warehouseId,
+                paymentTerms,
+                netDays,
+                dueDate
+            );
             setIsModalOpen(false);
             // Reset form
             setSupplierId('');
@@ -306,6 +398,9 @@ const PurchaseOrderScreen: React.FC = () => {
             setNetDays(0);
             setDueDate(toDateInputValue());
             setOrderItems([]);
+            setPoCurrency('');
+            setPoFxRate(1);
+            setPoFxSource('unknown');
             setFormErrors([]);
         } catch (error) {
             console.error(error);
@@ -672,6 +767,7 @@ const PurchaseOrderScreen: React.FC = () => {
                         const remainingRaw = total - paid;
                         const remaining = Math.max(0, remainingRaw);
                         const credit = Math.max(0, -remainingRaw);
+                        const currencyCode = String(order.currency || '').toUpperCase() || '—';
                         const totalQty = (order.items || []).reduce((sum: number, it: any) => sum + Number(it?.quantity || 0), 0);
                         const linesCount = Number(order.itemsCount ?? (order.items || []).length ?? 0);
                         const canPay = order.status !== 'cancelled' && remainingRaw > 0;
@@ -694,7 +790,7 @@ const PurchaseOrderScreen: React.FC = () => {
                                     : 'ملغي';
 
                         const paymentBadge = (() => {
-                            if (credit > 0) return { label: `رصيد لك: ${credit.toFixed(2)}`, className: 'bg-blue-50 text-blue-700' };
+                            if (credit > 0) return { label: `رصيد لك: ${credit.toFixed(2)} ${currencyCode}`, className: 'bg-blue-50 text-blue-700' };
                             if (total > 0 && remainingRaw <= 0.000000001) return { label: 'مسدد بالكامل', className: 'bg-green-100 text-green-700' };
                             if (paid > 0) return { label: 'مسدد جزئياً', className: 'bg-yellow-100 text-yellow-700' };
                             return { label: 'غير مسدد', className: 'bg-gray-100 text-gray-700' };
@@ -745,11 +841,17 @@ const PurchaseOrderScreen: React.FC = () => {
                                     </div>
                                     <div>
                                         <div className="text-gray-500 dark:text-gray-400">الإجمالي</div>
-                                        <div className="font-bold text-primary-600 dark:text-primary-400">{total.toFixed(2)}</div>
+                                        <CurrencyDualAmount
+                                            amount={Number(total) || 0}
+                                            currencyCode={String(order.currency || '').toUpperCase()}
+                                            baseAmount={(order as any).baseTotal != null ? Number((order as any).baseTotal) : undefined}
+                                            fxRate={(order as any).fxRate != null ? Number((order as any).fxRate) : undefined}
+                                            compact
+                                        />
                                     </div>
                                     <div>
                                         <div className="text-gray-500 dark:text-gray-400">المتبقي</div>
-                                        <div className="font-mono dark:text-gray-200">{remaining.toFixed(2)}</div>
+                                        <CurrencyDualAmount amount={Number(remaining) || 0} currencyCode={String(order.currency || '').toUpperCase()} compact />
                                     </div>
                                     <div>
                                         <div className="text-gray-500 dark:text-gray-400">عدد الأصناف (سطور)</div>
@@ -762,7 +864,7 @@ const PurchaseOrderScreen: React.FC = () => {
                                     {credit > 0 ? (
                                         <div className="col-span-2">
                                             <div className="text-gray-500 dark:text-gray-400">رصيد لك لدى المورد</div>
-                                            <div className="font-mono font-semibold text-blue-700 dark:text-blue-300">{credit.toFixed(2)}</div>
+                                            <CurrencyDualAmount amount={Number(credit) || 0} currencyCode={String(order.currency || '').toUpperCase()} compact />
                                         </div>
                                     ) : null}
                                 </div>
@@ -875,13 +977,14 @@ const PurchaseOrderScreen: React.FC = () => {
                                     const remainingRaw = total - paid;
                                     const remaining = Math.max(0, remainingRaw);
                                     const credit = Math.max(0, -remainingRaw);
+                                    const currencyCode = String(order.currency || '').toUpperCase() || '—';
                                     const totalQty = (order.items || []).reduce((sum: number, it: any) => sum + Number(it?.quantity || 0), 0);
                                     const canPay = order.status !== 'cancelled' && remainingRaw > 0;
                                     const hasReceived = (order.items || []).some((it: any) => Number(it?.receivedQuantity || 0) > 0);
                                     const canPurge = canDelete && order.status === 'draft' && paid <= 0 && !hasReceived;
                                     const canCancelOrder = canCancel && order.status === 'draft' && paid <= 0 && !hasReceived;
                                     const paymentBadge = (() => {
-                                        if (credit > 0) return { label: `رصيد لك: ${credit.toFixed(2)}`, className: 'bg-blue-50 text-blue-700' };
+                                        if (credit > 0) return { label: `رصيد لك: ${credit.toFixed(2)} ${currencyCode}`, className: 'bg-blue-50 text-blue-700' };
                                         if (total > 0 && remainingRaw <= 0.000000001) return { label: 'مسدد بالكامل', className: 'bg-green-100 text-green-700' };
                                         if (paid > 0) return { label: 'مسدد جزئياً', className: 'bg-yellow-100 text-yellow-700' };
                                         return { label: 'غير مسدد', className: 'bg-gray-100 text-gray-700' };
@@ -905,8 +1008,7 @@ const PurchaseOrderScreen: React.FC = () => {
                                     <td className="p-4 text-sm dark:text-gray-300 font-mono">{Number(order.itemsCount ?? 0)} / {totalQty}</td>
                                     <td className="p-4 font-bold text-primary-600 dark:text-primary-400">
                                         {(() => {
-                                            const code = String(order.currency || '').toUpperCase();
-                                            const baseCode = String((settings as any)?.baseCurrency || '').toUpperCase() || '—';
+                                            const code = currencyCode;
                                             const fmt = (n: number) => { try { return n.toLocaleString('ar-EG-u-nu-latn', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); } catch { return n.toFixed(2); } };
                                             const totalCur = fmt(Number(order.totalAmount || 0));
                                             const totalBase = fmt(Number(order.baseTotal || 0));
@@ -914,13 +1016,17 @@ const PurchaseOrderScreen: React.FC = () => {
                                             return (
                                                 <div className="space-y-1">
                                                     <div>{totalCur} <span className="text-xs">{code || '—'}</span></div>
-                                                    <div className="text-xs text-gray-600 dark:text-gray-300">{`FX=${rate > 0 ? rate.toFixed(6) : '—'} • ${totalBase} ${baseCode}`}</div>
+                                                    <div className="text-xs text-gray-600 dark:text-gray-300">{`FX=${rate > 0 ? rate.toFixed(6) : '—'} • ${totalBase} ${baseCode || '—'}`}</div>
                                                 </div>
                                             );
                                         })()}
                                     </td>
-                                    <td className="p-4 font-mono text-sm dark:text-gray-300">{paid.toFixed(2)}</td>
-                                    <td className="p-4 font-mono text-sm dark:text-gray-300">{remaining.toFixed(2)}</td>
+                                    <td className="p-4 text-sm dark:text-gray-300">
+                                        <CurrencyDualAmount amount={paid} currencyCode={currencyCode} compact />
+                                    </td>
+                                    <td className="p-4 text-sm dark:text-gray-300">
+                                        <CurrencyDualAmount amount={remaining} currencyCode={currencyCode} compact />
+                                    </td>
                                     <td className="p-4">
                                         <div className="flex flex-col items-start gap-1">
                                             <span className={[
@@ -1165,6 +1271,54 @@ const PurchaseOrderScreen: React.FC = () => {
                                         />
                                     </div>
                                 </div>
+                                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1 dark:text-gray-300">عملة أمر الشراء</label>
+                                        <select
+                                            className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono"
+                                            value={poCurrency}
+                                            required
+                                            onChange={(e) => {
+                                                const code = String(e.target.value || '').toUpperCase();
+                                                setPoCurrency(code);
+                                                setPoFxSource('unknown');
+                                                if (baseCode && code === baseCode) {
+                                                    setPoFxRate(1);
+                                                    setPoFxSource('base');
+                                                }
+                                            }}
+                                        >
+                                            <option value="">اختر عملة...</option>
+                                            {(currencyOptions.length ? currencyOptions : [baseCode]).map((c) => (
+                                                <option key={c} value={c}>{c}{baseCode && c === baseCode ? ' (أساسية)' : ''}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <div className="flex items-center justify-between mb-1">
+                                            <label className="block text-sm font-medium dark:text-gray-300">سعر الصرف (محاسبي)</label>
+                                            <span className="text-[11px] text-gray-500 dark:text-gray-400">
+                                                {poFxSource === 'base' ? 'أساسي' : poFxSource === 'system' ? 'نظام' : poFxSource === 'manual' ? 'يدوي' : 'غير معروف'}
+                                            </span>
+                                        </div>
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            step="0.000001"
+                                            className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono"
+                                            value={Number(poFxRate) || 0}
+                                            onChange={(e) => {
+                                                setPoFxRate(Number(e.target.value) || 0);
+                                                setPoFxSource('manual');
+                                            }}
+                                        />
+                                    </div>
+                                    <div className="md:col-span-2 flex items-end">
+                                        <div className="text-xs text-gray-600 dark:text-gray-300">
+                                            يتم تثبيت العملة وسعر الصرف تلقائيًا بعد إكمال أمر الشراء.
+                                        </div>
+                                    </div>
+                                </div>
                                 <div className="flex items-center gap-2">
                                     <input
                                         id="receiveOnCreate"
@@ -1208,7 +1362,7 @@ const PurchaseOrderScreen: React.FC = () => {
                                             />
                                         </div>
                                         <div>
-                                            <label className="block text-sm font-medium mb-1 dark:text-gray-300">سعر الشراء (للوحدة)</label>
+                                            <label className="block text-sm font-medium mb-1 dark:text-gray-300">سعر الشراء (للوحدة) <span className="font-mono">{poCurrency || '—'}</span></label>
                                             <input
                                                 type="number"
                                                 value={quickAddUnitCost}
@@ -1311,7 +1465,7 @@ const PurchaseOrderScreen: React.FC = () => {
                                                             />
                                                         </td>
                                                         <td className="p-2 sm:p-2 font-mono font-bold text-gray-700">
-                                                            {(row.quantity * row.unitCost).toFixed(2)}
+                                                            <CurrencyDualAmount amount={Number(row.quantity * row.unitCost) || 0} currencyCode={poCurrency} compact />
                                                         </td>
                                                         {receiveOnCreate ? (
                                                             <>
@@ -1354,7 +1508,10 @@ const PurchaseOrderScreen: React.FC = () => {
                             {/* Footer */}
                             <div className="p-4 bg-gray-50 dark:bg-gray-700/50 border-t dark:border-gray-700 flex justify-between items-center flex-shrink-0">
                                 <div className="text-xl font-bold dark:text-white">
-                                    الإجمالي الكلي: <span className="text-primary-600">{calculateTotal().toFixed(2)}</span>
+                                    الإجمالي الكلي:{' '}
+                                    <span className="text-primary-600">
+                                        <CurrencyDualAmount amount={Number(calculateTotal()) || 0} currencyCode={poCurrency} compact />
+                                    </span>
                                 </div>
                                 <button
                                     type="submit"

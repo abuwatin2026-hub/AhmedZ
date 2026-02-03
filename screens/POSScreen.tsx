@@ -8,6 +8,7 @@ import { useUserAuth } from '../contexts/UserAuthContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { useStock } from '../contexts/StockContext';
 import CurrencyDualAmount from '../components/common/CurrencyDualAmount';
+import { getBaseCurrencyCode } from '../supabase';
 import { getSupabaseClient, reloadPostgrestSchema } from '../supabase';
 import { isAbortLikeError, localizeSupabaseError } from '../utils/errorUtils';
 import POSHeaderShiftStatus from '../components/pos/POSHeaderShiftStatus';
@@ -51,11 +52,11 @@ const POSScreen: React.FC = () => {
   const [selectedCartItemId, setSelectedCartItemId] = useState<string | null>(null);
   const [pendingSelectedId, setPendingSelectedId] = useState<string | null>(null);
   const [touchMode, setTouchMode] = useState<boolean>(false);
+  const [baseCode, setBaseCode] = useState<string>('');
   const [transactionCurrency, setTransactionCurrency] = useState<string>(() => {
     const ops = (settings as any)?.operationalCurrencies;
     const first = Array.isArray(ops) ? String(ops[0] || '') : '';
-    const base = String((settings as any)?.baseCurrency || '');
-    return first || base || '';
+    return first || '';
   });
   const pricingCacheRef = useRef<Map<string, {
     unitPrice: number;
@@ -79,6 +80,26 @@ const POSScreen: React.FC = () => {
       return false;
     }
   });
+
+  useEffect(() => {
+    void getBaseCurrencyCode().then((c) => {
+      if (!c) return;
+      setBaseCode(c);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (transactionCurrency) return;
+    const ops = (settings as any)?.operationalCurrencies;
+    const first = Array.isArray(ops) ? String(ops[0] || '') : '';
+    if (first) {
+      setTransactionCurrency(first);
+      return;
+    }
+    if (baseCode) {
+      setTransactionCurrency(baseCode);
+    }
+  }, [baseCode, settings, transactionCurrency]);
 
   type DraftInvoice = {
     items: CartItem[];
@@ -1118,6 +1139,7 @@ const POSScreen: React.FC = () => {
           <div className={`bg-white dark:bg-gray-800 rounded-xl shadow-lg ${touchMode ? 'p-6' : 'p-4'}`}>
             <POSLineItemList
               items={items}
+              currencyCode={transactionCurrency}
               onUpdate={updateLine}
               onRemove={removeLine}
               onEditAddons={openAddons}
@@ -1150,11 +1172,12 @@ const POSScreen: React.FC = () => {
                   disabled={Boolean(pendingOrderId) || hasPromotionLines}
                 />
               </div>
-              <POSTotals subtotal={subtotal} discountAmount={discountAmount} total={total} />
+              <POSTotals subtotal={subtotal} discountAmount={discountAmount} total={total} currencyCode={transactionCurrency} />
             </div>
             <div className={`bg-white dark:bg-gray-800 rounded-xl shadow-lg ${touchMode ? 'p-6' : 'p-4'}`}>
               <POSPaymentPanel
                 total={total}
+                currencyCode={transactionCurrency}
                 canFinalize={items.length > 0 && pricingReady && !pricingBusy}
                 blockReason={pricingBlockReason}
                 onHold={handleHold}
@@ -1394,7 +1417,9 @@ const POSScreen: React.FC = () => {
                   <div key={def.id} className="flex items-center justify-between gap-3 p-2 border rounded-lg dark:border-gray-700">
                     <div className="min-w-0">
                       <div className="font-semibold dark:text-white truncate">{label}</div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400">{(Number(def.price) || 0).toFixed(2)}</div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">
+                        <CurrencyDualAmount amount={Number(def.price) || 0} currencyCode={transactionCurrency} compact />
+                      </div>
                     </div>
                     <div className="flex items-center gap-2">
                       <button

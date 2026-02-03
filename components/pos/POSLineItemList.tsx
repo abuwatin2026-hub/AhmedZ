@@ -5,6 +5,7 @@ import { useStock } from '../../contexts/StockContext';
 
 interface Props {
   items: CartItem[];
+  currencyCode?: string;
   onUpdate: (cartItemId: string, next: { quantity?: number; weight?: number }) => void;
   onRemove: (cartItemId: string) => void;
   onEditAddons?: (cartItemId: string) => void;
@@ -13,13 +14,29 @@ interface Props {
   touchMode?: boolean;
 }
 
-const POSLineItemList: React.FC<Props> = ({ items, onUpdate, onRemove, onEditAddons, selectedCartItemId, onSelect, touchMode }) => {
+const fmt = (n: number) => {
+  const v = Number(n || 0);
+  try {
+    return v.toLocaleString('ar-EG-u-nu-latn', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  } catch {
+    return v.toFixed(2);
+  }
+};
+
+const POSLineItemList: React.FC<Props> = ({ items, currencyCode, onUpdate, onRemove, onEditAddons, selectedCartItemId, onSelect, touchMode }) => {
   const [keypadOpen, setKeypadOpen] = useState(false);
   const [keypadTitle, setKeypadTitle] = useState('');
   const [keypadInitial, setKeypadInitial] = useState(0);
   const [keypadDecimal, setKeypadDecimal] = useState(true);
   const [keypadTarget, setKeypadTarget] = useState<{ id: string; kind: 'qty' | 'weight' } | null>(null);
   const { getStockByItemId } = useStock();
+  const code = String(currencyCode || '').toUpperCase() || '—';
+
+  const InlineMoney = ({ amount, className }: { amount: number; className?: string }) => (
+    <span dir="ltr" className={className || ''}>
+      <span className="font-mono">{fmt(amount)}</span> <span className="text-xs">{code}</span>
+    </span>
+  );
 
   const openKeypad = (id: string, kind: 'qty' | 'weight', current: number) => {
     setKeypadTarget({ id, kind });
@@ -86,9 +103,15 @@ const POSLineItemList: React.FC<Props> = ({ items, onUpdate, onRemove, onEditAdd
                 </div>
               </div>
               <div className="text-sm text-gray-600 dark:text-gray-300 flex flex-wrap gap-x-3 gap-y-1">
-                <span>{unitPrice.toFixed(2)}</span>
-                {addonsPrice > 0 && <span>+ إضافات {addonsPrice.toFixed(2)}</span>}
-                <span className="font-semibold text-indigo-600 dark:text-indigo-300">= {lineTotal.toFixed(2)}</span>
+                <InlineMoney amount={unitPrice} />
+                {addonsPrice > 0 && (
+                  <span>
+                    + إضافات <InlineMoney amount={addonsPrice} />
+                  </span>
+                )}
+                <span className="font-semibold text-indigo-600 dark:text-indigo-300">
+                  = <InlineMoney amount={lineTotal} />
+                </span>
                 {!isPromotionLine && (
                   <span className="text-[11px] text-gray-500 dark:text-gray-400">متاح: {Math.max(0, Number(availableToSell || 0))} • محجوز: {Math.max(0, Number(reserved || 0))}</span>
                 )}
@@ -105,7 +128,7 @@ const POSLineItemList: React.FC<Props> = ({ items, onUpdate, onRemove, onEditAdd
                   )}
                   {Number((item as any)?._fefoMinPrice) > 0 && (
                     <span className="px-2 py-1 rounded-full border border-gray-200 dark:border-gray-700">
-                      Min: {Number((item as any)._fefoMinPrice).toFixed(2)}
+                      Min: <InlineMoney amount={Number((item as any)._fefoMinPrice) || 0} />
                     </span>
                   )}
                   {Boolean((item as any)?._fefoWarningNextBatchPriceDiff) && (

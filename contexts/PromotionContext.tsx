@@ -81,6 +81,7 @@ export const PromotionProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         id: String(row.id),
         name: String(row.name || ''),
         imageUrl: typeof row.image_url === 'string' ? row.image_url : (row.data?.imageUrl || undefined),
+        currency: row.data?.currency ? String(row.data.currency).toUpperCase() : undefined,
         startAt: String(row.start_at || row.startAt || ''),
         endAt: String(row.end_at || row.endAt || ''),
         isActive: Boolean(row.is_active ?? row.isActive),
@@ -133,6 +134,7 @@ export const PromotionProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         data: {
           ...(typeof (input.promotion as any).data === 'object' ? (input.promotion as any).data : {}),
           imageUrl: (input.promotion as any).imageUrl ?? undefined,
+          currency: (input.promotion as any).currency ? String((input.promotion as any).currency).toUpperCase() : undefined,
         },
       },
       p_items: input.items.map((it) => ({

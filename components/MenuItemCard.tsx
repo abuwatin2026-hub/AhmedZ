@@ -1,12 +1,13 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { MenuItem, Addon } from '../types';
 import { useCart } from '../contexts/CartContext';
 import { useStock } from '../contexts/StockContext';
 import { useItemMeta } from '../contexts/ItemMetaContext';
-import { useSettings } from '../contexts/SettingsContext';
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
 import { CheckIcon, PlusIcon } from './icons';
+import CurrencyDualAmount from './common/CurrencyDualAmount';
+import { getBaseCurrencyCode } from '../supabase';
 
 
 interface MenuItemCardProps {
@@ -17,9 +18,15 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item }) => {
   const { addToCart } = useCart();
   const { getStockByItemId } = useStock();
   const { getUnitLabel, getFreshnessLabel, getFreshnessTone, isWeightBasedUnit } = useItemMeta();
-  const { settings } = useSettings();
-  const baseCode = String((settings as any)?.baseCurrency || '').toUpperCase() || '—';
   const [isAdded, setIsAdded] = useState(false);
+  const [baseCode, setBaseCode] = useState('');
+
+  useEffect(() => {
+    void getBaseCurrencyCode().then((c) => {
+      if (!c) return;
+      setBaseCode(c);
+    });
+  }, []);
 
   const stock = getStockByItemId(item.id);
   const isInStock = stock ? stock.availableQuantity - stock.reservedQuantity > 0 : true;
@@ -118,7 +125,7 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item }) => {
           <div className="flex justify-between items-center mt-4">
             <div className="flex flex-col">
               <span className="text-xl font-bold bg-red-gradient bg-clip-text text-transparent">
-                {Number(item.price || 0).toFixed(2)} {baseCode}
+                <CurrencyDualAmount amount={Number(item.price || 0)} currencyCode={baseCode} compact />
               </span>
               {item.unitType && (
                 <span className="text-xs text-gray-500 dark:text-gray-400">

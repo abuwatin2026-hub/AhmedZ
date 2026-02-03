@@ -1,15 +1,22 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { MenuItem } from '../types';
-import { useSettings } from '../contexts/SettingsContext';
+import CurrencyDualAmount from './common/CurrencyDualAmount';
+import { getBaseCurrencyCode } from '../supabase';
 
 interface FeaturedMenuItemCardProps {
   item: MenuItem;
 }
 
 const FeaturedMenuItemCard: React.FC<FeaturedMenuItemCardProps> = ({ item }) => {
-  const { settings } = useSettings();
-  const baseCode = String((settings as any)?.baseCurrency || '').toUpperCase() || '—';
+  const [baseCode, setBaseCode] = useState('');
+
+  useEffect(() => {
+    void getBaseCurrencyCode().then((c) => {
+      if (!c) return;
+      setBaseCode(c);
+    });
+  }, []);
 
   return (
     <Link to={`/item/${item.id}`} className="block group">
@@ -35,7 +42,9 @@ const FeaturedMenuItemCard: React.FC<FeaturedMenuItemCardProps> = ({ item }) => 
             {item.description?.ar || item.description?.en || ''}
           </p>
           <div className="mt-2">
-            <span className="text-lg font-bold bg-red-gradient bg-clip-text text-transparent">{Number(item.price || 0).toFixed(2)} {baseCode}</span>
+            <span className="text-lg font-bold bg-red-gradient bg-clip-text text-transparent">
+              <CurrencyDualAmount amount={Number(item.price || 0)} currencyCode={baseCode} compact />
+            </span>
           </div>
         </div>
 

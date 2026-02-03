@@ -6,7 +6,7 @@ import { useChallenges } from './ChallengeContext';
 import { useAuth } from './AuthContext';
 import { useSessionScope } from './SessionScopeContext';
 import { generateInvoiceNumber } from '../utils/orderUtils';
-import { getSupabaseClient, isRpcStrictMode, markRpcStrictModeEnabled, isRpcWrappersAvailable, reloadPostgrestSchema, rpcHasFunction } from '../supabase';
+import { getBaseCurrencyCode, getSupabaseClient, isRpcStrictMode, markRpcStrictModeEnabled, isRpcWrappersAvailable, reloadPostgrestSchema, rpcHasFunction } from '../supabase';
 import { createLogger } from '../utils/logger';
 import { localizeSupabaseError, isAbortLikeError } from '../utils/errorUtils';
 import { enqueueRpc, upsertOfflinePosOrder } from '../utils/offlineQueue';
@@ -1868,6 +1868,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     if (canMarkPaidUi) {
       const sbPay = getSupabaseClient();
       if (!sbPay) throw new Error('Supabase غير مهيأ.');
+      const paymentCurrency = String((newOrder as any).currency || (await getBaseCurrencyCode()) || '').toUpperCase();
       for (let i = 0; i < paymentBreakdown.length; i++) {
         const p = paymentBreakdown[i];
         const rpcErr = await rpcRecordOrderPayment(sbPay, {
@@ -1875,7 +1876,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           amount: Number(p.amount) || 0,
           method: p.method,
           occurredAt: nowIso,
-          currency: settings.baseCurrency || '',
+          currency: paymentCurrency,
           idempotencyKey: `instore:${newOrder.id}:${nowIso}:${i}:${p.method}:${Number(p.amount) || 0}`,
         });
         if (rpcErr) {
@@ -2122,7 +2123,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       userId: isUuid(input.customerId) ? input.customerId : undefined,
       orderSource: 'in_store',
       warehouseId,
-      currency: settings.baseCurrency || '',
+      currency: String((input as any).currency || (await getBaseCurrencyCode()) || '').toUpperCase(),
       customerId: input.customerId || undefined,
       items,
       subtotal: computedSubtotal,
@@ -2257,7 +2258,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       : Math.max(0, Math.min(computedSubtotal, discountValue));
     const computedTotal = Math.max(0, computedSubtotal - discountAmount);
     const nowIso = new Date().toISOString();
-    const desiredCurrency = String(((input as any).currency || settings.baseCurrency || '')).toUpperCase();
+    const desiredCurrency = String(((input as any).currency || (await getBaseCurrencyCode()) || '')).toUpperCase();
     const newOrder: Order = {
       id: crypto.randomUUID(),
       userId: isUuid(input.customerId) ? input.customerId : undefined,
@@ -2772,7 +2773,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
               amount: remaining,
               method: updated.paymentMethod,
               occurredAt: nowIso,
-              currency: settings.baseCurrency || '',
+              currency: String((updated as any).currency || (await getBaseCurrencyCode()) || '').toUpperCase(),
               idempotencyKey: `delivery:${updated.id}:${nowIso}:${Number(remaining) || 0}`,
             });
             if (error) {

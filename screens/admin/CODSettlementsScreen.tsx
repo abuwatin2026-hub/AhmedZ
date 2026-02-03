@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { useCashShift } from '../../contexts/CashShiftContext';
-import { getSupabaseClient } from '../../supabase';
+import { getBaseCurrencyCode, getSupabaseClient } from '../../supabase';
 import Spinner from '../../components/Spinner';
 import ConfirmationModal from '../../components/admin/ConfirmationModal';
 
@@ -25,8 +25,16 @@ const CODSettlementsScreen: React.FC = () => {
   const [adminUsers, setAdminUsers] = useState<any[]>([]);
   const [settlingDriverId, setSettlingDriverId] = useState<string | null>(null);
   const [confirmBatch, setConfirmBatch] = useState<null | { driverId: string; orderIds: string[]; total: number; name: string }>(null);
+  const [baseCode, setBaseCode] = useState('—');
 
   const canSettle = hasPermission('accounting.manage');
+
+  useEffect(() => {
+    void getBaseCurrencyCode().then((c) => {
+      if (!c) return;
+      setBaseCode(c);
+    });
+  }, []);
 
   const driverNameById = useMemo(() => {
     const map = new Map<string, string>();
@@ -163,7 +171,7 @@ const CODSettlementsScreen: React.FC = () => {
         <>
           {groups.missing.orderIds.length > 0 && (
             <div className="mb-6 p-4 rounded-lg border border-red-200 bg-red-50 text-red-800 dark:border-red-700 dark:bg-red-900/20 dark:text-red-200">
-              توجد طلبات COD بدون مندوب محدد: {groups.missing.orderIds.length} (إجمالي: {groups.missing.total.toFixed(2)})
+              توجد طلبات COD بدون مندوب محدد: {groups.missing.orderIds.length} (إجمالي: {groups.missing.total.toFixed(2)} {baseCode || '—'})
             </div>
           )}
 
@@ -179,7 +187,7 @@ const CODSettlementsScreen: React.FC = () => {
                       <div className="min-w-0">
                         <div className="font-bold text-gray-900 dark:text-white truncate">{name}</div>
                         <div className="text-sm text-gray-500 dark:text-gray-300">
-                          عدد الطلبات: {g.orderIds.length} — الإجمالي: <span className="font-mono">{g.total.toFixed(2)}</span>
+                          عدد الطلبات: {g.orderIds.length} — الإجمالي: <span className="font-mono">{g.total.toFixed(2)} {baseCode || '—'}</span>
                         </div>
                         {g.oldestAt && (
                           <div className="text-xs text-gray-400 mt-1">
@@ -235,7 +243,7 @@ const CODSettlementsScreen: React.FC = () => {
               </div>
               <div className="p-2 rounded bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600">
                 <div className="text-gray-500 dark:text-gray-300">الإجمالي</div>
-                <div className="font-mono text-gray-900 dark:text-white" dir="ltr">{confirmBatch.total.toFixed(2)}</div>
+                <div className="font-mono text-gray-900 dark:text-white" dir="ltr">{confirmBatch.total.toFixed(2)} {baseCode || '—'}</div>
               </div>
             </div>
             <div className="text-xs text-gray-500 dark:text-gray-300">

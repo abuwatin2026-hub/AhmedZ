@@ -7,6 +7,7 @@ import { useToast } from '../../contexts/ToastContext';
 import { useItemMeta } from '../../contexts/ItemMetaContext';
 import { useSettings } from '../../contexts/SettingsContext';
 import { toDateTimeLocalInputValueFromIso } from '../../utils/dateUtils';
+import { getBaseCurrencyCode } from '../../supabase';
 
 type PromotionDraft = Omit<Promotion, 'id' | 'items'> & { id?: string; items: PromotionItem[] };
 
@@ -20,6 +21,15 @@ interface PromotionFormModalProps {
 
 const PromotionFormModal: React.FC<PromotionFormModalProps> = ({ isOpen, onClose, onSave, promotionToEdit, isSaving }) => {
   const { menuItems } = useMenu();
+  const { language } = useSettings();
+  const [baseCode, setBaseCode] = useState('—');
+
+  useEffect(() => {
+    void getBaseCurrencyCode().then((c) => {
+      if (!c) return;
+      setBaseCode(c);
+    });
+  }, []);
 
   const sortedMenuItems = useMemo(() => {
     return [...(menuItems || [])].sort((a, b) => (a.name?.ar || '').localeCompare(b.name?.ar || '', 'ar'));
@@ -29,6 +39,7 @@ const PromotionFormModal: React.FC<PromotionFormModalProps> = ({ isOpen, onClose
     id: undefined,
     name: '',
     imageUrl: '',
+    currency: baseCode,
     startAt: new Date().toISOString(),
     endAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
     isActive: false,
@@ -57,7 +68,6 @@ const PromotionFormModal: React.FC<PromotionFormModalProps> = ({ isOpen, onClose
   const { addAd } = useAds();
   const { showNotification } = useToast();
   const { categories: categoryDefs, getCategoryLabel } = useItemMeta();
-  const { language } = useSettings();
 
   useEffect(() => {
     if (!isOpen) return;
@@ -66,6 +76,7 @@ const PromotionFormModal: React.FC<PromotionFormModalProps> = ({ isOpen, onClose
         id: promotionToEdit.id,
         name: promotionToEdit.name || '',
         imageUrl: promotionToEdit.imageUrl || '',
+        currency: String((promotionToEdit as any).currency || baseCode || '').toUpperCase(),
         startAt: promotionToEdit.startAt,
         endAt: promotionToEdit.endAt,
         isActive: promotionToEdit.isActive,
@@ -84,7 +95,7 @@ const PromotionFormModal: React.FC<PromotionFormModalProps> = ({ isOpen, onClose
       setDraft(getInitial());
     }
     setActivateOnSave(false);
-  }, [promotionToEdit, isOpen]);
+  }, [promotionToEdit, isOpen, baseCode]);
 
   const setDiscountMode = (mode: PromotionDiscountMode) => {
     setDraft((prev) => ({
@@ -123,6 +134,7 @@ const PromotionFormModal: React.FC<PromotionFormModalProps> = ({ isOpen, onClose
     await onSave({
       promotion: {
         ...draft,
+        currency: baseCode,
         startAt: new Date(draft.startAt).toISOString(),
         endAt: new Date(draft.endAt).toISOString(),
         fixedTotal: draft.discountMode === 'fixed_total' ? Number(draft.fixedTotal) || 0 : undefined,
@@ -230,6 +242,12 @@ const PromotionFormModal: React.FC<PromotionFormModalProps> = ({ isOpen, onClose
                   <option value="fixed_total">سعر نهائي</option>
                   <option value="percent_off">نسبة خصم</option>
                 </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">العملة</label>
+                <div className="mt-1 w-full p-2 border rounded-md bg-gray-100 dark:bg-gray-700 dark:border-gray-600 text-gray-700 dark:text-gray-200 font-mono text-center">
+                  {baseCode || '—'}
+                </div>
               </div>
               {draft.discountMode === 'fixed_total' ? (
                 <div>

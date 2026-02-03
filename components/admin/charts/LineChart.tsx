@@ -87,7 +87,7 @@ const LineChart: React.FC<LineChartProps> = ({
                                     textAnchor="end"
                                     dominantBaseline="middle"
                                 >
-                                    {value.toFixed(0)}
+                                    {value.toFixed(0)}{unit ? ` ${unit}` : ''}
                                 </text>
                             </g>
                         );

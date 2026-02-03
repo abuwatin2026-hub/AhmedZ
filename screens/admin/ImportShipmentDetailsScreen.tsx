@@ -6,10 +6,9 @@ import { usePriceHistory } from '../../contexts/PriceContext';
 import { useToast } from '../../contexts/ToastContext';
 import { useWarehouses } from '../../contexts/WarehouseContext';
 import { useSessionScope } from '../../contexts/SessionScopeContext';
-import { useSettings } from '../../contexts/SettingsContext';
 import { ImportShipment, ImportShipmentItem, ImportExpense } from '../../types';
 import { Plus, X, DollarSign, ArrowLeft } from '../../components/icons';
-import { getSupabaseClient } from '../../supabase';
+import { getBaseCurrencyCode, getSupabaseClient } from '../../supabase';
 
 const ImportShipmentDetailsScreen: React.FC = () => {
     const { id } = useParams<{ id: string }>();
@@ -20,8 +19,7 @@ const ImportShipmentDetailsScreen: React.FC = () => {
     const { showNotification } = useToast();
     const { warehouses } = useWarehouses();
     const { scope } = useSessionScope();
-    const { settings } = useSettings();
-    const baseCode = String((settings as any)?.baseCurrency || '').toUpperCase();
+    const [baseCode, setBaseCode] = useState('');
     const [currencyOptions, setCurrencyOptions] = useState<string[]>([]);
 
     const [shipment, setShipment] = useState<ImportShipment | null>(null);
@@ -51,6 +49,8 @@ const ImportShipmentDetailsScreen: React.FC = () => {
 
     // Form states for adding expenses
     const [showExpenseForm, setShowExpenseForm] = useState(false);
+    const [isExpenseFxManual, setIsExpenseFxManual] = useState(false);
+    const [expenseFxSource, setExpenseFxSource] = useState<'system' | 'manual' | 'base' | 'unknown'>('unknown');
     const [newExpense, setNewExpense] = useState({
         expenseType: 'shipping' as ImportExpense['expenseType'],
         amount: 0,
@@ -69,6 +69,13 @@ const ImportShipmentDetailsScreen: React.FC = () => {
         }
         loadShipment();
     }, [id]);
+
+    useEffect(() => {
+        void getBaseCurrencyCode().then((c) => {
+            if (!c) return;
+            setBaseCode(c);
+        });
+    }, []);
 
     useEffect(() => {
         let active = true;
@@ -111,6 +118,45 @@ const ImportShipmentDetailsScreen: React.FC = () => {
         const data = await getShipmentDetails(id);
         setShipment(data);
         setLoading(false);
+    };
+
+    const fetchSystemFxRate = async (currency: string) => {
+        const code = String(currency || '').trim().toUpperCase();
+        if (!code) return null;
+        if (baseCode && code === baseCode) return 1;
+        const supabase = getSupabaseClient();
+        if (!supabase) return null;
+        const d = new Date().toISOString().slice(0, 10);
+        try {
+            const { data, error } = await supabase.rpc('get_fx_rate', {
+                p_currency: code,
+                p_date: d,
+                p_rate_type: 'operational',
+            });
+            if (error) return null;
+            const n = Number(data);
+            return Number.isFinite(n) && n > 0 ? n : null;
+        } catch {
+            return null;
+        }
+    };
+
+    const applySystemExpenseFxRate = async (currency: string) => {
+        const code = String(currency || '').trim().toUpperCase();
+        if (!code) return;
+        if (baseCode && code === baseCode) {
+            setNewExpense((prev) => ({ ...prev, currency: code, exchangeRate: 1 }));
+            setExpenseFxSource('base');
+            return;
+        }
+        const rate = await fetchSystemFxRate(code);
+        if (!rate) {
+            setExpenseFxSource('unknown');
+            showNotification('لا يوجد سعر صرف تشغيلي لهذه العملة اليوم. أضف السعر من شاشة أسعار الصرف.', 'error');
+            return;
+        }
+        setNewExpense((prev) => ({ ...prev, currency: code, exchangeRate: rate }));
+        setExpenseFxSource('system');
     };
 
     const moneyRound = (v: number) => {
@@ -351,6 +397,11 @@ const ImportShipmentDetailsScreen: React.FC = () => {
             showNotification('عملة المصروف غير معرفة.', 'error');
             return;
         }
+        const isBase = Boolean(baseCode && currency === baseCode);
+        if (!isBase && !isExpenseFxManual && expenseFxSource !== 'system') {
+            showNotification('سعر الصرف يجب أن يكون من النظام أو فعّل "تعديل يدوي".', 'error');
+            return;
+        }
         const rate = Number(newExpense.exchangeRate);
         if (!Number.isFinite(rate) || rate <= 0) {
             showNotification('سعر الصرف غير صالح.', 'error');
@@ -362,13 +413,15 @@ const ImportShipmentDetailsScreen: React.FC = () => {
             expenseType: newExpense.expenseType,
             amount: newExpense.amount,
             currency,
-            exchangeRate: rate,
+            exchangeRate: isBase ? 1 : rate,
             description: newExpense.description || undefined,
             invoiceNumber: newExpense.invoiceNumber || undefined,
             paidAt: newExpense.paidAt || undefined
         });
 
         setShowExpenseForm(false);
+        setIsExpenseFxManual(false);
+        setExpenseFxSource('unknown');
         setNewExpense({ expenseType: 'shipping', amount: 0, currency: baseCode || '', exchangeRate: 1, description: '', invoiceNumber: '', paidAt: '' });
         loadShipment();
     };
@@ -405,12 +458,39 @@ const ImportShipmentDetailsScreen: React.FC = () => {
     };
 
     const calculateTotals = () => {
-        if (!shipment) return { itemsTotal: 0, expensesTotal: 0, grandTotal: 0 };
+        const summarize = (pairs: Array<{ currency?: string; amount: number }>) => {
+            const by: Record<string, number> = {};
+            for (const p of pairs) {
+                const c = String(p.currency || '').toUpperCase() || '—';
+                const v = Number(p.amount);
+                if (!Number.isFinite(v)) continue;
+                by[c] = (by[c] || 0) + v;
+            }
+            return Object.entries(by)
+                .map(([currency, total]) => ({ currency, total: moneyRound(total) }))
+                .sort((a, b) => String(a.currency).localeCompare(String(b.currency)));
+        };
 
-        const itemsTotal = shipment.items?.reduce((sum, item) => sum + (item.quantity * item.unitPriceFob), 0) || 0;
-        const expensesTotal = shipment.expenses?.reduce((sum, exp) => sum + (exp.amount * exp.exchangeRate), 0) || 0;
+        const items = Array.isArray(shipment?.items) ? shipment?.items : [];
+        const expenses = Array.isArray(shipment?.expenses) ? shipment?.expenses : [];
 
-        return { itemsTotal, expensesTotal, grandTotal: itemsTotal + expensesTotal };
+        const itemsByCurrency = summarize(items.map((i) => ({
+            currency: (i as any)?.currency,
+            amount: Number(i.quantity) * Number(i.unitPriceFob),
+        })));
+
+        const expensesByCurrency = summarize(expenses.map((e) => ({
+            currency: (e as any)?.currency,
+            amount: Number((e as any)?.amount),
+        })));
+
+        const expensesBaseTotalRaw = expenses.reduce((sum, e: any) => {
+            const v = Number(e?.baseAmount);
+            return Number.isFinite(v) ? (sum + v) : sum;
+        }, 0);
+        const expensesBaseTotal = Number.isFinite(expensesBaseTotalRaw) ? moneyRound(expensesBaseTotalRaw) : undefined;
+
+        return { itemsByCurrency, expensesByCurrency, expensesBaseTotal };
     };
 
     if (loading) {
@@ -577,19 +657,41 @@ const ImportShipmentDetailsScreen: React.FC = () => {
                 </div>
             </div>
 
-            {/* Summary Cards */}
             <div className="grid grid-cols-3 gap-4 mb-6">
                 <div className="bg-blue-50 p-4 rounded-lg">
                     <div className="text-sm text-gray-600">قيمة البضائع (FOB)</div>
-                    <div className="text-2xl font-bold">{totals.itemsTotal.toFixed(2)}</div>
+                    <div className="mt-2 space-y-1">
+                        {totals.itemsByCurrency.length === 0 ? (
+                            <div className="text-2xl font-bold">—</div>
+                        ) : (
+                            totals.itemsByCurrency.map((r: any) => (
+                                <div key={r.currency} className="text-2xl font-bold" dir="ltr">
+                                    {Number(r.total || 0).toFixed(2)} <span className="text-base">{r.currency}</span>
+                                </div>
+                            ))
+                        )}
+                    </div>
                 </div>
                 <div className="bg-orange-50 p-4 rounded-lg">
-                    <div className="text-sm text-gray-600">المصاريف الإضافية</div>
-                    <div className="text-2xl font-bold">{totals.expensesTotal.toFixed(2)}</div>
+                    <div className="text-sm text-gray-600">المصاريف (عملة المصروف)</div>
+                    <div className="mt-2 space-y-1">
+                        {totals.expensesByCurrency.length === 0 ? (
+                            <div className="text-2xl font-bold">—</div>
+                        ) : (
+                            totals.expensesByCurrency.map((r: any) => (
+                                <div key={r.currency} className="text-2xl font-bold" dir="ltr">
+                                    {Number(r.total || 0).toFixed(2)} <span className="text-base">{r.currency}</span>
+                                </div>
+                            ))
+                        )}
+                    </div>
                 </div>
                 <div className="bg-green-50 p-4 rounded-lg">
-                    <div className="text-sm text-gray-600">الإجمالي</div>
-                    <div className="text-2xl font-bold">{totals.grandTotal.toFixed(2)}</div>
+                    <div className="text-sm text-gray-600">إجمالي المصاريف (بالأساسية)</div>
+                    <div className="text-2xl font-bold mt-2" dir="ltr">
+                        {Number.isFinite(Number(totals.expensesBaseTotal)) ? Number(totals.expensesBaseTotal).toFixed(2) : '—'}{' '}
+                        <span className="text-base">{baseCode || '—'}</span>
+                    </div>
                 </div>
             </div>
 
@@ -711,8 +813,8 @@ const ImportShipmentDetailsScreen: React.FC = () => {
                                     <div className="flex-1">
                                         <div className="font-semibold">{menuItem?.name.ar || item.itemId}</div>
                                         <div className="text-sm text-gray-600">
-                                            الكمية: {item.quantity} | السعر: {item.unitPriceFob} {item.currency}
-                                            {item.landingCostPerUnit && ` | التكلفة النهائية: ${item.landingCostPerUnit.toFixed(2)}`}
+                                            الكمية: {item.quantity} | السعر: {item.unitPriceFob} {String(item.currency || '—').toUpperCase()}
+                                            {item.landingCostPerUnit && ` | التكلفة النهائية: ${item.landingCostPerUnit.toFixed(2)} ${baseCode || '—'}`}
                                         </div>
                                     </div>
                                     <button
@@ -777,7 +879,14 @@ const ImportShipmentDetailsScreen: React.FC = () => {
                                     <label className="block text-sm font-medium mb-1">العملة</label>
                                     <select
                                         value={newExpense.currency}
-                                        onChange={(e) => setNewExpense({ ...newExpense, currency: e.target.value })}
+                                        onChange={(e) => {
+                                            const code = String(e.target.value || '').toUpperCase();
+                                            setNewExpense((prev) => ({ ...prev, currency: code }));
+                                            setExpenseFxSource('unknown');
+                                            if (!isExpenseFxManual) {
+                                                void applySystemExpenseFxRate(code);
+                                            }
+                                        }}
                                         className="w-full px-3 py-2 border rounded-lg"
                                     >
                                         <option value="">اختر عملة</option>
@@ -787,14 +896,48 @@ const ImportShipmentDetailsScreen: React.FC = () => {
                                     </select>
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium mb-1">سعر الصرف</label>
-                                    <input
-                                        type="number"
-                                        step="0.01"
-                                        value={newExpense.exchangeRate}
-                                        onChange={(e) => setNewExpense({ ...newExpense, exchangeRate: Number(e.target.value) })}
-                                        className="w-full px-3 py-2 border rounded-lg"
-                                    />
+                                    <div className="flex items-center justify-between mb-1">
+                                        <label className="block text-sm font-medium">سعر الصرف</label>
+                                        <label className="flex items-center gap-2 text-xs text-gray-600">
+                                            <input
+                                                type="checkbox"
+                                                checked={isExpenseFxManual}
+                                                onChange={(e) => {
+                                                    const v = Boolean(e.target.checked);
+                                                    setIsExpenseFxManual(v);
+                                                    setExpenseFxSource(v ? 'manual' : 'unknown');
+                                                    if (!v) {
+                                                        void applySystemExpenseFxRate(newExpense.currency || baseCode || '');
+                                                    }
+                                                }}
+                                            />
+                                            تعديل يدوي
+                                        </label>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <input
+                                            type="number"
+                                            step="0.000001"
+                                            value={newExpense.exchangeRate}
+                                            onChange={(e) => {
+                                                setNewExpense({ ...newExpense, exchangeRate: Number(e.target.value) });
+                                                setExpenseFxSource('manual');
+                                            }}
+                                            disabled={!isExpenseFxManual || (Boolean(baseCode) && String(newExpense.currency || '').toUpperCase() === baseCode)}
+                                            className="w-full px-3 py-2 border rounded-lg disabled:bg-gray-100"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setExpenseFxSource('unknown');
+                                                void applySystemExpenseFxRate(newExpense.currency || '');
+                                            }}
+                                            disabled={!newExpense.currency || (Boolean(baseCode) && String(newExpense.currency || '').toUpperCase() === baseCode)}
+                                            className="px-3 py-2 rounded-lg bg-gray-200 text-gray-800 hover:bg-gray-300 disabled:opacity-60 disabled:cursor-not-allowed"
+                                        >
+                                            من النظام
+                                        </button>
+                                    </div>
                                 </div>
                                 <div className="col-span-2">
                                     <label className="block text-sm font-medium mb-1">الوصف</label>
@@ -814,7 +957,11 @@ const ImportShipmentDetailsScreen: React.FC = () => {
                                     حفظ
                                 </button>
                                 <button
-                                    onClick={() => setShowExpenseForm(false)}
+                                    onClick={() => {
+                                        setShowExpenseForm(false);
+                                        setIsExpenseFxManual(false);
+                                        setExpenseFxSource('unknown');
+                                    }}
                                     className="bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400"
                                 >
                                     إلغاء
@@ -829,7 +976,15 @@ const ImportShipmentDetailsScreen: React.FC = () => {
                                 <div className="flex-1">
                                     <div className="font-semibold">{getExpenseTypeLabel(expense.expenseType)}</div>
                                     <div className="text-sm text-gray-600">
-                                        {expense.amount} {expense.currency} × {expense.exchangeRate} = {(expense.amount * expense.exchangeRate).toFixed(2)}
+                                        <span dir="ltr">
+                                            {Number(expense.amount || 0).toFixed(2)} {String(expense.currency || '—').toUpperCase()}
+                                        </span>{' '}
+                                        <span dir="ltr">
+                                            • FX={Number(expense.exchangeRate || 0).toFixed(6)}
+                                        </span>{' '}
+                                        <span dir="ltr">
+                                            • ≈ {Number.isFinite(Number((expense as any).baseAmount)) ? Number((expense as any).baseAmount).toFixed(2) : '—'} {baseCode || '—'}
+                                        </span>
                                         {expense.description && ` | ${expense.description}`}
                                     </div>
                                 </div>

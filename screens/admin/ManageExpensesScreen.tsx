@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { getSupabaseClient } from '../../supabase';
+import { getBaseCurrencyCode, getSupabaseClient } from '../../supabase';
 import { Expense, CostCenter } from '../../types';
 import { useToast } from '../../contexts/ToastContext';
 // import { useSettings } from '../../contexts/SettingsContext';
@@ -11,6 +11,7 @@ const ManageExpensesScreen: React.FC = () => {
     const [expenses, setExpenses] = useState<Expense[]>([]);
     const [costCenters, setCostCenters] = useState<CostCenter[]>([]);
     const [loading, setLoading] = useState(true);
+    const [baseCode, setBaseCode] = useState('—');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
     const [filterDate, setFilterDate] = useState<string>(toMonthInputValue());
@@ -38,6 +39,13 @@ const ManageExpensesScreen: React.FC = () => {
         if (raw === 'bank') return 'kuraimi';
         return raw;
     };
+
+    useEffect(() => {
+        void getBaseCurrencyCode().then((c) => {
+            if (!c) return;
+            setBaseCode(c);
+        });
+    }, []);
 
     useEffect(() => {
         fetchExpenses();
@@ -218,7 +226,7 @@ const ManageExpensesScreen: React.FC = () => {
                     className="p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600"
                 />
                 <div className="mr-auto font-bold text-lg dark:text-white">
-                    الإجمالي: <span className="text-red-500" dir="ltr">{Number(totalExpenses || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    الإجمالي: <span className="text-red-500" dir="ltr">{Number(totalExpenses || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {baseCode || '—'}</span>
                 </div>
             </div>
 
@@ -249,7 +257,7 @@ const ManageExpensesScreen: React.FC = () => {
                                         {exp.notes && <div className="text-xs text-gray-500">{exp.notes}</div>}
                                     </td>
                                     <td className="p-2 sm:p-3 border-r dark:border-gray-700"><span className="px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded text-xs">{categoryLabels[exp.category] || exp.category}</span></td>
-                                    <td className="p-2 sm:p-3 font-bold text-red-600 border-r dark:border-gray-700" dir="ltr">{Number(exp.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                    <td className="p-2 sm:p-3 font-bold text-red-600 border-r dark:border-gray-700" dir="ltr">{Number(exp.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {baseCode || '—'}</td>
                                     <td className="p-2 sm:p-3">
                                         <button onClick={() => openPaymentModal(exp)} className="text-primary-600 hover:text-primary-700 text_sm ml-3">دفع</button>
                                         <button onClick={() => handleDelete(exp.id)} className="text-red-500 hover:text-red-700 text_sm">حذف</button>

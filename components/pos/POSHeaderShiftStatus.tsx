@@ -1,11 +1,21 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useCashShift } from '../../contexts/CashShiftContext';
 import ShiftManagementModal from '../admin/ShiftManagementModal';
+import CurrencyDualAmount from '../common/CurrencyDualAmount';
+import { getBaseCurrencyCode } from '../../supabase';
 
 const POSHeaderShiftStatus: React.FC = () => {
   const { currentShift, expectedCash, loading } = useCashShift();
   const [openModal, setOpenModal] = useState(false);
   const isOpen = Boolean(currentShift);
+  const [baseCode, setBaseCode] = useState<string>('');
+
+  useEffect(() => {
+    void getBaseCurrencyCode().then((c) => {
+      if (!c) return;
+      setBaseCode(c);
+    });
+  }, []);
 
   return (
     <div className="flex items-center justify-between bg-white dark:bg-gray-800 rounded-xl shadow p-3">
@@ -17,7 +27,7 @@ const POSHeaderShiftStatus: React.FC = () => {
       </div>
       <div className="flex items-center gap-3">
         <div className="text-sm font-bold text-indigo-600">
-          {isOpen ? `المتوقع: ${expectedCash.toFixed(2)}` : ''}
+          {isOpen ? <CurrencyDualAmount amount={Number(expectedCash) || 0} currencyCode={baseCode} label="المتوقع" compact /> : ''}
         </div>
         <button
           onClick={() => setOpenModal(true)}

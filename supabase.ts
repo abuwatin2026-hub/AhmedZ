@@ -211,3 +211,47 @@ export const reloadPostgrestSchema = async (): Promise<boolean> => {
   if (!ok) postgrestReloadAttempt = null;
   return ok;
 };
+
+let cachedBaseCurrencyCode: string | null = null;
+let baseCurrencyCodePromise: Promise<string | null> | null = null;
+
+export const getBaseCurrencyCode = async (): Promise<string | null> => {
+  if (cachedBaseCurrencyCode) return cachedBaseCurrencyCode;
+  const supabase = getSupabaseClient();
+  if (!supabase) return null;
+  if (baseCurrencyCodePromise) return baseCurrencyCodePromise;
+
+  baseCurrencyCodePromise = (async () => {
+    try {
+      const { data, error } = await supabase.rpc('get_base_currency');
+      if (!error) {
+        const code = String(data || '').toUpperCase().trim();
+        if (code) return code;
+      }
+    } catch {
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('currencies')
+        .select('code')
+        .eq('is_base', true)
+        .limit(1)
+        .maybeSingle();
+      if (error) return null;
+      const code = String((data as any)?.code || '').toUpperCase().trim();
+      return code || null;
+    } catch {
+      return null;
+    }
+  })()
+    .then((code) => {
+      cachedBaseCurrencyCode = code;
+      return code;
+    })
+    .finally(() => {
+      baseCurrencyCodePromise = null;
+    });
+
+  return baseCurrencyCodePromise;
+};

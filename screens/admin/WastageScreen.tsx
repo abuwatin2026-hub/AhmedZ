@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { getSupabaseClient } from '../../supabase';
+import { getBaseCurrencyCode, getSupabaseClient } from '../../supabase';
 import { useMenu } from '../../contexts/MenuContext';
 import { useWarehouses } from '../../contexts/WarehouseContext';
 import { useToast } from '../../contexts/ToastContext';
@@ -10,6 +10,7 @@ const WastageScreen: React.FC = () => {
   const { menuItems } = useMenu();
   const { warehouses } = useWarehouses();
   const { showNotification } = useToast();
+  const [baseCode, setBaseCode] = useState('—');
   const [selectedItemId, setSelectedItemId] = useState<string>('');
   const [selectedWarehouseId, setSelectedWarehouseId] = useState<string>('');
   const [batches, setBatches] = useState<Array<{ batchId: string; unitCost: number; expiryDate?: string }>>([]);
@@ -18,6 +19,13 @@ const WastageScreen: React.FC = () => {
   const [unit, setUnit] = useState<string>('piece');
   const [reason, setReason] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
+
+  useEffect(() => {
+    void getBaseCurrencyCode().then((c) => {
+      if (!c) return;
+      setBaseCode(c);
+    });
+  }, []);
 
   const itemsSorted = useMemo(() => {
     return [...(menuItems || [])].sort((a: MenuItem, b: MenuItem) => {
@@ -129,7 +137,7 @@ const WastageScreen: React.FC = () => {
             <option value="">بدون</option>
             {batches.map(b => (
               <option key={b.batchId} value={b.batchId}>
-                {b.batchId.slice(0,8)} • تكلفة {b.unitCost.toFixed(2)} • {b.expiryDate ? `انتهاء ${b.expiryDate}` : 'بدون انتهاء'}
+                {b.batchId.slice(0,8)} • تكلفة {b.unitCost.toFixed(2)} {baseCode || '—'} • {b.expiryDate ? `انتهاء ${b.expiryDate}` : 'بدون انتهاء'}
               </option>
             ))}
           </select>

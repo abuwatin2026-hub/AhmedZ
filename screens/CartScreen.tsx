@@ -1,17 +1,16 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useCart } from '../contexts/CartContext';
 import type { CartItem } from '../types';
 import { useItemMeta } from '../contexts/ItemMetaContext';
-import { useSettings } from '../contexts/SettingsContext';
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
 import { MinusIcon, PlusIcon, TagIcon, TrashIcon } from '../components/icons';
+import CurrencyDualAmount from '../components/common/CurrencyDualAmount';
+import { getBaseCurrencyCode } from '../supabase';
 
-const CartItemCard: React.FC<{ item: CartItem }> = ({ item }) => {
+const CartItemCard: React.FC<{ item: CartItem; currencyCode: string }> = ({ item, currencyCode }) => {
     const { updateQuantity, removeFromCart } = useCart();
     const { getUnitLabel, isWeightBasedUnit } = useItemMeta();
-    const { settings } = useSettings();
-    const baseCode = String((settings as any)?.baseCurrency || '').toUpperCase() || '—';
 
     const selectedAddonsArray = Object.values(item.selectedAddons);
     const addonsPrice = selectedAddonsArray.reduce((sum: number, { addon, quantity }) => sum + addon.price * quantity, 0);
@@ -73,10 +72,12 @@ const CartItemCard: React.FC<{ item: CartItem }> = ({ item }) => {
                 )}
             </div>
             <div className="text-right flex flex-col items-end h-full">
-                <p className="font-bold text-lg bg-red-gradient bg-clip-text text-transparent">{itemSubtotal.toFixed(2)} {baseCode}</p>
+                <p className="font-bold text-lg bg-red-gradient bg-clip-text text-transparent">
+                  <CurrencyDualAmount amount={Number(itemSubtotal) || 0} currencyCode={currencyCode} compact />
+                </p>
                 {item.unitType && (
                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                        {itemPrice.toFixed(2)} {baseCode}/{unitLabel}
+                        <CurrencyDualAmount amount={Number(itemPrice) || 0} currencyCode={currencyCode} compact />/{unitLabel}
                     </p>
                 )}
                 <div className="flex-grow"></div>
@@ -94,8 +95,14 @@ const CartScreen: React.FC = () => {
     const { cartItems, getCartSubtotal, getCartTotal, applyCoupon, appliedCoupon, removeCoupon, discountAmount, deliveryFee } = useCart();
     const navigate = useNavigate();
     const [promoCode, setPromoCode] = useState('');
-    const { settings } = useSettings();
-    const baseCode = String((settings as any)?.baseCurrency || '').toUpperCase() || '—';
+    const [baseCode, setBaseCode] = useState('');
+
+    useEffect(() => {
+      void getBaseCurrencyCode().then((c) => {
+        if (!c) return;
+        setBaseCode(c);
+      });
+    }, []);
 
     const handleApplyCoupon = () => {
         if (promoCode.trim()) {
@@ -134,7 +141,7 @@ const CartScreen: React.FC = () => {
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                     <div className="lg:col-span-2 space-y-4">
                         {cartItems.map(item => (
-                            <CartItemCard key={item.cartItemId} item={item} />
+                            <CartItemCard key={item.cartItemId} item={item} currencyCode={baseCode} />
                         ))}
                     </div>
                     <div className="lg:col-span-1">
@@ -172,13 +179,13 @@ const CartScreen: React.FC = () => {
                                 <div className="space-y-3">
                                     <div className="flex justify-between items-center text-gray-700 dark:text-gray-300">
                                         <span>{'المجموع الفرعي'}:</span>
-                                        <span className="font-mono">{subtotal.toFixed(2)} {baseCode}</span>
+                                        <CurrencyDualAmount amount={Number(subtotal) || 0} currencyCode={baseCode} compact />
                                     </div>
                                     {appliedCoupon && (
                                         <div className="flex justify-between items-center text-green-600 dark:text-green-400">
                                             <span>{'خصم'} ({appliedCoupon.code}):</span>
                                             <div className="flex items-center gap-2">
-                                                <span className="font-mono">- {discountAmount.toFixed(2)} {baseCode}</span>
+                                                <CurrencyDualAmount amount={-Math.abs(Number(discountAmount) || 0)} currencyCode={baseCode} compact />
                                                 <button onClick={removeCoupon} title={'إزالة الكوبون'} className="text-red-500 hover:text-red-700 text-xs">
                                                     [{'إزالة الكوبون'}]
                                                 </button>
@@ -187,12 +194,14 @@ const CartScreen: React.FC = () => {
                                     )}
                                     <div className="flex justify-between items-center text-gray-700 dark:text-gray-300">
                                         <span>{'رسوم التوصيل'}:</span>
-                                        <span className="font-mono">{(Number(deliveryFee) || 0).toFixed(2)} {baseCode}</span>
+                                        <CurrencyDualAmount amount={Number(deliveryFee) || 0} currencyCode={baseCode} compact />
                                     </div>
                                     <div className="border-t border-gray-200 dark:border-gray-700"></div>
                                     <div className="flex justify-between items-center text-xl font-bold">
                                         <span className="dark:text-gray-200">{'الإجمالي'}:</span>
-                                        <span className="text-2xl bg-red-gradient bg-clip-text text-transparent font-extrabold">{total.toFixed(2)} {baseCode}</span>
+                                        <span className="text-2xl bg-red-gradient bg-clip-text text-transparent font-extrabold">
+                                          <CurrencyDualAmount amount={Number(total) || 0} currencyCode={baseCode} compact />
+                                        </span>
                                     </div>
                                 </div>
 

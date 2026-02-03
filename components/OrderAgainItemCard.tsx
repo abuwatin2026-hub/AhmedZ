@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { CartItem } from '../types';
 import { useCart } from '../contexts/CartContext';
 import { CheckIcon, PlusIcon } from './icons';
+import CurrencyDualAmount from './common/CurrencyDualAmount';
+import { getBaseCurrencyCode } from '../supabase';
 
 interface OrderAgainItemCardProps {
   item: CartItem;
@@ -11,6 +13,14 @@ interface OrderAgainItemCardProps {
 const OrderAgainItemCard: React.FC<OrderAgainItemCardProps> = ({ item }) => {
   const { addToCart } = useCart();
   const [isAdded, setIsAdded] = useState(false);
+  const [baseCode, setBaseCode] = useState('');
+
+  useEffect(() => {
+    void getBaseCurrencyCode().then((c) => {
+      if (!c) return;
+      setBaseCode(c);
+    });
+  }, []);
 
   const handleQuickAdd = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -45,7 +55,9 @@ const OrderAgainItemCard: React.FC<OrderAgainItemCardProps> = ({ item }) => {
             <h3 className="text-sm font-bold text-gray-800 dark:text-white truncate group-hover:text-primary-600 dark:group-hover:text-gold-400 transition-colors">{item.name?.ar || item.name?.en || ''}</h3>
           </Link>
           <div className="flex justify-between items-center mt-2">
-            <span className="text-md font-bold bg-red-gradient bg-clip-text text-transparent">{Number(item.price || 0).toFixed(2)}</span>
+            <span className="text-md font-bold bg-red-gradient bg-clip-text text-transparent">
+              <CurrencyDualAmount amount={Number(item.price || 0)} currencyCode={baseCode} compact />
+            </span>
             <button
               onClick={handleQuickAdd}
               title="إضافة سريعة"

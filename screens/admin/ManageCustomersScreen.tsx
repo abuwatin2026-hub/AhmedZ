@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useUserAuth } from '../../contexts/UserAuthContext';
-import { useSettings } from '../../contexts/SettingsContext';
 import { useOrders } from '../../contexts/OrderContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
@@ -9,7 +8,7 @@ import { Customer, Order, OrderStatus } from '../../types';
 import ManagePointsModal from '../../components/admin/ManagePointsModal';
 import { StarIcon } from '../../components/icons';
 import Spinner from '../../components/Spinner';
-import { getSupabaseClient } from '../../supabase';
+import { getBaseCurrencyCode, getSupabaseClient } from '../../supabase';
 import ConfirmationModal from '../../components/admin/ConfirmationModal';
 import CurrencyDualAmount from '../../components/common/CurrencyDualAmount';
 
@@ -19,8 +18,7 @@ const ManageCustomersScreen: React.FC = () => {
   const { updateOrderStatus, markOrderPaid } = useOrders();
   const { hasPermission, listAdminUsers } = useAuth();
   const { showNotification } = useToast();
-  const { settings } = useSettings();
-  const baseCode = String((settings as any)?.baseCurrency || '').toUpperCase();
+  const [baseCode, setBaseCode] = useState('—');
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [customerOrders, setCustomerOrders] = useState<Order[]>([]);
@@ -38,6 +36,13 @@ const ManageCustomersScreen: React.FC = () => {
   });
   const [savingCustomer, setSavingCustomer] = useState(false);
   const [cancelOrderId, setCancelOrderId] = useState<string | null>(null);
+
+  useEffect(() => {
+    void getBaseCurrencyCode().then((c) => {
+      if (!c) return;
+      setBaseCode(c);
+    });
+  }, []);
   const [isCancellingOrder, setIsCancellingOrder] = useState(false);
   const [deleteCustomerId, setDeleteCustomerId] = useState<string | null>(null);
   const [isDeletingCustomer, setIsDeletingCustomer] = useState(false);
@@ -712,7 +717,7 @@ const ManageCustomersScreen: React.FC = () => {
                             {Object.entries(customerOrderStats.totalsByCurrency || {}).map(([c, amt]) => (
                               <div key={c} className="flex items-center justify-between gap-2" dir="ltr">
                                 <span className="font-mono">{c}</span>
-                                <span className="font-mono">{Number(amt || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                <CurrencyDualAmount amount={Number(amt || 0)} currencyCode={c} compact />
                               </div>
                             ))}
                           </div>
@@ -778,7 +783,15 @@ const ManageCustomersScreen: React.FC = () => {
                                   order.status
                                 )}
                               </td>
-                              <td className="px-4 py-3 text-sm font-mono text-gray-800 dark:text-gray-200">{Number(order.total || 0).toFixed(2)}</td>
+                              <td className="px-4 py-3 text-sm text-gray-800 dark:text-gray-200">
+                                <CurrencyDualAmount
+                                  amount={Number(order.total || 0)}
+                                  currencyCode={(order as any).currency}
+                                  baseAmount={(order as any).baseTotal}
+                                  fxRate={(order as any).fxRate}
+                                  compact
+                                />
+                              </td>
                               <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">
                                 <div className="flex flex-col gap-1">
                                   <div>{order.paymentMethod}</div>

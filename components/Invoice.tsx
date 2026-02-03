@@ -2,6 +2,7 @@ import { forwardRef } from 'react';
 import { Order, AppSettings, CartItem } from '../types';
 import { useDeliveryZones } from '../contexts/DeliveryZoneContext';
 import { computeCartItemPricing } from '../utils/orderUtils';
+import CurrencyDualAmount from './common/CurrencyDualAmount';
 
 interface InvoiceProps {
   order: Order;
@@ -51,6 +52,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, aud
     const invoiceTerms: 'cash' | 'credit' = (invoiceOrder as any).invoiceTerms === 'credit' || invoiceOrder.paymentMethod === 'ar' ? 'credit' : 'cash';
     const invoiceTermsLabel = invoiceTerms === 'credit' ? 'أجل' : 'نقد';
     const invoiceDueDate = typeof (invoiceOrder as any).dueDate === 'string' ? String((invoiceOrder as any).dueDate) : '';
+    const currencyCode = String((invoiceOrder as any).currency || '').toUpperCase() || '—';
 
     const getPaymentMethodName = (method: string) => {
         const methods: Record<string, string> = {
@@ -167,8 +169,12 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, aud
                                     )}
                                 </td>
                                 <td className="py-3 px-6 text-center">{displayQty}</td>
-                                <td className="py-3 px-6 text-center font-mono">{pricing.unitPrice.toFixed(2)}</td>
-                                <td className="py-3 px-6 text-right font-mono">{pricing.lineTotal.toFixed(2)}</td>
+                                <td className="py-3 px-6 text-center">
+                                    <CurrencyDualAmount amount={pricing.unitPrice} currencyCode={currencyCode} compact />
+                                </td>
+                                <td className="py-3 px-6 text-right">
+                                    <CurrencyDualAmount amount={pricing.lineTotal} currencyCode={currencyCode} compact />
+                                </td>
                             </tr>
                         );
                     })}
@@ -180,16 +186,20 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, aud
                     <div className="space-y-3">
                          <div className="flex justify-between items-center text-gray-600">
                             <span>المجموع الفرعي</span>
-                            <span className="font-mono">{invoiceOrder.subtotal.toFixed(2)} ج.م</span>
+                            <CurrencyDualAmount
+                                amount={Number(invoiceOrder.subtotal) || 0}
+                                currencyCode={currencyCode}
+                                compact
+                            />
                         </div>
                         <div className="flex justify-between items-center text-gray-600">
                             <span>رسوم التوصيل</span>
-                            <span className="font-mono">{(Number(invoiceOrder.deliveryFee) || 0).toFixed(2)} ج.م</span>
+                            <CurrencyDualAmount amount={Number(invoiceOrder.deliveryFee) || 0} currencyCode={currencyCode} compact />
                         </div>
                         {(invoiceOrder.discountAmount || 0) > 0 && (
                              <div className="flex justify-between items-center text-green-600">
                                 <span>الخصم</span>
-                                <span className="font-mono">- {(invoiceOrder.discountAmount || 0).toFixed(2)} ج.م</span>
+                                <CurrencyDualAmount amount={-Math.abs(Number(invoiceOrder.discountAmount) || 0)} currencyCode={currencyCode} compact />
                             </div>
                         )}
                         {audit && (audit.discountType || audit.journalEntryId || (Array.isArray(audit.promotions) && audit.promotions.length > 0)) && (
@@ -234,7 +244,15 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, aud
                         <div className="border-t-2 border-gray-200"></div>
                         <div className="flex justify-between items-center text-2xl font-bold text-gray-800">
                             <span>الإجمالي الكلي</span>
-                            <span className="text-orange-500">{invoiceOrder.total.toFixed(2)} ج.م</span>
+                            <span className="text-orange-500">
+                                <CurrencyDualAmount
+                                    amount={Number(invoiceOrder.total) || 0}
+                                    currencyCode={currencyCode}
+                                    baseAmount={(invoiceOrder as any).baseTotal}
+                                    fxRate={(invoiceOrder as any).fxRate}
+                                    compact
+                                />
+                            </span>
                         </div>
                     </div>
                 </div>

@@ -323,7 +323,7 @@ const POSItemSearch: React.FC<Props> = ({ onAddLine, inputRef, disabled, touchMo
                 <div className="min-w-0">
                   <div className={`font-bold dark:text-white truncate ${touchMode ? 'text-lg' : ''}`}>{item.name?.ar || item.name?.en || item.id}</div>
                   <div className={`text-gray-600 dark:text-gray-300 ${touchMode ? 'text-base' : 'text-sm'}`}>
-                    {isWeight ? 'وزن' : 'كمية'} • {item.price.toFixed(2)}
+                    {isWeight ? 'وزن' : 'كمية'} • سعر حسب العملة المختارة
                   </div>
                   <div className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
                     متاح: {Number(item.availableStock || 0)} {item.unitType === 'gram' ? 'غ' : item.unitType === 'kg' ? 'كغ' : 'ق'} • محجوز: {Number((item as any).reservedQuantity || 0)}

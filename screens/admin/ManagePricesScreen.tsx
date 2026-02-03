@@ -1,24 +1,30 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useMenu } from '../../contexts/MenuContext';
 import { usePriceHistory } from '../../contexts/PriceContext';
 import type { MenuItem, PriceHistory } from '../../types';
 import { useItemMeta } from '../../contexts/ItemMetaContext';
 import { useToast } from '../../contexts/ToastContext';
-import { useSettings } from '../../contexts/SettingsContext';
 import CurrencyDualAmount from '../../components/common/CurrencyDualAmount';
+import { getBaseCurrencyCode } from '../../supabase';
 
 const ManagePricesScreen: React.FC = () => {
     const { menuItems } = useMenu();
     const { updatePrice, getPriceHistoryByItemId } = usePriceHistory();
-    const { settings } = useSettings();
     const { categories: categoryDefs, getCategoryLabel, getUnitLabel } = useItemMeta();
     const { showNotification } = useToast();
-    const baseCode = String((settings as any)?.baseCurrency || '').toUpperCase();
+    const [baseCode, setBaseCode] = useState('—');
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedCategory, setSelectedCategory] = useState('all');
     const [selectedItem, setSelectedItem] = useState<string | null>(null);
     const [newPrice, setNewPrice] = useState('');
     const [reason, setReason] = useState('');
+
+    useEffect(() => {
+        void getBaseCurrencyCode().then((c) => {
+            if (!c) return;
+            setBaseCode(c);
+        });
+    }, []);
 
     // Get unique categories
     const categories = useMemo(() => {

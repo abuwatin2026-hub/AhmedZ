@@ -7,7 +7,7 @@ import { useItemMeta } from '../../contexts/ItemMetaContext';
 import { MinusIcon, PlusIcon } from '../../components/icons';
 import { useToast } from '../../contexts/ToastContext';
 import { useAuth } from '../../contexts/AuthContext';
-import { getSupabaseClient } from '../../supabase';
+import { getBaseCurrencyCode, getSupabaseClient } from '../../supabase';
 import { useSessionScope } from '../../contexts/SessionScopeContext';
 
 import RecordWastageModal from '../../components/admin/RecordWastageModal';
@@ -16,6 +16,7 @@ type StockRowProps = {
     item: MenuItem;
     stock: StockManagement | undefined;
     warehouseId: string;
+    baseCode: string;
     getCategoryLabel: (categoryKey: string, language: 'ar' | 'en') => string;
     getUnitLabel: (unitKey: UnitType | undefined, language: 'ar' | 'en') => string;
     handleUpdateStock: (itemId: string, newQuantity: number, unit: string, batchId?: string) => Promise<void>;
@@ -27,7 +28,7 @@ type StockRowProps = {
     setWastageItem: (item: MenuItem | null) => void;
 };
 
-const StockRow = ({ item, stock, warehouseId, getCategoryLabel, getUnitLabel, handleUpdateStock, toggleHistory, expandedHistoryItemId, historyLoadingItemId, historyByItemId, setIsWastageModalOpen, setWastageItem }: StockRowProps) => {
+const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUnitLabel, handleUpdateStock, toggleHistory, expandedHistoryItemId, historyLoadingItemId, historyByItemId, setIsWastageModalOpen, setWastageItem }: StockRowProps) => {
     const { hasPermission } = useAuth();
     const { showNotification } = useToast();
     const currentStock = Number(stock?.availableQuantity ?? 0);
@@ -264,7 +265,7 @@ const StockRow = ({ item, stock, warehouseId, getCategoryLabel, getUnitLabel, ha
                                         <div className="flex items-start justify-between gap-2">
                                             <div className="min-w-0">
                                                 <div className="font-semibold">
-                                                    {String(b.batchId).slice(0, 8)} • كلفة {Number(b.unitCost || 0).toLocaleString('en-US')}
+                                                    {String(b.batchId).slice(0, 8)} • كلفة {Number(b.unitCost || 0).toLocaleString('en-US')} {baseCode || '—'}
                                                 </div>
                                                 <div className="text-gray-500 dark:text-gray-400">
                                                     وارد {Number(b.receivedQuantity || 0).toLocaleString('en-US')} • مستهلك {Number(b.consumedQuantity || 0).toLocaleString('en-US')} • متبقٍ {Number(b.remainingQuantity || 0).toLocaleString('en-US')}
@@ -379,6 +380,7 @@ const ManageStockScreen: React.FC = () => {
     const { showNotification } = useToast();
     const sessionScope = useSessionScope();
     const warehouseId = sessionScope.scope?.warehouseId || '';
+    const [baseCode, setBaseCode] = useState('—');
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedCategory, setSelectedCategory] = useState('all');
     const [reason, setReason] = useState('');
@@ -388,6 +390,13 @@ const ManageStockScreen: React.FC = () => {
 
     const [isWastageModalOpen, setIsWastageModalOpen] = useState(false);
     const [wastageItem, setWastageItem] = useState<MenuItem | null>(null);
+
+    useEffect(() => {
+        void getBaseCurrencyCode().then((c) => {
+            if (!c) return;
+            setBaseCode(c);
+        });
+    }, []);
 
     // Get unique categories
     const categories = useMemo(() => {
@@ -563,6 +572,7 @@ const ManageStockScreen: React.FC = () => {
                                         item={item}
                                         stock={stock}
                                         warehouseId={warehouseId}
+                                        baseCode={baseCode}
                                         getCategoryLabel={getCategoryLabel}
                                         getUnitLabel={getUnitLabel}
                                         handleUpdateStock={handleUpdateStock}

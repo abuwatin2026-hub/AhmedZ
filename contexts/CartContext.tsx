@@ -1,10 +1,9 @@
-import React, { createContext, useContext, useState, ReactNode, useMemo, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useState, ReactNode, useMemo, useCallback } from 'react';
 import type { CartItem, Coupon } from '../types';
 import { useCoupons } from './CouponContext';
 import { useToast } from './ToastContext';
 import { usePromotions } from './PromotionContext';
-import { useSettings } from './SettingsContext';
-import { getSupabaseClient } from '../supabase';
+import { getBaseCurrencyCode, getSupabaseClient } from '../supabase';
 import { localizeSupabaseError } from '../utils/errorUtils';
 
 
@@ -39,8 +38,14 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const { validateCoupon } = useCoupons();
   const { showNotification } = useToast();
   const { applyPromotionToCart } = usePromotions();
-  const { settings } = useSettings();
-  const baseCode = String((settings as any)?.baseCurrency || '').toUpperCase() || '—';
+  const [baseCode, setBaseCode] = useState<string>('—');
+
+  useEffect(() => {
+    void getBaseCurrencyCode().then((c) => {
+      if (!c) return;
+      setBaseCode(c);
+    });
+  }, []);
 
 
   const addToCart = (item: CartItem) => {
@@ -67,6 +72,12 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         warehouseId: null,
         couponCode: null,
       });
+
+      const snapshotCurrency = String((snapshot as any)?.currency || '').toUpperCase();
+      if (snapshotCurrency && baseCode && baseCode !== '—' && snapshotCurrency !== baseCode) {
+        showNotification(`هذا العرض بعملة ${snapshotCurrency} ولا يمكن إضافته لسلة بعملة ${baseCode}.`, 'error');
+        return;
+      }
 
       const bundleQty = Math.max(1, Number(snapshot.bundleQty) || 1);
       const lineUnitPrice = bundleQty > 0 ? (Number(snapshot.finalTotal) || 0) / bundleQty : (Number(snapshot.finalTotal) || 0);
@@ -184,6 +195,12 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
     const coupon = validateCoupon(code);
     if (coupon) {
+      const couponCurrency = String((coupon as any).currency || '').toUpperCase();
+      if (couponCurrency && baseCode && baseCode !== '—' && couponCurrency !== baseCode) {
+        showNotification(`كوبون العملة ${couponCurrency} لا يمكن تطبيقه على طلب بعملة ${baseCode}.`, 'error');
+        setAppliedCoupon(null);
+        return;
+      }
       // Validate Min Order Amount
       const subtotal = getCartSubtotal();
       if (coupon.minOrderAmount && subtotal < coupon.minOrderAmount) {

@@ -20,7 +20,7 @@ import OsmMapEmbed from '../../components/OsmMapEmbed';
 import NumberInput from '../../components/NumberInput';
 import { useMenu } from '../../contexts/MenuContext';
 import { useItemMeta } from '../../contexts/ItemMetaContext';
-import { getSupabaseClient } from '../../supabase';
+import { getBaseCurrencyCode, getSupabaseClient } from '../../supabase';
 import { printContent } from '../../utils/printUtils';
 import CurrencyDualAmount from '../../components/common/CurrencyDualAmount';
 import { toDateTimeLocalInputValue } from '../../utils/dateUtils';
@@ -61,6 +61,7 @@ const ManageOrdersScreen: React.FC = () => {
     const { showNotification } = useToast();
     const language = 'ar';
     const { settings } = useSettings();
+    const [baseCode, setBaseCode] = useState('—');
     const IN_STORE_DELIVERY_ZONE_ID = '11111111-1111-4111-8111-111111111111';
     const isInStoreOrder = (order: Order) => {
         if (!order) return false;
@@ -71,6 +72,13 @@ const ManageOrdersScreen: React.FC = () => {
         const addr = String((order as any).address || '').trim();
         return addr === 'داخل المحل';
     };
+
+    useEffect(() => {
+        void getBaseCurrencyCode().then((c) => {
+            if (!c) return;
+            setBaseCode(c);
+        });
+    }, []);
     
     // Return Logic State
     const [returnOrderId, setReturnOrderId] = useState<string | null>(null);
@@ -161,10 +169,16 @@ const ManageOrdersScreen: React.FC = () => {
     const operationalCurrencies = useMemo(() => {
         const list = Array.isArray(settings.operationalCurrencies) && settings.operationalCurrencies.length
             ? settings.operationalCurrencies
-            : (settings.baseCurrency ? [String(settings.baseCurrency)] : []);
+            : (baseCode ? [String(baseCode)] : []);
         return list.map(c => String(c || '').toUpperCase()).filter(Boolean);
-    }, [settings.baseCurrency, settings.operationalCurrencies]);
+    }, [baseCode, settings.operationalCurrencies]);
     const [inStoreTransactionCurrency, setInStoreTransactionCurrency] = useState<string>(() => operationalCurrencies[0] || '');
+
+    useEffect(() => {
+        if (inStoreTransactionCurrency) return;
+        const next = operationalCurrencies[0] || '';
+        if (next) setInStoreTransactionCurrency(next);
+    }, [inStoreTransactionCurrency, operationalCurrencies]);
     const [mapModal, setMapModal] = useState<{ title: string; coords: { lat: number; lng: number } } | null>(null);
     const [paidSumByOrderId, setPaidSumByOrderId] = useState<Record<string, number>>({});
     const [partialPaymentOrderId, setPartialPaymentOrderId] = useState<string | null>(null);
@@ -1269,7 +1283,7 @@ const ManageOrdersScreen: React.FC = () => {
                             if (bal <= 0.01) return null;
                             return (
                                 <span className="px-2 py-1 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 dark:bg-amber-900/30 dark:text-amber-200">
-                                    نقد لدى المندوب: <span className="font-mono ms-1" dir="ltr">{bal.toFixed(2)}</span>
+                                    نقد لدى المندوب: <span className="font-mono ms-1" dir="ltr">{bal.toFixed(2)} {baseCode || '—'}</span>
                                 </span>
                             );
                         })()}
@@ -1641,7 +1655,7 @@ const ManageOrdersScreen: React.FC = () => {
                                                 return (
                                                     <div className="mt-1">
                                                         <span className="inline-flex items-center px-2 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-900 dark:bg-amber-900/30 dark:text-amber-200">
-                                                            نقد لدى المندوب: <span className="font-mono ms-1" dir="ltr">{bal.toFixed(2)}</span>
+                                                            نقد لدى المندوب: <span className="font-mono ms-1" dir="ltr">{bal.toFixed(2)} {baseCode || '—'}</span>
                                                         </span>
                                                     </div>
                                                 );
@@ -1749,8 +1763,8 @@ const ManageOrdersScreen: React.FC = () => {
                                                 const remaining = Math.max(0, (Number(order.total) || 0) - paid);
                                                 return (
                                                     <div className="mt-1 space-y-0.5 text-xs text-gray-600 dark:text-gray-400">
-                                                        <div>مدفوع: <span className="font-mono" dir="ltr">{Number(paid || 0).toLocaleString('ar-EG-u-nu-latn', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
-                                                        <div>متبقي: <span className="font-mono" dir="ltr">{Number(remaining || 0).toLocaleString('ar-EG-u-nu-latn', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+                                                        <div>مدفوع: <span className="font-mono" dir="ltr">{Number(paid || 0).toLocaleString('ar-EG-u-nu-latn', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {String((order as any).currency || '').toUpperCase() || '—'}</span></div>
+                                                        <div>متبقي: <span className="font-mono" dir="ltr">{Number(remaining || 0).toLocaleString('ar-EG-u-nu-latn', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {String((order as any).currency || '').toUpperCase() || '—'}</span></div>
                                                         {remaining > 1e-9 && order.status !== 'delivered' && (
                                                             <div>
                                                                 <span className="px-2 py-1 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-900 dark:bg-amber-900/30 dark:text-amber-200">
@@ -2128,11 +2142,23 @@ const ManageOrdersScreen: React.FC = () => {
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
                         <div className="p-2 rounded bg-gray-50 dark:bg-gray-700/30 border border-gray-200 dark:border-gray-600">
                             <div className="text-gray-500 dark:text-gray-300">المجموع الفرعي</div>
-                            <div className="font-mono text-gray-900 dark:text-white">{inStoreTotals.subtotal.toFixed(2)}</div>
+                            <CurrencyDualAmount
+                              amount={Number(inStoreTotals.subtotal) || 0}
+                              currencyCode={inStoreTransactionCurrency}
+                              baseAmount={undefined}
+                              fxRate={undefined}
+                              compact
+                            />
                         </div>
                         <div className="p-2 rounded bg-gray-50 dark:bg-gray-700/30 border border-gray-200 dark:border-gray-600">
                             <div className="text-gray-500 dark:text-gray-300">الخصم</div>
-                            <div className="font-mono text-gray-900 dark:text-white">{inStoreTotals.discountAmount.toFixed(2)}</div>
+                            <CurrencyDualAmount
+                              amount={-Math.abs(Number(inStoreTotals.discountAmount) || 0)}
+                              currencyCode={inStoreTransactionCurrency}
+                              baseAmount={undefined}
+                              fxRate={undefined}
+                              compact
+                            />
                         </div>
                         <div className="p-2 rounded bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800">
                             <CurrencyDualAmount
@@ -2356,9 +2382,9 @@ const ManageOrdersScreen: React.FC = () => {
                             )}
                             {!inStoreCreditSummaryLoading && (inStoreCreditSummary && inStoreCreditSummary.exists) && (
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2 text-[11px] text-gray-800 dark:text-gray-200">
-                                    <CurrencyDualAmount amount={Number(inStoreCreditSummary.credit_limit || 0)} currencyCode={undefined} baseAmount={undefined} fxRate={undefined} label="سقف الائتمان" compact />
-                                    <CurrencyDualAmount amount={Number(inStoreCreditSummary.current_balance || 0)} currencyCode={undefined} baseAmount={undefined} fxRate={undefined} label="الرصيد الحالي" compact />
-                                    <CurrencyDualAmount amount={Number(inStoreCreditSummary.available_credit || 0)} currencyCode={undefined} baseAmount={undefined} fxRate={undefined} label="المتاح الآن" compact />
+                                    <CurrencyDualAmount amount={Number(inStoreCreditSummary.credit_limit || 0)} currencyCode={baseCode} baseAmount={undefined} fxRate={undefined} label="سقف الائتمان" compact />
+                                    <CurrencyDualAmount amount={Number(inStoreCreditSummary.current_balance || 0)} currencyCode={baseCode} baseAmount={undefined} fxRate={undefined} label="الرصيد الحالي" compact />
+                                    <CurrencyDualAmount amount={Number(inStoreCreditSummary.available_credit || 0)} currencyCode={baseCode} baseAmount={undefined} fxRate={undefined} label="المتاح الآن" compact />
                                     <div>
                                         المتاح بعد هذا البيع:{' '}
                                         <span className="font-mono">
@@ -2368,7 +2394,7 @@ const ManageOrdersScreen: React.FC = () => {
                                                     0,
                                                     (Number(inStoreTotals.total) || 0) - (inStoreMultiPaymentEnabled ? inStorePaymentLines.reduce((s, p) => s + (Number(p.amount) || 0), 0) : 0)
                                                 )
-                                            ).toFixed(2)}
+                                            ).toFixed(2)} {baseCode || '—'}
                                         </span>
                                     </div>
                                 </div>
@@ -3064,15 +3090,33 @@ const ManageOrdersScreen: React.FC = () => {
                             <div className="grid grid-cols-3 gap-3 text-xs">
                                 <div className="p-2 rounded bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600">
                                     <div className="text-gray-500 dark:text-gray-300">الإجمالي</div>
-                                    <div className="font-mono text-gray-900 dark:text-white">{(Number(order.total) || 0).toFixed(2)}</div>
+                                    <CurrencyDualAmount
+                                      amount={Number(order.total) || 0}
+                                      currencyCode={(order as any).currency}
+                                      baseAmount={(order as any).baseTotal}
+                                      fxRate={(order as any).fxRate}
+                                      compact
+                                    />
                                 </div>
                                 <div className="p-2 rounded bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600">
                                     <div className="text-gray-500 dark:text-gray-300">مدفوع</div>
-                                    <div className="font-mono text-gray-900 dark:text-white">{paid.toFixed(2)}</div>
+                                    <CurrencyDualAmount
+                                      amount={paid}
+                                      currencyCode={(order as any).currency}
+                                      baseAmount={undefined}
+                                      fxRate={(order as any).fxRate}
+                                      compact
+                                    />
                                 </div>
                                 <div className="p-2 rounded bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600">
                                     <div className="text-gray-500 dark:text-gray-300">متبقي</div>
-                                    <div className="font-mono text-gray-900 dark:text-white">{remaining.toFixed(2)}</div>
+                                    <CurrencyDualAmount
+                                      amount={remaining}
+                                      currencyCode={(order as any).currency}
+                                      baseAmount={undefined}
+                                      fxRate={(order as any).fxRate}
+                                      compact
+                                    />
                                 </div>
                             </div>
 

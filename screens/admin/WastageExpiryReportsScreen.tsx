@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { getSupabaseClient } from '../../supabase';
+import { getBaseCurrencyCode, getSupabaseClient } from '../../supabase';
 import type { AccountingLightEntry } from '../../types';
 import { useToast } from '../../contexts/ToastContext';
 
@@ -9,6 +9,14 @@ const WastageExpiryReportsScreen: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [filterType, setFilterType] = useState<'all' | 'wastage' | 'expiry'>('all');
   const { showNotification } = useToast();
+  const [baseCode, setBaseCode] = useState('—');
+
+  useEffect(() => {
+    void getBaseCurrencyCode().then((c) => {
+      if (!c) return;
+      setBaseCode(c);
+    });
+  }, []);
 
   const load = async () => {
     if (!supabase) return;
@@ -152,8 +160,8 @@ const WastageExpiryReportsScreen: React.FC = () => {
                 <td className="p-2">{e.warehouseId ? e.warehouseId.slice(-6).toUpperCase() : '-'}</td>
                 <td className="p-2">{e.batchId ? e.batchId.slice(0,8) : '-'}</td>
                 <td className="p-2">{e.quantity}</td>
-                <td className="p-2">{e.unitCost.toFixed(2)}</td>
-                <td className="p-2 font-semibold">{e.totalCost.toFixed(2)}</td>
+                <td className="p-2">{e.unitCost.toFixed(2)} {baseCode || '—'}</td>
+                <td className="p-2 font-semibold">{e.totalCost.toFixed(2)} {baseCode || '—'}</td>
                 <td className="p-2">{e.debitAccount}</td>
                 <td className="p-2">{e.creditAccount}</td>
                 <td className="p-2">{e.notes || ''}</td>

@@ -252,7 +252,7 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
                                             <div style={{ fontSize: thermal ? '10px' : '12px', color: '#666', marginTop: '2px' }}>
                                                 {Object.values(item.selectedAddons).map(({ addon, quantity }, i) => (
                                                     <div key={i}>
-                                                        + {quantity > 1 && `${quantity}x `}{addon.name[language]} ({addon.price} {currencyLabel})
+                                                        + {quantity > 1 && `${quantity}x `}{addon.name[language]} ({formatAmount(Number(addon.price || 0) * Number(quantity || 0))} {currencyLabel})
                                                     </div>
                                                 ))}
                                             </div>
@@ -317,8 +317,8 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
                             const left = [
                                 getPaymentMethodText(method),
                                 ref ? ref : '',
-                                method === 'cash' && cashReceived > 0 ? `${language === 'ar' ? 'مستلم' : 'Received'}: ${cashReceived.toFixed(2)}` : '',
-                                method === 'cash' && cashReceived > 0 ? `${language === 'ar' ? 'باقي' : 'Change'}: ${cashChange.toFixed(2)}` : '',
+                                method === 'cash' && cashReceived > 0 ? `${language === 'ar' ? 'مستلم' : 'Received'}: ${cashReceived.toFixed(2)} ${currencyLabel}` : '',
+                                method === 'cash' && cashReceived > 0 ? `${language === 'ar' ? 'باقي' : 'Change'}: ${cashChange.toFixed(2)} ${currencyLabel}` : '',
                             ].filter(Boolean).join(' • ');
                             return (
                                 <div key={`${method}-${idx}`} style={{ display: 'flex', justifyContent: 'space-between', gap: '10px' }}>

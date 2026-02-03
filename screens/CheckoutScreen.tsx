@@ -18,8 +18,9 @@ import { createLogger } from '../utils/logger';
 import { findNearestDeliveryZone, verifyZoneMatch, formatDistance } from '../utils/geoUtils';
 import InteractiveMap from '../components/InteractiveMap';
 import type { Bank, TransferRecipient } from '../types';
-import { getSupabaseClient } from '../supabase';
+import { getBaseCurrencyCode, getSupabaseClient } from '../supabase';
 import { toDateTimeLocalInputValue, toUtcIsoFromLocalDateTimeInput } from '../utils/dateUtils';
+import CurrencyDualAmount from '../components/common/CurrencyDualAmount';
 
 const paymentMethodIcons: { [key: string]: React.ReactNode } = {
     cash: <MoneyIcon />,
@@ -35,7 +36,7 @@ const CheckoutScreen: React.FC = () => {
     const { addOrder, userOrders } = useOrders();
     const { showNotification } = useToast();
     const { settings } = useSettings();
-    const baseCode = String((settings as any)?.baseCurrency || '').toUpperCase() || '—';
+    const [baseCode, setBaseCode] = useState('');
     const language = 'ar';
     const { currentUser, updateCustomer } = useUserAuth();
     const { deliveryZones } = useDeliveryZones();
@@ -59,6 +60,13 @@ const CheckoutScreen: React.FC = () => {
             setPhoneNumber(currentUser.phoneNumber || '');
         }
     }, [currentUser]);
+
+    useEffect(() => {
+        void getBaseCurrencyCode().then((c) => {
+            if (!c) return;
+            setBaseCode(c);
+        });
+    }, []);
 
     useEffect(() => {
         let cancelled = false;
@@ -893,7 +901,7 @@ const CheckoutScreen: React.FC = () => {
                                             <option value="">اختر منطقة التوصيل</option>
                                             {deliveryZones.filter(z => z.isActive).map(zone => (
                                                 <option key={zone.id} value={zone.id}>
-                                                    {zone.name.ar} • {(Number(zone.deliveryFee) || 0).toFixed(2)} {baseCode} • {zone.estimatedTime} دقيقة
+                                                    {zone.name.ar} • {(Number(zone.deliveryFee) || 0).toFixed(2)} {baseCode || '—'} • {zone.estimatedTime} دقيقة
                                                 </option>
                                             ))}
                                             {/* Strict delivery only - no fallback */}
@@ -1097,7 +1105,10 @@ const CheckoutScreen: React.FC = () => {
                                 {currentUser && currentUser.loyaltyPoints > 0 && settings.loyaltySettings.enabled && (
                                     <section className="p-6 bg-yellow-50 dark:bg-yellow-900/30 border-l-4 border-yellow-500 rounded-r-lg">
                                         <h2 className="text-xl font-bold text-yellow-800 dark:text-yellow-300 mb-3">نقاط الولاء</h2>
-                                        <p className="text-gray-700 dark:text-gray-300 mb-4">لديك <span className="font-bold">{currentUser.loyaltyPoints}</span> نقطة بقيمة {pointsValueInCurrency.toFixed(2)} {baseCode}).</p>
+                                        <p className="text-gray-700 dark:text-gray-300 mb-4">
+                                          لديك <span className="font-bold">{currentUser.loyaltyPoints}</span> نقطة بقيمة{' '}
+                                          <CurrencyDualAmount amount={Number(pointsValueInCurrency) || 0} currencyCode={baseCode} compact />.
+                                        </p>
                                         <label className="flex items-center cursor-pointer">
                                             <input type="checkbox" checked={redeemPoints} onChange={(e) => setRedeemPoints(e.target.checked)} className="form-checkbox h-5 w-5 text-primary-600 rounded focus:ring-gold-500" />
                                             <span className="mx-3 text-lg font-semibold text-gray-800 dark:text-gray-200">استخدام النقاط للخصم</span>
@@ -1108,16 +1119,44 @@ const CheckoutScreen: React.FC = () => {
                                 <section className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow-lg">
                                     <h2 className="text-xl font-bold mb-4 dark:text-white">ملخص الطلب</h2>
                                     <div className="space-y-3">
-                                        <div className="flex justify-between text-gray-700 dark:text-gray-300"><span>المجموع الفرعي:</span><span className="font-mono">{computedSubtotal.toFixed(2)} {baseCode}</span></div>
-                                        {couponDiscount > 0 && <div className="flex justify-between text-green-600 dark:text-green-400"><span>الخصم:</span><span className="font-mono">- {couponDiscount.toFixed(2)} {baseCode}</span></div>}
-                                        {referralDiscount > 0 && <div className="flex justify-between text-green-600 dark:text-green-400"><span>خصم الدعوة:</span><span className="font-mono">- {referralDiscount.toFixed(2)} {baseCode}</span></div>}
-                                        {tierDiscount > 0 && <div className="flex justify-between text-green-600 dark:text-green-400"><span>خصم المستوى:</span><span className="font-mono">- {tierDiscount.toFixed(2)} {baseCode}</span></div>}
-                                        {pointsDiscount > 0 && <div className="flex justify-between text-green-600 dark:text-green-400"><span>خصم النقاط:</span><span className="font-mono">- {pointsDiscount.toFixed(2)} {baseCode}</span></div>}
-                                        <div className="flex justify-between text-gray-700 dark:text-gray-300"><span>رسوم التوصيل:</span><span className="font-mono">{(Number(effectiveDeliveryFee) || 0).toFixed(2)} {baseCode}</span></div>
+                                        <div className="flex justify-between text-gray-700 dark:text-gray-300">
+                                          <span>المجموع الفرعي:</span>
+                                          <CurrencyDualAmount amount={Number(computedSubtotal) || 0} currencyCode={baseCode} compact />
+                                        </div>
+                                        {couponDiscount > 0 && (
+                                          <div className="flex justify-between text-green-600 dark:text-green-400">
+                                            <span>الخصم:</span>
+                                            <CurrencyDualAmount amount={-Math.abs(Number(couponDiscount) || 0)} currencyCode={baseCode} compact />
+                                          </div>
+                                        )}
+                                        {referralDiscount > 0 && (
+                                          <div className="flex justify-between text-green-600 dark:text-green-400">
+                                            <span>خصم الدعوة:</span>
+                                            <CurrencyDualAmount amount={-Math.abs(Number(referralDiscount) || 0)} currencyCode={baseCode} compact />
+                                          </div>
+                                        )}
+                                        {tierDiscount > 0 && (
+                                          <div className="flex justify-between text-green-600 dark:text-green-400">
+                                            <span>خصم المستوى:</span>
+                                            <CurrencyDualAmount amount={-Math.abs(Number(tierDiscount) || 0)} currencyCode={baseCode} compact />
+                                          </div>
+                                        )}
+                                        {pointsDiscount > 0 && (
+                                          <div className="flex justify-between text-green-600 dark:text-green-400">
+                                            <span>خصم النقاط:</span>
+                                            <CurrencyDualAmount amount={-Math.abs(Number(pointsDiscount) || 0)} currencyCode={baseCode} compact />
+                                          </div>
+                                        )}
+                                        <div className="flex justify-between text-gray-700 dark:text-gray-300">
+                                          <span>رسوم التوصيل:</span>
+                                          <CurrencyDualAmount amount={Number(effectiveDeliveryFee) || 0} currencyCode={baseCode} compact />
+                                        </div>
                                         <div className="border-t border-gray-200 dark:border-gray-600 my-2"></div>
                                         <div className="flex justify-between items-center font-bold text-lg">
                                             <span className="dark:text-white">الإجمالي:</span>
-                                            <span className="text-2xl text-gold-500">{total.toFixed(2)} {baseCode}</span>
+                                            <span className="text-2xl text-gold-500">
+                                              <CurrencyDualAmount amount={Number(total) || 0} currencyCode={baseCode} compact />
+                                            </span>
                                         </div>
                                     </div>
                                     {error && <p className="text-red-500 text-center mt-4 bg-red-50 dark:bg-red-900/20 p-3 rounded-lg">{error}</p>}

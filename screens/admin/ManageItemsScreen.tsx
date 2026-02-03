@@ -13,7 +13,7 @@ import { useItemMeta } from '../../contexts/ItemMetaContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useStock } from '../../contexts/StockContext';
 import { parseYmdToLocalDate, toYmdLocal } from '../../utils/dateUtils';
-import { getSupabaseClient } from '../../supabase';
+import { getBaseCurrencyCode, getSupabaseClient } from '../../supabase';
 
 const EXPIRY_SOON_DAYS = 1;
 
@@ -40,6 +40,7 @@ const ManageItemsScreen: React.FC = () => {
   const { showNotification } = useToast();
   const { hasPermission } = useAuth();
   const { settings } = useSettings();
+  const [baseCode, setBaseCode] = useState('—');
   const { initializeStockForItem, updateStock } = useStock();
   const language = 'ar';
   const {
@@ -122,6 +123,13 @@ const ManageItemsScreen: React.FC = () => {
     setIsMetaModalOpen(true);
     resetDrafts(tab);
   };
+
+  useEffect(() => {
+    void getBaseCurrencyCode().then((c) => {
+      if (!c) return;
+      setBaseCode(c);
+    });
+  }, []);
 
   useEffect(() => {
     const supabase = getSupabaseClient();
@@ -774,6 +782,7 @@ const ManageItemsScreen: React.FC = () => {
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">الصورة</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">الاسم</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">السعر</th>
+                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">التكلفة</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">الحالة</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">إجراءات</th>
               </tr>
@@ -781,7 +790,7 @@ const ManageItemsScreen: React.FC = () => {
             <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
               {loading ? (
                 <tr>
-                  <td colSpan={5} className="text-center py-16">
+                  <td colSpan={6} className="text-center py-16">
                     <div className="flex justify-center items-center space-x-2 rtl:space-x-reverse text-gray-500 dark:text-gray-400">
                       <Spinner />
                       <span>جاري تحميل الأصناف...</span>
@@ -866,7 +875,15 @@ const ManageItemsScreen: React.FC = () => {
                         );
                       })()}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.price.toFixed(2)} {String((settings as any)?.baseCurrency || '').toUpperCase() || '—'}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.price.toFixed(2)} {baseCode || '—'}</td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-500 dark:text-gray-300">
+                        {(Number(item.costPrice) || 0).toFixed(2)} {baseCode || '—'}
+                      </div>
+                      <div className="text-xs text-gray-400 dark:text-gray-400">
+                        شراء: {(Number(item.buyingPrice) || 0).toFixed(2)} {baseCode || '—'}
+                      </div>
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${item.status === 'archived'
                         ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300'
@@ -892,7 +909,7 @@ const ManageItemsScreen: React.FC = () => {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={5} className="text-center py-16 text-gray-500 dark:text-gray-400">
+                  <td colSpan={6} className="text-center py-16 text-gray-500 dark:text-gray-400">
                     <p className="font-semibold text-lg">لم يتم العثور على أصناف</p>
                     <p className="mt-1">حاول تغيير كلمات البحث أو الفلاتر.</p>
                   </td>

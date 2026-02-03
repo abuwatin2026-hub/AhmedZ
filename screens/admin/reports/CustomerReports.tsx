@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useOrders } from '../../../contexts/OrderContext';
 import { useUserAuth } from '../../../contexts/UserAuthContext';
 import { useToast } from '../../../contexts/ToastContext';
@@ -8,6 +8,7 @@ import HorizontalBarChart from '../../../components/admin/charts/HorizontalBarCh
 import { getInvoiceOrderView } from '../../../utils/orderUtils';
 import { useSettings } from '../../../contexts/SettingsContext';
 import { endOfDayFromYmd, startOfDayFromYmd, toYmdLocal } from '../../../utils/dateUtils';
+import { getBaseCurrencyCode } from '../../../supabase';
 
 const CustomerReports: React.FC = () => {
     const { orders } = useOrders();
@@ -15,6 +16,7 @@ const CustomerReports: React.FC = () => {
     const { showNotification } = useToast();
     const { settings } = useSettings();
     const [isSharing, setIsSharing] = useState(false);
+    const [currency, setCurrency] = useState('—');
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
     const [rangePreset, setRangePreset] = useState<'today' | 'week' | 'month' | 'year' | 'all'>('all');
@@ -170,7 +172,12 @@ const CustomerReports: React.FC = () => {
         setIsSharing(false);
     };
 
-    const currency = String((settings as any)?.baseCurrency || '').toUpperCase() || '—';
+    useEffect(() => {
+        void getBaseCurrencyCode().then((c) => {
+            if (!c) return;
+            setCurrency(c);
+        });
+    }, []);
 
     return (
         <div className="animate-fade-in space-y-6">

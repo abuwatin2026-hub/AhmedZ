@@ -5,7 +5,7 @@ import { useDeliveryZones } from '../../../contexts/DeliveryZoneContext';
 import { exportToXlsx, sharePdf } from '../../../utils/export';
 import { buildPdfBrandOptions, buildXlsxBrandOptions } from '../../../utils/branding';
 import HorizontalBarChart from '../../../components/admin/charts/HorizontalBarChart';
-import { getSupabaseClient } from '../../../supabase';
+import { getBaseCurrencyCode, getSupabaseClient } from '../../../supabase';
 import { localizeSupabaseError } from '../../../utils/errorUtils';
 import { endOfDayFromYmd, startOfDayFromYmd, toYmdLocal } from '../../../utils/dateUtils';
 import { useSessionScope } from '../../../contexts/SessionScopeContext';
@@ -701,7 +701,14 @@ const ProductReports: React.FC = () => {
         setIsSharing(false);
     };
 
-    const currency = String((settings as any)?.baseCurrency || '').toUpperCase() || '—';
+    const [currency, setCurrency] = useState('—');
+
+    useEffect(() => {
+        void getBaseCurrencyCode().then((c) => {
+            if (!c) return;
+            setCurrency(c);
+        });
+    }, []);
 
     const runRecall = async () => {
         const supabase = getSupabaseClient();
@@ -1014,7 +1021,7 @@ const ProductReports: React.FC = () => {
                                                     {Number(product.reserved_stock || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}
                                                 </td>
                                                 <td className="px-6 py-4 whitespace-nowrap font-mono text-gray-600 dark:text-gray-400">
-                                                    {Number((Number(product.current_stock || 0) + Number(product.reserved_stock || 0)) * Number(product.current_cost_price || 0)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                    {Number((Number(product.current_stock || 0) + Number(product.reserved_stock || 0)) * Number(product.current_cost_price || 0)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {currency}
                                                 </td>
                                             </tr>
                                         ))}

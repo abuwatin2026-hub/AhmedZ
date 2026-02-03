@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { Coupon } from '../../types';
 import { useSettings } from '../../contexts/SettingsContext';
 import { normalizeIsoDateOnly, toUtcIsoAtMiddayFromYmd } from '../../utils/dateUtils';
+import { getBaseCurrencyCode } from '../../supabase';
 
 interface CouponFormModalProps {
   isOpen: boolean;
@@ -13,12 +14,23 @@ interface CouponFormModalProps {
 }
 
 const CouponFormModal: React.FC<CouponFormModalProps> = ({ isOpen, onClose, onSave, couponToEdit, isSaving }) => {
-  const { t } = useSettings();
+  const { t, settings } = useSettings();
+  const [baseCode, setBaseCode] = useState('—');
+  const operationalCurrencies = Array.isArray((settings as any)?.operationalCurrencies) ? (settings as any).operationalCurrencies : [];
+  const currencyOptions = Array.from(new Set([baseCode, ...operationalCurrencies.map((c: any) => String(c || '').toUpperCase())].filter(Boolean)));
+
+  useEffect(() => {
+    void getBaseCurrencyCode().then((c) => {
+      if (!c) return;
+      setBaseCode(c);
+    });
+  }, []);
 
   const getInitialFormState = () => ({
     code: '',
     type: 'percentage' as 'percentage' | 'fixed',
     value: 0,
+    currency: baseCode,
     minOrderAmount: 0,
     maxDiscount: 0,
     expiresAt: '',
@@ -34,6 +46,7 @@ const CouponFormModal: React.FC<CouponFormModalProps> = ({ isOpen, onClose, onSa
         code: couponToEdit.code,
         type: couponToEdit.type,
         value: couponToEdit.value,
+        currency: String((couponToEdit as any).currency || baseCode || '').toUpperCase(),
         minOrderAmount: couponToEdit.minOrderAmount || 0,
         maxDiscount: couponToEdit.maxDiscount || 0,
         expiresAt: couponToEdit.expiresAt ? normalizeIsoDateOnly(couponToEdit.expiresAt) : '',
@@ -43,7 +56,7 @@ const CouponFormModal: React.FC<CouponFormModalProps> = ({ isOpen, onClose, onSa
     } else {
       setCoupon(getInitialFormState());
     }
-  }, [couponToEdit, isOpen]);
+  }, [couponToEdit, isOpen, baseCode]);
   
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
@@ -98,9 +111,32 @@ const CouponFormModal: React.FC<CouponFormModalProps> = ({ isOpen, onClose, onSa
                   <label htmlFor="value" className="block text-sm font-medium text-gray-700 dark:text-gray-300">{t('couponValue')}</label>
                   <input type="number" name="value" id="value" value={coupon.value} onChange={handleChange} required min="0" className="mt-1 w-full p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600"/>
                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                        {coupon.type === 'percentage' ? 'أدخل النسبة (مثال: 20)' : `أدخل المبلغ بـ ${t('currency')}`}
+                        {coupon.type === 'percentage' ? 'أدخل النسبة (مثال: 20)' : `أدخل المبلغ بـ ${String((coupon as any).currency || baseCode || t('currency'))}`}
                     </p>
                 </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="currency" className="block text-sm font-medium text-gray-700 dark:text-gray-300">العملة</label>
+                  <select
+                    name="currency"
+                    id="currency"
+                    value={String((coupon as any).currency || baseCode || '').toUpperCase()}
+                    onChange={handleChange}
+                    required
+                    className="mt-1 w-full p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600"
+                  >
+                    {currencyOptions.length === 0 ? (
+                      <option value="">{baseCode || '—'}</option>
+                    ) : (
+                      currencyOptions.map((c) => (
+                        <option key={c} value={c}>{c}{baseCode && c === baseCode ? ' (أساسية)' : ''}</option>
+                      ))
+                    )}
+                  </select>
+                </div>
+                <div />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

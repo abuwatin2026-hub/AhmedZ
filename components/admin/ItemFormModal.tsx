@@ -7,7 +7,7 @@ import { useItemMeta } from '../../contexts/ItemMetaContext';
 import { useStock } from '../../contexts/StockContext';
 import ImageUploader from '../ImageUploader';
 import NumberInput from '../NumberInput';
-import { getSupabaseClient } from '../../supabase';
+import { getBaseCurrencyCode, getSupabaseClient } from '../../supabase';
 
 interface ItemFormModalProps {
   isOpen: boolean;
@@ -24,6 +24,14 @@ const ItemFormModal: React.FC<ItemFormModalProps> = ({ isOpen, onClose, onSave, 
   const { hasPermission } = useAuth();
   const { categories, unitTypes, freshnessLevels, getCategoryLabel, getUnitLabel, getFreshnessLabel } = useItemMeta();
   const { getStockByItemId } = useStock();
+  const [baseCode, setBaseCode] = useState('—');
+
+  useEffect(() => {
+    void getBaseCurrencyCode().then((c) => {
+      if (!c) return;
+      setBaseCode(c);
+    });
+  }, []);
 
   const getInitialFormState = (): Omit<MenuItem, 'id' | 'rating'> => ({
     ...((): Pick<MenuItem, 'category' | 'unitType' | 'freshnessLevel' | 'minWeight'> => {
@@ -48,6 +56,8 @@ const ItemFormModal: React.FC<ItemFormModalProps> = ({ isOpen, onClose, onSave, 
     isFeatured: false,
     availableStock: 0,
     buyingPrice: 0,
+    transportCost: 0,
+    supplyTaxCost: 0,
   });
 
   const [item, setItem] = useState(getInitialFormState());
@@ -74,6 +84,8 @@ const ItemFormModal: React.FC<ItemFormModalProps> = ({ isOpen, onClose, onSave, 
         minWeight: itemToEdit.minWeight || 0.5,
         pricePerUnit: itemToEdit.pricePerUnit,
         buyingPrice: itemToEdit.buyingPrice || 0,
+        transportCost: itemToEdit.transportCost || 0,
+        supplyTaxCost: itemToEdit.supplyTaxCost || 0,
       });
     } else {
       setItem(getInitialFormState());
@@ -353,11 +365,29 @@ const ItemFormModal: React.FC<ItemFormModalProps> = ({ isOpen, onClose, onSave, 
 
                 <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-100 dark:border-gray-700">
                   <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-3">تفاصيل التكلفة</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div>
                       <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">آخر سعر شراء</label>
                       <div className="w-full p-3 border rounded-md bg-gray-100 dark:bg-gray-600 text-gray-500 font-bold text-center">
-                        {Number(item.buyingPrice) || 0}
+                        {(Number(item.buyingPrice) || 0).toFixed(2)} {baseCode || '—'}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">تكلفة النقل</label>
+                      <div className="w-full p-3 border rounded-md bg-gray-100 dark:bg-gray-600 text-gray-500 font-bold text-center">
+                        {(Number(item.transportCost) || 0).toFixed(2)} {baseCode || '—'}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">ضريبة التوريد</label>
+                      <div className="w-full p-3 border rounded-md bg-gray-100 dark:bg-gray-600 text-gray-500 font-bold text-center">
+                        {(Number(item.supplyTaxCost) || 0).toFixed(2)} {baseCode || '—'}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">إجمالي التكلفة</label>
+                      <div className="w-full p-3 border rounded-md bg-gray-100 dark:bg-gray-600 text-gray-500 font-bold text-center">
+                        {(Number(item.costPrice) || 0).toFixed(2)} {baseCode || '—'}
                       </div>
                     </div>
                   </div>
@@ -366,7 +396,7 @@ const ItemFormModal: React.FC<ItemFormModalProps> = ({ isOpen, onClose, onSave, 
                     <div className="w-full p-3 border rounded-md bg-gray-100 dark:bg-gray-600 text-gray-500 font-bold text-center">
                       {(() => {
                         const stock = itemToEdit?.id ? getStockByItemId(itemToEdit.id) : undefined;
-                        return Number(stock?.avgCost) || 0;
+                        return `${(Number(stock?.avgCost) || 0).toFixed(2)} ${baseCode || '—'}`;
                       })()}
                     </div>
                   </div>

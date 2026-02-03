@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { getSupabaseClient } from '../../supabase';
+import { getBaseCurrencyCode, getSupabaseClient } from '../../supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { localizeSupabaseError } from '../../utils/errorUtils';
@@ -56,6 +56,7 @@ const SupplierCreditNotesScreen: React.FC = () => {
 
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<SupplierCreditNoteRow[]>([]);
+  const [baseCode, setBaseCode] = useState('—');
 
   const [statusFilter, setStatusFilter] = useState<'all' | 'draft' | 'applied' | 'cancelled'>('all');
   const [q, setQ] = useState('');
@@ -113,6 +114,13 @@ const SupplierCreditNotesScreen: React.FC = () => {
 
   useEffect(() => {
     fetchRows();
+  }, []);
+
+  useEffect(() => {
+    void getBaseCurrencyCode().then((c) => {
+      if (!c) return;
+      setBaseCode(c);
+    });
   }, []);
 
   const filtered = useMemo(() => {
@@ -380,7 +388,7 @@ const SupplierCreditNotesScreen: React.FC = () => {
                       <td className="p-4 text-gray-700 dark:text-gray-200 border-r dark:border-gray-700" dir="ltr">
                         <div className="font-mono text-xs">{r.reference_purchase_receipt_id}</div>
                       </td>
-                      <td className="p-4 text-gray-800 dark:text-gray-200 border-r dark:border-gray-700" dir="ltr">{toMoney(r.amount)}</td>
+                      <td className="p-4 text-gray-800 dark:text-gray-200 border-r dark:border-gray-700" dir="ltr">{toMoney(r.amount)} {baseCode || '—'}</td>
                       <td className="p-4 border-r dark:border-gray-700">
                         <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs border ${badgeClass(String(r.status || 'draft'))}`}>
                           {String(r.status || '').toUpperCase()}
@@ -632,10 +640,10 @@ const SupplierCreditNotesScreen: React.FC = () => {
                             <div>Onhand: {toMoney(a.batch_qty_onhand)}</div>
                             <div>Sold: {toMoney(a.batch_qty_sold)}</div>
                           </td>
-                          <td className="p-3 border-r dark:border-gray-700 text-xs text-gray-700 dark:text-gray-200" dir="ltr">{toMoney(a.amount_to_inventory)}</td>
-                          <td className="p-3 border-r dark:border-gray-700 text-xs text-gray-700 dark:text-gray-200" dir="ltr">{toMoney(a.amount_to_cogs)}</td>
+                          <td className="p-3 border-r dark:border-gray-700 text-xs text-gray-700 dark:text-gray-200" dir="ltr">{toMoney(a.amount_to_inventory)} {baseCode || '—'}</td>
+                          <td className="p-3 border-r dark:border-gray-700 text-xs text-gray-700 dark:text-gray-200" dir="ltr">{toMoney(a.amount_to_cogs)} {baseCode || '—'}</td>
                           <td className="p-3 border-r dark:border-gray-700 text-xs text-gray-700 dark:text-gray-200" dir="ltr">
-                            <div>{toMoney(a.unit_cost_before)} → {toMoney(a.unit_cost_after)}</div>
+                            <div>{toMoney(a.unit_cost_before)} {baseCode || '—'} → {toMoney(a.unit_cost_after)} {baseCode || '—'}</div>
                           </td>
                           <td className="p-3 text-xs text-gray-600 dark:text-gray-300" dir="ltr">{new Date(a.created_at).toLocaleString('en-US')}</td>
                         </tr>

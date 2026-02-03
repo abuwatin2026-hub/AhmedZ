@@ -1,10 +1,9 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { getSupabaseClient } from '../supabase';
+import { getBaseCurrencyCode, getSupabaseClient } from '../supabase';
 import { isAbortLikeError, localizeSupabaseError } from '../utils/errorUtils';
 import { normalizeIsoDateOnly, toDateInputValue, toUtcIsoAtMiddayFromYmd, toUtcIsoFromLocalDateTimeInput } from '../utils/dateUtils';
 import { Supplier, PurchaseOrder } from '../types';
 import { useAuth } from './AuthContext';
-import { useSettings } from './SettingsContext';
 
 interface PurchasesContextType {
     suppliers: Supplier[];
@@ -17,6 +16,8 @@ interface PurchasesContextType {
     createPurchaseOrder: (
         supplierId: string,
         purchaseDate: string,
+        currency: string,
+        fxRate: number,
         items: Array<{ itemId: string; quantity: number; unitCost: number; productionDate?: string; expiryDate?: string }>,
         receiveNow?: boolean,
         referenceNumber?: string,
@@ -59,7 +60,6 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const [error, setError] = useState<string | null>(null);
     const { user } = useAuth();
   const supabase = getSupabaseClient();
-  const { settings } = useSettings();
 
   const mapSupplierRow = (row: any): Supplier => {
     const now = new Date().toISOString();
@@ -474,6 +474,8 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const createPurchaseOrder = async (
         supplierId: string,
         purchaseDate: string,
+        currency: string,
+        fxRate: number,
         items: Array<{ itemId: string; quantity: number; unitCost: number; productionDate?: string; expiryDate?: string }>,
         receiveNow: boolean = true,
         referenceNumber?: string,
@@ -484,6 +486,11 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     ) => {
         if (!supabase) throw new Error('Supabase غير مهيأ.');
         if (!user) throw new Error('لم يتم تسجيل الدخول.');
+
+        const poCurrency = String(currency || '').trim().toUpperCase();
+        const poFxRate = Number(fxRate);
+        if (!poCurrency) throw new Error('عملة أمر الشراء مطلوبة.');
+        if (!Number.isFinite(poFxRate) || poFxRate <= 0) throw new Error('سعر الصرف غير صالح.');
 
         const totalAmount = items.reduce((sum, item) => sum + (item.quantity * item.unitCost), 0);
         const itemsCount = items.length;
@@ -555,6 +562,8 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                   supplier_id: supplierId,
                   purchase_date: normalizedDate,
                   reference_number: currentRef || null,
+                  currency: poCurrency,
+                  fx_rate: poFxRate,
                   total_amount: totalAmount,
                   items_count: itemsCount,
                   created_by: user.id,
@@ -588,6 +597,7 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               item_id: item.itemId,
               quantity: item.quantity,
               unit_cost: item.unitCost,
+              unit_cost_foreign: item.unitCost,
               total_cost: item.quantity * item.unitCost
           }));
 
@@ -707,15 +717,23 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             return parsed.toISOString();
           })();
           const payloadData = data && typeof data === 'object' ? data : {};
-          const baseCode = String((settings as any)?.baseCurrency || '').toUpperCase();
-          if (!baseCode) throw new Error('العملة الأساسية غير محددة.');
+          const resolvedBase = (await getBaseCurrencyCode()) || '';
+          if (!resolvedBase) throw new Error('العملة الأساسية غير محددة.');
+
+          const { data: poRow, error: poErr } = await supabase
+            .from('purchase_orders')
+            .select('currency')
+            .eq('id', id)
+            .maybeSingle();
+          if (poErr) throw poErr;
+          const poCurrency = String((poRow as any)?.currency || '').toUpperCase() || resolvedBase;
 
           const argsWithData = {
             p_purchase_order_id: id,
             p_amount: numericAmount,
             p_method: methodValue,
             p_occurred_at: occurredAtIso,
-            p_currency: baseCode,
+            p_currency: poCurrency,
             p_data: payloadData,
           } as any;
 
@@ -728,7 +746,7 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                 p_amount: numericAmount,
                 p_method: methodValue,
                 p_occurred_at: occurredAtIso,
-                p_currency: baseCode,
+                p_currency: poCurrency,
               } as any);
               if (retryErr) throw retryErr;
               error = null as any;

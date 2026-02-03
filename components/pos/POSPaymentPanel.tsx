@@ -15,6 +15,7 @@ type PaymentLine = {
 
 interface Props {
   total: number;
+  currencyCode?: string;
   canFinalize: boolean;
   blockReason?: string;
   onHold: () => void;
@@ -31,8 +32,18 @@ type KeypadTarget =
   | { kind: 'cash_multi'; index: number }
   | { kind: 'declared_multi'; index: number };
 
-const POSPaymentPanel: React.FC<Props> = ({ total, canFinalize, blockReason, onHold, onFinalize, pendingOrderId, onCancelHold, touchMode }) => {
+const fmt = (n: number) => {
+  const v = Number(n || 0);
+  try {
+    return v.toLocaleString('ar-EG-u-nu-latn', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  } catch {
+    return v.toFixed(2);
+  }
+};
+
+const POSPaymentPanel: React.FC<Props> = ({ total, currencyCode, canFinalize, blockReason, onHold, onFinalize, pendingOrderId, onCancelHold, touchMode }) => {
   const { settings } = useSettings();
+  const code = String(currencyCode || '').toUpperCase() || '—';
   const availableMethods = useMemo(() => {
     const enabled = Object.entries(settings.paymentMethods || {})
       .filter(([, isEnabled]) => isEnabled)
@@ -240,15 +251,21 @@ const POSPaymentPanel: React.FC<Props> = ({ total, canFinalize, blockReason, onH
       <div className="p-3 rounded-xl border dark:border-gray-700 bg-gray-50 dark:bg-gray-900/30">
         <div className="flex items-center justify-between">
           <div className="text-xs text-gray-600 dark:text-gray-300">الإجمالي</div>
-          <div className="text-lg font-bold text-gray-900 dark:text-white">{totalRounded.toFixed(2)}</div>
+          <div className="text-lg font-bold text-gray-900 dark:text-white" dir="ltr">
+            <span className="font-mono">{fmt(totalRounded)}</span> <span className="text-xs">{code}</span>
+          </div>
         </div>
         <div className="flex items-center justify-between mt-1">
           <div className="text-xs text-gray-600 dark:text-gray-300">المجموع</div>
-          <div className="text-sm font-semibold text-gray-900 dark:text-white">{breakdownSum.toFixed(2)}</div>
+          <div className="text-sm font-semibold text-gray-900 dark:text-white" dir="ltr">
+            <span className="font-mono">{fmt(breakdownSum)}</span> <span className="text-xs">{code}</span>
+          </div>
         </div>
         <div className="flex items-center justify-between mt-1">
           <div className="text-xs text-gray-600 dark:text-gray-300">المتبقي</div>
-          <div className={`text-sm font-bold ${summaryTone}`}>{remaining.toFixed(2)}</div>
+          <div className={`text-sm font-bold ${summaryTone}`} dir="ltr">
+            <span className="font-mono">{fmt(remaining)}</span> <span className="text-xs">{code}</span>
+          </div>
         </div>
       </div>
       <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
@@ -469,7 +486,11 @@ const POSPaymentPanel: React.FC<Props> = ({ total, canFinalize, blockReason, onH
                         placeholder="المبلغ المستلم"
                       />
                       <div className="text-sm font-mono text-indigo-600">
-                        {received > 0 ? `الباقي: ${change.toFixed(2)}` : ''}
+                        {received > 0 ? (
+                          <span dir="ltr">
+                            {`الباقي: ${fmt(change)} `}<span className="text-xs">{code}</span>
+                          </span>
+                        ) : ''}
                       </div>
                       {touchMode && (
                         <button
@@ -593,7 +614,11 @@ const POSPaymentPanel: React.FC<Props> = ({ total, canFinalize, blockReason, onH
               placeholder="المبلغ المستلم"
             />
             <div className="text-sm font-mono text-indigo-600">
-              {cashReceived > 0 ? `الباقي: ${(Math.max(0, cashReceived - totalRounded)).toFixed(2)}` : ''}
+              {cashReceived > 0 ? (
+                <span dir="ltr">
+                  {`الباقي: ${fmt(Math.max(0, cashReceived - totalRounded))} `}<span className="text-xs">{code}</span>
+                </span>
+              ) : ''}
             </div>
             {touchMode && (
               <button

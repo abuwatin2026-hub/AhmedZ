@@ -113,6 +113,7 @@ export const ImportProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     amount: e.amount,
                     currency: e.currency,
                     exchangeRate: e.exchange_rate,
+                    baseAmount: Number.isFinite(Number(e.base_amount)) ? Number(e.base_amount) : undefined,
                     paymentMethod: e.payment_method,
                     description: e.description,
                     invoiceNumber: e.invoice_number,

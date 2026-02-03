@@ -6,10 +6,11 @@ import { useReviews } from '../contexts/ReviewContext';
 import { useStock } from '../contexts/StockContext';
 import type { Addon } from '../types';
 import { useItemMeta } from '../contexts/ItemMetaContext';
-import { useSettings } from '../contexts/SettingsContext';
 import StarRating from '../components/StarRating';
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
 import { BackArrowIcon, MinusIcon, PlusIcon } from '../components/icons';
+import CurrencyDualAmount from '../components/common/CurrencyDualAmount';
+import { getBaseCurrencyCode } from '../supabase';
 
 const ItemDetailsScreen: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -18,8 +19,7 @@ const ItemDetailsScreen: React.FC = () => {
   const { getReviewsByItemId } = useReviews();
   const { getStockByItemId } = useStock();
   const { getUnitLabel, getFreshnessLabel, getFreshnessTone, isWeightBasedUnit } = useItemMeta();
-  const { settings } = useSettings();
-  const baseCode = String((settings as any)?.baseCurrency || '').toUpperCase() || '—';
+  const [baseCode, setBaseCode] = useState('');
   const item = getMenuItemById(id || '');
   const reviews = useMemo(() => getReviewsByItemId(id || ''), [id, getReviewsByItemId]);
   const stock = getStockByItemId(id || '');
@@ -36,6 +36,10 @@ const ItemDetailsScreen: React.FC = () => {
   const isInStock = availableQuantity > 0;
 
   useEffect(() => {
+    void getBaseCurrencyCode().then((c) => {
+      if (!c) return;
+      setBaseCode(c);
+    });
     setQuantity(1);
     // Ensure minWeight is a valid number
     setWeight(Number(item?.minWeight) || 1);
@@ -153,7 +157,7 @@ const ItemDetailsScreen: React.FC = () => {
   // Safe accessors
   const displayName = item.name?.['ar'] || item.name?.['en'] || 'Unknown Item';
   const displayDesc = item.description?.['ar'] || item.description?.['en'] || '';
-  const displayPrice = Number(item.price || 0).toFixed(2);
+  const displayPrice = Number(item.price || 0);
   const ratingAvg = item.rating?.average || 0;
   const ratingCount = item.rating?.count || 0;
 
@@ -196,7 +200,7 @@ const ItemDetailsScreen: React.FC = () => {
 
             <div className="my-4">
               <p className="text-2xl font-bold text-gold-500">
-                {displayPrice} {baseCode}
+                <CurrencyDualAmount amount={displayPrice} currencyCode={baseCode} compact />
                 {item.unitType && (
                   <span className="text-base text-gray-500 dark:text-gray-400 ml-2">
                     {`/ ${getUnitLabel(item.unitType, 'ar')}`}
@@ -249,7 +253,9 @@ const ItemDetailsScreen: React.FC = () => {
                       <div>
                         <span className="font-semibold text-gray-800 dark:text-gray-200">{addon.name?.['ar'] || addon.name?.ar}</span>
                         {addon.size && <span className="text-xs text-gray-500 dark:text-gray-400 mx-2">{addon.size['ar']}</span>}
-                        <span className="block font-mono text-sm text-gold-500">+ {Number(addon.price || 0).toFixed(2)} {baseCode}</span>
+                        <span className="block text-sm text-gold-500">
+                          + <CurrencyDualAmount amount={Number(addon.price || 0)} currencyCode={baseCode} compact />
+                        </span>
                       </div>
                       <div className="flex items-center border border-gray-300 dark:border-gray-600 rounded-lg">
                         <button onClick={() => handleAddonQuantityChange(addon, -1)} className="p-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 rounded-r-lg rtl:rounded-l-lg rtl:rounded-r-none"><MinusIcon /></button>
@@ -293,7 +299,9 @@ const ItemDetailsScreen: React.FC = () => {
             <div className="mt-auto pt-6 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between">
               <div>
                 <span className="text-gray-600 dark:text-gray-400">{'الإجمالي'}</span>
-                <p className="text-3xl font-bold text-gray-900 dark:text-white">{totalPrice.toFixed(2)} {baseCode}</p>
+                <p className="text-3xl font-bold text-gray-900 dark:text-white">
+                  <CurrencyDualAmount amount={Number(totalPrice) || 0} currencyCode={baseCode} compact />
+                </p>
               </div>
               <button
                 onClick={handleAddToCart}

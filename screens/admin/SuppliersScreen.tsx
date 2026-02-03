@@ -4,19 +4,24 @@ import * as Icons from '../../components/icons';
 import { Supplier } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
 import CurrencyDualAmount from '../../components/common/CurrencyDualAmount';
-import { getSupabaseClient } from '../../supabase';
-import { useSettings } from '../../contexts/SettingsContext';
+import { getBaseCurrencyCode, getSupabaseClient } from '../../supabase';
 
 const SuppliersScreen: React.FC = () => {
     const { suppliers, loading, addSupplier, updateSupplier, deleteSupplier, purchaseOrders } = usePurchases();
     const { user } = useAuth();
-    const { settings } = useSettings();
-    const baseCode = String((settings as any)?.baseCurrency || '').toUpperCase();
+    const [baseCode, setBaseCode] = useState('—');
     const canManage = user?.role === 'owner' || user?.role === 'manager';
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
     const [formData, setFormData] = useState<Partial<Supplier>>({});
     const [currencyOptions, setCurrencyOptions] = useState<string[]>([]);
+
+    useEffect(() => {
+        void getBaseCurrencyCode().then((c) => {
+            if (!c) return;
+            setBaseCode(c);
+        });
+    }, []);
 
     useEffect(() => {
         let active = true;

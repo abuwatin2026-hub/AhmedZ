@@ -138,6 +138,7 @@ export interface ImportExpense {
   amount: number;
   currency: string;
   exchangeRate: number;
+  baseAmount?: number;
   paymentMethod?: 'cash' | 'bank';
   description?: string;
   invoiceNumber?: string;
@@ -576,6 +577,7 @@ export interface Coupon {
   code: string;
   type: 'percentage' | 'fixed';
   value: number;
+  currency?: string;
   minOrderAmount?: number;
   maxDiscount?: number;
   expiresAt?: string; // ISO string
@@ -597,6 +599,7 @@ export interface Promotion {
   id: string;
   name: string;
   imageUrl?: string;
+  currency?: string;
   startAt: string;
   endAt: string;
   isActive: boolean;
@@ -616,6 +619,7 @@ export interface PromotionApplicationSnapshot {
   promotionId: string;
   name: string;
   imageUrl?: string | null;
+  currency?: string;
   startAt: string;
   endAt: string;
   bundleQty: number;

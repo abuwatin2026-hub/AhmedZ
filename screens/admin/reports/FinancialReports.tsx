@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { getSupabaseClient } from '../../../supabase';
+import { getBaseCurrencyCode, getSupabaseClient } from '../../../supabase';
 import { useToast } from '../../../contexts/ToastContext';
 import { useAuth } from '../../../contexts/AuthContext';
 import { sharePdf, exportToXlsx, printPdfFromElement } from '../../../utils/export';
@@ -258,12 +258,6 @@ const computeAccountAmount = (accountType: string, debit: number, credit: number
   }
 };
 
-const formatMoney = (value: number) => {
-  const n = Number(value) || 0;
-  return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-};
-
-
 const shortRef = (value: unknown, takeLast: number = 6) => {
   const s = value === null || value === undefined ? '' : String(value);
   if (!s) return '';
@@ -356,13 +350,24 @@ const FinancialReports: React.FC = () => {
   const { showNotification } = useToast();
   const { user, hasPermission } = useAuth();
   const { settings } = useSettings();
-  const baseCode = String((settings as any)?.baseCurrency || '').toUpperCase() || '—';
+  const [baseCode, setBaseCode] = useState('—');
+  const formatMoney = (value: number) => {
+    const n = Number(value) || 0;
+    return `${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${baseCode || '—'}`;
+  };
   const ledgerSectionRef = useRef<HTMLDivElement | null>(null);
   const canViewAccounting = hasPermission('accounting.view');
   const canManageAccounting = hasPermission('accounting.manage');
   const canCloseAccountingPeriods = hasPermission('accounting.periods.close');
   const canApproveAccounting = hasPermission('accounting.approve');
   const canVoidAccounting = hasPermission('accounting.void');
+
+  useEffect(() => {
+    void getBaseCurrencyCode().then((c) => {
+      if (!c) return;
+      setBaseCode(c);
+    });
+  }, []);
 
   useEffect(() => {
     if (!canViewAccounting) {

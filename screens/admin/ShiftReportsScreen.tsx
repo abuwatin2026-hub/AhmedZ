@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getSupabaseClient } from '../../supabase';
+import { getBaseCurrencyCode, getSupabaseClient } from '../../supabase';
 import type { CashShift, Order } from '../../types';
 import * as Icons from '../../components/icons';
 import { useAuth } from '../../contexts/AuthContext';
@@ -43,6 +43,14 @@ const ShiftReportsScreen: React.FC = () => {
     const [reportExpectedCash, setReportExpectedCash] = useState<number | null>(null);
     const navigate = useNavigate();
     const { settings } = useSettings();
+    const [baseCode, setBaseCode] = useState('—');
+
+    useEffect(() => {
+        void getBaseCurrencyCode().then((c) => {
+            if (!c) return;
+            setBaseCode(c);
+        });
+    }, []);
 
     useEffect(() => {
         const loadShifts = async () => {
@@ -566,20 +574,20 @@ const ShiftReportsScreen: React.FC = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                     <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50">
                         <div className="text-xs text-gray-500 dark:text-gray-300">عهدة البداية</div>
-                        <div className="mt-1 text-lg font-bold font-mono dark:text-white">{startAmount.toFixed(2)}</div>
+                        <div className="mt-1 text-lg font-bold font-mono dark:text-white">{startAmount.toFixed(2)} {baseCode || '—'}</div>
                     </div>
                     <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50">
                         <div className="text-xs text-gray-500 dark:text-gray-300">النقد المتوقع</div>
-                        <div className="mt-1 text-lg font-bold font-mono dark:text-white">{reportCashExpected.toFixed(2)}</div>
+                        <div className="mt-1 text-lg font-bold font-mono dark:text-white">{reportCashExpected.toFixed(2)} {baseCode || '—'}</div>
                     </div>
                     <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50">
                         <div className="text-xs text-gray-500 dark:text-gray-300">النقد الفعلي</div>
-                        <div className="mt-1 text-lg font-bold font-mono dark:text-white">{endAmount === null ? '-' : endAmount.toFixed(2)}</div>
+                        <div className="mt-1 text-lg font-bold font-mono dark:text-white">{endAmount === null ? '-' : `${endAmount.toFixed(2)} ${baseCode || '—'}`}</div>
                     </div>
                     <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50">
                         <div className="text-xs text-gray-500 dark:text-gray-300">فرق النقد</div>
                         <div className={`mt-1 text-lg font-bold font-mono ${diff !== null && Math.abs(diff) > 0.01 ? 'text-red-600 dark:text-red-400' : 'dark:text-white'}`}>
-                            {diff === null ? '-' : (diff > 0 ? '+' : '') + diff.toFixed(2)}
+                            {diff === null ? '-' : `${diff > 0 ? '+' : ''}${diff.toFixed(2)} ${baseCode || '—'}`}
                         </div>
                     </div>
                 </div>
@@ -594,25 +602,25 @@ const ShiftReportsScreen: React.FC = () => {
                     <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                         <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50">
                             <div className="text-xs text-gray-500 dark:text-gray-300">المبيعات</div>
-                            <div className="mt-1 text-lg font-bold font-mono dark:text-white">{reportComputed.salesTotal.toFixed(2)}</div>
+                            <div className="mt-1 text-lg font-bold font-mono dark:text-white">{reportComputed.salesTotal.toFixed(2)} {baseCode || '—'}</div>
                         </div>
                         <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50">
                             <div className="text-xs text-gray-500 dark:text-gray-300">المرتجعات</div>
-                            <div className="mt-1 text-lg font-bold font-mono text-rose-600 dark:text-rose-400">{reportComputed.refundsTotal.toFixed(2)}</div>
+                            <div className="mt-1 text-lg font-bold font-mono text-rose-600 dark:text-rose-400">{reportComputed.refundsTotal.toFixed(2)} {baseCode || '—'}</div>
                             <div className="mt-1 text-[11px] text-gray-500 dark:text-gray-300">{reportComputed.refundsCount} عملية إرجاع</div>
                         </div>
                         <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50">
                             <div className="text-xs text-gray-500 dark:text-gray-300">الخصومات</div>
-                            <div className="mt-1 text-lg font-bold font-mono text-emerald-600 dark:text-emerald-400">{reportComputed.discountsTotal.toFixed(2)}</div>
+                            <div className="mt-1 text-lg font-bold font-mono text-emerald-600 dark:text-emerald-400">{reportComputed.discountsTotal.toFixed(2)} {baseCode || '—'}</div>
                         </div>
                         <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50">
                             <div className="text-xs text-gray-500 dark:text-gray-300">الصافي</div>
-                            <div className="mt-1 text-lg font-bold font-mono dark:text-white">{reportComputed.netTotal.toFixed(2)}</div>
+                            <div className="mt-1 text-lg font-bold font-mono dark:text-white">{reportComputed.netTotal.toFixed(2)} {baseCode || '—'}</div>
                         </div>
                     </div>
                     {reportMissingRefunds > 0.01 && (
                         <div className="mt-3 p-3 rounded-lg bg-amber-50 text-amber-900 text-sm">
-                            مرتجعات غير مرتبطة بعمليات دفع داخل الوردية: {reportMissingRefunds.toFixed(2)}
+                            مرتجعات غير مرتبطة بعمليات دفع داخل الوردية: {reportMissingRefunds.toFixed(2)} {baseCode || '—'}
                         </div>
                     )}
                 </div>
@@ -632,10 +640,10 @@ const ShiftReportsScreen: React.FC = () => {
                         {tenderRows.map((r) => (
                             <div key={r.method} className="grid grid-cols-12 gap-2 items-center">
                                 <div className="col-span-4 text-sm dark:text-gray-200">{methodLabel(r.method)}</div>
-                                <div className="col-span-3 text-right text-sm font-mono dark:text-gray-200">{Number(r.exp).toFixed(2)}</div>
-                                <div className="col-span-3 text-right text-sm font-mono dark:text-gray-200">{r.counted === null ? '-' : r.counted.toFixed(2)}</div>
+                                <div className="col-span-3 text-right text-sm font-mono dark:text-gray-200">{Number(r.exp).toFixed(2)} {baseCode || '—'}</div>
+                                <div className="col-span-3 text-right text-sm font-mono dark:text-gray-200">{r.counted === null ? '-' : `${r.counted.toFixed(2)} ${baseCode || '—'}`}</div>
                                 <div className={`col-span-2 text-right text-sm font-mono ${r.diff !== null && Math.abs(r.diff) > 0.01 ? 'text-red-600 dark:text-red-400' : 'text-gray-600 dark:text-gray-300'}`}>
-                                    {r.diff === null ? '-' : (r.diff > 0 ? '+' : '') + r.diff.toFixed(2)}
+                                    {r.diff === null ? '-' : `${r.diff > 0 ? '+' : ''}${r.diff.toFixed(2)} ${baseCode || '—'}`}
                                 </div>
                             </div>
                         ))}
@@ -713,13 +721,13 @@ const ShiftReportsScreen: React.FC = () => {
                                     {shift.closedAt ? new Date(shift.closedAt).toLocaleDateString('ar-EG-u-nu-latn', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-'}
                                 </td>
                                 <td className="p-2 sm:p-4 text-xs sm:text-sm font-mono dark:text-gray-300">
-                                    {shift.startAmount.toFixed(2)}
+                                    {shift.startAmount.toFixed(2)} {baseCode || '—'}
                                 </td>
                                 <td className="p-2 sm:p-4 text-xs sm:text-sm font-mono dark:text-gray-300">
-                                    {shift.expectedAmount?.toFixed(2) ?? '-'}
+                                    {shift.expectedAmount !== null && shift.expectedAmount !== undefined ? `${shift.expectedAmount.toFixed(2)} ${baseCode || '—'}` : '-'}
                                 </td>
                                 <td className="p-2 sm:p-4 text-xs sm:text-sm font-mono dark:text-gray-300">
-                                    {shift.endAmount?.toFixed(2) ?? '-'}
+                                    {shift.endAmount !== null && shift.endAmount !== undefined ? `${shift.endAmount.toFixed(2)} ${baseCode || '—'}` : '-'}
                                 </td>
                                 <td className="p-2 sm:p-4">
                                     {shift.difference !== undefined && shift.difference !== null ? (
@@ -727,7 +735,7 @@ const ShiftReportsScreen: React.FC = () => {
                                             ? 'text-red-500'
                                             : 'text-green-500'
                                             }`}>
-                                            {shift.difference > 0 ? '+' : ''}{shift.difference.toFixed(2)}
+                                            {shift.difference > 0 ? '+' : ''}{shift.difference.toFixed(2)} {baseCode || '—'}
                                         </span>
                                     ) : '-'}
                                 </td>
@@ -805,10 +813,10 @@ const ShiftReportsScreen: React.FC = () => {
                                 />
                                 {closeExpected !== null && (
                                     <div className="mt-2 text-xs text-gray-500 dark:text-gray-300">
-                                        المتوقع: <span className="font-mono">{closeExpected.toFixed(2)}</span>{' '}
+                                        المتوقع: <span className="font-mono">{closeExpected.toFixed(2)} {baseCode || '—'}</span>{' '}
                                         <span className="mx-1">—</span>
                                         الفرق: <span className={`font-mono font-bold ${Math.abs(Number(closeAmount) - closeExpected) > 0.01 ? 'text-red-500' : 'text-gray-500 dark:text-gray-300'}`}>
-                                            {(Number.isFinite(Number(closeAmount)) ? (Number(closeAmount) - closeExpected).toFixed(2) : '-')}
+                                            {(Number.isFinite(Number(closeAmount)) ? `${(Number(closeAmount) - closeExpected).toFixed(2)} ${baseCode || '—'}` : '-')}
                                         </span>
                                     </div>
                                 )}
@@ -837,10 +845,10 @@ const ShiftReportsScreen: React.FC = () => {
                                                 return (
                                                     <div key={method} className="grid grid-cols-12 gap-2 items-center">
                                                         <div className="col-span-4 text-sm dark:text-gray-200">{methodLabel(method)}</div>
-                                                        <div className="col-span-3 text-right text-sm font-mono dark:text-gray-200">{exp.toFixed(2)}</div>
+                                                        <div className="col-span-3 text-right text-sm font-mono dark:text-gray-200">{exp.toFixed(2)} {baseCode || '—'}</div>
                                                         <div className="col-span-3">
                                                             {isCash ? (
-                                                                <div className="text-right text-sm font-mono dark:text-gray-200">{Number.isFinite(Number(closeAmount)) ? Number(closeAmount).toFixed(2) : '-'}</div>
+                                                                <div className="text-right text-sm font-mono dark:text-gray-200">{Number.isFinite(Number(closeAmount)) ? `${Number(closeAmount).toFixed(2)} ${baseCode || '—'}` : '-'}</div>
                                                             ) : (
                                                                 <input
                                                                     type="number"
@@ -848,12 +856,12 @@ const ShiftReportsScreen: React.FC = () => {
                                                                     value={closeCountedByMethod[method] ?? ''}
                                                                     onChange={(e) => setCloseCountedByMethod((prev) => ({ ...prev, [method]: e.target.value }))}
                                                                     className="w-full px-2 py-1 border rounded-lg text-sm font-mono text-right dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                                                                    placeholder={exp.toFixed(2)}
+                                                                    placeholder={`${exp.toFixed(2)} ${baseCode || '—'}`}
                                                                 />
                                                             )}
                                                         </div>
                                                         <div className={`col-span-2 text-right text-sm font-mono ${Number.isFinite(diff) && Math.abs(diff) > 0.01 ? 'text-red-600 dark:text-red-400' : 'text-gray-600 dark:text-gray-300'}`}>
-                                                            {Number.isFinite(diff) ? (diff > 0 ? '+' : '') + diff.toFixed(2) : '-'}
+                                                            {Number.isFinite(diff) ? `${diff > 0 ? '+' : ''}${diff.toFixed(2)} ${baseCode || '—'}` : '-'}
                                                         </div>
                                                     </div>
                                                 );

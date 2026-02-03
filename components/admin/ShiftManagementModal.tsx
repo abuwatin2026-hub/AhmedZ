@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useCashShift } from '../../contexts/CashShiftContext';
 import { useAuth } from '../../contexts/AuthContext';
 import * as Icons from '../../components/icons';
-import { getSupabaseClient } from '../../supabase';
+import { getBaseCurrencyCode, getSupabaseClient } from '../../supabase';
 
 interface ShiftManagementModalProps {
     isOpen: boolean;
@@ -21,6 +21,7 @@ const ShiftManagementModal: React.FC<ShiftManagementModalProps> = ({ isOpen, onC
     const [error, setError] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [cashierLabel, setCashierLabel] = useState<string>('');
+    const [baseCode, setBaseCode] = useState('—');
 
     // Reset form when modal opens or shift state changes
     useEffect(() => {
@@ -30,6 +31,13 @@ const ShiftManagementModal: React.FC<ShiftManagementModalProps> = ({ isOpen, onC
             setError('');
         }
     }, [isOpen, currentShift]);
+
+    useEffect(() => {
+        void getBaseCurrencyCode().then((c) => {
+            if (!c) return;
+            setBaseCode(c);
+        });
+    }, []);
 
     useEffect(() => {
         const resolveCashierLabel = async () => {
@@ -128,11 +136,11 @@ const ShiftManagementModal: React.FC<ShiftManagementModalProps> = ({ isOpen, onC
                                 </div>
                                 <div className="flex justify-between items-center mb-1">
                                     <span className="text-sm text-gray-500 dark:text-gray-400">عهدة البداية:</span>
-                                    <span className="font-semibold text-green-600">{currentShift.startAmount.toFixed(2)}</span>
+                                    <span className="font-semibold text-green-600">{currentShift.startAmount.toFixed(2)} {baseCode || '—'}</span>
                                 </div>
                                 <div className="flex justify-between items-center border-t pt-2 mt-2 border-blue-200 dark:border-blue-700">
                                     <span className="text-base font-bold text-gray-700 dark:text-gray-300">النقد المتوقع:</span>
-                                    <span className="text-xl font-bold text-indigo-600">{expectedCash.toFixed(2)}</span>
+                                    <span className="text-xl font-bold text-indigo-600">{expectedCash.toFixed(2)} {baseCode || '—'}</span>
                                 </div>
                             </>
                         )}
@@ -166,7 +174,7 @@ const ShiftManagementModal: React.FC<ShiftManagementModalProps> = ({ isOpen, onC
                             <div>
                                 <p className="font-bold">تم رصد فرق</p>
                                 <p className="text-sm">
-                                    الفرق: <span dir="ltr">{difference > 0 ? '+' : ''}{difference.toFixed(2)}</span>
+                                    الفرق: <span dir="ltr">{difference > 0 ? '+' : ''}{difference.toFixed(2)} {baseCode || '—'}</span>
                                 </p>
                                 <p className="text-xs mt-1 opacity-80">
                                     {difference < 0 ? 'يوجد نقص نقدي.' : 'يوجد زيادة نقدية.'}

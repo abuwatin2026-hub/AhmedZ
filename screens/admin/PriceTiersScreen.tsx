@@ -1,19 +1,25 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { usePricing } from '../../contexts/PricingContext';
 import { useMenu } from '../../contexts/MenuContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
-import { useSettings } from '../../contexts/SettingsContext';
 import * as Icons from '../../components/icons';
 import type { PriceTier, CustomerType } from '../../types';
+import { getBaseCurrencyCode } from '../../supabase';
 
 const PriceTiersScreen: React.FC = () => {
     const { priceTiers, addPriceTier, updatePriceTier, deletePriceTier } = usePricing();
     const { menuItems } = useMenu();
     const { hasPermission } = useAuth();
     const { showNotification } = useToast();
-    const { settings } = useSettings();
-    const baseCode = String((settings as any)?.baseCurrency || '').toUpperCase() || '—';
+    const [baseCode, setBaseCode] = useState('—');
+
+    useEffect(() => {
+        void getBaseCurrencyCode().then((c) => {
+            if (!c) return;
+            setBaseCode(c);
+        });
+    }, []);
 
     const [showModal, setShowModal] = useState(false);
     const [editingTier, setEditingTier] = useState<PriceTier | null>(null);

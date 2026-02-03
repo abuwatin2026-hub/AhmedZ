@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAddons } from '../../contexts/AddonContext';
 import { useToast } from '../../contexts/ToastContext';
 // import { useSettings } from '../../contexts/SettingsContext';
@@ -6,16 +6,25 @@ import { Addon } from '../../types';
 import ConfirmationModal from '../../components/admin/ConfirmationModal';
 import AddonFormModal from '../../components/admin/AddonFormModal';
 import { EditIcon, TrashIcon } from '../../components/icons';
+import { getBaseCurrencyCode } from '../../supabase';
 
 const ManageAddonsScreen: React.FC = () => {
   const { addons, addAddon, updateAddon, deleteAddon } = useAddons();
   const { showNotification } = useToast();
   // const { t, language } = useSettings();
+  const [baseCode, setBaseCode] = useState('—');
 
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [currentAddon, setCurrentAddon] = useState<Addon | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+
+  useEffect(() => {
+    void getBaseCurrencyCode().then((c) => {
+      if (!c) return;
+      setBaseCode(c);
+    });
+  }, []);
 
   const handleOpenFormModal = (addon: Addon | null = null) => {
     setCurrentAddon(addon);
@@ -83,7 +92,7 @@ const ManageAddonsScreen: React.FC = () => {
                     {addon.size ? (addon.size['ar'] || addon.size['en'] || '-') : '-'}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white font-bold">
-                    {addon.price.toFixed(2)} ر.س
+                    {addon.price.toFixed(2)} {baseCode || '—'}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2 rtl:space-x-reverse">
                     <button onClick={() => handleOpenFormModal(addon)} className="text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-200 p-1"><EditIcon /></button>
