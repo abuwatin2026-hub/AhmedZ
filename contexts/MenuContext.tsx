@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, ReactNode, useCallback, useEffect, useRef } from 'react';
 import type { MenuItem } from '../types';
-import { getSupabaseClient } from '../supabase';
+import { disableRealtime, getSupabaseClient, isRealtimeEnabled } from '../supabase';
 import { logger } from '../utils/logger';
 import { isAbortLikeError, localizeSupabaseError } from '../utils/errorUtils';
 
@@ -193,17 +193,22 @@ export const MenuProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   useEffect(() => {
     const supabase = getSupabaseClient();
-    if (!supabase) return;
+    if (!supabase || !isRealtimeEnabled()) return;
     const channel = supabase
       .channel('public:menu_items')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'menu_items' },
-        async () => {
-          await fetchMenuItems();
+        () => {
+          void fetchMenuItems();
         }
       )
-      .subscribe();
+      .subscribe((status: any) => {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          disableRealtime();
+          supabase.removeChannel(channel);
+        }
+      });
     return () => {
       supabase.removeChannel(channel);
     };

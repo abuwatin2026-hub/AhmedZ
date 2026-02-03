@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, ReactNode, useCallback, useEffect } from 'react';
 import type { Ad } from '../types';
-import { getSupabaseClient } from '../supabase';
+import { disableRealtime, getSupabaseClient, isRealtimeEnabled } from '../supabase';
 import { isAbortLikeError, localizeSupabaseError } from '../utils/errorUtils';
 
 interface AdContextType {
@@ -68,12 +68,28 @@ export const AdProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
       ? window.setInterval(() => scheduleRefetch(), 30000)
       : undefined;
 
+    if (!isRealtimeEnabled()) {
+      return () => {
+        if (typeof window !== 'undefined') {
+          window.removeEventListener('focus', onFocus);
+          window.removeEventListener('visibilitychange', onVisibility);
+          window.removeEventListener('online', onOnline);
+          if (typeof intervalId === 'number') window.clearInterval(intervalId);
+        }
+      };
+    }
+
     const channel = supabase
       .channel('public:ads')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'ads' }, async () => {
-        await fetchAds();
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ads' }, () => {
+        void fetchAds();
       })
-      .subscribe();
+      .subscribe((status: any) => {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          disableRealtime();
+          supabase.removeChannel(channel);
+        }
+      });
     return () => {
       if (typeof window !== 'undefined') {
         window.removeEventListener('focus', onFocus);

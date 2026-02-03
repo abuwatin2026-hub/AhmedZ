@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, ReactNode, useCallback, use
 import type { MenuItem, PriceHistory } from '../types';
 import { useAuth } from './AuthContext';
 import { useSettings } from './SettingsContext';
-import { getSupabaseClient } from '../supabase';
+import { disableRealtime, getSupabaseClient, isRealtimeEnabled } from '../supabase';
 import { localizeSupabaseError } from '../utils/errorUtils';
 
 interface PriceContextType {
@@ -52,17 +52,22 @@ export const PriceProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   useEffect(() => {
       const supabase = getSupabaseClient();
-      if (!supabase) return;
+      if (!supabase || !isRealtimeEnabled()) return;
       const channel = supabase
           .channel('public:price_history')
           .on(
               'postgres_changes',
               { event: '*', schema: 'public', table: 'price_history' },
-              async () => {
-                  await fetchPriceHistory();
+              () => {
+                  void fetchPriceHistory();
               }
           )
-          .subscribe();
+          .subscribe((status: any) => {
+              if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+                  disableRealtime();
+                  supabase.removeChannel(channel);
+              }
+          });
       return () => {
           supabase.removeChannel(channel);
       };

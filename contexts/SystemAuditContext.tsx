@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { getSupabaseClient } from '../supabase';
+import { disableRealtime, getSupabaseClient, isRealtimeEnabled } from '../supabase';
 import { SystemAuditLog } from '../types';
 import { useAuth } from './AuthContext';
 import { isAbortLikeError, localizeSupabaseError } from '../utils/errorUtils';
@@ -88,12 +88,18 @@ export const SystemAuditProvider: React.FC<{ children: React.ReactNode }> = ({ c
     if (!supabase) return;
     if (!user?.id) return;
     if (!canViewAuditLogs) return;
+    if (!isRealtimeEnabled()) return;
     const channel = supabase
       .channel('public:system_audit_logs')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'system_audit_logs' }, async () => {
-        await fetchLogs();
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'system_audit_logs' }, () => {
+        void fetchLogs();
       })
-      .subscribe();
+      .subscribe((status: any) => {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          disableRealtime();
+          supabase.removeChannel(channel);
+        }
+      });
     return () => {
       supabase.removeChannel(channel);
     };

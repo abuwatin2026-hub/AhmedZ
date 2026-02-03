@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, ReactNode, useCallback, useEffect, useRef } from 'react';
-import { getSupabaseClient } from '../supabase';
+import { disableRealtime, getSupabaseClient, isRealtimeEnabled } from '../supabase';
 import { useAuth } from './AuthContext';
 import { useUserAuth } from './UserAuthContext';
 import type { Notification } from '../types';
@@ -175,6 +175,16 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
       ? window.setInterval(() => scheduleRefetch(), 15000)
       : undefined;
 
+    if (!isRealtimeEnabled()) {
+      return () => {
+        if (typeof window !== 'undefined') {
+          window.removeEventListener('focus', onFocus);
+          window.removeEventListener('visibilitychange', onVisibility);
+          if (typeof intervalId === 'number') window.clearInterval(intervalId);
+        }
+      };
+    }
+
     const channel = supabase
       .channel('public:notifications')
       .on(
@@ -279,7 +289,12 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
           });
         }
       )
-      .subscribe();
+      .subscribe((status: any) => {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          disableRealtime();
+          supabase.removeChannel(channel);
+        }
+      });
 
     return () => {
       if (typeof window !== 'undefined') {

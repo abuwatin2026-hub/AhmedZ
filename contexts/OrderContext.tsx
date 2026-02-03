@@ -6,7 +6,7 @@ import { useChallenges } from './ChallengeContext';
 import { useAuth } from './AuthContext';
 import { useSessionScope } from './SessionScopeContext';
 import { generateInvoiceNumber } from '../utils/orderUtils';
-import { getBaseCurrencyCode, getSupabaseClient, isRpcStrictMode, markRpcStrictModeEnabled, isRpcWrappersAvailable, reloadPostgrestSchema, rpcHasFunction } from '../supabase';
+import { disableRealtime, getBaseCurrencyCode, getSupabaseClient, isRealtimeEnabled, isRpcStrictMode, isRpcWrappersAvailable, markRpcStrictModeEnabled, reloadPostgrestSchema, rpcHasFunction } from '../supabase';
 import { createLogger } from '../utils/logger';
 import { localizeSupabaseError, isAbortLikeError } from '../utils/errorUtils';
 import { enqueueRpc, upsertOfflinePosOrder } from '../utils/offlineQueue';
@@ -977,7 +977,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
 
     const supabase = getSupabaseClient();
-    if (!supabase) {
+    if (!supabase || !isRealtimeEnabled()) {
       return () => {
         if (typeof window !== 'undefined') {
           window.removeEventListener('offline', onOffline);
@@ -1087,7 +1087,12 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           }
         }
       )
-      .subscribe();
+      .subscribe((status: any) => {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          disableRealtime();
+          supabase.removeChannel(channel);
+        }
+      });
 
     return () => {
       supabase.removeChannel(channel);

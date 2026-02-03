@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { getSupabaseClient } from '../supabase';
+import { disableRealtime, getSupabaseClient, isRealtimeEnabled } from '../supabase';
 import { localizeSupabaseError } from '../utils/errorUtils';
 import { SalesReturn, SalesReturnItem, Order } from '../types';
 import { useAuth } from './AuthContext';
@@ -74,12 +74,27 @@ export const SalesReturnProvider: React.FC<{ children: React.ReactNode }> = ({ c
       window.addEventListener('online', onOnline);
     }
 
+    if (!isRealtimeEnabled()) {
+      return () => {
+        if (typeof window !== 'undefined') {
+          window.removeEventListener('focus', onFocus);
+          window.removeEventListener('visibilitychange', onVisibility);
+          window.removeEventListener('online', onOnline);
+        }
+      };
+    }
+
     const channel = supabase
       .channel('public:sales_returns')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'sales_returns' }, async () => {
-        await fetchReturns();
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sales_returns' }, () => {
+        void fetchReturns();
       })
-      .subscribe();
+      .subscribe((status: any) => {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          disableRealtime();
+          supabase.removeChannel(channel);
+        }
+      });
     return () => {
       if (typeof window !== 'undefined') {
         window.removeEventListener('focus', onFocus);

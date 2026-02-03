@@ -2,6 +2,8 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 let client: SupabaseClient | null = null;
 const RPC_STRICT_MODE_KEY = 'RPC_STRICT_MODE';
+const REALTIME_DISABLED_KEY = 'AZTA_DISABLE_REALTIME';
+let realtimeDisabled = false;
 let postgrestReloadAttempt: Promise<boolean> | null = null;
 
 const createTimeoutFetch = (timeoutMs: number) => {
@@ -113,6 +115,35 @@ export const isSupabaseConfigured = (): boolean => {
   const url = (import.meta.env.VITE_SUPABASE_URL as string | undefined) || '';
   const anonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined) || '';
   return Boolean(url.trim()) && Boolean(anonKey.trim());
+};
+
+export const isRealtimeEnabled = (): boolean => {
+  if (realtimeDisabled) return false;
+  const envDisable = String((import.meta.env.VITE_DISABLE_REALTIME as any) ?? '').trim();
+  if (envDisable === '1' || envDisable.toLowerCase() === 'true') return false;
+  try {
+    if (typeof localStorage !== 'undefined' && localStorage.getItem(REALTIME_DISABLED_KEY) === '1') {
+      realtimeDisabled = true;
+      return false;
+    }
+  } catch {}
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return false;
+  if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return false;
+  return true;
+};
+
+export const disableRealtime = (): void => {
+  realtimeDisabled = true;
+  try {
+    if (typeof localStorage !== 'undefined') localStorage.setItem(REALTIME_DISABLED_KEY, '1');
+  } catch {}
+};
+
+export const clearRealtimeDisable = (): void => {
+  realtimeDisabled = false;
+  try {
+    if (typeof localStorage !== 'undefined') localStorage.removeItem(REALTIME_DISABLED_KEY);
+  } catch {}
 };
 
 export const getSupabaseClient = (): SupabaseClient | null => {

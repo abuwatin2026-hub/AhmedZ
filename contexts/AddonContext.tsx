@@ -1,7 +1,7 @@
 
 import React, { createContext, useContext, useState, ReactNode, useCallback, useEffect } from 'react';
 import type { Addon } from '../types';
-import { getSupabaseClient } from '../supabase';
+import { disableRealtime, getSupabaseClient, isRealtimeEnabled } from '../supabase';
 import { isAbortLikeError, localizeSupabaseError } from '../utils/errorUtils';
 
 interface AddonContextType {
@@ -73,12 +73,28 @@ export const AddonProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       ? window.setInterval(() => scheduleRefetch(), 30000)
       : undefined;
 
+    if (!isRealtimeEnabled()) {
+      return () => {
+        if (typeof window !== 'undefined') {
+          window.removeEventListener('focus', onFocus);
+          window.removeEventListener('visibilitychange', onVisibility);
+          window.removeEventListener('online', onOnline);
+          if (typeof intervalId === 'number') window.clearInterval(intervalId);
+        }
+      };
+    }
+
     const channel = supabase
       .channel('public:addons')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'addons' }, async () => {
-        await fetchAddons();
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'addons' }, () => {
+        void fetchAddons();
       })
-      .subscribe();
+      .subscribe((status: any) => {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          disableRealtime();
+          supabase.removeChannel(channel);
+        }
+      });
     return () => {
       if (typeof window !== 'undefined') {
         window.removeEventListener('focus', onFocus);

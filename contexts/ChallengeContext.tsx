@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, ReactNode, useCallback, use
 import type { Challenge, UserChallengeProgress, Order } from '../types';
 import { useUserAuth } from './UserAuthContext';
 import { useToast } from './ToastContext';
-import { getSupabaseClient } from '../supabase';
+import { disableRealtime, getSupabaseClient, isRealtimeEnabled } from '../supabase';
 import { logger } from '../utils/logger';
 import { localizeSupabaseError, isAbortLikeError } from '../utils/errorUtils';
 
@@ -198,12 +198,27 @@ export const ChallengeProvider: React.FC<{ children: ReactNode }> = ({ children 
       window.addEventListener('online', onOnline);
     }
 
+    if (!isRealtimeEnabled()) {
+      return () => {
+        if (typeof window !== 'undefined') {
+          window.removeEventListener('focus', onFocus);
+          window.removeEventListener('visibilitychange', onVisibility);
+          window.removeEventListener('online', onOnline);
+        }
+      };
+    }
+
     const channel = supabase
       .channel('public:challenges')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'challenges' }, async () => {
-        await fetchChallenges();
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'challenges' }, () => {
+        void fetchChallenges();
       })
-      .subscribe();
+      .subscribe((status: any) => {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          disableRealtime();
+          supabase.removeChannel(channel);
+        }
+      });
     return () => {
       if (typeof window !== 'undefined') {
         window.removeEventListener('focus', onFocus);
@@ -238,6 +253,17 @@ export const ChallengeProvider: React.FC<{ children: ReactNode }> = ({ children 
       window.addEventListener('online', onOnline);
     }
 
+    if (!isRealtimeEnabled()) {
+      return () => {
+        cancelled = true;
+        if (typeof window !== 'undefined') {
+          window.removeEventListener('focus', onFocus);
+          window.removeEventListener('visibilitychange', onVisibility);
+          window.removeEventListener('online', onOnline);
+        }
+      };
+    }
+
     void (async () => {
       const authUserId = await getCustomerAuthUserId();
       if (cancelled || !authUserId) return;
@@ -246,11 +272,16 @@ export const ChallengeProvider: React.FC<{ children: ReactNode }> = ({ children 
         .on(
           'postgres_changes',
           { event: '*', schema: 'public', table: 'user_challenge_progress', filter: `customer_auth_user_id=eq.${authUserId}` },
-          async () => {
-            await fetchUserProgress();
+          () => {
+            void fetchUserProgress();
           }
         )
-        .subscribe();
+        .subscribe((status: any) => {
+          if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+            disableRealtime();
+            supabase.removeChannel(channel);
+          }
+        });
     })();
     return () => {
       cancelled = true;

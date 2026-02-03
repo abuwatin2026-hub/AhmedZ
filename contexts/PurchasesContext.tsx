@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { getBaseCurrencyCode, getSupabaseClient } from '../supabase';
+import { disableRealtime, getBaseCurrencyCode, getSupabaseClient, isRealtimeEnabled } from '../supabase';
 import { isAbortLikeError, localizeSupabaseError } from '../utils/errorUtils';
 import { normalizeIsoDateOnly, toDateInputValue, toUtcIsoAtMiddayFromYmd, toUtcIsoFromLocalDateTimeInput } from '../utils/dateUtils';
 import { Supplier, PurchaseOrder } from '../types';
@@ -395,24 +395,39 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       window.addEventListener('online', onOnline);
     }
 
+    if (!isRealtimeEnabled()) {
+      return () => {
+        if (typeof window !== 'undefined') {
+          window.removeEventListener('focus', onFocus);
+          window.removeEventListener('visibilitychange', onVisibility);
+          window.removeEventListener('online', onOnline);
+        }
+      };
+    }
+
     const channel = supabase
       .channel('public:purchases')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'suppliers' }, async () => {
-        await fetchSuppliers({ silent: true });
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'suppliers' }, () => {
+        void fetchSuppliers({ silent: true });
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'purchase_orders' }, async () => {
-        await fetchPurchaseOrders({ silent: true });
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'purchase_orders' }, () => {
+        void fetchPurchaseOrders({ silent: true });
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'purchase_items' }, async () => {
-        await fetchPurchaseOrders({ silent: true });
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'purchase_items' }, () => {
+        void fetchPurchaseOrders({ silent: true });
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'purchase_returns' }, async () => {
-        await fetchPurchaseOrders({ silent: true });
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'purchase_returns' }, () => {
+        void fetchPurchaseOrders({ silent: true });
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'purchase_return_items' }, async () => {
-        await fetchPurchaseOrders({ silent: true });
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'purchase_return_items' }, () => {
+        void fetchPurchaseOrders({ silent: true });
       })
-      .subscribe();
+      .subscribe((status: any) => {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          disableRealtime();
+          supabase.removeChannel(channel);
+        }
+      });
 
     return () => {
       if (typeof window !== 'undefined') {

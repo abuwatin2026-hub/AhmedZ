@@ -5,7 +5,7 @@
 import React, { createContext, useContext, useState, ReactNode, useCallback, useEffect } from 'react';
 import type { Review } from '../types';
 import { useUserAuth } from './UserAuthContext';
-import { getSupabaseClient } from '../supabase';
+import { disableRealtime, getSupabaseClient, isRealtimeEnabled } from '../supabase';
 import { isAbortLikeError, localizeSupabaseError } from '../utils/errorUtils';
 
 
@@ -60,17 +60,22 @@ export const ReviewProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
   useEffect(() => {
     const supabase = getSupabaseClient();
-    if (!supabase) return;
+    if (!supabase || !isRealtimeEnabled()) return;
     const channel = supabase
       .channel('public:reviews')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'reviews' },
-        async () => {
-          await fetchReviews();
+        () => {
+          void fetchReviews();
         }
       )
-      .subscribe();
+      .subscribe((status: any) => {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          disableRealtime();
+          supabase.removeChannel(channel);
+        }
+      });
     return () => {
       supabase.removeChannel(channel);
     };

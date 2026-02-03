@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { getSupabaseClient } from '../supabase';
+import { disableRealtime, getSupabaseClient, isRealtimeEnabled } from '../supabase';
 import { useAuth } from './AuthContext';
 import { CashShift } from '../types';
 import { isAbortLikeError, localizeSupabaseError } from '../utils/errorUtils';
@@ -126,6 +126,7 @@ export const CashShiftProvider = ({ children }: { children: ReactNode }) => {
         if (!supabase || !currentShift?.id) return;
         let disposed = false;
         let timer: number | undefined;
+        let poller: number | undefined;
 
         const recalc = async () => {
             if (disposed) return;
@@ -146,6 +147,17 @@ export const CashShiftProvider = ({ children }: { children: ReactNode }) => {
 
         schedule();
 
+        if (!isRealtimeEnabled()) {
+            poller = window.setInterval(() => {
+                void recalc();
+            }, 30_000);
+            return () => {
+                disposed = true;
+                if (timer) window.clearTimeout(timer);
+                if (poller) window.clearInterval(poller);
+            };
+        }
+
         const channel = supabase
             .channel(`cash_shift:${currentShift.id}:payments`)
             .on(
@@ -153,11 +165,17 @@ export const CashShiftProvider = ({ children }: { children: ReactNode }) => {
                 { event: '*', schema: 'public', table: 'payments', filter: `shift_id=eq.${currentShift.id}` },
                 () => schedule()
             )
-            .subscribe();
+            .subscribe((status: any) => {
+                if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+                    disableRealtime();
+                    supabase.removeChannel(channel);
+                }
+            });
 
         return () => {
             disposed = true;
             if (timer) window.clearTimeout(timer);
+            if (poller) window.clearInterval(poller);
             supabase.removeChannel(channel);
         };
     }, [supabase, currentShift?.id]);

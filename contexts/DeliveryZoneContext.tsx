@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, ReactNode, useCallback, useEffect } from 'react';
 import type { DeliveryZone } from '../types';
-import { getSupabaseClient } from '../supabase';
+import { disableRealtime, getSupabaseClient, isRealtimeEnabled } from '../supabase';
 import { logger } from '../utils/logger';
 import { localizeSupabaseError, isAbortLikeError } from '../utils/errorUtils';
 import { enqueueTable } from '../utils/offlineQueue';
@@ -141,17 +141,22 @@ export const DeliveryZoneProvider: React.FC<{ children: ReactNode }> = ({ childr
 
   useEffect(() => {
     const supabase = getSupabaseClient();
-    if (!supabase) return;
+    if (!supabase || !isRealtimeEnabled()) return;
     const channel = supabase
       .channel('public:delivery_zones')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'delivery_zones' },
-        async () => {
-          await fetchDeliveryZones();
+        () => {
+          void fetchDeliveryZones();
         }
       )
-      .subscribe();
+      .subscribe((status: any) => {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          disableRealtime();
+          supabase.removeChannel(channel);
+        }
+      });
     return () => {
       supabase.removeChannel(channel);
     };

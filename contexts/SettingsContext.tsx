@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
 import type { AppLanguage, AppSettings, AppTheme, PersistedAppSettings } from '../types';
-import { getSupabaseClient } from '../supabase';
+import { disableRealtime, getSupabaseClient, isRealtimeEnabled } from '../supabase';
 import { logger } from '../utils/logger';
 import { localizeSupabaseError } from '../utils/errorUtils';
 import { translations } from '../utils/translations';
@@ -383,6 +383,16 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
       window.addEventListener('online', onOnline);
     }
 
+    if (!isRealtimeEnabled()) {
+      return () => {
+        if (typeof window !== 'undefined') {
+          window.removeEventListener('focus', onFocus);
+          window.removeEventListener('visibilitychange', onVisibility);
+          window.removeEventListener('online', onOnline);
+        }
+      };
+    }
+
     const channel = supabase
       .channel('public:app_settings')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'app_settings', filter: 'id=eq.app' }, async () => {
@@ -391,7 +401,12 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
         } catch {
         }
       })
-      .subscribe();
+      .subscribe((status: any) => {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          disableRealtime();
+          supabase.removeChannel(channel);
+        }
+      });
     return () => {
       if (typeof window !== 'undefined') {
         window.removeEventListener('focus', onFocus);

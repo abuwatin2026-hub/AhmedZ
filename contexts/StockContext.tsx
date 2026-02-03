@@ -4,7 +4,7 @@ import { useToast } from './ToastContext';
 import { useSettings } from './SettingsContext';
 import { useAuth } from './AuthContext';
 import { useSessionScope } from './SessionScopeContext';
-import { getSupabaseClient, isRpcStrictMode, markRpcStrictModeEnabled, isRpcWrappersAvailable, reloadPostgrestSchema } from '../supabase';
+import { disableRealtime, getSupabaseClient, isRealtimeEnabled, isRpcStrictMode, isRpcWrappersAvailable, markRpcStrictModeEnabled, reloadPostgrestSchema } from '../supabase';
 import { logger } from '../utils/logger';
 import { isAbortLikeError, localizeSupabaseError } from '../utils/errorUtils';
 
@@ -210,17 +210,22 @@ export const StockProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
     useEffect(() => {
         const supabase = getSupabaseClient();
-        if (!supabase) return;
+        if (!supabase || !isRealtimeEnabled()) return;
         const channel = supabase
             .channel('public:stock_management')
             .on(
                 'postgres_changes',
                 { event: '*', schema: 'public', table: 'stock_management' },
-                async () => {
-                    await fetchStock();
+                () => {
+                    void fetchStock();
                 }
             )
-            .subscribe();
+            .subscribe((status: any) => {
+                if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+                    disableRealtime();
+                    supabase.removeChannel(channel);
+                }
+            });
         return () => {
             supabase.removeChannel(channel);
         };
