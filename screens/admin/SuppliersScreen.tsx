@@ -46,6 +46,8 @@ const SuppliersScreen: React.FC = () => {
         (purchaseOrders || []).forEach((po: any) => {
             const sid = String(po.supplierId || '');
             if (!sid) return;
+            const status = String(po.status || '').toLowerCase();
+            if (status !== 'partial' && status !== 'completed') return;
             const c = String(po.currency || '').toUpperCase() || '—';
             const outstanding = (Number(po.totalAmount) || 0) - (Number(po.paidAmount) || 0);
             const prev = map.get(sid) || {};
