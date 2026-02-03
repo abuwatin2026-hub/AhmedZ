@@ -122,6 +122,10 @@ export const isRealtimeEnabled = (): boolean => {
   const envDisable = String((import.meta.env.VITE_DISABLE_REALTIME as any) ?? '').trim();
   if (envDisable === '1' || envDisable.toLowerCase() === 'true') return false;
   try {
+    const host = typeof location !== 'undefined' ? String(location.hostname || '').trim().toLowerCase() : '';
+    if (host.endsWith('.pages.dev')) return false;
+  } catch {}
+  try {
     if (typeof localStorage !== 'undefined' && localStorage.getItem(REALTIME_DISABLED_KEY) === '1') {
       realtimeDisabled = true;
       return false;

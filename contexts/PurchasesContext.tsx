@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { disableRealtime, getBaseCurrencyCode, getSupabaseClient, isRealtimeEnabled } from '../supabase';
+import { disableRealtime, getBaseCurrencyCode, getSupabaseClient, isRealtimeEnabled, reloadPostgrestSchema } from '../supabase';
 import { isAbortLikeError, localizeSupabaseError } from '../utils/errorUtils';
 import { normalizeIsoDateOnly, toDateInputValue, toUtcIsoAtMiddayFromYmd, toUtcIsoFromLocalDateTimeInput } from '../utils/dateUtils';
 import { Supplier, PurchaseOrder } from '../types';
@@ -123,6 +123,17 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const normalizeUomCode = (value: unknown) => {
     const v = String(value ?? '').trim();
     return v.length ? v : 'piece';
+  };
+
+  const isUuid = (value: unknown) => {
+    const v = String(value ?? '').trim();
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+  };
+
+  const toIsoDateOnlyOrNull = (value: unknown) => {
+    const normalized = normalizeIsoDateOnly(String(value ?? ''));
+    if (!normalized) return null;
+    return /^\d{4}-\d{2}-\d{2}$/.test(normalized) ? normalized : null;
   };
 
   const ensureUomId = useCallback(async (codeRaw: unknown) => {
@@ -641,12 +652,13 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                   p_items: items.map(i => ({
                       itemId: i.itemId,
                       quantity: i.quantity,
-                      harvestDate: i.productionDate,
-                      expiryDate: i.expiryDate
+                      harvestDate: toIsoDateOnlyOrNull(i.productionDate),
+                      expiryDate: toIsoDateOnlyOrNull(i.expiryDate)
                   })),
                   p_occurred_at: toUtcIsoAtMiddayFromYmd(normalizedDate)
               });
-              if (receiveError) {
+              let errAny: any = receiveError;
+              if (errAny) {
                 const msg = String((receiveError as any)?.message || '');
                 if (/purchase receipt requires approval/i.test(msg)) {
                   const reqId = await ensureApprovalRequest(orderId, 'receipt', totalAmount);
@@ -659,7 +671,28 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                 if (/accounting_documents/i.test(msg) && /branch_id/i.test(msg)) {
                   throw new Error('تم حفظ أمر الشراء، لكن فشل استلام المخزون بسبب إعدادات الفرع/الشركة في المحاسبة. تأكد من ضبط فرع للمستودع أو إنشاء فرع افتراضي ثم أعد المحاولة.');
                 }
-                throw receiveError;
+                if (/schema cache|could not find the function|PGRST202/i.test(msg)) {
+                  const reloaded = await reloadPostgrestSchema();
+                  if (reloaded) {
+                    const retry = await supabase.rpc('receive_purchase_order_partial', {
+                      p_order_id: orderId,
+                      p_items: items.map(i => ({
+                        itemId: i.itemId,
+                        quantity: i.quantity,
+                        harvestDate: toIsoDateOnlyOrNull(i.productionDate),
+                        expiryDate: toIsoDateOnlyOrNull(i.expiryDate)
+                      })),
+                      p_occurred_at: toUtcIsoAtMiddayFromYmd(normalizedDate)
+                    });
+                    if (!retry.error) {
+                      await updateMenuItemDates(items);
+                      await fetchPurchaseOrders({ silent: false });
+                      return;
+                    }
+                    errAny = retry.error as any;
+                  }
+                }
+                throw errAny;
               }
               await updateMenuItemDates(items);
           }
@@ -791,20 +824,30 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     ) => {
         if (!supabase || !user) return;
         try {
+          const orderId = String(purchaseOrderId || '').trim();
+          if (!isUuid(orderId)) throw new Error('معرف أمر الشراء غير صالح.');
+          const normalizedItems = (items || []).map((i) => {
+            const itemId = String((i as any)?.itemId || '').trim();
+            const qty = Number((i as any)?.quantity || 0);
+            if (!isUuid(itemId)) throw new Error('معرّف الصنف غير صالح.');
+            if (!Number.isFinite(qty) || qty <= 0) throw new Error('كمية الاستلام غير صالحة.');
+            return {
+              itemId,
+              quantity: qty,
+              harvestDate: toIsoDateOnlyOrNull((i as any)?.productionDate),
+              expiryDate: toIsoDateOnlyOrNull((i as any)?.expiryDate),
+              transportCost: (i as any).transportCost,
+              supplyTaxCost: (i as any).supplyTaxCost,
+            };
+          });
           const { error: whErr } = await supabase.rpc('_resolve_default_warehouse_id');
           if (whErr) throw whErr;
-          const { error } = await supabase.rpc('receive_purchase_order_partial', {
-              p_order_id: purchaseOrderId,
-              p_items: items.map(i => ({
-                  itemId: i.itemId,
-                  quantity: i.quantity,
-                  harvestDate: i.productionDate,
-                  expiryDate: i.expiryDate,
-                  transportCost: (i as any).transportCost,
-                  supplyTaxCost: (i as any).supplyTaxCost,
-              })),
-              p_occurred_at: occurredAt ? (toUtcIsoFromLocalDateTimeInput(occurredAt) || new Date(occurredAt).toISOString()) : new Date().toISOString()
-          });
+          const args = {
+            p_order_id: orderId,
+            p_items: normalizedItems,
+            p_occurred_at: occurredAt ? (toUtcIsoFromLocalDateTimeInput(occurredAt) || new Date(occurredAt).toISOString()) : new Date().toISOString()
+          } as any;
+          let { error } = await supabase.rpc('receive_purchase_order_partial', args);
           if (error) {
             const msg = String((error as any)?.message || '');
             if (/purchase receipt requires approval/i.test(msg)) {
@@ -820,6 +863,21 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               } else {
                 throw new Error('يتطلب الاستلام موافقة. تعذر إنشاء طلب الموافقة تلقائياً؛ يرجى إنشائه من قسم الموافقات ثم إعادة المحاولة.');
               }
+            }
+            if (/schema cache|could not find the function|PGRST202/i.test(msg)) {
+              const reloaded = await reloadPostgrestSchema();
+              if (reloaded) {
+                const retry = await supabase.rpc('receive_purchase_order_partial', args);
+                if (!retry.error) {
+                  await updateMenuItemDates(items);
+                  await fetchPurchaseOrders();
+                  return;
+                }
+                error = retry.error as any;
+              }
+            }
+            if (/immutable record/i.test(msg)) {
+              throw new Error('تعذر استلام أمر الشراء بسبب محاولة تعديل قيود محاسبية مُقفلة. غالبًا توجد عملية سابقة أعادت ترحيل/تعديل نفس القيد. الحل يكون عبر إجراء عكسي (Reversal) بدل التعديل، أو تحديث منطق الترحيل بقاعدة البيانات.');
             }
             throw error;
           }
