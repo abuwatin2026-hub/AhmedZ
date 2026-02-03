@@ -26,6 +26,8 @@ const SettingsScreen: React.FC = () => {
   const [formState, setFormState] = useState<AppSettings>(settings);
   const [currencyRows, setCurrencyRows] = useState<Array<{ code: string; is_base?: boolean; is_high_inflation?: boolean }>>([]);
   const [currenciesLoading, setCurrenciesLoading] = useState(false);
+  const [hasPostings, setHasPostings] = useState<boolean | null>(null);
+  const [postingsCount, setPostingsCount] = useState<number | null>(null);
   const [branchBrandingWarehouseId, setBranchBrandingWarehouseId] = useState<string>('');
   const [isSaving, setIsSaving] = useState(false);
   const [isMaintenanceSaving, setIsMaintenanceSaving] = useState(false);
@@ -132,6 +134,38 @@ const SettingsScreen: React.FC = () => {
       mounted = false;
     };
   }, [showNotification]);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadPostings = async () => {
+      try {
+        const supabase = getSupabaseClient();
+        if (!supabase) return;
+        const { count, error } = await supabase
+          .from('journal_entries')
+          .select('id', { head: true, count: 'exact' });
+        if (error) {
+          if (mounted) setHasPostings(null);
+          if (mounted) setPostingsCount(null);
+          return;
+        }
+        if (mounted) {
+          const c = typeof count === 'number' ? count : null;
+          setHasPostings(c !== null ? c > 0 : null);
+          setPostingsCount(c);
+        }
+      } catch {
+        if (mounted) {
+          setHasPostings(null);
+          setPostingsCount(null);
+        }
+      }
+    };
+    void loadPostings();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const { menuItems } = useMenu();
   const { deliveryZones } = useDeliveryZones();
@@ -1439,6 +1473,14 @@ const SettingsScreen: React.FC = () => {
             إعدادات العملة
           </h2>
           <div className="p-4 border rounded-lg dark:border-gray-600 space-y-6">
+            {hasPostings === true && (
+              <div className="p-3 rounded-md bg-yellow-50 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-200">
+                <div>لا يمكن تغيير العملة الأساسية بعد بدء القيود الدفترية.</div>
+                {typeof postingsCount === 'number' ? (
+                  <div className="mt-1 text-xs">عدد القيود الدفترية: {postingsCount}</div>
+                ) : null}
+              </div>
+            )}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">العملة الأساسية للنظام</label>
@@ -1480,8 +1522,13 @@ const SettingsScreen: React.FC = () => {
                   <button
                     type="button"
                     className="px-3 py-2 bg-blue-600 text-white rounded-md"
+                    disabled={hasPostings === true}
                     onClick={async () => {
                       try {
+                        if (hasPostings === true) {
+                          showNotification('لا يمكن تغيير العملة الأساسية بعد بدء القيود الدفترية.', 'error');
+                          return;
+                        }
                         const supabase = getSupabaseClient();
                           const baseCode = String(formState.baseCurrency || '').toUpperCase();
                           if (!baseCode) {

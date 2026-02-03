@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getSupabaseClient } from '../../../supabase';
 import { useToast } from '../../../contexts/ToastContext';
 import { useAuth } from '../../../contexts/AuthContext';
-import { sharePdf, exportToXlsx } from '../../../utils/export';
+import { sharePdf, exportToXlsx, printPdfFromElement } from '../../../utils/export';
 import { buildPdfBrandOptions, buildXlsxBrandOptions } from '../../../utils/branding';
 import { printContent } from '../../../utils/printUtils';
 import { CostCenter } from '../../../types';
@@ -485,12 +485,28 @@ const FinancialReports: React.FC = () => {
   const [cashFlow, setCashFlow] = useState<CashFlowRow | null>(null);
   const [customerNames, setCustomerNames] = useState<Record<string, string>>({});
   const [supplierNames, setSupplierNames] = useState<Record<string, string>>({});
+  const [customerPhones, setCustomerPhones] = useState<Record<string, string>>({});
+  const [supplierPhones, setSupplierPhones] = useState<Record<string, string>>({});
   const [arDetailsOpen, setArDetailsOpen] = useState<{ open: boolean; customerId: string; title: string }>({ open: false, customerId: '', title: '' });
   const [apDetailsOpen, setApDetailsOpen] = useState<{ open: boolean; supplierId: string; title: string }>({ open: false, supplierId: '', title: '' });
   const [arDetailsLoading, setArDetailsLoading] = useState(false);
   const [apDetailsLoading, setApDetailsLoading] = useState(false);
   const [arDetailsRows, setArDetailsRows] = useState<ARInvoiceRow[]>([]);
   const [apDetailsRows, setApDetailsRows] = useState<APDocumentRow[]>([]);
+  const arSummary = useMemo(() => {
+    const count = arDetailsRows.length;
+    const total = arDetailsRows.reduce((s, r) => s + (Number(r.total) || 0), 0);
+    const paid = arDetailsRows.reduce((s, r) => s + (Number(r.paid) || 0), 0);
+    const outstanding = arDetailsRows.reduce((s, r) => s + (Number(r.outstanding) || 0), 0);
+    return { count, total, paid, outstanding };
+  }, [arDetailsRows]);
+  const apSummary = useMemo(() => {
+    const count = apDetailsRows.length;
+    const total = apDetailsRows.reduce((s, r) => s + (Number(r.total) || 0), 0);
+    const paid = apDetailsRows.reduce((s, r) => s + (Number(r.paid) || 0), 0);
+    const outstanding = apDetailsRows.reduce((s, r) => s + (Number(r.outstanding) || 0), 0);
+    return { count, total, paid, outstanding };
+  }, [apDetailsRows]);
 
   const [periods, setPeriods] = useState<AccountingPeriodRow[]>([]);
   const [showCreatePeriodModal, setShowCreatePeriodModal] = useState(false);
@@ -1320,11 +1336,15 @@ const FinancialReports: React.FC = () => {
       .then(({ data, error }) => {
         if (error) return;
         const map: Record<string, string> = {};
+        const phoneMap: Record<string, string> = {};
         ((data as any[]) || []).forEach((c) => {
           const name = typeof c.full_name === 'string' && c.full_name.trim() ? c.full_name : (typeof c.phone_number === 'string' ? c.phone_number : '');
+          const phone = typeof c.phone_number === 'string' ? c.phone_number : '';
           map[String(c.auth_user_id)] = name;
+          if (phone) phoneMap[String(c.auth_user_id)] = phone;
         });
         setCustomerNames((prev) => ({ ...prev, ...map }));
+        if (Object.keys(phoneMap).length) setCustomerPhones((prev) => ({ ...prev, ...phoneMap }));
       });
   }, [arAging, supabase]);
   useEffect(() => {
@@ -1337,11 +1357,15 @@ const FinancialReports: React.FC = () => {
       .then(({ data, error }) => {
         if (error) return;
         const map: Record<string, string> = {};
+        const phoneMap: Record<string, string> = {};
         ((data as any[]) || []).forEach((s) => {
           const name = typeof s.name === 'string' && s.name.trim() ? s.name : (typeof s.phone === 'string' ? s.phone : '');
+          const phone = typeof s.phone === 'string' ? s.phone : '';
           map[String(s.id)] = name;
+          if (phone) phoneMap[String(s.id)] = phone;
         });
         setSupplierNames((prev) => ({ ...prev, ...map }));
+        if (Object.keys(phoneMap).length) setSupplierPhones((prev) => ({ ...prev, ...phoneMap }));
       });
   }, [apAging, supabase]);
   const openArDetails = useCallback(async (customerId: string) => {
@@ -1918,13 +1942,39 @@ const FinancialReports: React.FC = () => {
         <div className="fixed inset-0 z-50">
           <div className="absolute inset-0 bg-black/50" onClick={() => setArDetailsOpen({ open: false, customerId: '', title: '' })} />
           <div className="absolute inset-0 flex items-center justify-center p-4">
-            <div className="w-full max-w-3xl bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+            <div id="ar-details-card" className="w-full max-w-3xl bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
               <div className="flex items-center justify-between gap-3 p-4 border-b border-gray-100 dark:border-gray-700">
                 <div className="min-w-0">
                   <div className="text-lg font-bold dark:text-white truncate">طلبات العميل</div>
                   <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">{arDetailsOpen.title}</div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400" dir="ltr">{arDetailsOpen.customerId ? (customerPhones[arDetailsOpen.customerId] || '') : ''}</div>
                 </div>
                 <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void sharePdf(
+                      'ar-details-card',
+                      'كشف حساب عميل',
+                      `ar_statement_${shortRef(arDetailsOpen.customerId || '', 8)}_${appliedFilters.asOfDate || 'asof'}`,
+                      buildPdfBrandOptions(settings, `كشف حساب عميل • ${arDetailsOpen.title}${arDetailsOpen.customerId && customerPhones[arDetailsOpen.customerId] ? ` (${customerPhones[arDetailsOpen.customerId]})` : ''} • كما في: ${appliedFilters.asOfDate || '—'}`, { pageNumbers: true })
+                    )}
+                    className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 font-semibold hover:bg-gray-50 dark:hover:bg-gray-700"
+                    title="تصدير PDF"
+                  >
+                    PDF
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void printPdfFromElement(
+                      'ar-details-card',
+                      'كشف حساب عميل',
+                      buildPdfBrandOptions(settings, `كشف حساب عميل • ${arDetailsOpen.title}${arDetailsOpen.customerId && customerPhones[arDetailsOpen.customerId] ? ` (${customerPhones[arDetailsOpen.customerId]})` : ''} • كما في: ${appliedFilters.asOfDate || '—'}`, { pageNumbers: true })
+                    )}
+                    className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 font-semibold hover:bg-gray-50 dark:hover:bg-gray-700"
+                    title="طباعة"
+                  >
+                    طباعة
+                  </button>
                   <button
                     type="button"
                     onClick={() => {
@@ -1964,6 +2014,27 @@ const FinancialReports: React.FC = () => {
                 {arDetailsLoading && <div className="py-8 text-center text-gray-500 dark:text-gray-400 font-semibold">جاري التحميل...</div>}
                 {!arDetailsLoading && (
                   <div className="overflow-auto max-h-[70vh]">
+                    <div className="mb-3">
+                      <div className="text-xs text-gray-500 dark:text-gray-400">كما في: <span className="font-semibold" dir="ltr">{appliedFilters.asOfDate || '—'}</span></div>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                      <div className="p-3 rounded-lg border border-gray-100 dark:border-gray-700">
+                        <div className="text-xs text-gray-500 dark:text-gray-400">الإجمالي</div>
+                        <div className="mt-1 font-bold dark:text-white" dir="ltr">{formatMoney(arSummary.total)}</div>
+                      </div>
+                      <div className="p-3 rounded-lg border border-gray-100 dark:border-gray-700">
+                        <div className="text-xs text-gray-500 dark:text-gray-400">المدفوع</div>
+                        <div className="mt-1 font-bold dark:text-white" dir="ltr">{formatMoney(arSummary.paid)}</div>
+                      </div>
+                      <div className="p-3 rounded-lg border border-gray-100 dark:border-gray-700">
+                        <div className="text-xs text-gray-500 dark:text-gray-400">المتبقي</div>
+                        <div className="mt-1 font-bold dark:text-white" dir="ltr">{formatMoney(arSummary.outstanding)}</div>
+                      </div>
+                      <div className="p-3 rounded-lg border border-gray-100 dark:border-gray-700">
+                        <div className="text-xs text-gray-500 dark:text-gray-400">عدد الفواتير</div>
+                        <div className="mt-1 font-bold dark:text-white" dir="ltr">{arSummary.count}</div>
+                      </div>
+                    </div>
                     <table className="min-w-full text-sm">
                       <thead className="text-gray-500 dark:text-gray-400">
                         <tr className="border-b dark:border-gray-700">
@@ -2000,13 +2071,39 @@ const FinancialReports: React.FC = () => {
         <div className="fixed inset-0 z-50">
           <div className="absolute inset-0 bg-black/50" onClick={() => setApDetailsOpen({ open: false, supplierId: '', title: '' })} />
           <div className="absolute inset-0 flex items-center justify-center p-4">
-            <div className="w-full max-w-3xl bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+            <div id="ap-details-card" className="w-full max-w-3xl bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
               <div className="flex items-center justify-between gap-3 p-4 border-b border-gray-100 dark:border-gray-700">
                 <div className="min-w-0">
                   <div className="text-lg font-bold dark:text-white truncate">مستندات المورد</div>
                   <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">{apDetailsOpen.title}</div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400" dir="ltr">{apDetailsOpen.supplierId ? (supplierPhones[apDetailsOpen.supplierId] || '') : ''}</div>
                 </div>
                 <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void sharePdf(
+                      'ap-details-card',
+                      'كشف حساب مورد',
+                      `ap_statement_${shortRef(apDetailsOpen.supplierId || '', 8)}_${appliedFilters.asOfDate || 'asof'}`,
+                      buildPdfBrandOptions(settings, `كشف حساب مورد • ${apDetailsOpen.title}${apDetailsOpen.supplierId && supplierPhones[apDetailsOpen.supplierId] ? ` (${supplierPhones[apDetailsOpen.supplierId]})` : ''} • كما في: ${appliedFilters.asOfDate || '—'}`, { pageNumbers: true })
+                    )}
+                    className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 font-semibold hover:bg-gray-50 dark:hover:bg-gray-700"
+                    title="تصدير PDF"
+                  >
+                    PDF
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void printPdfFromElement(
+                      'ap-details-card',
+                      'كشف حساب مورد',
+                      buildPdfBrandOptions(settings, `كشف حساب مورد • ${apDetailsOpen.title}${apDetailsOpen.supplierId && supplierPhones[apDetailsOpen.supplierId] ? ` (${supplierPhones[apDetailsOpen.supplierId]})` : ''} • كما في: ${appliedFilters.asOfDate || '—'}`, { pageNumbers: true })
+                    )}
+                    className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 font-semibold hover:bg-gray-50 dark:hover:bg-gray-700"
+                    title="طباعة"
+                  >
+                    طباعة
+                  </button>
                   <button
                     type="button"
                     onClick={() => {
@@ -2046,6 +2143,27 @@ const FinancialReports: React.FC = () => {
                 {apDetailsLoading && <div className="py-8 text-center text-gray-500 dark:text-gray-400 font-semibold">جاري التحميل...</div>}
                 {!apDetailsLoading && (
                   <div className="overflow-auto max-h-[70vh]">
+                    <div className="mb-3">
+                      <div className="text-xs text-gray-500 dark:text-gray-400">كما في: <span className="font-semibold" dir="ltr">{appliedFilters.asOfDate || '—'}</span></div>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                      <div className="p-3 rounded-lg border border-gray-100 dark:border-gray-700">
+                        <div className="text-xs text-gray-500 dark:text-gray-400">الإجمالي</div>
+                        <div className="mt-1 font-bold dark:text-white" dir="ltr">{formatMoney(apSummary.total)}</div>
+                      </div>
+                      <div className="p-3 rounded-lg border border-gray-100 dark:border-gray-700">
+                        <div className="text-xs text-gray-500 dark:text-gray-400">المدفوع</div>
+                        <div className="mt-1 font-bold dark:text-white" dir="ltr">{formatMoney(apSummary.paid)}</div>
+                      </div>
+                      <div className="p-3 rounded-lg border border-gray-100 dark:border-gray-700">
+                        <div className="text-xs text-gray-500 dark:text-gray-400">المتبقي</div>
+                        <div className="mt-1 font-bold dark:text-white" dir="ltr">{formatMoney(apSummary.outstanding)}</div>
+                      </div>
+                      <div className="p-3 rounded-lg border border-gray-100 dark:border-gray-700">
+                        <div className="text-xs text-gray-500 dark:text-gray-400">عدد المستندات</div>
+                        <div className="mt-1 font-bold dark:text-white" dir="ltr">{apSummary.count}</div>
+                      </div>
+                    </div>
                     <table className="min-w-full text-sm">
                       <thead className="text-gray-500 dark:text-gray-400">
                         <tr className="border-b dark:border-gray-700">
