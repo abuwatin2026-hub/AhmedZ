@@ -940,16 +940,11 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     ) => {
         if (!supabase || !user) return;
         try {
-          const idempotencyKey = (() => {
-            try {
-              const anyCrypto: any = (globalThis as any)?.crypto;
-              if (anyCrypto && typeof anyCrypto.randomUUID === 'function') return String(anyCrypto.randomUUID());
-            } catch {
-            }
-            return `rcv_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-          })();
           const orderId = String(purchaseOrderId || '').trim();
           if (!isUuid(orderId)) throw new Error('معرف أمر الشراء غير صالح.');
+          const occurredAtIso = occurredAt
+            ? (toUtcIsoFromLocalDateTimeInput(occurredAt) || new Date(occurredAt).toISOString())
+            : new Date().toISOString();
           const normalizedItems = (items || []).map((i) => {
             const itemId = String((i as any)?.itemId || '').trim();
             const qty = Number((i as any)?.quantity || 0);
@@ -962,19 +957,74 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               expiryDate: toIsoDateOnlyOrNull((i as any)?.expiryDate),
               transportCost: (i as any).transportCost,
               supplyTaxCost: (i as any).supplyTaxCost,
-              idempotencyKey,
             };
           });
+          const buildIdempotencyPayload = () => {
+            const parts = normalizedItems
+              .map((x: any) => [
+                String(x.itemId || ''),
+                String(Number(x.quantity || 0)),
+                String(x.harvestDate || ''),
+                String(x.expiryDate || ''),
+                String(Number(x.transportCost || 0)),
+                String(Number(x.supplyTaxCost || 0)),
+              ].join(':'))
+              .sort()
+              .join('|');
+            return `receive:${orderId}:${occurredAtIso}:${parts}`;
+          };
+          const computeIdempotencyKey = async () => {
+            const raw = buildIdempotencyPayload();
+            try {
+              const anyCrypto: any = (globalThis as any)?.crypto;
+              if (anyCrypto?.subtle?.digest) {
+                const enc = new TextEncoder();
+                const buf = await anyCrypto.subtle.digest('SHA-256', enc.encode(raw));
+                const hex = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+                return `rcv_${hex}`;
+              }
+            } catch {
+            }
+            return raw.length > 180 ? raw.slice(0, 180) : raw;
+          };
+          const idempotencyKey = await computeIdempotencyKey();
+          const normalizedItemsWithIdempotency = normalizedItems.map((x: any) => ({ ...x, idempotencyKey }));
           const { error: whErr } = await supabase.rpc('_resolve_default_warehouse_id');
           if (whErr) throw whErr;
           const args = {
             p_order_id: orderId,
-            p_items: normalizedItems,
-            p_occurred_at: occurredAt ? (toUtcIsoFromLocalDateTimeInput(occurredAt) || new Date(occurredAt).toISOString()) : new Date().toISOString()
+            p_items: normalizedItemsWithIdempotency,
+            p_occurred_at: occurredAtIso
           } as any;
           let { error } = await supabase.rpc('receive_purchase_order_partial', args);
           if (error) {
             const msg = String((error as any)?.message || '');
+            const code = String((error as any)?.code || '');
+            if (code === '23505' && /uq_purchase_receipts_idempotency/i.test(msg)) {
+              const retry = await supabase.rpc('receive_purchase_order_partial', args);
+              if (!retry.error) {
+                await updateMenuItemDates(items);
+                await fetchPurchaseOrders();
+                return;
+              }
+              error = retry.error as any;
+            }
+            if (/RECEIPT_APPROVAL_REQUIRED/i.test(msg)) {
+              const { data: poRow } = await supabase
+                .from('purchase_orders')
+                .select('total_amount')
+                .eq('id', purchaseOrderId)
+                .maybeSingle();
+              const amt = Number((poRow as any)?.total_amount || 0);
+              const reqId = await ensureApprovalRequest(purchaseOrderId, 'receipt', amt);
+              if (reqId) {
+                throw new Error('يتطلب الاستلام موافقة. تم إنشاء طلب موافقة للاستلام؛ يرجى اعتماده من قسم الموافقات ثم أعد المحاولة.');
+              }
+              throw new Error('يتطلب الاستلام موافقة. يرجى إنشاء/اعتماد طلب الموافقة من قسم الموافقات ثم إعادة المحاولة.');
+            }
+            if (/RECEIPT_APPROVAL_PENDING/i.test(msg)) {
+              throw new Error('طلب موافقة الاستلام ما زال معلقًا. اعتمده من قسم الموافقات ثم أعد المحاولة.');
+            }
             if (/purchase receipt requires approval/i.test(msg)) {
               const { data: poRow } = await supabase
                 .from('purchase_orders')
@@ -1000,6 +1050,9 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                 }
                 error = retry.error as any;
               }
+            }
+            if (/received exceeds ordered/i.test(msg)) {
+              throw new Error('كمية الاستلام تجاوزت الكمية المطلوبة لبعض الأصناف. حدّث الصفحة وأعد المحاولة.');
             }
             if (/immutable record/i.test(msg)) {
               throw new Error('تعذر استلام أمر الشراء بسبب محاولة تعديل قيود محاسبية مُقفلة. غالبًا توجد عملية سابقة أعادت ترحيل/تعديل نفس القيد. الحل يكون عبر إجراء عكسي (Reversal) بدل التعديل، أو تحديث منطق الترحيل بقاعدة البيانات.');

@@ -201,6 +201,8 @@ type AccountRow = {
   normal_balance: string;
 };
 
+type CoaFullRow = AccountRow & { is_active: boolean };
+
 type JournalEntryHeader = {
   id: string;
   entry_date: string;
@@ -470,10 +472,17 @@ const FinancialReports: React.FC = () => {
     return breakdown.netRevenue !== 0 ? ((net / breakdown.netRevenue) * 100) : 0;
   }, [breakdown.netRevenue, breakdown.netProfitDerived, incomeStatement?.net_profit]);
 
+  const coaSectionRef = useRef<HTMLDivElement | null>(null);
   const [accountCode, setAccountCode] = useState('1010');
   const [ledgerRows, setLedgerRows] = useState<LedgerRow[]>([]);
   const [accounts, setAccounts] = useState<AccountRow[]>([]);
   const [accountsError, setAccountsError] = useState('');
+  const [coaRows, setCoaRows] = useState<CoaFullRow[]>([]);
+  const [coaError, setCoaError] = useState('');
+  const [coaLoading, setCoaLoading] = useState(false);
+  const [coaSearch, setCoaSearch] = useState('');
+  const [coaTypeFilter, setCoaTypeFilter] = useState<'all' | 'asset' | 'liability' | 'equity' | 'income' | 'expense'>('all');
+  const [coaShowInactive, setCoaShowInactive] = useState(false);
   const [ledgerQuery, setLedgerQuery] = useState('');
   const [ledgerMinAmount, setLedgerMinAmount] = useState('');
   const [ledgerView, setLedgerView] = useState<'all' | 'debit' | 'credit'>('all');
@@ -640,6 +649,54 @@ const FinancialReports: React.FC = () => {
     }
   }, [supabase]);
 
+  const loadCoa = useCallback(async () => {
+    if (!supabase) return;
+    setCoaLoading(true);
+    try {
+      setCoaError('');
+      const rpc = await supabase.rpc('list_chart_of_accounts', { p_include_inactive: true });
+      if (!rpc.error && Array.isArray(rpc.data)) {
+        setCoaRows(rpc.data.map((r: any) => ({
+          id: String(r.id),
+          code: String(r.code),
+          name: String(r.name),
+          account_type: String(r.account_type),
+          normal_balance: String(r.normal_balance),
+          is_active: Boolean(r.is_active),
+        })));
+        return;
+      }
+      const { data, error } = await supabase
+        .from('chart_of_accounts')
+        .select('id,code,name,account_type,normal_balance,is_active')
+        .order('code', { ascending: true });
+      if (error) throw error;
+      setCoaRows(((data as any[]) || []).map((r) => ({
+        id: String(r.id),
+        code: String(r.code),
+        name: String(r.name),
+        account_type: String(r.account_type),
+        normal_balance: String(r.normal_balance),
+        is_active: Boolean(r.is_active),
+      })));
+    } catch (err: any) {
+      setCoaRows([]);
+      setCoaError(err?.message || 'تعذر تحميل دليل الحسابات');
+    } finally {
+      setCoaLoading(false);
+    }
+  }, [supabase]);
+
+  const filteredCoaRows = useMemo(() => {
+    const q = coaSearch.trim().toLowerCase();
+    return coaRows.filter((r) => {
+      if (!coaShowInactive && !r.is_active) return false;
+      if (coaTypeFilter !== 'all' && String(r.account_type) !== coaTypeFilter) return false;
+      if (!q) return true;
+      return String(r.code).toLowerCase().includes(q) || String(r.name).toLowerCase().includes(q);
+    });
+  }, [coaRows, coaSearch, coaShowInactive, coaTypeFilter]);
+
   const loadLedgerFor = useCallback(async (code: string) => {
     if (!supabase) return;
     setLoadingKey('ledger', true);
@@ -670,6 +727,12 @@ const FinancialReports: React.FC = () => {
       setLoadingKey('ledger', false);
     }
   }, [appliedFilters.endDate, appliedFilters.startDate, setLoadingKey, showNotification, supabase]);
+
+  const handleCoaLedgerClick = useCallback(async (code: string) => {
+    setAccountCode(code);
+    await loadLedgerFor(code);
+    ledgerSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [loadLedgerFor]);
 
   const loadStatements = useCallback(async () => {
     if (!supabase) return;
@@ -1331,6 +1394,9 @@ const FinancialReports: React.FC = () => {
   useEffect(() => {
     void loadAccounts();
   }, [loadAccounts]);
+  useEffect(() => {
+    void loadCoa();
+  }, [loadCoa]);
   useEffect(() => {
     const ids = Array.from(new Set(arAging.map((r) => r.customer_auth_user_id).filter(Boolean))) as string[];
     if (!supabase || ids.length === 0) return;
@@ -2437,6 +2503,37 @@ const FinancialReports: React.FC = () => {
         </div>
       </div>
 
+      <div className="flex flex-wrap gap-2 mt-4">
+        <button
+          type="button"
+          onClick={() => document.getElementById('header-summary')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+          className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-sm font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700"
+        >
+          الملخص
+        </button>
+        <button
+          type="button"
+          onClick={() => coaSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+          className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-sm font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700"
+        >
+          دليل الحسابات
+        </button>
+        <button
+          type="button"
+          onClick={() => document.getElementById('trial-balance-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+          className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-sm font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700"
+        >
+          ميزان المراجعة
+        </button>
+        <button
+          type="button"
+          onClick={() => ledgerSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+          className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-sm font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700"
+        >
+          دفتر الأستاذ
+        </button>
+      </div>
+
       <div id="header-summary" className="grid grid-cols-1 lg:grid-cols-4 gap-4">
         <div id="card-income" className="bg-white dark:bg-gray-800 rounded-xl shadow p-4">
           <div className="flex items-center justify-between gap-2">
@@ -3165,7 +3262,95 @@ const FinancialReports: React.FC = () => {
         </ConfirmationModal>
       )}
 
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow p-4">
+      <div id="coa-section" ref={coaSectionRef} className="bg-white dark:bg-gray-800 rounded-xl shadow p-4">
+        <div className="flex flex-col sm:flex-row gap-3 sm:items-end sm:justify-between">
+          <div>
+            <h2 className="text-lg font-bold dark:text-white">دليل الحسابات</h2>
+            <div className="text-sm text-gray-500 dark:text-gray-400">عرض الدليل وفتح دفتر الأستاذ لكل حساب</div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => void loadCoa()}
+              disabled={coaLoading}
+              className="px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 font-semibold disabled:opacity-60"
+            >
+              {coaLoading ? 'جاري التحديث...' : 'تحديث'}
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-2">
+          <input
+            value={coaSearch}
+            onChange={(e) => setCoaSearch(e.target.value)}
+            placeholder="بحث بالكود أو الاسم..."
+            className="px-3 py-2 rounded-lg border dark:border-gray-700 bg-white dark:bg-gray-900"
+          />
+          <select
+            value={coaTypeFilter}
+            onChange={(e) => setCoaTypeFilter(e.target.value as any)}
+            className="px-3 py-2 rounded-lg border dark:border-gray-700 bg-white dark:bg-gray-900"
+          >
+            <option value="all">كل الأنواع</option>
+            <option value="asset">أصول</option>
+            <option value="liability">خصوم</option>
+            <option value="equity">حقوق ملكية</option>
+            <option value="income">إيرادات</option>
+            <option value="expense">مصاريف</option>
+          </select>
+          <label className="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
+            <input type="checkbox" checked={coaShowInactive} onChange={(e) => setCoaShowInactive(e.target.checked)} />
+            عرض الحسابات المعطلة
+          </label>
+        </div>
+
+        {coaError && (
+          <div className="mt-3 text-sm text-red-600 dark:text-red-400">{coaError}</div>
+        )}
+
+        <div className="mt-4 overflow-auto">
+          <table className="min-w-full text-sm">
+            <thead className="text-gray-500 dark:text-gray-400">
+              <tr className="border-b dark:border-gray-700">
+                <th className="py-2 px-3 text-right border-l dark:border-gray-700">الكود</th>
+                <th className="py-2 px-3 text-right border-l dark:border-gray-700">الحساب</th>
+                <th className="py-2 px-3 text-right border-l dark:border-gray-700">النوع</th>
+                <th className="py-2 px-3 text-right border-l dark:border-gray-700">الرصيد الطبيعي</th>
+                <th className="py-2 px-3 text-right border-l dark:border-gray-700">الحالة</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredCoaRows.map((r) => (
+                <tr
+                  key={r.id}
+                  className="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/40 cursor-pointer"
+                  onClick={() => void handleCoaLedgerClick(r.code)}
+                  title="فتح دفتر الأستاذ لهذا الحساب"
+                >
+                  <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">{r.code}</td>
+                  <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700">{r.name}</td>
+                  <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700">{r.account_type}</td>
+                  <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700">{r.normal_balance}</td>
+                  <td className="py-2 px-3 border-l dark:border-gray-700">
+                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${r.is_active ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-200' : 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-300'}`}>
+                      {r.is_active ? 'نشط' : 'معطل'}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+              {!coaLoading && filteredCoaRows.length === 0 && (
+                <tr><td colSpan={5} className="py-6 text-center text-gray-500 dark:text-gray-400">لا توجد بيانات</td></tr>
+              )}
+              {coaLoading && (
+                <tr><td colSpan={5} className="py-6 text-center text-gray-500 dark:text-gray-400">جاري التحميل...</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="trial-balance-section" className="bg-white dark:bg-gray-800 rounded-xl shadow p-4">
         <div className="flex flex-col sm:flex-row gap-3 sm:items-end sm:justify-between">
           <div>
             <h2 className="text-lg font-bold dark:text-white">ميزان المراجعة</h2>
@@ -3210,7 +3395,7 @@ const FinancialReports: React.FC = () => {
         </div>
       </div>
 
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow p-4 space-y-4">
+      <div id="ledger-section" className="bg-white dark:bg-gray-800 rounded-xl shadow p-4 space-y-4">
         <div ref={ledgerSectionRef} className="flex flex-col sm:flex-row gap-3 sm:items-end sm:justify-between">
           <div>
             <h2 className="text-lg font-bold dark:text-white">دفتر الأستاذ</h2>
