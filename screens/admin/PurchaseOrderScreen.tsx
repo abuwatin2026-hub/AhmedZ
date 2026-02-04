@@ -168,6 +168,7 @@ const PurchaseOrderScreen: React.FC = () => {
         }
         const supabase = getSupabaseClient();
         if (!supabase) {
+            setPoFxRate(0);
             setPoFxSource('unknown');
             return;
         }
@@ -194,6 +195,26 @@ const PurchaseOrderScreen: React.FC = () => {
 
                 if (cancelled) return;
                 if (!Number.isFinite(rate) || rate <= 0) {
+                    try {
+                        const { data: rows2, error: fxErr2 } = await supabase
+                            .from('fx_rates')
+                            .select('rate,rate_date')
+                            .eq('currency_code', code)
+                            .eq('rate_type', 'operational')
+                            .lte('rate_date', onDate)
+                            .order('rate_date', { ascending: false })
+                            .limit(1);
+                        if (!fxErr2 && Array.isArray(rows2) && rows2.length > 0) {
+                            const r2 = Number((rows2[0] as any)?.rate);
+                            if (Number.isFinite(r2) && r2 > 0) rate = r2;
+                        }
+                    } catch {
+                    }
+                }
+
+                if (cancelled) return;
+                if (!Number.isFinite(rate) || rate <= 0) {
+                    setPoFxRate(0);
                     setPoFxSource('unknown');
                     return;
                 }
@@ -201,6 +222,7 @@ const PurchaseOrderScreen: React.FC = () => {
                 setPoFxSource('system');
             } catch {
                 if (cancelled) return;
+                setPoFxRate(0);
                 setPoFxSource('unknown');
             }
         })();
@@ -362,8 +384,13 @@ const PurchaseOrderScreen: React.FC = () => {
             if (!supplierId) errors.push('المورد مطلوب');
             if (!purchaseDate) errors.push('تاريخ الشراء مطلوب');
             if (!warehouseId) errors.push('المستودع مطلوب');
-            if (!String(poCurrency || '').trim()) errors.push('عملة أمر الشراء مطلوبة');
+            const normalizedPoCurrency = String(poCurrency || '').trim().toUpperCase();
+            const normalizedBase = String(baseCode || '').trim().toUpperCase();
+            if (!normalizedPoCurrency) errors.push('عملة أمر الشراء مطلوبة');
             if (!Number.isFinite(Number(poFxRate)) || Number(poFxRate) <= 0) errors.push('سعر الصرف مطلوب ويجب أن يكون أكبر من صفر');
+            if (normalizedPoCurrency && normalizedBase && normalizedBase !== '—' && normalizedPoCurrency !== normalizedBase && poFxSource === 'unknown') {
+                errors.push('لا يوجد سعر صرف لهذه العملة. أدخل السعر يدويًا أو أضف سعر الصرف من شاشة أسعار الصرف.');
+            }
             if (paymentTerms === 'credit' && !dueDate) errors.push('تاريخ الاستحقاق مطلوب للفواتير الآجلة');
             if (orderItems.length === 0) errors.push('أضف صنف واحد على الأقل');
             const normalizedItems = orderItems.map((row) => ({
@@ -396,7 +423,7 @@ const PurchaseOrderScreen: React.FC = () => {
             await createPurchaseOrder(
                 supplierId,
                 purchaseDate,
-                String(poCurrency || '').toUpperCase(),
+                normalizedPoCurrency,
                 Number(poFxRate),
                 validItems,
                 receiveOnCreate,
@@ -1296,8 +1323,9 @@ const PurchaseOrderScreen: React.FC = () => {
                                             value={poCurrency}
                                             required
                                             onChange={(e) => {
-                                                const code = String(e.target.value || '').toUpperCase();
+                                                const code = String(e.target.value || '').trim().toUpperCase();
                                                 setPoCurrency(code);
+                                                setPoFxRate(0);
                                                 setPoFxSource('unknown');
                                                 if (baseCode && code === baseCode) {
                                                     setPoFxRate(1);
