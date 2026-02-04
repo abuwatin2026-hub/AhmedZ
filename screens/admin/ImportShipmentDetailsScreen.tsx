@@ -55,7 +55,7 @@ const ImportShipmentDetailsScreen: React.FC = () => {
         expenseType: 'shipping' as ImportExpense['expenseType'],
         amount: 0,
         currency: '',
-        exchangeRate: 1,
+        exchangeRate: 0,
         description: '',
         invoiceNumber: '',
         paidAt: ''
@@ -102,8 +102,12 @@ const ImportShipmentDetailsScreen: React.FC = () => {
 
     useEffect(() => {
         if (!baseCode) return;
-        setNewExpense((prev) => (prev.currency ? prev : { ...prev, currency: baseCode, exchangeRate: 1 }));
-    }, [baseCode]);
+        const curr = String(newExpense.currency || '').trim().toUpperCase();
+        if (!curr || curr === baseCode) {
+            setNewExpense((prev) => ({ ...prev, currency: baseCode, exchangeRate: 1 }));
+            setExpenseFxSource('base');
+        }
+    }, [baseCode, newExpense.currency]);
 
     useEffect(() => {
         if (!isCreateMode) return;
@@ -152,9 +156,12 @@ const ImportShipmentDetailsScreen: React.FC = () => {
             setExpenseFxSource('base');
             return;
         }
+        setNewExpense((prev) => ({ ...prev, currency: code, exchangeRate: 0 }));
+        setExpenseFxSource('unknown');
         const rate = await fetchSystemFxRate(code);
         if (!rate) {
             setExpenseFxSource('unknown');
+            setNewExpense((prev) => ({ ...prev, currency: code, exchangeRate: 0 }));
             showNotification('لا يوجد سعر صرف تشغيلي لهذه العملة اليوم. أضف السعر من شاشة أسعار الصرف.', 'error');
             return;
         }
@@ -425,7 +432,15 @@ const ImportShipmentDetailsScreen: React.FC = () => {
         setShowExpenseForm(false);
         setIsExpenseFxManual(false);
         setExpenseFxSource('unknown');
-        setNewExpense({ expenseType: 'shipping', amount: 0, currency: baseCode || '', exchangeRate: 1, description: '', invoiceNumber: '', paidAt: '' });
+        setNewExpense({
+            expenseType: 'shipping',
+            amount: 0,
+            currency: baseCode || '',
+            exchangeRate: baseCode ? 1 : 0,
+            description: '',
+            invoiceNumber: '',
+            paidAt: ''
+        });
         loadShipment();
     };
 
@@ -884,8 +899,13 @@ const ImportShipmentDetailsScreen: React.FC = () => {
                                         value={newExpense.currency}
                                         onChange={(e) => {
                                             const code = String(e.target.value || '').toUpperCase();
-                                            setNewExpense((prev) => ({ ...prev, currency: code }));
-                                            setExpenseFxSource('unknown');
+                                            if (baseCode && code === baseCode) {
+                                                setNewExpense((prev) => ({ ...prev, currency: code, exchangeRate: 1 }));
+                                                setExpenseFxSource('base');
+                                                return;
+                                            }
+                                            setNewExpense((prev) => ({ ...prev, currency: code, exchangeRate: 0 }));
+                                            setExpenseFxSource(isExpenseFxManual ? 'manual' : 'unknown');
                                             if (!isExpenseFxManual) {
                                                 void applySystemExpenseFxRate(code);
                                             }
