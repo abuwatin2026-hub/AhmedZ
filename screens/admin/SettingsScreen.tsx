@@ -2032,9 +2032,16 @@ const SettingsScreen: React.FC = () => {
         </section>
 
         <section>
-          <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4 border-r-4 rtl:border-l-4 rtl:border-r-0 border-gold-500 pr-4 rtl:pr-0 rtl:pl-4">
-            إعدادات الحسابات المحاسبية
-          </h2>
+          <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white border-r-4 rtl:border-l-4 rtl:border-r-0 border-gold-500 pr-4 rtl:pr-0 rtl:pl-4">
+              إعدادات الحسابات المحاسبية
+            </h2>
+            {user?.role === 'owner' && (
+              <Link to="/admin/chart-of-accounts" className="text-sm text-blue-600 dark:text-blue-300 hover:underline">
+                إدارة دليل الحسابات
+              </Link>
+            )}
+          </div>
           {accountsError && (
             <div className="mb-4 p-3 rounded-lg bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-200">
               {accountsError}

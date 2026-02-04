@@ -135,6 +135,7 @@ const navLinks: Array<{ to: string; label: string; icon: React.ReactNode; permis
   { to: 'cost-centers', label: 'مراكز التكلفة', icon: <Icons.ListIcon />, permission: 'expenses.manage' },
   { to: 'expenses', label: 'إدارة المصاريف', icon: <Icons.ReportIcon />, permission: 'expenses.manage' },
   { to: 'accounting', label: 'المحاسبة', icon: <Icons.ReportIcon />, permission: 'accounting.view' },
+  { to: 'chart-of-accounts', label: 'دليل الحسابات', icon: <Icons.ListIcon />, permission: 'settings.manage' },
   { to: 'fx-rates', label: 'أسعار الصرف', icon: <Icons.MoneyIcon />, permission: 'accounting.manage' },
   { to: 'reports', label: 'التقارير', icon: <Icons.ReportIcon />, permission: 'reports.view' },
   { to: 'shift-reports', label: 'تقارير الورديات', icon: <Icons.ClockIcon />, permission: 'reports.view' },
@@ -176,6 +177,7 @@ const routePermissions: Record<string, AdminPermission> = {
   'cost-centers': 'expenses.manage',
   'expenses': 'expenses.manage',
   'accounting': 'accounting.view',
+  'chart-of-accounts': 'settings.manage',
   'fx-rates': 'accounting.manage',
   'reports': 'reports.view',
   'shift-reports': 'reports.view',
@@ -197,6 +199,9 @@ const AdminLayout: React.FC = () => {
   const { settings } = useSettings();
 
   const canAccessLink = (link: (typeof navLinks)[number]) => {
+    if (link.to === 'chart-of-accounts') {
+      return user?.role === 'owner';
+    }
     if (link.to === 'my-shift') {
       return hasPermission('cashShifts.viewOwn') || hasPermission('cashShifts.manage');
     }

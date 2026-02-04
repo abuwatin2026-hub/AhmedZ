@@ -746,6 +746,36 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               let errAny: any = receiveError;
               if (errAny) {
                 const msg = String((receiveError as any)?.message || '');
+                const code = String((receiveError as any)?.code || '');
+                if (code === '23505' && /uq_purchase_receipts_idempotency/i.test(msg)) {
+                  const retry = await supabase.rpc('receive_purchase_order_partial', {
+                    p_order_id: orderId,
+                    p_items: items.map(i => ({
+                      itemId: i.itemId,
+                      quantity: i.quantity,
+                      harvestDate: toIsoDateOnlyOrNull(i.productionDate),
+                      expiryDate: toIsoDateOnlyOrNull(i.expiryDate),
+                      idempotencyKey,
+                    })),
+                    p_occurred_at: toUtcIsoAtMiddayFromYmd(normalizedDate)
+                  });
+                  if (!retry.error) {
+                    await updateMenuItemDates(items);
+                    await fetchPurchaseOrders({ silent: false });
+                    return;
+                  }
+                  errAny = retry.error as any;
+                }
+                if (/RECEIPT_APPROVAL_REQUIRED/i.test(msg)) {
+                  const reqId = await ensureApprovalRequest(orderId, 'receipt', totalAmount);
+                  if (reqId) {
+                    throw new Error('يتطلب الاستلام موافقة. تم إنشاء طلب موافقة للاستلام؛ يرجى اعتماده من قسم الموافقات ثم أعد المحاولة.');
+                  }
+                  throw new Error('يتطلب الاستلام موافقة. يرجى إنشاء/اعتماد طلب الموافقة من قسم الموافقات ثم إعادة المحاولة.');
+                }
+                if (/RECEIPT_APPROVAL_PENDING/i.test(msg)) {
+                  throw new Error('طلب موافقة الاستلام ما زال معلقًا. اعتمده من قسم الموافقات ثم أعد المحاولة.');
+                }
                 if (/purchase receipt requires approval/i.test(msg)) {
                   const reqId = await ensureApprovalRequest(orderId, 'receipt', totalAmount);
                   if (reqId) {

@@ -85,6 +85,7 @@ const POSTestConsole = lazy(() => import('./screens/admin/POSTestConsole'));
 const WastageScreen = lazy(() => import('./screens/admin/WastageScreen'));
 const ExpiryBatchesScreen = lazy(() => import('./screens/admin/ExpiryBatchesScreen'));
 const WastageExpiryReportsScreen = lazy(() => import('./screens/admin/WastageExpiryReportsScreen'));
+const ChartOfAccountsScreen = lazy(() => import('./screens/admin/ChartOfAccountsScreen'));
 
 const CustomerLayout: React.FC = () => {
   const { settings } = useSettings();
@@ -360,6 +361,7 @@ const App: React.FC = () => {
                 <Route path="reports/food-trace" element={<AdminProtectedRoute permissions={['reports.view']}><FoodTraceReports /></AdminProtectedRoute>} />
                 <Route path="reports/financial" element={<AdminProtectedRoute permissions={['accounting.view']}><FinancialReports /></AdminProtectedRoute>} />
                 <Route path="accounting" element={<AdminProtectedRoute permissions={['accounting.view']}><FinancialReports /></AdminProtectedRoute>} />
+                <Route path="chart-of-accounts" element={<AdminProtectedRoute roles={['owner']}><ChartOfAccountsScreen /></AdminProtectedRoute>} />
                 <Route path="fx-rates" element={<AdminProtectedRoute permissions={['accounting.manage']}><FxRatesScreen /></AdminProtectedRoute>} />
                 <Route path="profile" element={<AdminProtectedRoute permissions={['profile.view']}><AdminProfileScreen /></AdminProtectedRoute>} />
                 <Route path="settings" element={<AdminProtectedRoute permissions={['settings.manage']}><SettingsScreen /></AdminProtectedRoute>} />
