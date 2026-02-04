@@ -178,7 +178,7 @@ const ProductReports: React.FC = () => {
                     const { data: rpcData, error: rpcErr } = await supabase.rpc('get_product_sales_report_v9', {
                         p_start_date: p_start,
                         p_end_date: p_end,
-                        p_zone_id: zoneArg ?? null,
+                        p_zone_id: zoneArg || undefined,
                         p_invoice_only: false,
                     } as any);
                     if (!rpcErr && Array.isArray(rpcData)) {
