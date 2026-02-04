@@ -820,13 +820,8 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                   if (reloaded) {
                     const retry = await supabase.rpc('receive_purchase_order_partial', {
                       p_order_id: orderId,
-                      p_items: items.map(i => ({
-                        itemId: i.itemId,
-                        quantity: i.quantity,
-                        harvestDate: toIsoDateOnlyOrNull(i.productionDate),
-                        expiryDate: toIsoDateOnlyOrNull(i.expiryDate)
-                      })),
-                      p_occurred_at: toUtcIsoAtMiddayFromYmd(normalizedDate)
+                      p_items: receiveItemsWithIdempotency,
+                      p_occurred_at: occurredAtIso
                     });
                     if (!retry.error) {
                       await updateMenuItemDates(items);
