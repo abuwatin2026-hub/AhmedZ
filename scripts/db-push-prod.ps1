@@ -1,3 +1,8 @@
+param(
+  [switch]$Repair,
+  [string]$RepairSchema = "public"
+)
+
 $ErrorActionPreference = "Stop"
 
 $projectRef = $env:SUPABASE_PROJECT_REF
@@ -58,6 +63,14 @@ if (-not $plain -or -not $plain.Trim()) {
 
 Write-Host "Linking project..."
 & npx supabase link --project-ref $projectRef --password $plain
+
+if ($Repair) {
+  $ts = Get-Date -Format "yyyyMMddHHmmss"
+  $migName = "${ts}_repair_prod.sql"
+  $migPath = Join-Path "supabase\\migrations" $migName
+  Write-Host "Generating repair migration: $migPath"
+  & npx supabase db diff --linked --schema $RepairSchema --file $migPath
+}
 
 Write-Host "Pushing migrations to production..."
 & npx supabase db push --include-all

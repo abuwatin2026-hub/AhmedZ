@@ -453,17 +453,22 @@ const ManageItemsScreen: React.FC = () => {
   const handleSubmitMeta = async () => {
     try {
       if (metaTab === 'category') {
+        const nameAr = categoryDraft.ar.trim();
+        if (!nameAr) {
+          showNotification('اسم الفئة مطلوب', 'error');
+          return;
+        }
         const generatedKey = categoryDraft.key || `cat_${Date.now()}`;
         const payload = {
           key: generatedKey,
-          name: { ar: categoryDraft.ar, en: '' },
+          name: { ar: nameAr, en: '' },
           isActive: categoryDraft.isActive,
         };
         if (categoryDraft.id) {
           await updateCategory({
             id: categoryDraft.id,
             key: categoryDraft.key, // Keep existing key on update
-            name: { ar: categoryDraft.ar, en: '' },
+            name: { ar: nameAr, en: '' },
             isActive: categoryDraft.isActive,
             createdAt: categoryDefs.find(c => c.id === categoryDraft.id)?.createdAt || new Date().toISOString(),
             updatedAt: new Date().toISOString(),
@@ -478,11 +483,20 @@ const ManageItemsScreen: React.FC = () => {
 
       if (metaTab === 'group') {
         const categoryKey = groupDraft.categoryKey || categoryDefs.find(c => c.isActive)?.key || '';
-        const derivedKey = groupDraft.key || groupDraft.ar || `group_${Date.now()}`;
+        if (!categoryKey) {
+          showNotification('اختر فئة أولاً', 'error');
+          return;
+        }
+        const nameAr = groupDraft.ar.trim();
+        if (!nameAr) {
+          showNotification('اسم المجموعة مطلوب', 'error');
+          return;
+        }
+        const derivedKey = groupDraft.key || nameAr || `group_${Date.now()}`;
         const payload = {
           categoryKey,
           key: derivedKey,
-          name: { ar: groupDraft.ar, en: '' },
+          name: { ar: nameAr, en: '' },
           isActive: groupDraft.isActive,
         };
         if (groupDraft.id) {
@@ -490,7 +504,7 @@ const ManageItemsScreen: React.FC = () => {
             id: groupDraft.id,
             categoryKey: groupDraft.categoryKey,
             key: groupDraft.key,
-            name: { ar: groupDraft.ar, en: '' },
+            name: { ar: nameAr, en: '' },
             isActive: groupDraft.isActive,
             createdAt: groupDefs.find(g => g.id === groupDraft.id)?.createdAt || new Date().toISOString(),
             updatedAt: new Date().toISOString(),
@@ -504,10 +518,15 @@ const ManageItemsScreen: React.FC = () => {
       }
 
       if (metaTab === 'unit') {
+        const nameAr = unitDraft.ar.trim();
+        if (!nameAr) {
+          showNotification('اسم الوحدة مطلوب', 'error');
+          return;
+        }
         const generatedKey = unitDraft.key || `unit_${Date.now()}`;
         const payload = {
           key: generatedKey as UnitType,
-          label: { ar: unitDraft.ar, en: '' },
+          label: { ar: nameAr, en: '' },
           isActive: unitDraft.isActive,
           isWeightBased: unitDraft.isWeightBased,
         };
@@ -515,7 +534,7 @@ const ManageItemsScreen: React.FC = () => {
           await updateUnitType({
             id: unitDraft.id,
             key: unitDraft.key as UnitType, // Keep existing key
-            label: { ar: unitDraft.ar, en: '' },
+            label: { ar: nameAr, en: '' },
             isActive: unitDraft.isActive,
             isWeightBased: unitDraft.isWeightBased,
             createdAt: unitTypes.find(u => u.id === unitDraft.id)?.createdAt || new Date().toISOString(),
@@ -530,10 +549,15 @@ const ManageItemsScreen: React.FC = () => {
       }
 
       if (metaTab === 'freshness') {
+        const nameAr = freshnessDraft.ar.trim();
+        if (!nameAr) {
+          showNotification('اسم مستوى النضارة مطلوب', 'error');
+          return;
+        }
         const generatedKey = freshnessDraft.key || `fresh_${Date.now()}`;
         const payload = {
           key: generatedKey as FreshnessLevel,
-          label: { ar: freshnessDraft.ar, en: '' },
+          label: { ar: nameAr, en: '' },
           isActive: freshnessDraft.isActive,
           tone: (freshnessDraft.tone || undefined) as any,
         };
@@ -541,7 +565,7 @@ const ManageItemsScreen: React.FC = () => {
           await updateFreshnessLevel({
             id: freshnessDraft.id,
             key: freshnessDraft.key as FreshnessLevel,
-            label: { ar: freshnessDraft.ar, en: '' },
+            label: { ar: nameAr, en: '' },
             isActive: freshnessDraft.isActive,
             tone: (freshnessDraft.tone || undefined) as any,
             createdAt: freshnessLevels.find(f => f.id === freshnessDraft.id)?.createdAt || new Date().toISOString(),

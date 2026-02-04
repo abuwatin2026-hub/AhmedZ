@@ -173,10 +173,12 @@ export const ItemMetaProvider: React.FC<{ children: ReactNode }> = ({ children }
     ensureCanManage();
     const key = normalizeKey(data.key);
     if (!key) throw new Error('الفئة مطلوبة.');
+    const nameAr = String(data?.name?.ar || '').trim();
+    if (!nameAr) throw new Error('اسم الفئة مطلوب.');
     const now = nowIso();
     const existing = categories.find(c => c.key === key);
     if (existing) throw new Error('هذه الفئة موجودة مسبقًا.');
-    const record: ItemCategoryDef = { id: crypto.randomUUID(), key, name: data.name, isActive: data.isActive ?? true, createdAt: now, updatedAt: now };
+    const record: ItemCategoryDef = { id: crypto.randomUUID(), key, name: { ...data.name, ar: nameAr }, isActive: data.isActive ?? true, createdAt: now, updatedAt: now };
     const supabase = getSupabaseClient();
     if (supabase) {
       const { error } = await supabase.from('item_categories').insert({ id: record.id, key: record.key, is_active: record.isActive, data: record });
@@ -191,9 +193,11 @@ export const ItemMetaProvider: React.FC<{ children: ReactNode }> = ({ children }
     ensureCanManage();
     const nextKey = normalizeKey(data.key);
     if (!nextKey) throw new Error('الفئة مطلوبة.');
+    const nameAr = String(data?.name?.ar || '').trim();
+    if (!nameAr) throw new Error('اسم الفئة مطلوب.');
     const existing = categories.find(c => c.key === nextKey);
     if (existing && existing.id !== data.id) throw new Error('هذه الفئة موجودة مسبقًا.');
-    const next = { ...data, key: nextKey, updatedAt: nowIso() };
+    const next = { ...data, key: nextKey, name: { ...data.name, ar: nameAr }, updatedAt: nowIso() };
     const supabase = getSupabaseClient();
     if (supabase) {
       const { error } = await supabase
@@ -300,13 +304,15 @@ export const ItemMetaProvider: React.FC<{ children: ReactNode }> = ({ children }
     ensureCanManage();
     const key = normalizeKey(String(data.key)) as UnitType;
     if (!key) throw new Error('نوع الوحدة مطلوب.');
+    const labelAr = String(data?.label?.ar || '').trim();
+    if (!labelAr) throw new Error('اسم الوحدة مطلوب.');
     const existing = unitTypes.find(u => u.key === key);
     if (existing) throw new Error('نوع الوحدة موجود مسبقًا.');
     const now = nowIso();
     const record: UnitTypeDef = {
       id: crypto.randomUUID(),
       key,
-      label: data.label,
+      label: { ...data.label, ar: labelAr },
       isActive: data.isActive ?? true,
       isWeightBased: data.isWeightBased ?? (key === 'kg' || key === 'gram'),
       createdAt: now,
@@ -328,9 +334,11 @@ export const ItemMetaProvider: React.FC<{ children: ReactNode }> = ({ children }
     ensureCanManage();
     const nextKey = normalizeKey(String(data.key)) as UnitType;
     if (!nextKey) throw new Error('نوع الوحدة مطلوب.');
+    const labelAr = String(data?.label?.ar || '').trim();
+    if (!labelAr) throw new Error('اسم الوحدة مطلوب.');
     const existing = unitTypes.find(u => u.key === nextKey);
     if (existing && existing.id !== data.id) throw new Error('نوع الوحدة موجود مسبقًا.');
-    const next = { ...data, key: nextKey, updatedAt: nowIso() };
+    const next = { ...data, key: nextKey, label: { ...data.label, ar: labelAr }, updatedAt: nowIso() };
     const supabase = getSupabaseClient();
     if (supabase) {
       const { error } = await supabase
@@ -368,13 +376,15 @@ export const ItemMetaProvider: React.FC<{ children: ReactNode }> = ({ children }
     ensureCanManage();
     const key = normalizeKey(String(data.key)) as FreshnessLevel;
     if (!key) throw new Error('مستوى النضارة مطلوب.');
+    const labelAr = String(data?.label?.ar || '').trim();
+    if (!labelAr) throw new Error('اسم مستوى النضارة مطلوب.');
     const existing = freshnessLevels.find(f => f.key === key);
     if (existing) throw new Error('مستوى النضارة موجود مسبقًا.');
     const now = nowIso();
     const record: FreshnessLevelDef = {
       id: crypto.randomUUID(),
       key,
-      label: data.label,
+      label: { ...data.label, ar: labelAr },
       isActive: data.isActive ?? true,
       tone: data.tone,
       createdAt: now,
@@ -394,9 +404,11 @@ export const ItemMetaProvider: React.FC<{ children: ReactNode }> = ({ children }
     ensureCanManage();
     const nextKey = normalizeKey(String(data.key)) as FreshnessLevel;
     if (!nextKey) throw new Error('مستوى النضارة مطلوب.');
+    const labelAr = String(data?.label?.ar || '').trim();
+    if (!labelAr) throw new Error('اسم مستوى النضارة مطلوب.');
     const existing = freshnessLevels.find(f => f.key === nextKey);
     if (existing && existing.id !== data.id) throw new Error('مستوى النضارة موجود مسبقًا.');
-    const next = { ...data, key: nextKey, updatedAt: nowIso() };
+    const next = { ...data, key: nextKey, label: { ...data.label, ar: labelAr }, updatedAt: nowIso() };
     const supabase = getSupabaseClient();
     if (supabase) {
       const { error } = await supabase
