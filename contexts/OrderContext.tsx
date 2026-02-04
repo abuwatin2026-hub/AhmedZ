@@ -545,7 +545,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     return (rows || []).reduce((sum: number, r: any) => sum + (Number(r.amount) || 0), 0);
   }, []);
 
-  const updateRemoteOrder = useCallback(async (order: Order) => {
+  const updateRemoteOrder = useCallback(async (order: Order, options?: { includeStatus?: boolean }) => {
     try {
       const supabase = getSupabaseClient();
       if (!supabase) return;
@@ -555,10 +555,11 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         if (code === 'PGRST204' && msg) return msg.toLowerCase().includes(String(column).toLowerCase());
         return /schema cache/i.test(msg) && new RegExp(String(column).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i').test(msg);
       };
+      const includeStatus = options?.includeStatus !== false;
       const payload: Record<string, any> = {
-        status: order.status,
         data: order,
       };
+      if (includeStatus) payload.status = order.status;
       if (typeof (order as any).currency === 'string' && String((order as any).currency).trim()) {
         payload.currency = String((order as any).currency).trim().toUpperCase();
       }
@@ -576,7 +577,8 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         .eq('id', order.id));
 
       if (error && (isSchemaCacheMissingColumnError(error, 'delivery_zone_id') || isSchemaCacheMissingColumnError(error, 'warehouse_id'))) {
-        const fallback: Record<string, any> = { status: order.status, data: order };
+        const fallback: Record<string, any> = { data: order };
+        if (includeStatus) fallback.status = order.status;
         if (typeof (order as any).currency === 'string' && String((order as any).currency).trim()) {
           fallback.currency = String((order as any).currency).trim().toUpperCase();
         }
@@ -929,7 +931,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         createdAt: invoiceIssuedAt,
         payload: { invoiceNumber },
       });
-      await updateRemoteOrder(nextOrder);
+      await updateRemoteOrder(nextOrder, { includeStatus: false });
       setOrders(prev => prev.map(o => (o.id === nextOrder.id ? nextOrder : o)));
       return nextOrder;
     };
@@ -2168,7 +2170,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     ]);
 
     if (shouldIssueInvoice) {
-      await updateRemoteOrder(finalized);
+      await updateRemoteOrder(finalized, { includeStatus: false });
     }
 
     if (canMarkPaidUi && !paymentRecordOk) {
@@ -2808,7 +2810,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const order = (await fetchRemoteOrderById(orderId)) || orders.find(o => o.id === orderId);
     if (order && order.status === 'delivered' && !order.reviewPointsAwarded && order.pointsEarned && order.userId) {
       await addLoyaltyPoints(order.userId, order.pointsEarned);
-      await updateRemoteOrder({ ...order, reviewPointsAwarded: true } as Order);
+      await updateRemoteOrder({ ...order, reviewPointsAwarded: true } as Order, { includeStatus: false });
       // await fetchOrders();
       return true;
     }
@@ -3099,9 +3101,9 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             // تم سداد كامل المبلغ مسبقًا (دفعات جزئية)، يسمح بضبط paidAt الآن
             paidAtIso = nowIso;
           }
-          if (paidAtIso) {
+    if (paidAtIso) {
             updated = { ...updated, paidAt: paidAtIso } as Order;
-            await updateRemoteOrder(updated);
+            await updateRemoteOrder(updated, { includeStatus: false });
             updated = await ensureInvoiceIssued(updated, paidAtIso);
           }
         } catch (err) {
@@ -3219,7 +3221,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           payload: { paymentMethod: existing.paymentMethod },
         });
 
-        await updateRemoteOrder(updated);
+        await updateRemoteOrder(updated, { includeStatus: false });
         finalOrder = await ensureInvoiceIssued(updated, paidAtIso);
       }
     } catch (err) {
@@ -3303,7 +3305,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       });
     }
     const updated = { ...order, invoicePrintCount: currentCount + 1, invoiceLastPrintedAt: nowIso } as Order;
-    await updateRemoteOrder(updated);
+    await updateRemoteOrder(updated, { includeStatus: false });
     setOrders(prev => prev.map(o => (o.id === updated.id ? updated : o)));
     // await fetchOrders();
   };
