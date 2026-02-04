@@ -485,11 +485,31 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const supabase = getSupabaseClient();
     if (!supabase) return undefined;
     try {
-      const { data: row, error } = await supabase
-        .from('orders')
-        .select('id,status,created_at,delivery_zone_id,data')
-        .eq('id', orderId)
-        .maybeSingle();
+      const isSchemaCacheMissingColumnError = (err: any, column: string) => {
+        const code = String(err?.code || '');
+        const msg = String(err?.message || '');
+        if (code === 'PGRST204' && msg) return msg.toLowerCase().includes(String(column).toLowerCase());
+        return /schema cache/i.test(msg) && new RegExp(String(column).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i').test(msg);
+      };
+
+      const trySelectWithDeliveryZoneId = async () => {
+        return await supabase
+          .from('orders')
+          .select('id,status,created_at,delivery_zone_id,data')
+          .eq('id', orderId)
+          .maybeSingle();
+      };
+
+      let row: any = null;
+      let error: any = null;
+      ({ data: row, error } = await trySelectWithDeliveryZoneId());
+      if (error && isSchemaCacheMissingColumnError(error, 'delivery_zone_id')) {
+        ({ data: row, error } = await supabase
+          .from('orders')
+          .select('id,status,created_at,data')
+          .eq('id', orderId)
+          .maybeSingle());
+      }
       if (error) throw error;
       if (!row) return undefined;
       const base = (row.data || {}) as Order;
@@ -526,6 +546,12 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     try {
       const supabase = getSupabaseClient();
       if (!supabase) return;
+      const isSchemaCacheMissingColumnError = (err: any, column: string) => {
+        const code = String(err?.code || '');
+        const msg = String(err?.message || '');
+        if (code === 'PGRST204' && msg) return msg.toLowerCase().includes(String(column).toLowerCase());
+        return /schema cache/i.test(msg) && new RegExp(String(column).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i').test(msg);
+      };
       const payload: Record<string, any> = {
         status: order.status,
         data: order,
@@ -537,10 +563,19 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         payload.warehouse_id = (order as any).warehouseId;
       }
 
-      const { error } = await supabase
+      let error: any = null;
+      ({ error } = await supabase
         .from('orders')
         .update(payload)
-        .eq('id', order.id);
+        .eq('id', order.id));
+
+      if (error && (isSchemaCacheMissingColumnError(error, 'delivery_zone_id') || isSchemaCacheMissingColumnError(error, 'warehouse_id'))) {
+        const fallback: Record<string, any> = { status: order.status, data: order };
+        ({ error } = await supabase
+          .from('orders')
+          .update(fallback)
+          .eq('id', order.id));
+      }
 
       if (error) throw error;
     } catch (err) {
@@ -553,18 +588,44 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     try {
       const supabase = getSupabaseClient();
       if (!supabase) return;
+      const isSchemaCacheMissingColumnError = (err: any, column: string) => {
+        const code = String(err?.code || '');
+        const msg = String(err?.message || '');
+        if (code === 'PGRST204' && msg) return msg.toLowerCase().includes(String(column).toLowerCase());
+        return /schema cache/i.test(msg) && new RegExp(String(column).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i').test(msg);
+      };
+      const scopedWarehouseId = sessionScope?.scope?.warehouseId;
+      const warehouseId = (typeof (order as any).warehouseId === 'string' && isUuid((order as any).warehouseId))
+        ? (order as any).warehouseId
+        : (typeof scopedWarehouseId === 'string' && isUuid(scopedWarehouseId) ? scopedWarehouseId : null);
+      const deliveryZoneId = (typeof order.deliveryZoneId === 'string' && isUuid(order.deliveryZoneId))
+        ? order.deliveryZoneId
+        : null;
       const payload: Record<string, any> = {
         id: order.id,
         status: order.status,
-        delivery_zone_id: order.deliveryZoneId ?? null,
-        warehouse_id: (order as any).warehouseId ?? null,
+        delivery_zone_id: deliveryZoneId,
+        warehouse_id: warehouseId,
         data: order,
       };
       payload.customer_auth_user_id = isUuid(order.userId) ? order.userId : null;
 
-      const { error } = await supabase
+      let error: any = null;
+      ({ error } = await supabase
         .from('orders')
-        .insert(payload);
+        .insert(payload));
+
+      if (error && (isSchemaCacheMissingColumnError(error, 'delivery_zone_id') || isSchemaCacheMissingColumnError(error, 'warehouse_id'))) {
+        const fallback: Record<string, any> = {
+          id: order.id,
+          status: order.status,
+          data: order,
+          customer_auth_user_id: payload.customer_auth_user_id,
+        };
+        ({ error } = await supabase
+          .from('orders')
+          .insert(fallback));
+      }
 
       if (error) throw error;
     } catch (err: any) {
@@ -577,7 +638,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       }
       throw err;
     }
-  }, []);
+  }, [sessionScope?.scope?.warehouseId]);
 
   const upsertRemoteOrderEvent = useCallback(async (event: OrderAuditEvent) => {
     try {
@@ -875,17 +936,46 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           nextOrders = [];
         } else {
           const loadRemote = async () => {
+            const isSchemaCacheMissingColumnError = (err: any, column: string) => {
+              const code = String(err?.code || '');
+              const msg = String(err?.message || '');
+              if (code === 'PGRST204' && msg) return msg.toLowerCase().includes(String(column).toLowerCase());
+              return /schema cache/i.test(msg) && new RegExp(String(column).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i').test(msg);
+            };
             const conn: any = (typeof navigator !== 'undefined' && (navigator as any).connection) ? (navigator as any).connection : null;
             const eff: string = typeof conn?.effectiveType === 'string' ? conn.effectiveType : '';
             const isSlow = eff === 'slow-2g' || eff === '2g';
             const hardLimit = isSlow ? 60 : 150;
-            const baseQuery = supabase
-              .from('orders')
-              .select('id,status,created_at,delivery_zone_id,data')
-              .order('created_at', { ascending: false })
-              .limit(hardLimit);
-            if (shouldLoadAll) return await baseQuery;
-            return await baseQuery.eq('customer_auth_user_id', currentUser!.id);
+            const queryWithZone = () => {
+              const baseQuery = supabase
+                .from('orders')
+                .select('id,status,created_at,delivery_zone_id,data')
+                .order('created_at', { ascending: false })
+                .limit(hardLimit);
+              if (shouldLoadAll) return baseQuery;
+              return baseQuery.eq('customer_auth_user_id', currentUser!.id);
+            };
+            const queryWithoutZone = () => {
+              const baseQuery = supabase
+                .from('orders')
+                .select('id,status,created_at,data')
+                .order('created_at', { ascending: false })
+                .limit(hardLimit);
+              if (shouldLoadAll) return baseQuery;
+              return baseQuery.eq('customer_auth_user_id', currentUser!.id);
+            };
+
+            let result: any = await queryWithZone();
+            if (result.error && isSchemaCacheMissingColumnError(result.error, 'delivery_zone_id')) {
+              const reloaded = await reloadPostgrestSchema();
+              if (reloaded) {
+                result = await queryWithZone();
+              }
+            }
+            if (result.error && isSchemaCacheMissingColumnError(result.error, 'delivery_zone_id')) {
+              result = await queryWithoutZone();
+            }
+            return result;
           };
 
           if (typeof navigator !== 'undefined' && navigator.onLine === false) {
@@ -897,7 +987,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             const { data: rows, error } = await loadRemote();
             if (timeoutId) clearTimeout(timeoutId);
             if (error) throw error;
-            const merged = (rows || []).map((r: any) => {
+            const merged: Order[] = (rows || []).map((r: any) => {
               const base = (r?.data || {}) as Order;
               const colStatus = (r?.status as OrderStatus) || undefined;
               const dataStatus = (base as any).status as OrderStatus | undefined;
@@ -917,7 +1007,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             setLoading(false);
             void (async () => {
               try {
-                const remoteOrders = await Promise.all(merged.map(o => resolveOrderAddress(o)));
+                const remoteOrders = await Promise.all(merged.map((o) => resolveOrderAddress(o)));
                 remoteOrders.sort((a, b) => (String(b.createdAt || '')).localeCompare(String(a.createdAt || '')));
                 setOrders(remoteOrders);
               } catch {
@@ -955,7 +1045,13 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         if (isOffline || isAborted) {
           logger.info('تخطي جلب الطلبات: الشبكة غير متاحة أو الطلب أُلغي.');
         } else {
-          logger.error('تعذر جلب الطلبات من الخادم:', error);
+          logger.error('تعذر جلب الطلبات من الخادم:', {
+            message: msg,
+            code: String(error?.code || ''),
+            status: (error as any)?.status,
+            details: String(error?.details || ''),
+            hint: String(error?.hint || ''),
+          });
         }
       }
     } finally {
