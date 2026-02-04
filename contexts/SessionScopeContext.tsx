@@ -43,12 +43,36 @@ export const SessionScopeProvider: React.FC<{ children: React.ReactNode }> = ({ 
       const { data, error: rpcError } = await supabase.rpc('get_admin_session_scope');
       if (rpcError) throw rpcError;
       const row: any = Array.isArray(data) ? data[0] : data;
-      const companyId = typeof row?.company_id === 'string' ? row.company_id : '';
-      const branchId = typeof row?.branch_id === 'string' ? row.branch_id : '';
-      const warehouseId = typeof row?.warehouse_id === 'string' ? row.warehouse_id : '';
+      let companyId = typeof row?.company_id === 'string' ? row.company_id : (typeof row?.companyId === 'string' ? row.companyId : '');
+      let branchId = typeof row?.branch_id === 'string' ? row.branch_id : (typeof row?.branchId === 'string' ? row.branchId : '');
+      let warehouseId = typeof row?.warehouse_id === 'string' ? row.warehouse_id : (typeof row?.warehouseId === 'string' ? row.warehouseId : '');
+
+      if (!companyId) {
+        try {
+          const { data: c } = await supabase.rpc('get_default_company_id');
+          if (typeof c === 'string') companyId = c;
+        } catch {
+        }
+      }
+      if (!branchId) {
+        try {
+          const { data: b } = await supabase.rpc('get_default_branch_id');
+          if (typeof b === 'string') branchId = b;
+        } catch {
+        }
+      }
+      if (!warehouseId) {
+        try {
+          const { data: w } = await supabase.rpc('_resolve_default_admin_warehouse_id');
+          if (typeof w === 'string') warehouseId = w;
+        } catch {
+        }
+      }
+
       if (!companyId || !branchId || !warehouseId) {
         throw new Error('نطاق الجلسة غير مكتمل. يجب تعيين الشركة/الفرع/المستودع للمستخدم.');
       }
+
       setScope({ companyId, branchId, warehouseId });
     } catch (e) {
       if (isAbortLikeError(e)) return;

@@ -182,7 +182,16 @@ export const StockProvider: React.FC<{ children: ReactNode }> = ({ children }) =
                 setStockItems([]);
                 return;
             }
-            const warehouseId = sessionScope.scope?.warehouseId;
+            let warehouseId = sessionScope.scope?.warehouseId;
+            if (!warehouseId) {
+                try {
+                    const { data: w } = await supabase.rpc('_resolve_default_admin_warehouse_id');
+                    if (typeof w === 'string' && w.trim()) {
+                        warehouseId = w.trim();
+                    }
+                } catch {
+                }
+            }
             if (!warehouseId) {
                 setStockItems([]);
                 return;
@@ -413,7 +422,11 @@ export const StockProvider: React.FC<{ children: ReactNode }> = ({ children }) =
                 const byData = typeof orderRow?.data?.warehouseId === 'string' ? orderRow?.data?.warehouseId : undefined;
                 const candidate = byCol || byData;
                 if (candidate) return candidate;
-                return sessionScope.requireScope().warehouseId;
+                const scoped = sessionScope.scope?.warehouseId;
+                if (scoped) return scoped;
+                const { data: w } = await supabase.rpc('_resolve_default_admin_warehouse_id');
+                if (typeof w === 'string' && w.trim()) return w.trim();
+                throw new Error('warehouse_id is required');
             };
             const warehouseId = await resolveWarehouseId();
 
@@ -451,7 +464,11 @@ export const StockProvider: React.FC<{ children: ReactNode }> = ({ children }) =
                 const byData = typeof orderRow?.data?.warehouseId === 'string' ? orderRow?.data?.warehouseId : undefined;
                 const candidate = byCol || byData;
                 if (candidate) return candidate;
-                return sessionScope.requireScope().warehouseId;
+                const scoped = sessionScope.scope?.warehouseId;
+                if (scoped) return scoped;
+                const { data: w } = await supabase.rpc('_resolve_default_admin_warehouse_id');
+                if (typeof w === 'string' && w.trim()) return w.trim();
+                throw new Error('warehouse_id is required');
              };
              const warehouseId = await resolveWarehouseId();
 
@@ -486,7 +503,15 @@ export const StockProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         if (!supabase) return;
 
         try {
-            const warehouseId = sessionScope.requireScope().warehouseId;
+            let warehouseId = sessionScope.scope?.warehouseId;
+            if (!warehouseId) {
+                try {
+                    const { data: w } = await supabase.rpc('_resolve_default_admin_warehouse_id');
+                    if (typeof w === 'string' && w.trim()) warehouseId = w.trim();
+                } catch {
+                }
+            }
+            if (!warehouseId) throw new Error('warehouse_id is required');
             const { data, error } = await supabase.rpc('process_expiry_light', {
                 p_warehouse_id: warehouseId
             });
