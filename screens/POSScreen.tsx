@@ -55,7 +55,7 @@ const POSScreen: React.FC = () => {
   const [baseCode, setBaseCode] = useState<string>('');
   const [transactionCurrency, setTransactionCurrency] = useState<string>(() => {
     const ops = (settings as any)?.operationalCurrencies;
-    const first = Array.isArray(ops) ? String(ops[0] || '') : '';
+    const first = Array.isArray(ops) ? String(ops[0] || '').trim().toUpperCase() : '';
     return first || '';
   });
   const pricingCacheRef = useRef<Map<string, {
@@ -91,13 +91,13 @@ const POSScreen: React.FC = () => {
   useEffect(() => {
     if (transactionCurrency) return;
     const ops = (settings as any)?.operationalCurrencies;
-    const first = Array.isArray(ops) ? String(ops[0] || '') : '';
+    const first = Array.isArray(ops) ? String(ops[0] || '').trim().toUpperCase() : '';
     if (first) {
       setTransactionCurrency(first);
       return;
     }
     if (baseCode) {
-      setTransactionCurrency(baseCode);
+      setTransactionCurrency(String(baseCode || '').trim().toUpperCase());
     }
   }, [baseCode, settings, transactionCurrency]);
 
@@ -122,8 +122,8 @@ const POSScreen: React.FC = () => {
   }, [isPromotionLine, items]);
 
   const operationalCurrencies = Array.isArray(settings.operationalCurrencies) && settings.operationalCurrencies.length
-    ? settings.operationalCurrencies
-    : (transactionCurrency ? [transactionCurrency] : []);
+    ? Array.from(new Set(settings.operationalCurrencies.map((c) => String(c || '').trim().toUpperCase()).filter(Boolean)))
+    : (transactionCurrency ? [String(transactionCurrency || '').trim().toUpperCase()] : []);
 
   useEffect(() => {
     if (!hasPromotionLines) return;
@@ -1122,7 +1122,7 @@ const POSScreen: React.FC = () => {
           <label className="text-xs text-gray-600 dark:text-gray-300">عملة المعاملة</label>
           <select
             value={transactionCurrency}
-            onChange={(e) => setTransactionCurrency(e.target.value)}
+            onChange={(e) => setTransactionCurrency(String(e.target.value || '').trim().toUpperCase())}
             className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-xs"
           >
             {operationalCurrencies.map((c) => (

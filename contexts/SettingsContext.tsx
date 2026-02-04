@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
 import type { AppLanguage, AppSettings, AppTheme, PersistedAppSettings } from '../types';
-import { disableRealtime, getSupabaseClient, isRealtimeEnabled } from '../supabase';
+import { disableRealtime, getSupabaseClient, invalidateBaseCurrencyCodeCache, isRealtimeEnabled } from '../supabase';
 import { logger } from '../utils/logger';
 import { localizeSupabaseError } from '../utils/errorUtils';
 import { translations } from '../utils/translations';
@@ -189,14 +189,18 @@ const mergeSettings = (base: AppSettings, incoming: unknown): AppSettings => {
   if (!isRecord(incoming)) return base;
   const candidate = incoming as Partial<AppSettings>;
   const { deliverySettings: _deliverySettings, ...candidateNoDelivery } = candidate as any;
+  const normalizeCode = (value: unknown) => String(value || '').trim().toUpperCase();
+  const normalizeCodeList = (value: unknown): string[] => {
+    const raw = Array.isArray(value) ? value : [];
+    const mapped = raw.map((c) => normalizeCode(c)).filter(Boolean);
+    return Array.from(new Set(mapped));
+  };
 
   const merged: AppSettings = {
     ...base,
     ...(candidateNoDelivery as any),
-    baseCurrency: (candidateNoDelivery as any)?.baseCurrency || base.baseCurrency,
-    operationalCurrencies: Array.isArray((candidateNoDelivery as any)?.operationalCurrencies)
-      ? ((candidateNoDelivery as any)?.operationalCurrencies as string[])
-      : (base.operationalCurrencies || []),
+    baseCurrency: normalizeCode((candidateNoDelivery as any)?.baseCurrency) || normalizeCode(base.baseCurrency),
+    operationalCurrencies: normalizeCodeList((candidateNoDelivery as any)?.operationalCurrencies ?? base.operationalCurrencies),
     cafeteriaName: {
       ...base.cafeteriaName,
       ...(isRecord(candidate.cafeteriaName) ? (candidate.cafeteriaName as any) : {}),
@@ -291,7 +295,12 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
     const remoteSettings = remote?.settings;
     if (!remoteSettings) return null;
     const mergedSettings = mergeSettings(defaultSettings, remoteSettings);
-    setSettings(mergedSettings);
+    setSettings((prev) => {
+      const prevBase = String(prev.baseCurrency || '').trim().toUpperCase();
+      const nextBase = String(mergedSettings.baseCurrency || '').trim().toUpperCase();
+      if (nextBase && nextBase !== prevBase) invalidateBaseCurrencyCodeCache();
+      return mergedSettings;
+    });
     return mergedSettings;
   }, []);
 
@@ -468,6 +477,7 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
         setSettings(previous);
         throw new Error(localizeSupabaseError(baseErr));
       }
+      invalidateBaseCurrencyCodeCache();
     }
     const { error } = await supabase
       .from('app_settings')

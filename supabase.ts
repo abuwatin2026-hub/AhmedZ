@@ -250,6 +250,11 @@ export const reloadPostgrestSchema = async (): Promise<boolean> => {
 let cachedBaseCurrencyCode: string | null = null;
 let baseCurrencyCodePromise: Promise<string | null> | null = null;
 
+export const invalidateBaseCurrencyCodeCache = (): void => {
+  cachedBaseCurrencyCode = null;
+  baseCurrencyCodePromise = null;
+};
+
 export const getBaseCurrencyCode = async (): Promise<string | null> => {
   if (cachedBaseCurrencyCode) return cachedBaseCurrencyCode;
   const supabase = getSupabaseClient();
