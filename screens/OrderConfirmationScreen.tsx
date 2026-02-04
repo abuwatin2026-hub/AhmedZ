@@ -6,6 +6,8 @@ import type { OrderStatus, CartItem } from '../types';
 import { useDeliveryZones } from '../contexts/DeliveryZoneContext';
 import { CheckCircleIcon, CheckIcon, ClockIcon, FireIcon, HomeIcon, InvoiceIcon, TruckIcon, CloseIcon } from '../components/icons';
 
+const IN_STORE_DELIVERY_ZONE_ID = '11111111-1111-4111-8111-111111111111';
+
 const statusInfo: Record<OrderStatus, React.ReactNode> = {
     pending: <ClockIcon />,
     preparing: <FireIcon />,
@@ -33,24 +35,47 @@ const statusDesc: Record<OrderStatus, string> = {
     cancelled: 'تم إلغاء الطلب.',
 };
 
-const OrderTracker: React.FC<{ currentStatus: OrderStatus }> = ({ currentStatus }) => {
+const isInStoreOrder = (order: any): boolean => {
+    const src = String(order?.orderSource || '').trim();
+    if (src === 'in_store') return true;
+    const zone = String(order?.deliveryZoneId || '').trim();
+    if (zone && zone === IN_STORE_DELIVERY_ZONE_ID) return true;
+    const addr = String(order?.address || '').trim();
+    return addr === 'داخل المحل';
+};
+
+const getStatusText = (status: OrderStatus, inStore: boolean): string => {
+    if (!inStore) return statusText[status];
+    if (status === 'out_for_delivery') return 'جاهز للاستلام';
+    if (status === 'delivered') return 'تم الاستلام';
+    return statusText[status];
+};
+
+const getStatusDesc = (status: OrderStatus, inStore: boolean): string => {
+    if (!inStore) return statusDesc[status];
+    if (status === 'out_for_delivery') return 'فاتورتك جاهزة للاستلام من داخل المحل.';
+    if (status === 'delivered') return 'تم إتمام فاتورتك داخل المحل. بالعافية!';
+    return statusDesc[status];
+};
+
+const OrderTracker: React.FC<{ currentStatus: OrderStatus; inStore: boolean }> = ({ currentStatus, inStore }) => {
     if (currentStatus === 'cancelled') {
         return (
             <div className="mt-8 max-w-md mx-auto">
                 <div className="p-4 rounded-lg bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-start">
                     <div className="flex items-center gap-2 text-red-700 dark:text-red-300 font-bold">
                         <CloseIcon />
-                        <span>{statusText['cancelled']}</span>
+                        <span>{getStatusText('cancelled', inStore)}</span>
                     </div>
                     <p className="text-sm text-gray-600 dark:text-gray-300 mt-2">
-                        {statusDesc['cancelled']}
+                        {getStatusDesc('cancelled', inStore)}
                     </p>
                 </div>
             </div>
         );
     }
 
-    const statuses: OrderStatus[] = ['pending', 'preparing', 'out_for_delivery', 'delivered'];
+    const statuses: OrderStatus[] = inStore ? ['pending', 'delivered'] : ['pending', 'preparing', 'out_for_delivery', 'delivered'];
     const currentStatusIndex = statuses.indexOf(currentStatus);
 
     const progressPercentage = currentStatusIndex > 0 ? (currentStatusIndex / (statuses.length - 1)) * 100 : 0;
@@ -77,10 +102,10 @@ const OrderTracker: React.FC<{ currentStatus: OrderStatus }> = ({ currentStatus 
                             <div className="flex flex-col">
                                 <h3 className={`font-semibold text-lg transition-colors duration-500 
                                     ${isActive ? 'text-gold-500 font-bold' : 'text-gray-900 dark:text-white'}`}>
-                                    {statusText[status]}
+                                    {getStatusText(status, inStore)}
                                 </h3>
                                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                                    {statusDesc[status]}
+                                    {getStatusDesc(status, inStore)}
                                 </p>
                             </div>
                         </li>
@@ -103,8 +128,9 @@ const OrderConfirmationScreen: React.FC = () => {
 
     useEffect(() => {
         if (order) {
+            const inStore = isInStoreOrder(order);
             if (prevStatusRef.current && prevStatusRef.current !== order.status) {
-                const message = `تم تحديث حالة الطلب: "${statusText[order.status]}"`;
+                const message = `تم تحديث حالة الطلب: "${getStatusText(order.status, inStore)}"`;
                 showNotification(message, 'info');
             }
             prevStatusRef.current = order.status;
@@ -113,7 +139,7 @@ const OrderConfirmationScreen: React.FC = () => {
 
     useEffect(() => {
         let timer: number | undefined;
-        if (order?.status === 'out_for_delivery') {
+        if (order?.status === 'out_for_delivery' && !isInStoreOrder(order)) {
             timer = window.setInterval(() => {
                 setTimeLeft(prev => (prev > 0 ? prev - 1 : 0));
             }, 1000);
@@ -133,11 +159,13 @@ const OrderConfirmationScreen: React.FC = () => {
         );
     }
     
+    const inStore = isInStoreOrder(order);
+
     return (
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 sm:p-8 animate-fade-in text-center">
                 <CheckCircleIcon />
-                <h1 className="text-3xl font-bold mt-4 dark:text-white">شكراً لك، تم تأكيد طلبك!</h1>
+                <h1 className="text-3xl font-bold mt-4 dark:text-white">{inStore ? 'شكراً لك، تم تسجيل فاتورتك!' : 'شكراً لك، تم تأكيد طلبك!'}</h1>
                 <p className="text-gray-500 dark:text-gray-400 mt-2">
                     رقم الطلب: <span className="font-mono font-semibold text-gold-500">#{order.id.slice(-6).toUpperCase()}</span>
                 </p>
@@ -152,7 +180,8 @@ const OrderConfirmationScreen: React.FC = () => {
                 )}
                 {order.deliveryZoneId && (
                     <p className="text-gray-500 dark:text-gray-400 mt-2">
-                        منطقة التوصيل: <span className="font-semibold">{getDeliveryZoneById(order.deliveryZoneId)?.name.ar || order.deliveryZoneId.slice(-6).toUpperCase()}</span>
+                        {inStore ? 'مكان الاستلام: ' : 'منطقة التوصيل: '}
+                        <span className="font-semibold">{getDeliveryZoneById(order.deliveryZoneId)?.name.ar || order.deliveryZoneId.slice(-6).toUpperCase()}</span>
                     </p>
                 )}
 
@@ -188,16 +217,16 @@ const OrderConfirmationScreen: React.FC = () => {
 
                 {order.status !== 'scheduled' && (
                     <div className="mt-8 text-center border-t border-b border-gray-200 dark:border-gray-700 py-6">
-                        <h2 className="text-xl font-semibold dark:text-gray-200 mb-2">متابعة الطلب</h2>
+                        <h2 className="text-xl font-semibold dark:text-gray-200 mb-2">{inStore ? 'حالة الفاتورة' : 'متابعة الطلب'}</h2>
                         
-                        {order.status === 'out_for_delivery' && (
+                        {order.status === 'out_for_delivery' && !inStore && (
                             <div className="my-4 p-3 bg-indigo-50 dark:bg-indigo-900/30 rounded-lg animate-pulse">
                                 <p className="font-bold text-indigo-700 dark:text-indigo-300">الوقت المقدر للوصول</p>
                                 <p className="text-2xl font-mono font-bold text-indigo-500">{Math.floor(timeLeft / 60)}:{('0' + (timeLeft % 60)).slice(-2)} دقيقة</p>
                             </div>
                         )}
                         
-                        <OrderTracker currentStatus={order.status} />
+                        <OrderTracker currentStatus={order.status} inStore={inStore} />
                     </div>
                 )}
 
