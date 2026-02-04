@@ -26,6 +26,9 @@ export const localizeError = (message: string): string => {
   if (raw.includes('no api key found in request') || raw.includes('no `apikey` request header') || raw.includes('apikey request header')) {
     return 'مفتاح Supabase (apikey) غير موجود في الطلب. تأكد من ضبط VITE_SUPABASE_ANON_KEY في بيئة البناء ثم أعد النشر.';
   }
+  if (raw.includes('purchase_in requires batch_id') || raw.includes('purchase_in_requires_batch')) {
+    return 'لا يمكن استلام المخزون بدون إنشاء دفعة (Batch). حدّث قاعدة البيانات (مايجريشن الاستلام) ثم أعد المحاولة.';
+  }
   if (raw === 'food_sale_requires_batch') return 'لا يمكن بيع صنف غذائي بدون تحديد دفعة.';
   if (raw === 'sale_out_requires_batch') return 'لا يمكن تنفيذ الخصم بدون تحديد دفعة.';
   if (raw === 'no_valid_batch') return 'NO_VALID_BATCH';
