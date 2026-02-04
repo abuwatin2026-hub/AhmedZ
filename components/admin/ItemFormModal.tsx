@@ -15,14 +15,14 @@ interface ItemFormModalProps {
   onSave: (item: Omit<MenuItem, 'id'> | MenuItem) => void;
   itemToEdit: MenuItem | null;
   isSaving: boolean;
-  onManageMeta?: (kind: 'category' | 'unit' | 'freshness') => void;
+  onManageMeta?: (kind: 'category' | 'group' | 'unit' | 'freshness') => void;
 }
 
 const ItemFormModal: React.FC<ItemFormModalProps> = ({ isOpen, onClose, onSave, itemToEdit, isSaving, onManageMeta }) => {
   const { addons: availableAddons } = useAddons();
   const { t, language } = useSettings();
   const { hasPermission } = useAuth();
-  const { categories, unitTypes, freshnessLevels, getCategoryLabel, getUnitLabel, getFreshnessLabel } = useItemMeta();
+  const { categories, groups, unitTypes, freshnessLevels, getCategoryLabel, getGroupLabel, getUnitLabel, getFreshnessLabel } = useItemMeta();
   const { getStockByItemId } = useStock();
   const [baseCode, setBaseCode] = useState('—');
 
@@ -58,6 +58,7 @@ const ItemFormModal: React.FC<ItemFormModalProps> = ({ isOpen, onClose, onSave, 
     buyingPrice: 0,
     transportCost: 0,
     supplyTaxCost: 0,
+    group: '',
   });
 
   const [item, setItem] = useState(getInitialFormState());
@@ -74,6 +75,7 @@ const ItemFormModal: React.FC<ItemFormModalProps> = ({ isOpen, onClose, onSave, 
         costPrice: itemToEdit.costPrice || 0,
         imageUrl: itemToEdit.imageUrl,
         category: itemToEdit.category,
+        group: (itemToEdit as any).group || '',
         sellable: (itemToEdit as any).sellable ?? true,
         status: itemToEdit.status || 'active',
         addons: itemToEdit.addons || [],
@@ -261,6 +263,24 @@ const ItemFormModal: React.FC<ItemFormModalProps> = ({ isOpen, onClose, onSave, 
     return active;
   }, [freshnessLevels, itemToEdit?.freshnessLevel]);
 
+  const groupOptions = React.useMemo(() => {
+    const category = String(item.category || '').trim();
+    const active = groups.filter(g => g.isActive && g.categoryKey === category).map(g => String(g.key));
+    const current = String((item as any).group || '').trim();
+    if (current && !active.includes(current)) return [current, ...active];
+    return active;
+  }, [groups, item.category, item]);
+
+  useEffect(() => {
+    const category = String(item.category || '').trim();
+    const current = String((item as any).group || '').trim();
+    if (!category || !current) return;
+    const allowed = new Set(groups.filter(g => g.isActive && g.categoryKey === category).map(g => String(g.key)));
+    if (allowed.size > 0 && !allowed.has(current)) {
+      setItem(prev => ({ ...prev, group: '' }));
+    }
+  }, [groups, item.category]);
+
   if (!isOpen) return null;
 
   return (
@@ -318,6 +338,23 @@ const ItemFormModal: React.FC<ItemFormModalProps> = ({ isOpen, onClose, onSave, 
                 ))}
               </select>
             </div>
+            <div>
+              <label htmlFor="group" className="block text-sm font-medium text-gray-700 dark:text-gray-300">المجموعة</label>
+              <select
+                name="group"
+                id="group"
+                value={String((item as any).group || '')}
+                onChange={handleChange}
+                className="mt-1 w-full p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600"
+              >
+                <option value="">{language === 'ar' ? 'بدون مجموعة' : 'No group'}</option>
+                {groupOptions.map(gk => (
+                  <option key={gk} value={gk}>
+                    {getGroupLabel(gk, String(item.category || ''), language as 'ar' | 'en')}
+                  </option>
+                ))}
+              </select>
+            </div>
 
             <div>
               <label htmlFor="unitType" className="block text-sm font-medium text-gray-700 dark:text-gray-300">نوع الوحدة</label>
@@ -345,9 +382,12 @@ const ItemFormModal: React.FC<ItemFormModalProps> = ({ isOpen, onClose, onSave, 
 
               <div className="mt-4 space-y-6">
                 {onManageMeta && (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
                     <button type="button" onClick={() => onManageMeta('category')} className="px-3 py-2 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 text-sm font-semibold text-gray-800 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700">
                       إدارة الفئات
+                    </button>
+                    <button type="button" onClick={() => onManageMeta('group')} className="px-3 py-2 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 text-sm font-semibold text-gray-800 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700">
+                      إدارة المجموعات
                     </button>
                     <button type="button" onClick={() => onManageMeta('unit')} className="px-3 py-2 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 text-sm font-semibold text-gray-800 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700">
                       إدارة الوحدات

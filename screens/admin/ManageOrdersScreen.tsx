@@ -166,19 +166,53 @@ const ManageOrdersScreen: React.FC = () => {
     const [inStoreSelectedCustomerId, setInStoreSelectedCustomerId] = useState<string>('');
     const [inStorePricingBusy, setInStorePricingBusy] = useState(false);
     const [inStorePricingMap, setInStorePricingMap] = useState<Record<string, { unitPrice: number; unitPricePerKg?: number }>>({});
+    const [currencyOptions, setCurrencyOptions] = useState<string[]>([]);
+
+    useEffect(() => {
+        let active = true;
+        const run = async () => {
+            try {
+                const supabase = getSupabaseClient();
+                if (!supabase) return;
+                const { data, error } = await supabase
+                    .from('currencies')
+                    .select('code')
+                    .order('code', { ascending: true });
+                if (error) throw error;
+                const codes = (Array.isArray(data) ? data : [])
+                    .map((r: any) => String(r?.code || '').trim().toUpperCase())
+                    .filter(Boolean);
+                if (active) setCurrencyOptions(Array.from(new Set(codes)));
+            } catch {
+                if (active) setCurrencyOptions([]);
+            }
+        };
+        void run();
+        return () => {
+            active = false;
+        };
+    }, []);
     const operationalCurrencies = useMemo(() => {
-        const list = Array.isArray(settings.operationalCurrencies) && settings.operationalCurrencies.length
+        const fromSettings = Array.isArray(settings.operationalCurrencies) && settings.operationalCurrencies.length
             ? settings.operationalCurrencies
-            : (baseCode ? [String(baseCode)] : []);
-        return list.map(c => String(c || '').toUpperCase()).filter(Boolean);
-    }, [baseCode, settings.operationalCurrencies]);
+            : [];
+        const list = fromSettings.length > 0
+            ? fromSettings
+            : (currencyOptions.length > 0 ? currencyOptions : []);
+        const normalized = list.map((c) => String(c || '').trim().toUpperCase()).filter(Boolean);
+        const unique = Array.from(new Set(normalized));
+        if (unique.length > 0) return unique;
+        const fallback = String(baseCode || '').trim().toUpperCase();
+        return fallback ? [fallback] : [];
+    }, [baseCode, currencyOptions, settings.operationalCurrencies]);
     const [inStoreTransactionCurrency, setInStoreTransactionCurrency] = useState<string>(() => operationalCurrencies[0] || '');
     const [inStoreTransactionFxRate, setInStoreTransactionFxRate] = useState<number>(1);
     const inStoreFxRateRef = useRef<number>(1);
     const inStorePrevFxRateRef = useRef<number>(1);
 
     useEffect(() => {
-        if (inStoreTransactionCurrency) return;
+        const current = String(inStoreTransactionCurrency || '').trim().toUpperCase();
+        if (current && operationalCurrencies.includes(current)) return;
         const next = operationalCurrencies[0] || '';
         if (next) setInStoreTransactionCurrency(next);
     }, [inStoreTransactionCurrency, operationalCurrencies]);
@@ -193,6 +227,12 @@ const ManageOrdersScreen: React.FC = () => {
         const r = Number(rate) || 0;
         if (!(r > 0)) return roundMoney(baseAmount);
         return roundMoney((Number(baseAmount) || 0) / r);
+    };
+
+    const convertInStoreTxnToBase = (txnAmount: number, rate: number) => {
+        const r = Number(rate) || 0;
+        if (!(r > 0)) return roundMoney(txnAmount);
+        return roundMoney((Number(txnAmount) || 0) * r);
     };
 
     const fetchOperationalFxRate = async (currencyCode: string): Promise<number | null> => {
@@ -265,6 +305,48 @@ const ManageOrdersScreen: React.FC = () => {
             }
         }
     }, [inStoreDiscountType, inStoreDiscountValue, inStoreTransactionFxRate, isInStoreSaleOpen]);
+
+    useEffect(() => {
+        if (!isInStoreSaleOpen) return;
+        const newRate = Number(inStoreTransactionFxRate) || 1;
+        if (!(newRate > 0)) return;
+        const oldRate = Number(inStorePrevFxRateRef.current) || 1;
+        if (!(oldRate > 0)) return;
+        if (Math.abs(newRate - oldRate) < 1e-12) return;
+
+        const convert = (amount: number) => {
+            const base = convertInStoreTxnToBase(amount, oldRate);
+            return convertBaseToInStoreTxn(base, newRate);
+        };
+
+        setInStorePaymentDeclaredAmount((prev) => {
+            const v = Number(prev) || 0;
+            if (!(v > 0)) return prev;
+            return convert(v);
+        });
+        setInStoreCashReceived((prev) => {
+            const v = Number(prev) || 0;
+            if (!(v > 0)) return prev;
+            return convert(v);
+        });
+        setInStorePaymentLines((prev) => {
+            if (!Array.isArray(prev) || prev.length === 0) return prev;
+            const next = prev.map((p) => {
+                const amount = Number(p.amount) || 0;
+                const declaredAmount = Number(p.declaredAmount) || 0;
+                const cashReceived = Number(p.cashReceived) || 0;
+                return {
+                    ...p,
+                    amount: amount > 0 ? convert(amount) : amount,
+                    declaredAmount: declaredAmount > 0 ? convert(declaredAmount) : declaredAmount,
+                    cashReceived: cashReceived > 0 ? convert(cashReceived) : cashReceived,
+                };
+            });
+            return next;
+        });
+
+        inStorePrevFxRateRef.current = newRate;
+    }, [inStoreTransactionFxRate, isInStoreSaleOpen]);
     const [mapModal, setMapModal] = useState<{ title: string; coords: { lat: number; lng: number } } | null>(null);
     const [paidSumByOrderId, setPaidSumByOrderId] = useState<Record<string, number>>({});
     const [partialPaymentOrderId, setPartialPaymentOrderId] = useState<string | null>(null);
@@ -2225,7 +2307,7 @@ const ManageOrdersScreen: React.FC = () => {
                         <select
                             value={inStoreTransactionCurrency}
                             onChange={(e) => setInStoreTransactionCurrency(String(e.target.value || '').trim().toUpperCase())}
-                            disabled={inStoreLines.length > 0 || inStorePricingBusy || isInStoreCreating}
+                            disabled={inStorePricingBusy || isInStoreCreating}
                             className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                         >
                             {operationalCurrencies.map((c) => (

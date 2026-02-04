@@ -354,6 +354,9 @@ declare
   v_line jsonb;
   v_unit_price numeric;
   v_item_id text;
+  v_fx numeric;
+  v_currency text;
+  v_unit_price_base numeric;
 begin
   if tg_op not in ('INSERT','UPDATE') then
     return new;
@@ -373,7 +376,10 @@ begin
   from public.batches b
   where b.id = new.batch_id;
 
-  select o.data into v_order from public.orders o where o.id = (new.reference_id)::uuid;
+  select o.data, o.fx_rate, o.currency
+  into v_order, v_fx, v_currency
+  from public.orders o
+  where o.id = (new.reference_id)::uuid;
   if v_order is null then
     return new;
   end if;
@@ -398,7 +404,8 @@ begin
     return new;
   end if;
 
-  if v_unit_price + 1e-9 < coalesce(v_batch.min_selling_price, 0) then
+  v_unit_price_base := coalesce(v_unit_price, 0) * coalesce(v_fx, 1);
+  if v_unit_price_base + 1e-9 < coalesce(v_batch.min_selling_price, 0) then
     raise exception 'SELLING_BELOW_COST_NOT_ALLOWED';
   end if;
 

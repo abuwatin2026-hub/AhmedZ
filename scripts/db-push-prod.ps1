@@ -19,6 +19,12 @@ Require-Command "npx"
 Write-Host "Target project ref: $projectRef"
 
 if (-not $env:SUPABASE_ACCESS_TOKEN) {
+  if ($env:VITE_SUPABASE_ACCESS_TOKEN) {
+    $env:SUPABASE_ACCESS_TOKEN = $env:VITE_SUPABASE_ACCESS_TOKEN
+  }
+}
+
+if (-not $env:SUPABASE_ACCESS_TOKEN) {
   Write-Host "SUPABASE_ACCESS_TOKEN is not set. Trying Supabase CLI stored login..."
   try {
     & npx supabase projects list | Out-Null
@@ -35,6 +41,7 @@ if (-not $env:SUPABASE_ACCESS_TOKEN) {
 
 $plain = $env:SUPABASE_DB_PASSWORD
 if (-not $plain -or -not $plain.Trim()) { $plain = $env:SUPABASE_PASSWORD }
+if (-not $plain -or -not $plain.Trim()) { $plain = $env:VITE_SUPABASE_DB_PASSWORD }
 if (-not $plain -or -not $plain.Trim()) {
   $secure = Read-Host "Enter production DB password (will not be stored)" -AsSecureString
   $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)

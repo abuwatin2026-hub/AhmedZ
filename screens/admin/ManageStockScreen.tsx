@@ -377,7 +377,7 @@ const ManageStockScreen: React.FC = () => {
     const { menuItems } = useMenu();
     const { updateStock, getStockByItemId } = useStock();
     // const { language } = useSettings();
-    const { categories: categoryDefs, getCategoryLabel, getUnitLabel } = useItemMeta();
+    const { categories: categoryDefs, getCategoryLabel, getGroupLabel, getUnitLabel } = useItemMeta();
     const { showNotification } = useToast();
     const { userId, hasPermission } = useAuth();
     const sessionScope = useSessionScope();
@@ -451,14 +451,16 @@ const ManageStockScreen: React.FC = () => {
     }, [categoryDefs, menuItems]);
 
     // Filter items
+    const [selectedGroup, setSelectedGroup] = useState('all');
     const filteredItems = useMemo(() => {
         return menuItems.filter((item: MenuItem) => {
             const itemName = item.name?.['ar'] || item.name?.en || '';
             const matchesSearch = itemName.toLowerCase().includes(searchTerm.toLowerCase());
             const matchesCategory = selectedCategory === 'all' || item.category === selectedCategory;
-            return matchesSearch && matchesCategory && item.status === 'active';
+            const matchesGroup = selectedGroup === 'all' || String((item as any).group || '') === selectedGroup;
+            return matchesSearch && matchesCategory && matchesGroup && item.status === 'active';
         });
-    }, [menuItems, searchTerm, selectedCategory]);
+    }, [menuItems, searchTerm, selectedCategory, selectedGroup]);
 
     const handleUpdateStock = async (itemId: string, newQuantity: number, unit: string, batchId?: string) => {
         if (newQuantity < 0) return;
@@ -562,7 +564,7 @@ const ManageStockScreen: React.FC = () => {
 
             {/* Filters */}
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                     <div>
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                             البحث
@@ -588,6 +590,25 @@ const ManageStockScreen: React.FC = () => {
                             {categories.filter(c => c !== 'all').map((cat: string) => (
                                 <option key={cat} value={cat}>{getCategoryLabel(cat, 'ar')}</option>
                             ))}
+                        </select>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            المجموعة
+                        </label>
+                        <select
+                            value={selectedGroup}
+                            onChange={(e) => setSelectedGroup(e.target.value)}
+                            className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-gold-500"
+                        >
+                            <option value="all">الكل</option>
+                            {[...new Set(menuItems
+                                .filter((it: any) => selectedCategory === 'all' || String(it?.category || '') === selectedCategory)
+                                .map((it: any) => String(it?.group || ''))
+                                .filter(Boolean))]
+                                .map((g: string) => (
+                                    <option key={g} value={g}>{getGroupLabel(g, selectedCategory !== 'all' ? selectedCategory : undefined, 'ar')}</option>
+                                ))}
                         </select>
                     </div>
                     <div>

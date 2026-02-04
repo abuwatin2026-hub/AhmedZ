@@ -20,6 +20,7 @@ const TABLES: TableDef[] = [
   { key: 'app_settings', label: 'إعدادات التطبيق' },
   { key: 'admin_users', label: 'مستخدمي لوحة التحكم' },
   { key: 'item_categories', label: 'فئات الأصناف' },
+  { key: 'item_groups', label: 'مجموعات الأصناف' },
   { key: 'unit_types', label: 'أنواع الوحدات' },
   { key: 'freshness_levels', label: 'درجات الطزاجة' },
   { key: 'banks', label: 'البنوك' },

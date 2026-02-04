@@ -1446,7 +1446,7 @@ const FinancialReports: React.FC = () => {
   try {
       const { data: orders, error: oErr } = await supabase
         .from('orders')
-        .select('id,updated_at,data,status,customer_auth_user_id,invoice_number')
+        .select('id,updated_at,base_total,status,customer_auth_user_id,invoice_number')
         .eq('status', 'delivered')
         .eq('customer_auth_user_id', customerId)
         .lte('updated_at', appliedFilters.asOfDate || null)
@@ -1455,7 +1455,7 @@ const FinancialReports: React.FC = () => {
       const orderIds = ((orders as any[]) || []).map((o) => String(o.id));
       const { data: pays, error: pErr } = await supabase
         .from('payments')
-        .select('reference_id,amount,direction,occurred_at,reference_table')
+        .select('reference_id,base_amount,direction,occurred_at,reference_table')
         .eq('reference_table', 'orders')
         .eq('direction', 'in')
         .lte('occurred_at', appliedFilters.asOfDate || null)
@@ -1464,11 +1464,11 @@ const FinancialReports: React.FC = () => {
       const paidMap = new Map<string, number>();
       ((pays as any[]) || []).forEach((p) => {
         const id = String(p.reference_id);
-        const amt = Number(p.amount) || 0;
+        const amt = Number((p as any).base_amount) || 0;
         paidMap.set(id, (paidMap.get(id) || 0) + amt);
       });
       const rows = ((orders as any[]) || []).map((o) => {
-        const total = Number(o?.data?.total) || 0;
+        const total = Number((o as any)?.base_total) || 0;
         const paid = paidMap.get(String(o.id)) || 0;
         const outstanding = Math.max(0, total - paid);
         return { id: String(o.id), date: String(o.updated_at), total, paid, outstanding, invoice_number: typeof o.invoice_number === 'string' ? o.invoice_number : null };
@@ -1488,7 +1488,7 @@ const FinancialReports: React.FC = () => {
   try {
       const { data: pos, error: poErr } = await supabase
         .from('purchase_orders')
-        .select('id,purchase_date,status,total_amount,paid_amount,supplier_id,reference_number')
+        .select('id,purchase_date,status,base_total,supplier_id,reference_number')
         .neq('status', 'cancelled')
         .eq('supplier_id', supplierId)
         .lte('purchase_date', appliedFilters.asOfDate || null)
@@ -1497,7 +1497,7 @@ const FinancialReports: React.FC = () => {
       const poIds = ((pos as any[]) || []).map((p) => String(p.id));
       const { data: pays, error: pErr } = await supabase
         .from('payments')
-        .select('reference_id,amount,direction,occurred_at,reference_table')
+        .select('reference_id,base_amount,direction,occurred_at,reference_table')
         .eq('reference_table', 'purchase_orders')
         .eq('direction', 'out')
         .lte('occurred_at', appliedFilters.asOfDate || null)
@@ -1506,11 +1506,11 @@ const FinancialReports: React.FC = () => {
       const paidMap = new Map<string, number>();
       ((pays as any[]) || []).forEach((p) => {
         const id = String(p.reference_id);
-        const amt = Number(p.amount) || 0;
+        const amt = Number((p as any).base_amount) || 0;
         paidMap.set(id, (paidMap.get(id) || 0) + amt);
       });
       const rows = ((pos as any[]) || []).map((p) => {
-        const total = Number(p.total_amount) || 0;
+        const total = Number((p as any).base_total) || 0;
         const paid = paidMap.get(String(p.id)) || 0;
         const outstanding = Math.max(0, total - paid);
         return { id: String(p.id), date: String(p.purchase_date), total, paid, outstanding, reference_number: typeof p.reference_number === 'string' ? p.reference_number : null };

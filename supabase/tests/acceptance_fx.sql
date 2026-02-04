@@ -153,8 +153,41 @@ begin
   exception when others then
     return query select 'Landed Cost → Clearing Zero via Allocation'::text, concat('ERROR: ', sqlerrm);
   end;
+
+  -- Case 6: AR Foreign → Partial Payments → Outstanding Base uses base_total/base_amount
+  begin
+    insert into public.orders(id, status, data, created_at, updated_at, invoice_terms, net_days, currency, fx_rate, total, base_total)
+    values (gen_random_uuid(), 'delivered', jsonb_build_object('orderSource','in_store','total',100), now(), now(), 'cash', 0, 'USD', 2.000000, 100, 200)
+    returning id into v_order_id;
+    insert into public.payments(id, direction, method, amount, currency, fx_rate, base_amount, reference_table, reference_id, occurred_at, created_by, data, created_at)
+    values (gen_random_uuid(), 'in', 'bank', 30, 'USD', 2.000000, 60, 'orders', v_order_id::text, now(), auth.uid(), '{}'::jsonb, now())
+    returning id into v_pay_id;
+    perform public.post_payment(v_pay_id);
+    insert into public.payments(id, direction, method, amount, currency, fx_rate, base_amount, reference_table, reference_id, occurred_at, created_by, data, created_at)
+    values (gen_random_uuid(), 'in', 'bank', 40, 'USD', 2.000000, 80, 'orders', v_order_id::text, now(), auth.uid(), '{}'::jsonb, now())
+    returning id into v_pay_id;
+    perform public.post_payment(v_pay_id);
+    select (coalesce((select o.base_total from public.orders o where o.id = v_order_id),0)
+      - coalesce((select sum(coalesce(p.base_amount,p.amount)) from public.payments p where p.reference_table='orders' and p.direction='in' and p.reference_id=v_order_id::text),0)) into v_cnt;
+    select (v_cnt = 60) into v_ok;
+    return query select 'AR Foreign → Partial Payments → Outstanding Base'::text, case when v_ok then 'OK' else 'FAIL' end;
+  exception when others then
+    return query select 'AR Foreign → Partial Payments → Outstanding Base'::text, concat('ERROR: ', sqlerrm);
+  end;
 end;
 $$;
 
 revoke all on function public.run_fx_acceptance_tests() from public;
 grant execute on function public.run_fx_acceptance_tests() to authenticated, service_role;
+
+create or replace function public.run_fx_acceptance_tests_public()
+returns table (case_name text, result text)
+language sql
+security definer
+set search_path = public
+as $$
+  select * from public.run_fx_acceptance_tests();
+$$;
+
+revoke all on function public.run_fx_acceptance_tests_public() from public;
+grant execute on function public.run_fx_acceptance_tests_public() to anon, authenticated, service_role;

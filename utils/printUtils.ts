@@ -136,7 +136,7 @@ export const buildPrintHtml = (content: string, title: string = 'طباعة', op
 export const printContent = (content: string, title: string = 'طباعة', options?: { page?: 'A4' | 'auto' }) => {
     const html = buildPrintHtml(content, title, options);
 
-    const openAndPrint = (targetWindow: Window) => {
+    const openAndPrint = (targetWindow: Window, cleanup: () => void) => {
         targetWindow.document.open();
         targetWindow.document.write(html);
         targetWindow.document.close();
@@ -147,16 +147,13 @@ export const printContent = (content: string, title: string = 'طباعة', opti
             didTrigger = true;
             try {
                 targetWindow.focus();
-                targetWindow.print();
+                const maybePromise = (targetWindow as any).print?.();
+                if (maybePromise && typeof maybePromise.then === 'function' && typeof maybePromise.catch === 'function') {
+                    maybePromise.catch(() => undefined);
+                }
             } catch {
                 return;
             }
-
-            const cleanup = () => {
-                try {
-                    targetWindow.close();
-                } catch {}
-            };
 
             targetWindow.addEventListener('afterprint', cleanup, { once: true });
             setTimeout(cleanup, 60000);
@@ -168,7 +165,9 @@ export const printContent = (content: string, title: string = 'طباعة', opti
 
     const printWindow = window.open('about:blank', '_blank');
     if (printWindow) {
-        openAndPrint(printWindow);
+        openAndPrint(printWindow, () => {
+            try { printWindow.close(); } catch {}
+        });
         return;
     }
 
@@ -196,7 +195,7 @@ export const printContent = (content: string, title: string = 'طباعة', opti
     iframeWindow.addEventListener('afterprint', removeIframe, { once: true });
     setTimeout(removeIframe, 60000);
 
-    openAndPrint(iframeWindow);
+    openAndPrint(iframeWindow, removeIframe);
 };
 
 /**

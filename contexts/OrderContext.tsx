@@ -94,6 +94,7 @@ interface OrderContextType {
   assignOrderToDelivery: (orderId: string, deliveryUserId: string | null) => Promise<void>;
   acceptDeliveryAssignment: (orderId: string) => Promise<void>;
   getOrderById: (orderId: string) => Order | undefined;
+  fetchRemoteOrderById: (orderId: string) => Promise<Order | undefined>;
   fetchOrders: () => Promise<void>;
   awardPointsForReviewedOrder: (orderId: string) => Promise<boolean>;
   incrementInvoicePrintCount: (orderId: string) => Promise<void>;
@@ -167,6 +168,8 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     try {
       const checks = await Promise.all([
         rpcHasFunction('public.record_order_payment'),
+        rpcHasFunction('public.record_order_payment(uuid,numeric,text,timestamptz,text,text)'),
+        rpcHasFunction('public.record_order_payment(uuid, numeric, text, timestamptz, text, text)'),
         rpcHasFunction('public.record_order_payment(uuid,numeric,text,timestamptz,text)'),
         rpcHasFunction('public.record_order_payment(uuid, numeric, text, timestamptz, text)'),
         rpcHasFunction('public.record_order_payment(uuid,numeric,text,timestamptz)'),
@@ -2682,6 +2685,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         amount: Number(p.amount) || 0,
         method: p.method,
         occurredAt: payment.occurredAt || nowIso,
+        currency: String((existing as any).currency || (await getBaseCurrencyCode()) || '').toUpperCase(),
         idempotencyKey: `resume:${existing.id}:${payment.occurredAt || nowIso}:${i}:${p.method}:${Number(p.amount) || 0}`,
       });
       if (error) throw new Error(localizeRecordOrderPaymentError(error));
@@ -3190,6 +3194,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             amount: remaining,
             method: existing.paymentMethod,
             occurredAt: nowIso,
+            currency: String((existing as any).currency || (await getBaseCurrencyCode()) || '').toUpperCase(),
             idempotencyKey: `markPaid:${existing.id}:${nowIso}:${Number(remaining) || 0}`,
           });
           if (error) {
@@ -3259,6 +3264,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         amount: numericAmount,
         method: methodValue,
         occurredAt: occurredAtIso,
+        currency: String((existing as any).currency || (await getBaseCurrencyCode()) || '').toUpperCase(),
         idempotencyKey: `partial:${existing.id}:${occurredAtIso}:${Number(numericAmount) || 0}`,
       });
       if (error) {
@@ -3314,7 +3320,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   }, [currentUser, orders]);
 
   return (
-    <OrderContext.Provider value={{ orders, userOrders, loading, addOrder, createInStoreSale, createInStorePendingOrder, createInStoreDraftQuotation, resumeInStorePendingOrder, cancelInStorePendingOrder, updateOrderStatus, assignOrderToDelivery, acceptDeliveryAssignment, getOrderById, fetchOrders, awardPointsForReviewedOrder, incrementInvoicePrintCount, markOrderPaid, recordOrderPaymentPartial, issueInvoiceNow }}>
+    <OrderContext.Provider value={{ orders, userOrders, loading, addOrder, createInStoreSale, createInStorePendingOrder, createInStoreDraftQuotation, resumeInStorePendingOrder, cancelInStorePendingOrder, updateOrderStatus, assignOrderToDelivery, acceptDeliveryAssignment, getOrderById, fetchRemoteOrderById, fetchOrders, awardPointsForReviewedOrder, incrementInvoicePrintCount, markOrderPaid, recordOrderPaymentPartial, issueInvoiceNow }}>
       {children}
     </OrderContext.Provider>
   );

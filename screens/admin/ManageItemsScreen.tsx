@@ -45,11 +45,15 @@ const ManageItemsScreen: React.FC = () => {
   const language = 'ar';
   const {
     categories: categoryDefs,
+    groups: groupDefs,
     unitTypes,
     freshnessLevels,
     addCategory,
     updateCategory,
     deleteCategory,
+    addGroup,
+    updateGroup,
+    deleteGroup,
     addUnitType,
     updateUnitType,
     deleteUnitType,
@@ -57,6 +61,7 @@ const ManageItemsScreen: React.FC = () => {
     updateFreshnessLevel,
     deleteFreshnessLevel,
     getCategoryLabel,
+    getGroupLabel,
     getUnitLabel,
     getFreshnessLabel,
     isWeightBasedUnit,
@@ -67,12 +72,13 @@ const ManageItemsScreen: React.FC = () => {
   const [currentItem, setCurrentItem] = useState<MenuItem | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isMetaModalOpen, setIsMetaModalOpen] = useState(false);
-  const [metaTab, setMetaTab] = useState<'category' | 'unit' | 'freshness'>('category');
-  const [metaDeleteConfirm, setMetaDeleteConfirm] = useState<null | { kind: 'category' | 'unit' | 'freshness'; id: string }>(null);
+  const [metaTab, setMetaTab] = useState<'category' | 'group' | 'unit' | 'freshness'>('category');
+  const [metaDeleteConfirm, setMetaDeleteConfirm] = useState<null | { kind: 'category' | 'group' | 'unit' | 'freshness'; id: string }>(null);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [unitTypeFilter, setUnitTypeFilter] = useState<'all' | string>('all');
+  const [groupFilter, setGroupFilter] = useState('all');
   const [freshnessFilter, setFreshnessFilter] = useState<'all' | string>('all');
   const [expiryFilter, setExpiryFilter] = useState<'all' | ExpiryStatus>('all');
   const [sortBy, setSortBy] = useState<'default' | 'expiry_soonest'>('default');
@@ -80,6 +86,13 @@ const ManageItemsScreen: React.FC = () => {
   const [statusAction, setStatusAction] = useState<'archive' | 'restore'>('archive');
 
   const [categoryDraft, setCategoryDraft] = useState<{ id?: string; key: string; ar: string; en: string; isActive: boolean }>({
+    key: '',
+    ar: '',
+    en: '',
+    isActive: true,
+  });
+  const [groupDraft, setGroupDraft] = useState<{ id?: string; categoryKey: string; key: string; ar: string; en: string; isActive: boolean }>({
+    categoryKey: '',
     key: '',
     ar: '',
     en: '',
@@ -110,15 +123,16 @@ const ManageItemsScreen: React.FC = () => {
     showNotification(message, 'error');
   };
 
-  const resetDrafts = (tab: 'category' | 'unit' | 'freshness') => {
+  const resetDrafts = (tab: 'category' | 'group' | 'unit' | 'freshness') => {
     if (tab === 'category') setCategoryDraft({ key: '', ar: '', en: '', isActive: true });
+    if (tab === 'group') setGroupDraft({ categoryKey: '', key: '', ar: '', en: '', isActive: true });
     if (tab === 'unit') setUnitDraft({ key: '', ar: '', en: '', isActive: true, isWeightBased: false });
     if (tab === 'freshness') setFreshnessDraft({ key: '', ar: '', en: '', isActive: true, tone: '' });
 
   };
 
 
-  const openMetaModal = (tab: 'category' | 'unit' | 'freshness') => {
+  const openMetaModal = (tab: 'category' | 'group' | 'unit' | 'freshness') => {
     setMetaTab(tab);
     setIsMetaModalOpen(true);
     resetDrafts(tab);
@@ -315,11 +329,12 @@ const ManageItemsScreen: React.FC = () => {
     const filtered = menuItems.filter(item => {
       if (!showArchived && item.status === 'archived') return false;
       const matchesCategory = categoryFilter === 'all' || item.category === categoryFilter;
+      const matchesGroup = groupFilter === 'all' || String((item as any).group || '') === groupFilter;
       const matchesUnit = unitTypeFilter === 'all' || String(item.unitType || '') === unitTypeFilter;
       const name = (item.name as LocalizedString)['ar'] || item.name['ar'];
       const matchesSearch = name.toLowerCase().includes(searchTerm.toLowerCase());
 
-      if (!(matchesCategory && matchesUnit && matchesSearch)) return false;
+      if (!(matchesCategory && matchesGroup && matchesUnit && matchesSearch)) return false;
 
       if (freshnessFilter !== 'all' && String(item.freshnessLevel || '') !== freshnessFilter) return false;
 
@@ -422,6 +437,12 @@ const ManageItemsScreen: React.FC = () => {
     return Array.from(new Set([...activeKeys, ...usedKeys])).sort((a, b) => a.localeCompare(b));
   }, [menuItems, unitTypes]);
 
+  const groupOptions = useMemo(() => {
+    const activeKeys = groupDefs.filter(g => g.isActive).map(g => String(g.key));
+    const usedKeys = [...new Set(menuItems.map((item: any) => String(item?.group || '')).filter(Boolean))];
+    return ['all', ...Array.from(new Set([...activeKeys, ...usedKeys])).sort((a, b) => a.localeCompare(b))];
+  }, [groupDefs, menuItems]);
+
   const freshnessOptions = useMemo(() => {
     const activeKeys = freshnessLevels.filter(f => f.isActive).map(f => String(f.key));
     const usedKeys = [...new Set(menuItems.map(item => String(item.freshnessLevel || '')))].filter(Boolean);
@@ -453,6 +474,33 @@ const ManageItemsScreen: React.FC = () => {
           showNotification('تمت إضافة الفئة', 'success');
         }
         resetDrafts('category');
+      }
+
+      if (metaTab === 'group') {
+        const categoryKey = groupDraft.categoryKey || categoryDefs.find(c => c.isActive)?.key || '';
+        const derivedKey = groupDraft.key || groupDraft.ar || `group_${Date.now()}`;
+        const payload = {
+          categoryKey,
+          key: derivedKey,
+          name: { ar: groupDraft.ar, en: '' },
+          isActive: groupDraft.isActive,
+        };
+        if (groupDraft.id) {
+          await updateGroup({
+            id: groupDraft.id,
+            categoryKey: groupDraft.categoryKey,
+            key: groupDraft.key,
+            name: { ar: groupDraft.ar, en: '' },
+            isActive: groupDraft.isActive,
+            createdAt: groupDefs.find(g => g.id === groupDraft.id)?.createdAt || new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          });
+          showNotification('تم تحديث المجموعة', 'success');
+        } else {
+          await addGroup(payload);
+          showNotification('تمت إضافة المجموعة', 'success');
+        }
+        resetDrafts('group');
       }
 
       if (metaTab === 'unit') {
@@ -511,13 +559,22 @@ const ManageItemsScreen: React.FC = () => {
     }
   };
 
-  const handleEditMeta = (kind: 'category' | 'unit' | 'freshness', id: string) => {
+  const handleEditMeta = (kind: 'category' | 'group' | 'unit' | 'freshness', id: string) => {
     if (kind === 'category') {
       const def = categoryDefs.find(c => c.id === id);
       if (!def) return;
       setMetaTab('category');
       setIsMetaModalOpen(true);
       setCategoryDraft({ id: def.id, key: def.key, ar: def.name.ar, en: def.name.en || '', isActive: def.isActive });
+
+      return;
+    }
+    if (kind === 'group') {
+      const def = groupDefs.find(g => g.id === id);
+      if (!def) return;
+      setMetaTab('group');
+      setIsMetaModalOpen(true);
+      setGroupDraft({ id: def.id, categoryKey: def.categoryKey, key: def.key, ar: def.name.ar, en: def.name.en || '', isActive: def.isActive });
 
       return;
     }
@@ -538,12 +595,17 @@ const ManageItemsScreen: React.FC = () => {
 
   };
 
-  const handleToggleMetaActive = async (kind: 'category' | 'unit' | 'freshness', id: string) => {
+  const handleToggleMetaActive = async (kind: 'category' | 'group' | 'unit' | 'freshness', id: string) => {
     try {
       if (kind === 'category') {
         const def = categoryDefs.find(c => c.id === id);
         if (!def) return;
         await updateCategory({ ...def, isActive: !def.isActive });
+      }
+      if (kind === 'group') {
+        const def = groupDefs.find(g => g.id === id);
+        if (!def) return;
+        await updateGroup({ ...def, isActive: !def.isActive });
       }
       if (kind === 'unit') {
         const def = unitTypes.find(u => u.id === id);
@@ -560,7 +622,7 @@ const ManageItemsScreen: React.FC = () => {
     }
   };
 
-  const handleConfirmDeleteMeta = (kind: 'category' | 'unit' | 'freshness', id: string) => {
+  const handleConfirmDeleteMeta = (kind: 'category' | 'group' | 'unit' | 'freshness', id: string) => {
     setMetaDeleteConfirm({ kind, id });
   };
 
@@ -568,6 +630,7 @@ const ManageItemsScreen: React.FC = () => {
     if (!metaDeleteConfirm) return;
     try {
       if (metaDeleteConfirm.kind === 'category') await deleteCategory(metaDeleteConfirm.id);
+      if (metaDeleteConfirm.kind === 'group') await deleteGroup(metaDeleteConfirm.id);
       if (metaDeleteConfirm.kind === 'unit') await deleteUnitType(metaDeleteConfirm.id);
       if (metaDeleteConfirm.kind === 'freshness') await deleteFreshnessLevel(metaDeleteConfirm.id);
       setMetaDeleteConfirm(null);
@@ -634,7 +697,7 @@ const ManageItemsScreen: React.FC = () => {
       </div>
 
       <div className="mb-6 p-4 bg-white dark:bg-gray-800 rounded-lg shadow-md">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div>
             <label htmlFor="search" className="sr-only">بحث</label>
             <input
@@ -671,6 +734,20 @@ const ManageItemsScreen: React.FC = () => {
                 <option key={u} value={u}>
                   {getUnitLabel(u as UnitType, language as 'ar' | 'en')}
                 </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="groupFilter" className="sr-only">المجموعة</label>
+            <select
+              id="groupFilter"
+              value={groupFilter}
+              onChange={(e) => setGroupFilter(e.target.value)}
+              className="w-full p-3 border border-gray-300 rounded-lg dark:bg-gray-700 dark:border-gray-600 focus:ring-2 focus:ring-gold-500 focus:border-gold-500 transition"
+            >
+              <option value="all">{language === 'ar' ? 'كل المجموعات' : 'All groups'}</option>
+              {groupOptions.filter(g => g !== 'all').map(g => (
+                <option key={g} value={g}>{getGroupLabel(g, categoryFilter !== 'all' ? categoryFilter : undefined, language as 'ar' | 'en')}</option>
               ))}
             </select>
           </div>
@@ -805,7 +882,10 @@ const ManageItemsScreen: React.FC = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium text-gray-900 dark:text-white">{item.name[language]}</div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400">{getCategoryLabel(item.category, language as 'ar' | 'en')}</div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">
+                        {getCategoryLabel(item.category, language as 'ar' | 'en')}
+                        {((item as any).group) ? ` • ${(item as any).group}` : ''}
+                      </div>
                       {(item.unitType || item.freshnessLevel) && (
                         <div className="mt-1 flex flex-wrap gap-2">
                           {item.unitType && (
@@ -954,7 +1034,7 @@ const ManageItemsScreen: React.FC = () => {
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-4xl animate-fade-in-up">
             <div className="p-6 border-b dark:border-gray-700 flex items-center justify-between">
               <h2 className="text-xl font-bold dark:text-white">
-                {language === 'ar' ? 'إدارة الفئات والوحدات ومستويات النضارة' : 'Manage categories, units, and freshness'}
+                {language === 'ar' ? 'إدارة الفئات والمجموعات والوحدات ومستويات النضارة' : 'Manage categories, groups, units, and freshness'}
               </h2>
               <button onClick={() => setIsMetaModalOpen(false)} className="text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-white">
                 {language === 'ar' ? 'إغلاق' : 'Close'}
@@ -971,6 +1051,15 @@ const ManageItemsScreen: React.FC = () => {
                   className={`px-4 py-2 rounded-lg font-semibold ${metaTab === 'category' ? 'bg-orange-500 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-100'}`}
                 >
                   الفئات
+                </button>
+                <button
+                  onClick={() => {
+                    setMetaTab('group');
+                    resetDrafts('group');
+                  }}
+                  className={`px-4 py-2 rounded-lg font-semibold ${metaTab === 'group' ? 'bg-orange-500 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-100'}`}
+                >
+                  المجموعات
                 </button>
                 <button
                   onClick={() => {
@@ -1049,6 +1138,80 @@ const ManageItemsScreen: React.FC = () => {
                             <td className="px-4 py-2 text-sm font-medium space-x-2 rtl:space-x-reverse">
                               <button onClick={() => handleEditMeta('category', def.id)} className="text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-200 p-1"><EditIcon /></button>
                               <button onClick={() => handleConfirmDeleteMeta('category', def.id)} className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-200 p-1"><TrashIcon /></button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {metaTab === 'group' && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">الفئة</label>
+                      <select
+                        value={groupDraft.categoryKey}
+                        onChange={(e) => setGroupDraft(prev => ({ ...prev, categoryKey: e.target.value }))}
+                        className="mt-1 w-full p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600"
+                        disabled={!hasPermission('items.manage')}
+                      >
+                        <option value="">{language === 'ar' ? 'اختر فئة' : 'Select category'}</option>
+                        {categoryDefs.map(c => (
+                          <option key={c.id} value={c.key}>{getCategoryLabel(c.key, language as 'ar' | 'en')}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">الاسم</label>
+                      <input
+                        value={groupDraft.ar}
+                        onChange={(e) => setGroupDraft(prev => ({ ...prev, ar: e.target.value }))}
+                        className="mt-1 w-full p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600"
+                        disabled={!hasPermission('items.manage')}
+                        placeholder="أدخل اسم المجموعة"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2 mt-6">
+                      <input type="checkbox" checked={groupDraft.isActive} onChange={(e) => setGroupDraft(prev => ({ ...prev, isActive: e.target.checked }))} disabled={!hasPermission('items.manage')} />
+                      <span className="text-sm text-gray-700 dark:text-gray-300">نشط</span>
+                    </div>
+                    <div>
+                      <button onClick={handleSubmitMeta} disabled={!hasPermission('items.manage')} className="w-full bg-primary-500 text-white font-bold py-2 px-4 rounded-lg shadow-md hover:bg-primary-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                        {groupDraft.id ? 'تحديث' : 'إضافة'}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                      <thead className="bg-gray-50 dark:bg-gray-900">
+                        <tr>
+                          <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider border-r dark:border-gray-700">الفئة</th>
+                          <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider border-r dark:border-gray-700">الاسم</th>
+                          <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider border-r dark:border-gray-700">الحالة</th>
+                          <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">إجراءات</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                        {groupDefs.map(def => (
+                          <tr key={def.id}>
+                            <td className="px-4 py-2 text-sm text-gray-700 dark:text-gray-200 border-r dark:border-gray-700">{getCategoryLabel(def.categoryKey, language as 'ar' | 'en')}</td>
+                            <td className="px-4 py-2 text-sm text-gray-700 dark:text-gray-200 border-r dark:border-gray-700">{getGroupLabel(def.key, def.categoryKey, language as 'ar' | 'en')}</td>
+                            <td className="px-4 py-2 text-sm border-r dark:border-gray-700">
+                              <button
+                                onClick={() => handleToggleMetaActive('group', def.id)}
+                                disabled={!hasPermission('items.manage')}
+                                className={`px-3 py-1 rounded-full text-xs font-semibold ${def.isActive ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200'} disabled:opacity-50`}
+                              >
+                                {def.isActive ? 'نشط' : 'غير نشط'}
+                              </button>
+                            </td>
+                            <td className="px-4 py-2 text-sm font-medium space-x-2 rtl:space-x-reverse">
+                              <button onClick={() => handleEditMeta('group', def.id)} className="text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-200 p-1"><EditIcon /></button>
+                              <button onClick={() => handleConfirmDeleteMeta('group', def.id)} className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-200 p-1"><TrashIcon /></button>
                             </td>
                           </tr>
                         ))}

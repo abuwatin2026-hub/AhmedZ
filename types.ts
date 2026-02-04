@@ -38,6 +38,16 @@ export interface FreshnessLevelDef {
   updatedAt: string;
 }
 
+export interface ItemGroupDef {
+  id: string;
+  categoryKey: string;
+  key: string;
+  name: LocalizedString;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Addon {
   id: string;
   name: LocalizedString;
@@ -209,6 +219,7 @@ export interface MenuItem {
   price: number; // Price per unit (per kg, per piece, etc.)
   imageUrl: string;
   category: string;
+  group?: string;
   addons?: Addon[];
   status?: 'active' | 'archived';
   isFeatured?: boolean;

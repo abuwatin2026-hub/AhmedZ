@@ -1,17 +1,19 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import type { FreshnessLevel, FreshnessLevelDef, ItemCategoryDef, LocalizedString, UnitType, UnitTypeDef } from '../types';
+import type { FreshnessLevel, FreshnessLevelDef, ItemCategoryDef, ItemGroupDef, LocalizedString, UnitType, UnitTypeDef } from '../types';
 import { useAuth } from './AuthContext';
 import { getSupabaseClient } from '../supabase';
 import { localizeSupabaseError } from '../utils/errorUtils';
 
 type MetaLoadingState = {
   categories: boolean;
+  groups: boolean;
   unitTypes: boolean;
   freshnessLevels: boolean;
 };
 
 interface ItemMetaContextType {
   categories: ItemCategoryDef[];
+  groups: ItemGroupDef[];
   unitTypes: UnitTypeDef[];
   freshnessLevels: FreshnessLevelDef[];
   loading: boolean;
@@ -20,6 +22,10 @@ interface ItemMetaContextType {
   addCategory: (data: { key: string; name: LocalizedString; isActive?: boolean }) => Promise<void>;
   updateCategory: (data: ItemCategoryDef) => Promise<void>;
   deleteCategory: (categoryId: string) => Promise<void>;
+
+  addGroup: (data: { categoryKey: string; key: string; name: LocalizedString; isActive?: boolean }) => Promise<void>;
+  updateGroup: (data: ItemGroupDef) => Promise<void>;
+  deleteGroup: (groupId: string) => Promise<void>;
 
   addUnitType: (data: { key: UnitType; label: LocalizedString; isActive?: boolean; isWeightBased?: boolean }) => Promise<void>;
   updateUnitType: (data: UnitTypeDef) => Promise<void>;
@@ -30,6 +36,7 @@ interface ItemMetaContextType {
   deleteFreshnessLevel: (freshnessLevelId: string) => Promise<void>;
 
   getCategoryLabel: (categoryKey: string, language: 'ar' | 'en') => string;
+  getGroupLabel: (groupKey: string, categoryKey: string | undefined, language: 'ar' | 'en') => string;
   getUnitLabel: (unitKey: UnitType | undefined, language: 'ar' | 'en') => string;
   getFreshnessLabel: (freshnessKey: FreshnessLevel | undefined, language: 'ar' | 'en') => string;
   getFreshnessTone: (freshnessKey: FreshnessLevel | undefined) => FreshnessLevelDef['tone'] | undefined;
@@ -50,12 +57,13 @@ const nowIso = () => new Date().toISOString();
 
 export const ItemMetaProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [categories, setCategories] = useState<ItemCategoryDef[]>([]);
+  const [groups, setGroups] = useState<ItemGroupDef[]>([]);
   const [unitTypes, setUnitTypes] = useState<UnitTypeDef[]>([]);
   const [freshnessLevels, setFreshnessLevels] = useState<FreshnessLevelDef[]>([]);
-  const [loadingState, setLoadingState] = useState<MetaLoadingState>({ categories: true, unitTypes: true, freshnessLevels: true });
+  const [loadingState, setLoadingState] = useState<MetaLoadingState>({ categories: true, groups: true, unitTypes: true, freshnessLevels: true });
   const { hasPermission } = useAuth();
 
-  const loading = loadingState.categories || loadingState.unitTypes || loadingState.freshnessLevels;
+  const loading = loadingState.categories || loadingState.groups || loadingState.unitTypes || loadingState.freshnessLevels;
 
   const isInvalidJwt = (error: unknown) => {
     const msg = String((error as any)?.message || '');
@@ -70,11 +78,12 @@ export const ItemMetaProvider: React.FC<{ children: ReactNode }> = ({ children }
   };
 
   const fetchAll = useCallback(async () => {
-    setLoadingState({ categories: true, unitTypes: true, freshnessLevels: true });
+    setLoadingState({ categories: true, groups: true, unitTypes: true, freshnessLevels: true });
     try {
       const supabase = getSupabaseClient();
       if (!supabase) {
         setCategories([]);
+        setGroups([]);
         setUnitTypes([]);
         setFreshnessLevels([]);
         return;
@@ -92,11 +101,52 @@ export const ItemMetaProvider: React.FC<{ children: ReactNode }> = ({ children }
       if (rowsUnitError) throw rowsUnitError;
       if (rowsFreshnessError) throw rowsFreshnessError;
 
+      let rowsGroups: any[] = [];
+      try {
+        const { data, error } = await supabase.from('item_groups').select('id,category_key,key,is_active,data');
+        if (error) {
+          const msg = String((error as any)?.message || '').toLowerCase();
+          const details = String((error as any)?.details || '').toLowerCase();
+          const code = String((error as any)?.code || '');
+          const missing = code === '42P01' || msg.includes('does not exist') || details.includes('does not exist');
+          if (!missing) throw error;
+          rowsGroups = [];
+        } else {
+          rowsGroups = data || [];
+        }
+      } catch (err) {
+        const msg = String((err as any)?.message || '').toLowerCase();
+        const details = String((err as any)?.details || '').toLowerCase();
+        const code = String((err as any)?.code || '');
+        const missing = code === '42P01' || msg.includes('does not exist') || details.includes('does not exist');
+        if (!missing) throw err;
+        rowsGroups = [];
+      }
+
       const allCategories = (rowsCategories || []).map(row => row.data as ItemCategoryDef).filter(Boolean);
+      const allGroups = (rowsGroups || [])
+        .map((row: any) => {
+          const d: any = row?.data || {};
+          const nameObj: any = d?.name && typeof d.name === 'object' ? d.name : {};
+          const safeName: LocalizedString = {
+            ar: typeof nameObj?.ar === 'string' ? nameObj.ar : '',
+            en: typeof nameObj?.en === 'string' ? nameObj.en : '',
+          };
+          const id = typeof d?.id === 'string' ? d.id : (typeof row?.id === 'string' ? row.id : crypto.randomUUID());
+          const categoryKey = typeof d?.categoryKey === 'string' ? d.categoryKey : (typeof row?.category_key === 'string' ? row.category_key : '');
+          const key = typeof d?.key === 'string' ? d.key : (typeof row?.key === 'string' ? row.key : '');
+          const isActive = typeof d?.isActive === 'boolean' ? d.isActive : (typeof row?.is_active === 'boolean' ? row.is_active : true);
+          const createdAt = typeof d?.createdAt === 'string' ? d.createdAt : '';
+          const updatedAt = typeof d?.updatedAt === 'string' ? d.updatedAt : '';
+          if (!categoryKey || !key) return null;
+          return { id, categoryKey, key, name: safeName, isActive, createdAt, updatedAt } as ItemGroupDef;
+        })
+        .filter(Boolean) as ItemGroupDef[];
       const allUnitTypes = (rowsUnitTypes || []).map(row => row.data as UnitTypeDef).filter(Boolean);
       const allFreshnessLevels = (rowsFreshness || []).map(row => row.data as FreshnessLevelDef).filter(Boolean);
 
       setCategories(allCategories.sort((a, b) => a.key.localeCompare(b.key)));
+      setGroups(allGroups.sort((a, b) => `${a.categoryKey}::${a.key}`.localeCompare(`${b.categoryKey}::${b.key}`)));
       setUnitTypes(allUnitTypes.sort((a, b) => String(a.key).localeCompare(String(b.key))));
       setFreshnessLevels(allFreshnessLevels.sort((a, b) => String(a.key).localeCompare(String(b.key))));
     } catch (err) {
@@ -107,10 +157,11 @@ export const ItemMetaProvider: React.FC<{ children: ReactNode }> = ({ children }
         } catch {}
       }
       setCategories([]);
+      setGroups([]);
       setUnitTypes([]);
       setFreshnessLevels([]);
     } finally {
-      setLoadingState({ categories: false, unitTypes: false, freshnessLevels: false });
+      setLoadingState({ categories: false, groups: false, unitTypes: false, freshnessLevels: false });
     }
   }, []);
 
@@ -172,6 +223,75 @@ export const ItemMetaProvider: React.FC<{ children: ReactNode }> = ({ children }
     if (usedAny) throw new Error('لا يمكن حذف الفئة لأنها مستخدمة في أصناف موجودة.');
 
     const { error } = await supabase.from('item_categories').delete().eq('id', categoryId);
+    if (error) throw new Error(localizeSupabaseError(error));
+    await fetchAll();
+  };
+
+  const addGroup = async (data: { categoryKey: string; key: string; name: LocalizedString; isActive?: boolean }) => {
+    ensureCanManage();
+    const categoryKey = normalizeKey(String(data.categoryKey || ''));
+    if (!categoryKey) throw new Error('الفئة مطلوبة.');
+    const key = normalizeKey(String(data.key || ''));
+    if (!key) throw new Error('المجموعة مطلوبة.');
+    const nameAr = String(data?.name?.ar || '').trim();
+    if (!nameAr) throw new Error('اسم المجموعة مطلوب.');
+    const now = nowIso();
+    const existing = groups.find(g => g.categoryKey === categoryKey && g.key === key);
+    if (existing) throw new Error('هذه المجموعة موجودة مسبقًا.');
+    const record: ItemGroupDef = { id: crypto.randomUUID(), categoryKey, key, name: data.name, isActive: data.isActive ?? true, createdAt: now, updatedAt: now };
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      const { error } = await supabase
+        .from('item_groups')
+        .insert({ id: record.id, category_key: record.categoryKey, key: record.key, is_active: record.isActive, data: record });
+      if (error) throw new Error(localizeSupabaseError(error));
+    } else {
+      throw new Error('Supabase غير مهيأ.');
+    }
+    await fetchAll();
+  };
+
+  const updateGroup = async (data: ItemGroupDef) => {
+    ensureCanManage();
+    const categoryKey = normalizeKey(String(data.categoryKey || ''));
+    if (!categoryKey) throw new Error('الفئة مطلوبة.');
+    const nextKey = normalizeKey(String(data.key || ''));
+    if (!nextKey) throw new Error('المجموعة مطلوبة.');
+    const nameAr = String(data?.name?.ar || '').trim();
+    if (!nameAr) throw new Error('اسم المجموعة مطلوب.');
+    const existing = groups.find(g => g.categoryKey === categoryKey && g.key === nextKey);
+    if (existing && existing.id !== data.id) throw new Error('هذه المجموعة موجودة مسبقًا.');
+    const next: ItemGroupDef = { ...data, categoryKey, key: nextKey, updatedAt: nowIso() };
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      const { error } = await supabase
+        .from('item_groups')
+        .upsert({ id: next.id, category_key: next.categoryKey, key: next.key, is_active: next.isActive, data: next }, { onConflict: 'id' });
+      if (error) throw new Error(localizeSupabaseError(error));
+    } else {
+      throw new Error('Supabase غير مهيأ.');
+    }
+    await fetchAll();
+  };
+
+  const deleteGroup = async (groupId: string) => {
+    ensureCanManage();
+    const target = groups.find(g => g.id === groupId);
+    if (!target) return;
+    const supabase = getSupabaseClient();
+    if (!supabase) throw new Error('Supabase غير مهيأ.');
+
+    const { data: usedRows, count: usedCount, error: usedError } = await supabase
+      .from('menu_items')
+      .select('id', { count: 'exact' })
+      .eq('category', target.categoryKey)
+      .eq('group_key', target.key.toUpperCase())
+      .limit(1);
+    if (usedError) throw new Error(localizeSupabaseError(usedError));
+    const usedAny = (typeof usedCount === 'number' ? usedCount : (usedRows?.length || 0)) > 0;
+    if (usedAny) throw new Error('لا يمكن حذف المجموعة لأنها مستخدمة في أصناف موجودة.');
+
+    const { error } = await supabase.from('item_groups').delete().eq('id', groupId);
     if (error) throw new Error(localizeSupabaseError(error));
     await fetchAll();
   };
@@ -315,6 +435,20 @@ export const ItemMetaProvider: React.FC<{ children: ReactNode }> = ({ children }
     () => new Map(categories.map(c => [normalizeLookupKey(c.key), c])),
     [categories]
   );
+  const groupMapByCategory = useMemo(() => {
+    const map = new Map<string, Map<string, ItemGroupDef>>();
+    for (const g of groups) {
+      const cat = g.categoryKey;
+      if (!cat) continue;
+      let inner = map.get(cat);
+      if (!inner) {
+        inner = new Map<string, ItemGroupDef>();
+        map.set(cat, inner);
+      }
+      inner.set(g.key, g);
+    }
+    return map;
+  }, [groups]);
   const unitMap = useMemo(() => new Map(unitTypes.map(u => [String(u.key), u])), [unitTypes]);
   const freshnessMap = useMemo(() => new Map(freshnessLevels.map(f => [String(f.key), f])), [freshnessLevels]);
 
@@ -324,6 +458,22 @@ export const ItemMetaProvider: React.FC<{ children: ReactNode }> = ({ children }
     const normalized = normalizeLookupKey(categoryKey);
     if (normalized === 'grocery') return language === 'ar' ? 'مواد غذائية' : 'Groceries';
     return categoryKey;
+  };
+
+  const getGroupLabel = (groupKey: string, categoryKey: string | undefined, language: 'ar' | 'en') => {
+    const gk = String(groupKey || '').trim();
+    if (!gk) return '';
+    const ck = String(categoryKey || '').trim();
+    if (ck) {
+      const def = groupMapByCategory.get(ck)?.get(gk);
+      if (def) return def.name[language] || def.name.ar || def.name.en || gk;
+    }
+    const matches = groups.filter(g => g.key === gk);
+    if (matches.length === 1) {
+      const def = matches[0];
+      return def.name[language] || def.name.ar || def.name.en || gk;
+    }
+    return gk;
   };
 
   const getUnitLabel = (unitKey: UnitType | undefined, language: 'ar' | 'en') => {
@@ -357,6 +507,7 @@ export const ItemMetaProvider: React.FC<{ children: ReactNode }> = ({ children }
     <ItemMetaContext.Provider
       value={{
         categories,
+        groups,
         unitTypes,
         freshnessLevels,
         loading,
@@ -364,6 +515,9 @@ export const ItemMetaProvider: React.FC<{ children: ReactNode }> = ({ children }
         addCategory,
         updateCategory,
         deleteCategory,
+        addGroup,
+        updateGroup,
+        deleteGroup,
         addUnitType,
         updateUnitType,
         deleteUnitType,
@@ -371,6 +525,7 @@ export const ItemMetaProvider: React.FC<{ children: ReactNode }> = ({ children }
         updateFreshnessLevel,
         deleteFreshnessLevel,
         getCategoryLabel,
+        getGroupLabel,
         getUnitLabel,
         getFreshnessLabel,
         getFreshnessTone,

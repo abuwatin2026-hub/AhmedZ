@@ -23,7 +23,7 @@ import { useSessionScope } from '../contexts/SessionScopeContext';
 const POSScreen: React.FC = () => {
   const { showNotification } = useToast();
   const navigate = useNavigate();
-  const { orders, createInStoreSale, createInStorePendingOrder, resumeInStorePendingOrder, cancelInStorePendingOrder } = useOrders();
+  const { orders, createInStoreSale, createInStorePendingOrder, resumeInStorePendingOrder, cancelInStorePendingOrder, fetchRemoteOrderById } = useOrders();
   const { currentShift } = useCashShift();
   const { customers, fetchCustomers } = useUserAuth();
   const { settings } = useSettings();
@@ -950,8 +950,15 @@ const POSScreen: React.FC = () => {
       phoneNumber: phoneNumber.trim() || undefined,
       notes: notes.trim() || undefined,
     }).then(order => {
-      setPendingOrderId(order.id);
-      showNotification('تم تعليق الفاتورة', 'info');
+      setItems([]);
+      setDiscountType('amount');
+      setDiscountValue(0);
+      resetCustomerFields();
+      setNotes('');
+      setSelectedCartItemId(null);
+      setDraftInvoice(null);
+      setPendingSelectedId(order.id);
+      showNotification('تم تعليق الفاتورة وبدء فاتورة جديدة', 'info');
       void fetchStock();
       focusSearch();
     }).catch(err => {
@@ -1047,48 +1054,75 @@ const POSScreen: React.FC = () => {
     });
   }, [filteredPendingTickets]);
 
-  const loadPendingTicket = (orderId: string) => {
-    const ticket = pendingTickets.find(o => o.id === orderId);
-    if (!ticket) return;
-    if (!pendingOrderId) {
-      const hasDraftContent =
-        items.length > 0 ||
-        Boolean(customerName.trim()) ||
-        Boolean(phoneNumber.trim()) ||
-        Boolean(notes.trim()) ||
-        (Number(discountValue) || 0) > 0;
-      if (hasDraftContent) {
-        setDraftInvoice({
-          items,
-          discountType,
-          discountValue,
-          currency: transactionCurrency,
-          customerName,
-          phoneNumber,
-          notes,
-          selectedCartItemId,
-        });
+  const openPendingTicket = async (orderId: string) => {
+    try {
+      const fetcher = typeof fetchRemoteOrderById === 'function' ? fetchRemoteOrderById : null;
+      const fresh = fetcher ? await fetcher(orderId).catch(() => undefined) : undefined;
+      const ticket = fresh || pendingTickets.find(o => o.id === orderId);
+      if (!ticket) {
+        showNotification('الطلب غير موجود.', 'error');
+        return;
       }
+      const st = String((ticket as any)?.status || '');
+      if (st && st !== 'pending') {
+        if (st === 'delivered') {
+          showNotification('هذه الفاتورة ليست معلّقة (تم إتمامها). سيتم فتح الفاتورة.', 'info');
+          navigate(`/admin/invoice/${ticket.id}`);
+          return;
+        }
+        if (st === 'cancelled') {
+          showNotification('هذه الفاتورة ليست معلّقة (ملغية).', 'info');
+          return;
+        }
+        showNotification('هذه الفاتورة ليست في حالة تعليق.', 'info');
+        return;
+      }
+      if (!pendingOrderId) {
+        const hasDraftContent =
+          items.length > 0 ||
+          Boolean(customerName.trim()) ||
+          Boolean(phoneNumber.trim()) ||
+          Boolean(notes.trim()) ||
+          (Number(discountValue) || 0) > 0;
+        if (hasDraftContent) {
+          setDraftInvoice({
+            items,
+            discountType,
+            discountValue,
+            currency: transactionCurrency,
+            customerName,
+            phoneNumber,
+            notes,
+            selectedCartItemId,
+          });
+        }
+      }
+      const normalizedItems = ((ticket.items || []) as any[]).map((it: any) => {
+        const id = String(it?.id || it?.itemId || it?.menuItemId || '');
+        if (!id) return null;
+        const cartItemId = String(it?.cartItemId || crypto.randomUUID());
+        const selectedAddons = (it?.selectedAddons && typeof it.selectedAddons === 'object') ? it.selectedAddons : {};
+        return { ...it, id, cartItemId, selectedAddons } as CartItem;
+      }).filter(Boolean) as CartItem[];
+      if (normalizedItems.length === 0) {
+        showNotification('تعذر فتح الفاتورة: لا توجد أصناف في هذه الفاتورة.', 'error');
+        return;
+      }
+      setPendingOrderId(ticket.id);
+      setItems(normalizedItems);
+      setDiscountType('amount');
+      setDiscountValue(Number((ticket as any).discountAmount) || 0);
+      const ticketCurrency = String((ticket as any).currency || '').trim().toUpperCase();
+      if (ticketCurrency) setTransactionCurrency(ticketCurrency);
+      applyCustomerDraft(String((ticket as any).customerName || ''), String((ticket as any).phoneNumber || ''));
+      setNotes(String((ticket as any).notes || ''));
+      setSelectedCartItemId(normalizedItems[0]?.cartItemId || null);
+      setPendingSelectedId(ticket.id);
+      showNotification(`تم تحميل الفاتورة المعلّقة #${ticket.id.slice(-6).toUpperCase()}`, 'info');
+      void fetchStock();
+    } catch (err) {
+      showNotification(err instanceof Error ? err.message : 'تعذر فتح الفاتورة.', 'error');
     }
-    const normalizedItems = ((ticket.items || []) as any[]).map((it: any) => {
-      const id = String(it?.id || it?.itemId || it?.menuItemId || '');
-      if (!id) return null;
-      const cartItemId = String(it?.cartItemId || crypto.randomUUID());
-      const selectedAddons = (it?.selectedAddons && typeof it.selectedAddons === 'object') ? it.selectedAddons : {};
-      return { ...it, id, cartItemId, selectedAddons } as CartItem;
-    }).filter(Boolean) as CartItem[];
-    setPendingOrderId(ticket.id);
-    setItems(normalizedItems);
-    setDiscountType('amount');
-    setDiscountValue(Number((ticket as any).discountAmount) || 0);
-    const ticketCurrency = String((ticket as any).currency || '').trim().toUpperCase();
-    if (ticketCurrency) setTransactionCurrency(ticketCurrency);
-    applyCustomerDraft(String((ticket as any).customerName || ''), String((ticket as any).phoneNumber || ''));
-    setNotes(String((ticket as any).notes || ''));
-    setSelectedCartItemId(normalizedItems[0]?.cartItemId || null);
-    setPendingSelectedId(ticket.id);
-    showNotification(`تم تحميل الفاتورة المعلّقة #${ticket.id.slice(-6).toUpperCase()}`, 'info');
-    void fetchStock();
   };
 
   const restoreDraft = () => {
@@ -1458,7 +1492,7 @@ const POSScreen: React.FC = () => {
                 if (e.key === 'Enter') {
                   e.preventDefault();
                   const targetId = pendingSelectedId || filteredPendingTickets[0]?.id;
-                  if (targetId) loadPendingTicket(targetId);
+                  if (targetId) void openPendingTicket(targetId);
                 }
               }}
               className={`w-full border rounded-lg dark:bg-gray-700 dark:border-gray-600 mb-2 ${touchMode ? 'p-4 text-lg' : 'p-2'}`}
@@ -1499,16 +1533,33 @@ const POSScreen: React.FC = () => {
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
-                        onClick={() => loadPendingTicket(t.id)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void openPendingTicket(t.id);
+                        }}
                         className={`${touchMode ? 'px-5 py-4 text-base' : 'px-3 py-2 text-sm'} rounded-lg border dark:border-gray-700 font-semibold ${pendingOrderId === t.id ? 'bg-primary-500 text-white border-primary-500' : ''}`}
                       >
                         فتح
                       </button>
                       <button
                         type="button"
-                        onClick={() => {
-                          cancelInStorePendingOrder(t.id)
-                            .then(() => {
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void (async () => {
+                            try {
+                              const fetcher = typeof fetchRemoteOrderById === 'function' ? fetchRemoteOrderById : null;
+                              const fresh = fetcher ? await fetcher(t.id).catch(() => undefined) : undefined;
+                              const st = String((fresh as any)?.status || '');
+                              if (fresh && st && st !== 'pending') {
+                                if (st === 'delivered') {
+                                  showNotification('لا يمكن إلغاء فاتورة تم إتمامها. سيتم فتح الفاتورة.', 'info');
+                                  navigate(`/admin/invoice/${t.id}`);
+                                  return;
+                                }
+                                showNotification('لا يمكن إلغاء هذه الفاتورة لأنها ليست معلّقة.', 'error');
+                                return;
+                              }
+                              await cancelInStorePendingOrder(t.id);
                               showNotification('تم إلغاء التعليق وإفراج الحجز', 'info');
                               void fetchStock();
                               if (pendingOrderId === t.id) {
@@ -1524,8 +1575,10 @@ const POSScreen: React.FC = () => {
                                   focusSearch();
                                 }
                               }
-                            })
-                            .catch(err => showNotification(err instanceof Error ? err.message : 'فشل إلغاء التعليق', 'error'));
+                            } catch (err) {
+                              showNotification(err instanceof Error ? err.message : 'فشل إلغاء التعليق', 'error');
+                            }
+                          })();
                         }}
                         className={`${touchMode ? 'px-5 py-4 text-base' : 'px-3 py-2 text-sm'} rounded-lg bg-red-500 text-white font-semibold`}
                       >
