@@ -5,13 +5,14 @@ begin
     returns boolean
     language sql
     stable
+    security definer
+    set search_path = public
     as $fn$
       select exists (
         select 1
         from public.admin_users au
-        where au.id = auth.uid()
-          and coalesce(au.data->>'role','') = 'admin'
-          and coalesce((au.data->>'isActive')::boolean, true) = true
+        where au.auth_user_id = auth.uid()
+          and au.is_active = true
       );
     $fn$;
   end if;
