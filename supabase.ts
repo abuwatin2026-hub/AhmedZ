@@ -224,6 +224,11 @@ export const reloadPostgrestSchema = async (): Promise<boolean> => {
       const { data: sessionData } = await supabase.auth.getSession();
       if (!sessionData?.session) return false;
 
+      try {
+        const { data, error } = await supabase.rpc('rpc_reload_postgrest_schema');
+        if (!error) return Boolean(data);
+      } catch {}
+
       const start = new Date(0).toISOString();
       const end = new Date().toISOString();
       const { error } = await supabase.rpc('get_sales_report_orders', {

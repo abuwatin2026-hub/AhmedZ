@@ -556,6 +556,9 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         status: order.status,
         data: order,
       };
+      if (typeof (order as any).currency === 'string' && String((order as any).currency).trim()) {
+        payload.currency = String((order as any).currency).trim().toUpperCase();
+      }
       if (typeof order.deliveryZoneId === 'string' && isUuid(order.deliveryZoneId)) {
         payload.delivery_zone_id = order.deliveryZoneId;
       }
@@ -571,6 +574,9 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
       if (error && (isSchemaCacheMissingColumnError(error, 'delivery_zone_id') || isSchemaCacheMissingColumnError(error, 'warehouse_id'))) {
         const fallback: Record<string, any> = { status: order.status, data: order };
+        if (typeof (order as any).currency === 'string' && String((order as any).currency).trim()) {
+          fallback.currency = String((order as any).currency).trim().toUpperCase();
+        }
         ({ error } = await supabase
           .from('orders')
           .update(fallback)
@@ -608,6 +614,9 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         warehouse_id: warehouseId,
         data: order,
       };
+      if (typeof (order as any).currency === 'string' && String((order as any).currency).trim()) {
+        payload.currency = String((order as any).currency).trim().toUpperCase();
+      }
       payload.customer_auth_user_id = isUuid(order.userId) ? order.userId : null;
 
       let error: any = null;
@@ -622,6 +631,9 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           data: order,
           customer_auth_user_id: payload.customer_auth_user_id,
         };
+        if (typeof (order as any).currency === 'string' && String((order as any).currency).trim()) {
+          fallback.currency = String((order as any).currency).trim().toUpperCase();
+        }
         ({ error } = await supabase
           .from('orders')
           .insert(fallback));
@@ -1409,6 +1421,8 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const canMarkPaidUi = hasPermission('orders.markPaid');
 
     const IN_STORE_DELIVERY_ZONE_ID = '11111111-1111-4111-8111-111111111111';
+    const baseCurrency = String((await getBaseCurrencyCode()) || '').toUpperCase().trim() || 'YER';
+    const desiredCurrency = String((input as any).currency || baseCurrency || '').toUpperCase().trim() || baseCurrency;
     const enabledPaymentMethods = Object.entries(settings.paymentMethods || {})
       .filter(([, isEnabled]) => Boolean(isEnabled))
       .map(([key]) => key);
@@ -1624,6 +1638,91 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
     items = pricedItems;
 
+    let fxRate = 1;
+    const roundMoney = (v: number) => {
+      const n = Number(v);
+      if (!Number.isFinite(n)) return 0;
+      return Math.round(n * 100) / 100;
+    };
+    const convertBaseToTxn = (baseAmount: number) => {
+      const r = Number(fxRate) || 0;
+      if (!(r > 0)) return roundMoney(baseAmount);
+      return roundMoney((Number(baseAmount) || 0) / r);
+    };
+
+    items = items.map((item: any) => {
+      const basePrice = Number(item.price) || 0;
+      const selected = item.selectedAddons && typeof item.selectedAddons === 'object' ? item.selectedAddons : {};
+      const nextSelected: any = {};
+      for (const [id, entry] of Object.entries(selected)) {
+        const e: any = entry as any;
+        const addon = e?.addon;
+        const addonBase = Number(addon?.price) || 0;
+        nextSelected[id] = {
+          ...e,
+          addon: addon ? { ...addon, _basePrice: addonBase } : addon,
+        };
+      }
+      const next: any = {
+        ...item,
+        _basePrice: basePrice,
+        selectedAddons: nextSelected,
+      };
+      if (item.unitType === 'gram') {
+        const basePerUnit = Number(item.pricePerUnit) || basePrice * 1000;
+        next._basePricePerUnit = basePerUnit;
+      }
+      return next as CartItem;
+    });
+    if (desiredCurrency !== baseCurrency) {
+      if (offlineHint) {
+        throw new Error('لا يمكن إتمام بيع بعملة غير أساسية بدون اتصال. أعد المحاولة وأنت متصل.');
+      }
+      const supabaseFx = getSupabaseClient();
+      if (!supabaseFx) throw new Error('Supabase غير مهيأ.');
+      const d = new Date().toISOString().slice(0, 10);
+      const { data: fxRows, error: fxErr } = await supabaseFx
+        .from('fx_rates')
+        .select('rate,rate_date')
+        .eq('currency_code', desiredCurrency)
+        .eq('rate_type', 'operational')
+        .lte('rate_date', d)
+        .order('rate_date', { ascending: false })
+        .limit(1);
+      if (fxErr) throw new Error(localizeSupabaseError(fxErr));
+      const fx = Number((Array.isArray(fxRows) && fxRows.length > 0 ? (fxRows[0] as any).rate : null));
+      if (!Number.isFinite(fx) || !(fx > 0)) {
+        throw new Error('لا يوجد سعر صرف تشغيلي صالح لهذه العملة. أضف السعر من شاشة أسعار الصرف.');
+      }
+      fxRate = fx;
+
+      items = items.map((item: any) => {
+        const basePrice = Number(item._basePrice != null ? item._basePrice : item.price) || 0;
+        const selected = item.selectedAddons && typeof item.selectedAddons === 'object' ? item.selectedAddons : {};
+        const nextSelected: any = {};
+        for (const [id, entry] of Object.entries(selected)) {
+          const e: any = entry as any;
+          const addon = e?.addon;
+          const addonBase = Number(addon?._basePrice != null ? addon._basePrice : addon?.price) || 0;
+          nextSelected[id] = {
+            ...e,
+            addon: addon ? { ...addon, _basePrice: addonBase, price: convertBaseToTxn(addonBase) } : addon,
+          };
+        }
+        const next: any = {
+          ...item,
+          price: convertBaseToTxn(basePrice),
+          selectedAddons: nextSelected,
+        };
+        if (item.unitType === 'gram') {
+          const basePerUnit = Number(item._basePricePerUnit != null ? item._basePricePerUnit : (Number(item.pricePerUnit) || basePrice * 1000)) || 0;
+          next._basePricePerUnit = basePerUnit;
+          next.pricePerUnit = convertBaseToTxn(basePerUnit);
+        }
+        return next as CartItem;
+      });
+    }
+
     const computedSubtotal = items.reduce((total, item) => {
       const addonsPrice = Object.values(item.selectedAddons || {}).reduce(
         (sum, { addon, quantity }) => sum + addon.price * quantity,
@@ -1777,6 +1876,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       userId: isUuid(input.customerId) ? input.customerId : undefined,
       orderSource: 'in_store',
       warehouseId,
+      currency: desiredCurrency,
       customerId: input.customerId || undefined,
       items,
       ...(promotionLines.length ? ({ promotionLines } as any) : {}),
@@ -2128,6 +2228,8 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       throw new Error('لا يمكن إنشاء فاتورة معلقة تحتوي عرضاً.');
     }
     const IN_STORE_DELIVERY_ZONE_ID = '11111111-1111-4111-8111-111111111111';
+    const baseCurrency = String((await getBaseCurrencyCode()) || '').toUpperCase().trim() || 'YER';
+    const desiredCurrency = String((input as any).currency || baseCurrency || '').toUpperCase().trim() || baseCurrency;
     const normalizedLines: Array<{ menuItemId: string; quantity?: number; weight?: number; selectedAddons: Record<string, number> }> = (input.lines || [])
       .filter((l: any) => typeof l?.menuItemId === 'string' && Boolean(l.menuItemId))
       .map((l: any) => ({
@@ -2196,6 +2298,88 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       return { ...item, price: unitPrice };
     }));
     items = pricedItems;
+
+    let fxRate = 1;
+    const roundMoney = (v: number) => {
+      const n = Number(v);
+      if (!Number.isFinite(n)) return 0;
+      return Math.round(n * 100) / 100;
+    };
+    const convertBaseToTxn = (baseAmount: number) => {
+      const r = Number(fxRate) || 0;
+      if (!(r > 0)) return roundMoney(baseAmount);
+      return roundMoney((Number(baseAmount) || 0) / r);
+    };
+
+    items = items.map((item: any) => {
+      const basePrice = Number(item.price) || 0;
+      const selected = item.selectedAddons && typeof item.selectedAddons === 'object' ? item.selectedAddons : {};
+      const nextSelected: any = {};
+      for (const [id, entry] of Object.entries(selected)) {
+        const e: any = entry as any;
+        const addon = e?.addon;
+        const addonBase = Number(addon?.price) || 0;
+        nextSelected[id] = {
+          ...e,
+          addon: addon ? { ...addon, _basePrice: addonBase } : addon,
+        };
+      }
+      const next: any = {
+        ...item,
+        _basePrice: basePrice,
+        selectedAddons: nextSelected,
+      };
+      if (item.unitType === 'gram') {
+        const basePerUnit = Number(item.pricePerUnit) || basePrice * 1000;
+        next._basePricePerUnit = basePerUnit;
+      }
+      return next as CartItem;
+    });
+    if (desiredCurrency !== baseCurrency) {
+      const supabaseFx = getSupabaseClient();
+      if (!supabaseFx) throw new Error('Supabase غير مهيأ.');
+      const d = new Date().toISOString().slice(0, 10);
+      const { data: fxRows, error: fxErr } = await supabaseFx
+        .from('fx_rates')
+        .select('rate,rate_date')
+        .eq('currency_code', desiredCurrency)
+        .eq('rate_type', 'operational')
+        .lte('rate_date', d)
+        .order('rate_date', { ascending: false })
+        .limit(1);
+      if (fxErr) throw new Error(localizeSupabaseError(fxErr));
+      const fx = Number((Array.isArray(fxRows) && fxRows.length > 0 ? (fxRows[0] as any).rate : null));
+      if (!Number.isFinite(fx) || !(fx > 0)) {
+        throw new Error('لا يوجد سعر صرف تشغيلي صالح لهذه العملة. أضف السعر من شاشة أسعار الصرف.');
+      }
+      fxRate = fx;
+      items = items.map((item: any) => {
+        const basePrice = Number(item._basePrice != null ? item._basePrice : item.price) || 0;
+        const selected = item.selectedAddons && typeof item.selectedAddons === 'object' ? item.selectedAddons : {};
+        const nextSelected: any = {};
+        for (const [id, entry] of Object.entries(selected)) {
+          const e: any = entry as any;
+          const addon = e?.addon;
+          const addonBase = Number(addon?._basePrice != null ? addon._basePrice : addon?.price) || 0;
+          nextSelected[id] = {
+            ...e,
+            addon: addon ? { ...addon, _basePrice: addonBase, price: convertBaseToTxn(addonBase) } : addon,
+          };
+        }
+        const next: any = {
+          ...item,
+          price: convertBaseToTxn(basePrice),
+          selectedAddons: nextSelected,
+        };
+        if (item.unitType === 'gram') {
+          const basePerUnit = Number(item._basePricePerUnit != null ? item._basePricePerUnit : (Number(item.pricePerUnit) || basePrice * 1000)) || 0;
+          next._basePricePerUnit = basePerUnit;
+          next.pricePerUnit = convertBaseToTxn(basePerUnit);
+        }
+        return next as CartItem;
+      });
+    }
+
     const computedSubtotal = items.reduce((total, item) => {
       const addonsPrice = Object.values(item.selectedAddons || {}).reduce(
         (sum, { addon, quantity }) => sum + addon.price * quantity,
@@ -2224,7 +2408,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       userId: isUuid(input.customerId) ? input.customerId : undefined,
       orderSource: 'in_store',
       warehouseId,
-      currency: String((input as any).currency || (await getBaseCurrencyCode()) || '').toUpperCase(),
+      currency: desiredCurrency,
       customerId: input.customerId || undefined,
       items,
       subtotal: computedSubtotal,
@@ -2240,6 +2424,10 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       status: 'pending',
       createdAt: nowIso,
     };
+    (newOrder as any).fxRate = fxRate;
+    (newOrder as any).baseCurrency = baseCurrency;
+    (newOrder as any).fxRate = fxRate;
+    (newOrder as any).baseCurrency = baseCurrency;
     await createRemoteOrder(newOrder);
     const supabase = getSupabaseClient();
     if (!supabase) throw new Error('Supabase غير مهيأ.');
@@ -2428,6 +2616,8 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const resolveWarehouseId = async (): Promise<string> => {
       const byCol = typeof (existing as any).warehouseId === 'string' ? (existing as any).warehouseId : undefined;
       if (byCol) return byCol;
+      const scoped = sessionScope.scope?.warehouseId;
+      if (scoped) return scoped;
       throw new Error('نطاق المستودع غير محدد لهذا الطلب. يمنع التنفيذ خارج نطاق الجلسة.');
     };
     const warehouseId = await resolveWarehouseId();
@@ -2451,7 +2641,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
     const reserveItems = Array.from(merged.entries())
       .map(([itemId, quantity]) => ({ itemId, quantity }))
-      .filter((x) => x.itemId && Number(x.quantity) > 0);
+      .filter((x) => isUuid(x.itemId) && Number(x.quantity) > 0);
     if (reserveItems.length > 0) {
       const { error: releaseErr } = await supabase.rpc('release_reserved_stock_for_order', {
         p_items: reserveItems,
@@ -2467,7 +2657,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         itemId: String((item as any)?.itemId || (item as any)?.id || ''),
         quantity: getRequestedItemQuantity(item),
       }))
-      .filter((entry) => Number(entry.quantity) > 0);
+      .filter((entry) => isUuid(entry.itemId) && Number(entry.quantity) > 0);
     if (payloadItems.length === 0 && promoLines.length === 0) {
       throw new Error('لا يمكن إتمام الطلب: تأكد من الكمية/الوزن للأصناف.');
     }
@@ -2513,22 +2703,32 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         itemId: String((item as any)?.itemId || (item as any)?.id || ''),
         quantity: getRequestedItemQuantity(item),
       }))
-      .filter((entry) => Number(entry.quantity) > 0);
+      .filter((entry) => isUuid(entry.itemId) && Number(entry.quantity) > 0);
     const resolveWarehouseId = async (): Promise<string> => {
       const byCol = typeof (existing as any).warehouseId === 'string' ? (existing as any).warehouseId : undefined;
       if (byCol) return byCol;
+      const scoped = sessionScope.scope?.warehouseId;
+      if (scoped) return scoped;
       throw new Error('نطاق المستودع غير محدد لهذا الطلب. يمنع التنفيذ خارج نطاق الجلسة.');
     };
     const warehouseId = await resolveWarehouseId();
-    const { error: releaseErr } = await supabase.rpc('release_reserved_stock_for_order', {
-      p_items: payloadItems,
-      p_order_id: existing.id,
-      p_warehouse_id: warehouseId,
-    });
-    if (releaseErr) {
-      throw new Error(localizeSupabaseError(releaseErr));
+    if (payloadItems.length > 0) {
+      const { error: releaseErr } = await supabase.rpc('release_reserved_stock_for_order', {
+        p_items: payloadItems,
+        p_order_id: existing.id,
+        p_warehouse_id: warehouseId,
+      });
+      if (releaseErr) {
+        throw new Error(localizeSupabaseError(releaseErr));
+      }
     }
-    await supabase.from('orders').delete().eq('id', existing.id);
+    const { error: deleteErr } = await supabase.from('orders').delete().eq('id', existing.id);
+    if (deleteErr) {
+      const cancelled = { ...existing, status: 'cancelled' } as Order;
+      await updateRemoteOrder(cancelled);
+      setOrders(prev => prev.map(o => (o.id === existing.id ? cancelled : o)));
+      return;
+    }
     setOrders(prev => prev.filter(o => o.id !== existing.id));
   };
 
@@ -2748,15 +2948,18 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       }
       const reserveItems = Array.from(merged.entries())
         .map(([itemId, quantity]) => ({ itemId, quantity }))
-        .filter((x) => x.itemId && Number(x.quantity) > 0);
+        .filter((x) => isUuid(x.itemId) && Number(x.quantity) > 0);
       const payloadItems = baseItems
         .map((item) => ({
           itemId: String((item as any)?.itemId || (item as any)?.id || ''),
           quantity: getRequestedItemQuantity(item),
         }))
-        .filter((entry) => Number(entry.quantity) > 0);
-      if (baseItems.length > 0 && payloadItems.length === 0) {
-        throw new Error('لا يمكن تأكيد التسليم: تأكد من الكمية/الوزن للأصناف.');
+        .filter((entry) => isUuid(entry.itemId) && Number(entry.quantity) > 0);
+      if (payloadItems.length === 0) {
+        if (baseItems.length > 0) {
+          throw new Error('لا يمكن تأكيد التسليم: لا توجد أصناف قابلة للتسليم.');
+        }
+        throw new Error('لا يمكن تأكيد التسليم: الطلب لا يحتوي أصناف.');
       }
 
       const supabase = getSupabaseClient();

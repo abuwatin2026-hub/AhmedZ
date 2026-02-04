@@ -53,23 +53,33 @@ const POSScreen: React.FC = () => {
   const [pendingSelectedId, setPendingSelectedId] = useState<string | null>(null);
   const [touchMode, setTouchMode] = useState<boolean>(false);
   const [baseCode, setBaseCode] = useState<string>('');
+  const [currencyOptions, setCurrencyOptions] = useState<string[]>([]);
+  const [transactionFxRate, setTransactionFxRate] = useState<number>(1);
+  const fxRateRef = useRef<number>(1);
+  const prevFxRateRef = useRef<number>(1);
+  const prevCurrencyRef = useRef<string>('');
   const [transactionCurrency, setTransactionCurrency] = useState<string>(() => {
     const ops = (settings as any)?.operationalCurrencies;
     const first = Array.isArray(ops) ? String(ops[0] || '').trim().toUpperCase() : '';
     return first || '';
   });
   const pricingCacheRef = useRef<Map<string, {
+    baseUnitPrice?: number;
     unitPrice: number;
+    baseUnitPricePerKg?: number;
     unitPricePerKg?: number;
     batchId?: string;
     batchCode?: string;
     expiryDate?: string;
     unitCost?: number;
+    baseMinPrice?: number;
     minPrice?: number;
+    baseNextBatchMinPrice?: number;
     nextBatchMinPrice?: number;
     warningNextBatchPriceDiff?: boolean;
     reasonCode?: string;
   }>>(new Map());
+  const fefoPricingDisabledRef = useRef(false);
   const pricingRunIdRef = useRef(0);
   const [pricingBusy, setPricingBusy] = useState(false);
   const [pricingReady, setPricingReady] = useState(true);
@@ -89,22 +99,171 @@ const POSScreen: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (transactionCurrency) return;
-    const ops = (settings as any)?.operationalCurrencies;
-    const first = Array.isArray(ops) ? String(ops[0] || '').trim().toUpperCase() : '';
-    if (first) {
-      setTransactionCurrency(first);
-      return;
+    let active = true;
+    const run = async () => {
+      try {
+        const supabase = getSupabaseClient();
+        if (!supabase) return;
+        const { data, error } = await supabase.from('currencies').select('code').order('code', { ascending: true });
+        if (error) throw error;
+        const codes = (Array.isArray(data) ? data : [])
+          .map((r: any) => String(r?.code || '').trim().toUpperCase())
+          .filter(Boolean);
+        if (active) setCurrencyOptions(Array.from(new Set(codes)));
+      } catch {
+        if (active) setCurrencyOptions([]);
+      }
+    };
+    void run();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const operationalCurrencies = useMemo(() => {
+    const fromSettings = Array.isArray(settings.operationalCurrencies) && settings.operationalCurrencies.length
+      ? settings.operationalCurrencies
+      : [];
+    const list = fromSettings.length > 0
+      ? fromSettings
+      : (currencyOptions.length > 0 ? currencyOptions : []);
+    const normalized = list.map((c) => String(c || '').trim().toUpperCase()).filter(Boolean);
+    const unique = Array.from(new Set(normalized));
+    if (unique.length > 0) return unique;
+    const fallback = String(baseCode || transactionCurrency || '').trim().toUpperCase();
+    return fallback ? [fallback] : [];
+  }, [baseCode, currencyOptions, settings.operationalCurrencies, transactionCurrency]);
+
+  const roundMoney = (v: number) => {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return 0;
+    return Math.round(n * 100) / 100;
+  };
+
+  const convertBaseToTxn = (baseAmount: number, rate: number) => {
+    const r = Number(rate) || 0;
+    if (!(r > 0)) return roundMoney(baseAmount);
+    return roundMoney((Number(baseAmount) || 0) / r);
+  };
+
+  const fetchOperationalFxRate = async (currencyCode: string): Promise<number | null> => {
+    const code = String(currencyCode || '').trim().toUpperCase();
+    if (!code) return null;
+    const base = String(baseCode || '').trim().toUpperCase();
+    if (base && code === base) return 1;
+    const supabase = getSupabaseClient();
+    if (!supabase) return null;
+    const d = new Date().toISOString().slice(0, 10);
+    try {
+      const { data, error } = await supabase
+        .from('fx_rates')
+        .select('rate,rate_date')
+        .eq('currency_code', code)
+        .eq('rate_type', 'operational')
+        .lte('rate_date', d)
+        .order('rate_date', { ascending: false })
+        .limit(1);
+      if (error) return null;
+      const n = Number((Array.isArray(data) && data.length > 0 ? (data[0] as any)?.rate : null));
+      return Number.isFinite(n) && n > 0 ? n : null;
+    } catch {
+      return null;
     }
-    if (baseCode) {
-      setTransactionCurrency(String(baseCode || '').trim().toUpperCase());
+  };
+
+  useEffect(() => {
+    const nextCode = String(transactionCurrency || '').trim().toUpperCase();
+    const base = String(baseCode || '').trim().toUpperCase();
+    if (!nextCode) return;
+    let cancelled = false;
+    const run = async () => {
+      const currentFx = fxRateRef.current;
+      prevFxRateRef.current = currentFx;
+      prevCurrencyRef.current = nextCode;
+      if (base && nextCode === base) {
+        if (!cancelled) {
+          fxRateRef.current = 1;
+          setTransactionFxRate(1);
+        }
+        return;
+      }
+      const rate = await fetchOperationalFxRate(nextCode);
+      if (cancelled) return;
+      if (!rate) {
+        showNotification('لا يوجد سعر صرف تشغيلي لهذه العملة اليوم. أضف السعر من شاشة أسعار الصرف.', 'error');
+        const fallback = base || operationalCurrencies[0] || '';
+        if (fallback) setTransactionCurrency(fallback);
+        return;
+      }
+      fxRateRef.current = rate;
+      setTransactionFxRate(rate);
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [baseCode, operationalCurrencies, showNotification, transactionCurrency]);
+
+  useEffect(() => {
+    const newRate = Number(transactionFxRate) || 1;
+    if (!(newRate > 0)) return;
+    const oldRate = Number(prevFxRateRef.current) || 1;
+    if (discountType === 'amount' && (Number(discountValue) || 0) > 0 && !pendingOrderId && oldRate > 0) {
+      const baseAmt = (Number(discountValue) || 0) * oldRate;
+      const nextDiscount = roundMoney(baseAmt / newRate);
+      if (Math.abs(nextDiscount - (Number(discountValue) || 0)) > 0.0001) {
+        setDiscountValue(nextDiscount);
+      }
     }
-  }, [baseCode, settings, transactionCurrency]);
+    setItems((prev) => {
+      const next = prev.map((item: any) => {
+        if ((item as any)?.lineType === 'promotion' || Boolean((item as any)?.promotionId)) return item;
+        const basePrice = Number(item._basePrice != null ? item._basePrice : item.price) || 0;
+        const basePerUnit = Number(item._basePricePerUnit != null ? item._basePricePerUnit : (item.pricePerUnit != null ? item.pricePerUnit : 0)) || 0;
+        const addonsList = Array.isArray(item.addons) ? item.addons : [];
+        const nextAddonsList = addonsList.map((a: any) => {
+          const aBase = Number(a?._basePrice != null ? a._basePrice : a?.price) || 0;
+          return { ...a, _basePrice: aBase, price: convertBaseToTxn(aBase, newRate) };
+        });
+        const selected = item.selectedAddons && typeof item.selectedAddons === 'object' ? item.selectedAddons : {};
+        const nextSelected: any = {};
+        for (const [id, entry] of Object.entries(selected)) {
+          const e: any = entry as any;
+          const addon = e?.addon;
+          const aBase = Number(addon?._basePrice != null ? addon._basePrice : addon?.price) || 0;
+          nextSelected[id] = {
+            ...e,
+            addon: addon ? { ...addon, _basePrice: aBase, price: convertBaseToTxn(aBase, newRate) } : addon,
+          };
+        }
+        return {
+          ...item,
+          _basePrice: basePrice,
+          _basePricePerUnit: basePerUnit,
+          price: convertBaseToTxn(basePrice, newRate),
+          ...(item.unitType === 'gram' ? { pricePerUnit: convertBaseToTxn(basePerUnit, newRate) } : {}),
+          addons: nextAddonsList,
+          selectedAddons: nextSelected,
+          _fefoMinPrice: item._fefoMinPriceBase != null ? convertBaseToTxn(Number(item._fefoMinPriceBase) || 0, newRate) : item._fefoMinPrice,
+          _fefoNextBatchMinPrice: item._fefoNextBatchMinPriceBase != null ? convertBaseToTxn(Number(item._fefoNextBatchMinPriceBase) || 0, newRate) : item._fefoNextBatchMinPrice,
+        };
+      });
+      return next;
+    });
+  }, [discountType, discountValue, pendingOrderId, transactionFxRate]);
+
+  useEffect(() => {
+    const current = String(transactionCurrency || '').trim().toUpperCase();
+    if (current && operationalCurrencies.includes(current)) return;
+    const next = operationalCurrencies[0] || '';
+    if (next) setTransactionCurrency(next);
+  }, [operationalCurrencies, transactionCurrency]);
 
   type DraftInvoice = {
     items: CartItem[];
     discountType: 'amount' | 'percent';
     discountValue: number;
+    currency: string;
     customerName: string;
     phoneNumber: string;
     notes: string;
@@ -120,10 +279,6 @@ const POSScreen: React.FC = () => {
   const hasPromotionLines = useMemo(() => {
     return items.some((i) => isPromotionLine(i));
   }, [isPromotionLine, items]);
-
-  const operationalCurrencies = Array.isArray(settings.operationalCurrencies) && settings.operationalCurrencies.length
-    ? Array.from(new Set(settings.operationalCurrencies.map((c) => String(c || '').trim().toUpperCase()).filter(Boolean)))
-    : (transactionCurrency ? [String(transactionCurrency || '').trim().toUpperCase()] : []);
 
   useEffect(() => {
     if (!hasPromotionLines) return;
@@ -263,16 +418,21 @@ const POSScreen: React.FC = () => {
 
     if (!supabase) {
       let missing = false;
+      let warehouseId = '';
+      try {
+        warehouseId = sessionScope.requireScope().warehouseId;
+      } catch {
+        warehouseId = '';
+      }
       const next = items.map((item) => {
         if (isPromotionLine(item)) {
           missing = true;
           return item;
         }
         const pricingQty = getPricingQty(item);
-        const key = `${item.id}:${item.unitType || ''}:${pricingQty}:${selectedCustomerId || ''}`;
+        const key = `${transactionCurrency}:${warehouseId}:${item.id}:${item.unitType || ''}:${pricingQty}:${selectedCustomerId || ''}`;
         const cached = pricingCacheRef.current.get(key);
         if (!cached) {
-          missing = true;
           return item;
         }
         const nextItem: any = { ...item, price: cached.unitPrice, _pricedByRpc: true, _pricingKey: key };
@@ -317,43 +477,95 @@ const POSScreen: React.FC = () => {
         const warehouseId = sessionScope.requireScope().warehouseId;
         const results = await Promise.all(pricingItems.map(async (item) => {
           const pricingQty = getPricingQty(item);
-          const key = `${warehouseId}:${item.id}:${item.unitType || ''}:${pricingQty}:${selectedCustomerId || ''}`;
+          const key = `${transactionCurrency}:${warehouseId}:${item.id}:${item.unitType || ''}:${pricingQty}:${selectedCustomerId || ''}`;
           const cached = pricingCacheRef.current.get(key);
           if (cached) return { key, itemId: item.id, unitType: item.unitType, ...cached };
+          const customerId = (selectedCustomerId && selectedCustomerId.trim() !== '') ? selectedCustomerId : null;
+          const fallbackCall = async () => {
+            return await supabase.rpc('get_item_price_with_discount', {
+              p_item_id: item.id,
+              p_customer_id: customerId,
+              p_quantity: pricingQty,
+            });
+          };
           const call = async () => {
             return await supabase.rpc('get_fefo_pricing', {
               p_item_id: item.id,
               p_warehouse_id: warehouseId,
-              p_customer_id: (selectedCustomerId && selectedCustomerId.trim() !== '') ? selectedCustomerId : null,
+              p_customer_id: customerId,
               p_quantity: pricingQty,
             });
           };
-          let { data, error } = await call();
-          if (error && isRpcNotFoundError(error)) {
-            const reloaded = await reloadPostgrestSchema();
-            if (reloaded) {
-              const retry = await call();
-              data = retry.data;
-              error = retry.error;
+          const resolveViaFallback = async () => {
+            let { data, error } = await fallbackCall();
+            if (error && isRpcNotFoundError(error)) {
+              const reloaded = await reloadPostgrestSchema();
+              if (reloaded) {
+                const retry = await fallbackCall();
+                data = retry.data;
+                error = retry.error;
+              }
+            }
+            if (error) throw error;
+            const baseUnitPrice = Number(data);
+            if (!Number.isFinite(baseUnitPrice) || baseUnitPrice < 0) throw new Error('تعذر احتساب السعر.');
+            const unitPrice = convertBaseToTxn(baseUnitPrice, fxRateRef.current);
+            const baseUnitPricePerKg = item.unitType === 'gram' ? baseUnitPrice * 1000 : undefined;
+            const unitPricePerKg = item.unitType === 'gram' ? convertBaseToTxn(baseUnitPricePerKg || 0, fxRateRef.current) : undefined;
+            return {
+              baseUnitPrice,
+              unitPrice,
+              baseUnitPricePerKg,
+              unitPricePerKg,
+            };
+          };
+
+          let entry: any;
+          if (fefoPricingDisabledRef.current) {
+            entry = await resolveViaFallback();
+          } else {
+            let { data, error } = await call();
+            if (error && isRpcNotFoundError(error)) {
+              const reloaded = await reloadPostgrestSchema();
+              if (reloaded) {
+                const retry = await call();
+                data = retry.data;
+                error = retry.error;
+              }
+            }
+            if (error && isRpcNotFoundError(error)) {
+              fefoPricingDisabledRef.current = true;
+              entry = await resolveViaFallback();
+            } else if (error) {
+              entry = await resolveViaFallback();
+            } else {
+              const row = (Array.isArray(data) ? data[0] : data) as any;
+              const baseUnitPrice = Number(row?.suggested_price);
+              if (!Number.isFinite(baseUnitPrice) || baseUnitPrice < 0) {
+                entry = await resolveViaFallback();
+              } else {
+                const unitPrice = convertBaseToTxn(baseUnitPrice, fxRateRef.current);
+                const baseUnitPricePerKg = item.unitType === 'gram' ? baseUnitPrice * 1000 : undefined;
+                const unitPricePerKg = item.unitType === 'gram' ? convertBaseToTxn(baseUnitPricePerKg || 0, fxRateRef.current) : undefined;
+                entry = {
+                  baseUnitPrice,
+                  unitPrice,
+                  baseUnitPricePerKg,
+                  unitPricePerKg,
+                  batchId: row?.batch_id ? String(row.batch_id) : undefined,
+                  batchCode: row?.batch_code ? String(row.batch_code) : undefined,
+                  expiryDate: row?.expiry_date ? String(row.expiry_date) : undefined,
+                  unitCost: Number(row?.unit_cost) || 0,
+                  baseMinPrice: Number(row?.min_price) || 0,
+                  minPrice: convertBaseToTxn(Number(row?.min_price) || 0, fxRateRef.current),
+                  baseNextBatchMinPrice: row?.next_batch_min_price != null ? (Number(row.next_batch_min_price) || 0) : undefined,
+                  nextBatchMinPrice: row?.next_batch_min_price != null ? convertBaseToTxn((Number(row.next_batch_min_price) || 0), fxRateRef.current) : undefined,
+                  warningNextBatchPriceDiff: Boolean(row?.warning_next_batch_price_diff),
+                  reasonCode: row?.reason_code ? String(row.reason_code) : undefined,
+                };
+              }
             }
           }
-          if (error) throw error;
-          const row = (Array.isArray(data) ? data[0] : data) as any;
-          const unitPrice = Number(row?.suggested_price);
-          if (!Number.isFinite(unitPrice) || unitPrice < 0) throw new Error('تعذر احتساب السعر.');
-          const unitPricePerKg = item.unitType === 'gram' ? unitPrice * 1000 : undefined;
-          const entry = {
-            unitPrice,
-            unitPricePerKg,
-            batchId: row?.batch_id ? String(row.batch_id) : undefined,
-            batchCode: row?.batch_code ? String(row.batch_code) : undefined,
-            expiryDate: row?.expiry_date ? String(row.expiry_date) : undefined,
-            unitCost: Number(row?.unit_cost) || 0,
-            minPrice: Number(row?.min_price) || 0,
-            nextBatchMinPrice: row?.next_batch_min_price != null ? (Number(row.next_batch_min_price) || 0) : undefined,
-            warningNextBatchPriceDiff: Boolean(row?.warning_next_batch_price_diff),
-            reasonCode: row?.reason_code ? String(row.reason_code) : undefined,
-          };
           pricingCacheRef.current.set(key, entry);
           return { key, itemId: item.id, unitType: item.unitType, ...entry };
         }));
@@ -362,7 +574,7 @@ const POSScreen: React.FC = () => {
           if (isPromotionLine(item)) return item;
           const pricingQty = getPricingQty(item);
           const warehouseId = sessionScope.requireScope().warehouseId;
-          const key = `${warehouseId}:${item.id}:${item.unitType || ''}:${pricingQty}:${selectedCustomerId || ''}`;
+          const key = `${transactionCurrency}:${warehouseId}:${item.id}:${item.unitType || ''}:${pricingQty}:${selectedCustomerId || ''}`;
           const priced = results.find((r) => r.key === key);
           if (!priced) return item;
           const nextItem: any = {
@@ -370,17 +582,21 @@ const POSScreen: React.FC = () => {
             price: priced.unitPrice,
             _pricedByRpc: true,
             _pricingKey: key,
+            _basePrice: priced.baseUnitPrice != null ? Number(priced.baseUnitPrice) || 0 : (Number((item as any)._basePrice) || 0),
             _fefoBatchId: priced.batchId,
             _fefoBatchCode: priced.batchCode,
             _fefoExpiryDate: priced.expiryDate,
             _fefoUnitCost: priced.unitCost,
+            _fefoMinPriceBase: priced.baseMinPrice != null ? Number(priced.baseMinPrice) || 0 : undefined,
             _fefoMinPrice: priced.minPrice,
+            _fefoNextBatchMinPriceBase: priced.baseNextBatchMinPrice != null ? Number(priced.baseNextBatchMinPrice) || 0 : undefined,
             _fefoNextBatchMinPrice: priced.nextBatchMinPrice,
             _fefoWarningNextBatchPriceDiff: priced.warningNextBatchPriceDiff,
             _fefoReasonCode: priced.reasonCode,
           };
           if (item.unitType === 'gram') {
             nextItem.pricePerUnit = priced.unitPricePerKg;
+            nextItem._basePricePerUnit = priced.baseUnitPricePerKg != null ? Number(priced.baseUnitPricePerKg) || 0 : (Number((item as any)._basePricePerUnit) || 0);
           }
           return nextItem as CartItem;
         });
@@ -418,11 +634,18 @@ const POSScreen: React.FC = () => {
 
   const addLine = (item: MenuItem, input: { quantity?: number; weight?: number }) => {
     if (pendingOrderId) return;
+    const fx = fxRateRef.current > 0 ? fxRateRef.current : 1;
     const isWeight = item.unitType === 'kg' || item.unitType === 'gram';
     const qty = isWeight ? 1 : Number(input.quantity || 0);
     const wt = isWeight ? Number(input.weight || 0) : undefined;
     if (!isWeight && !(qty > 0)) return;
     if (isWeight && !(wt && wt > 0)) return;
+    const basePrice = Number((item as any)?._basePrice != null ? (item as any)._basePrice : (item as any).price) || 0;
+    const addons = Array.isArray((item as any).addons) ? (item as any).addons : [];
+    const nextAddons = addons.map((a: any) => {
+      const aBase = Number(a?._basePrice != null ? a._basePrice : a?.price) || 0;
+      return { ...a, _basePrice: aBase, price: convertBaseToTxn(aBase, fx) };
+    });
     const cartItem: CartItem = {
       ...item,
       quantity: qty,
@@ -431,7 +654,15 @@ const POSScreen: React.FC = () => {
       cartItemId: crypto.randomUUID(),
       unit: item.unitType || 'piece',
       lineType: 'menu',
+      price: convertBaseToTxn(basePrice, fx),
     };
+    (cartItem as any)._basePrice = basePrice;
+    if (String(item.unitType || '') === 'gram') {
+      const basePerUnit = basePrice * 1000;
+      (cartItem as any)._basePricePerUnit = basePerUnit;
+      (cartItem as any).pricePerUnit = convertBaseToTxn(basePerUnit, fx);
+    }
+    (cartItem as any).addons = nextAddons;
     setItems(prev => [cartItem, ...prev]);
     setSelectedCartItemId(cartItem.cartItemId);
   };
@@ -712,6 +943,7 @@ const POSScreen: React.FC = () => {
     });
     createInStorePendingOrder({
       lines,
+      currency: transactionCurrency,
       discountType,
       discountValue,
       customerName: customerName.trim() || undefined,
@@ -739,6 +971,8 @@ const POSScreen: React.FC = () => {
         setItems(d.items);
         setDiscountType(d.discountType);
         setDiscountValue(d.discountValue);
+        const restoredCurrency = String(d.currency || '').trim().toUpperCase();
+        if (restoredCurrency) setTransactionCurrency(restoredCurrency);
         applyCustomerDraft(d.customerName, d.phoneNumber);
         setNotes(d.notes);
         setSelectedCartItemId(d.selectedCartItemId || d.items[0]?.cartItemId || null);
@@ -828,6 +1062,7 @@ const POSScreen: React.FC = () => {
           items,
           discountType,
           discountValue,
+          currency: transactionCurrency,
           customerName,
           phoneNumber,
           notes,
@@ -846,6 +1081,8 @@ const POSScreen: React.FC = () => {
     setItems(normalizedItems);
     setDiscountType('amount');
     setDiscountValue(Number((ticket as any).discountAmount) || 0);
+    const ticketCurrency = String((ticket as any).currency || '').trim().toUpperCase();
+    if (ticketCurrency) setTransactionCurrency(ticketCurrency);
     applyCustomerDraft(String((ticket as any).customerName || ''), String((ticket as any).phoneNumber || ''));
     setNotes(String((ticket as any).notes || ''));
     setSelectedCartItemId(normalizedItems[0]?.cartItemId || null);
@@ -860,6 +1097,8 @@ const POSScreen: React.FC = () => {
     setItems(draftInvoice.items);
     setDiscountType(draftInvoice.discountType);
     setDiscountValue(draftInvoice.discountValue);
+    const restoredCurrency = String(draftInvoice.currency || '').trim().toUpperCase();
+    if (restoredCurrency) setTransactionCurrency(restoredCurrency);
     applyCustomerDraft(draftInvoice.customerName, draftInvoice.phoneNumber);
     setNotes(draftInvoice.notes);
     setSelectedCartItemId(draftInvoice.selectedCartItemId || draftInvoice.items[0]?.cartItemId || null);
@@ -1123,7 +1362,8 @@ const POSScreen: React.FC = () => {
           <select
             value={transactionCurrency}
             onChange={(e) => setTransactionCurrency(String(e.target.value || '').trim().toUpperCase())}
-            className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-xs"
+            disabled={Boolean(pendingOrderId) || pricingBusy}
+            className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-xs disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {operationalCurrencies.map((c) => (
               <option key={c} value={c}>{c}</option>
@@ -1176,6 +1416,7 @@ const POSScreen: React.FC = () => {
             </div>
             <div className={`bg-white dark:bg-gray-800 rounded-xl shadow-lg ${touchMode ? 'p-6' : 'p-4'}`}>
               <POSPaymentPanel
+                key={`pay:${transactionCurrency}:${transactionFxRate}`}
                 total={total}
                 currencyCode={transactionCurrency}
                 canFinalize={items.length > 0 && pricingReady && !pricingBusy}

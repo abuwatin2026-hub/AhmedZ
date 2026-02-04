@@ -101,6 +101,12 @@ export const localizeError = (message: string): string => {
   if (raw.includes('p_order_id is required')) {
     return 'معرف الطلب مطلوب.';
   }
+  if (raw.includes('p_warehouse_id is required') || raw.includes('warehouse_id is required')) {
+    return 'معرف المخزن مطلوب لإتمام العملية.';
+  }
+  if (raw.includes('p_payload must be a json object')) {
+    return 'تعذر تنفيذ العملية بسبب صيغة طلب غير صحيحة (p_payload). حدّث الصفحة ثم أعد المحاولة.';
+  }
   if (raw.includes('p_payment_id is required')) {
     return 'معرف الدفعة مطلوب.';
   }
@@ -109,6 +115,12 @@ export const localizeError = (message: string): string => {
   }
   if (raw.includes('order not found')) {
     return 'تعذر العثور على هذا الطلب في قاعدة البيانات. حدّث الصفحة وتأكد أن الطلب لم يُحذف.';
+  }
+  if (raw.includes('delivery_driver_required')) {
+    return 'لا يمكن تأكيد التسليم بدون تحديد المندوب لهذا الطلب.';
+  }
+  if (raw.includes('credit_limit_exceeded')) {
+    return 'لا يمكن إتمام العملية لأن حد الائتمان للعميل تجاوز المسموح.';
   }
   if (raw.includes('invalid amount')) {
     return 'قيمة الدفعة غير صحيحة. تحقق من المبلغ وأعد المحاولة.';
@@ -121,6 +133,7 @@ export const localizeError = (message: string): string => {
   if (
     raw.includes('forbidden') ||
     raw.includes('not authorized') ||
+    raw.includes('not allowed') ||
     raw.includes('permission denied') ||
     raw.includes('permission') ||
     raw.includes('rls') ||

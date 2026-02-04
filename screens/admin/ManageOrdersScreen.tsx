@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { renderToString } from 'react-dom/server';
 import { useOrders } from '../../contexts/OrderContext';
@@ -173,12 +173,98 @@ const ManageOrdersScreen: React.FC = () => {
         return list.map(c => String(c || '').toUpperCase()).filter(Boolean);
     }, [baseCode, settings.operationalCurrencies]);
     const [inStoreTransactionCurrency, setInStoreTransactionCurrency] = useState<string>(() => operationalCurrencies[0] || '');
+    const [inStoreTransactionFxRate, setInStoreTransactionFxRate] = useState<number>(1);
+    const inStoreFxRateRef = useRef<number>(1);
+    const inStorePrevFxRateRef = useRef<number>(1);
 
     useEffect(() => {
         if (inStoreTransactionCurrency) return;
         const next = operationalCurrencies[0] || '';
         if (next) setInStoreTransactionCurrency(next);
     }, [inStoreTransactionCurrency, operationalCurrencies]);
+
+    const roundMoney = (v: number) => {
+        const n = Number(v);
+        if (!Number.isFinite(n)) return 0;
+        return Math.round(n * 100) / 100;
+    };
+
+    const convertBaseToInStoreTxn = (baseAmount: number, rate: number) => {
+        const r = Number(rate) || 0;
+        if (!(r > 0)) return roundMoney(baseAmount);
+        return roundMoney((Number(baseAmount) || 0) / r);
+    };
+
+    const fetchOperationalFxRate = async (currencyCode: string): Promise<number | null> => {
+        const code = String(currencyCode || '').trim().toUpperCase();
+        if (!code) return null;
+        const base = String(baseCode || '').trim().toUpperCase();
+        if (base && code === base) return 1;
+        const supabase = getSupabaseClient();
+        if (!supabase) return null;
+        const d = new Date().toISOString().slice(0, 10);
+        try {
+            const { data, error } = await supabase
+                .from('fx_rates')
+                .select('rate,rate_date')
+                .eq('currency_code', code)
+                .eq('rate_type', 'operational')
+                .lte('rate_date', d)
+                .order('rate_date', { ascending: false })
+                .limit(1);
+            if (error) return null;
+            const n = Number((Array.isArray(data) && data.length > 0 ? (data[0] as any)?.rate : null));
+            return Number.isFinite(n) && n > 0 ? n : null;
+        } catch {
+            return null;
+        }
+    };
+
+    useEffect(() => {
+        if (!isInStoreSaleOpen) return;
+        const nextCode = String(inStoreTransactionCurrency || '').trim().toUpperCase();
+        const base = String(baseCode || '').trim().toUpperCase();
+        if (!nextCode) return;
+        let cancelled = false;
+        const run = async () => {
+            inStorePrevFxRateRef.current = inStoreFxRateRef.current;
+            if (base && nextCode === base) {
+                if (!cancelled) {
+                    inStoreFxRateRef.current = 1;
+                    setInStoreTransactionFxRate(1);
+                }
+                return;
+            }
+            const rate = await fetchOperationalFxRate(nextCode);
+            if (cancelled) return;
+            if (!rate) {
+                showNotification('لا يوجد سعر صرف تشغيلي لهذه العملة اليوم. أضف السعر من شاشة أسعار الصرف.', 'error');
+                const fallback = base || operationalCurrencies[0] || '';
+                if (fallback) setInStoreTransactionCurrency(fallback);
+                return;
+            }
+            inStoreFxRateRef.current = rate;
+            setInStoreTransactionFxRate(rate);
+        };
+        void run();
+        return () => {
+            cancelled = true;
+        };
+    }, [baseCode, inStoreTransactionCurrency, isInStoreSaleOpen, operationalCurrencies, showNotification]);
+
+    useEffect(() => {
+        if (!isInStoreSaleOpen) return;
+        const newRate = Number(inStoreTransactionFxRate) || 1;
+        if (!(newRate > 0)) return;
+        const oldRate = Number(inStorePrevFxRateRef.current) || 1;
+        if (inStoreDiscountType === 'amount' && (Number(inStoreDiscountValue) || 0) > 0 && oldRate > 0) {
+            const baseAmt = (Number(inStoreDiscountValue) || 0) * oldRate;
+            const nextDiscount = roundMoney(baseAmt / newRate);
+            if (Math.abs(nextDiscount - (Number(inStoreDiscountValue) || 0)) > 0.0001) {
+                setInStoreDiscountValue(nextDiscount);
+            }
+        }
+    }, [inStoreDiscountType, inStoreDiscountValue, inStoreTransactionFxRate, isInStoreSaleOpen]);
     const [mapModal, setMapModal] = useState<{ title: string; coords: { lat: number; lng: number } } | null>(null);
     const [paidSumByOrderId, setPaidSumByOrderId] = useState<Record<string, number>>({});
     const [partialPaymentOrderId, setPartialPaymentOrderId] = useState<string | null>(null);
@@ -662,7 +748,8 @@ const ManageOrdersScreen: React.FC = () => {
     };
 
     const inStoreTotals = useMemo(() => {
-        const subtotal = inStoreLines.reduce((sum, line) => {
+        const fx = Number(inStoreTransactionFxRate) || 1;
+        const baseSubtotal = inStoreLines.reduce((sum, line) => {
             const menuItem = menuItems.find(m => m.id === line.menuItemId);
             if (!menuItem) return sum;
             const unitType = menuItem.unitType;
@@ -696,11 +783,17 @@ const ManageOrdersScreen: React.FC = () => {
         }, 0);
         const discountValue = Number(inStoreDiscountValue) || 0;
         const discountAmount = inStoreDiscountType === 'percent'
-            ? Math.max(0, Math.min(100, discountValue)) * subtotal / 100
-            : Math.max(0, Math.min(subtotal, discountValue));
+            ? Math.max(0, Math.min(100, discountValue)) * convertBaseToInStoreTxn(baseSubtotal, fx) / 100
+            : Math.max(0, Math.min(convertBaseToInStoreTxn(baseSubtotal, fx), discountValue));
+        const subtotal = convertBaseToInStoreTxn(baseSubtotal, fx);
         const total = Math.max(0, subtotal - discountAmount);
-        return { subtotal, discountAmount, total };
-    }, [inStoreDiscountType, inStoreDiscountValue, inStoreLines, inStorePricingMap, inStoreSelectedCustomerId, isWeightBasedUnit, menuItems]);
+        const baseDiscountValue = inStoreDiscountType === 'amount' ? roundMoney(discountValue * fx) : discountValue;
+        const baseDiscountAmount = inStoreDiscountType === 'percent'
+            ? Math.max(0, Math.min(100, Number(discountValue) || 0)) * baseSubtotal / 100
+            : Math.max(0, Math.min(baseSubtotal, baseDiscountValue));
+        const baseTotal = Math.max(0, baseSubtotal - baseDiscountAmount);
+        return { subtotal, discountAmount, total, baseSubtotal, baseDiscountAmount, baseTotal, fxRate: fx };
+    }, [inStoreDiscountType, inStoreDiscountValue, inStoreLines, inStorePricingMap, inStoreSelectedCustomerId, inStoreTransactionFxRate, isWeightBasedUnit, menuItems]);
 
     useEffect(() => {
         if (!isInStoreSaleOpen) return;
@@ -2131,7 +2224,8 @@ const ManageOrdersScreen: React.FC = () => {
                         <label className="text-gray-600 dark:text-gray-300">عملة المعاملة</label>
                         <select
                             value={inStoreTransactionCurrency}
-                            onChange={(e) => setInStoreTransactionCurrency(e.target.value)}
+                            onChange={(e) => setInStoreTransactionCurrency(String(e.target.value || '').trim().toUpperCase())}
+                            disabled={inStoreLines.length > 0 || inStorePricingBusy || isInStoreCreating}
                             className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                         >
                             {operationalCurrencies.map((c) => (
@@ -2390,10 +2484,7 @@ const ManageOrdersScreen: React.FC = () => {
                                         <span className="font-mono">
                                             {Math.max(
                                                 0,
-                                                Number(inStoreCreditSummary.available_credit || 0) - Math.max(
-                                                    0,
-                                                    (Number(inStoreTotals.total) || 0) - (inStoreMultiPaymentEnabled ? inStorePaymentLines.reduce((s, p) => s + (Number(p.amount) || 0), 0) : 0)
-                                                )
+                                                Number(inStoreCreditSummary.available_credit || 0) - Math.max(0, (Number(inStoreTotals.baseTotal) || 0) - roundMoney(((inStoreMultiPaymentEnabled ? inStorePaymentLines.reduce((s, p) => s + (Number(p.amount) || 0), 0) : 0) as number) * (Number(inStoreTotals.fxRate) || 1)))
                                             ).toFixed(2)} {baseCode || '—'}
                                         </span>
                                     </div>
@@ -2824,22 +2915,24 @@ const ManageOrdersScreen: React.FC = () => {
                                     const pricingKey = `${line.menuItemId}:${mi.unitType || 'piece'}:${pricingQty}:${inStoreSelectedCustomerId || ''}`;
                                     const priced = inStorePricingMap[pricingKey];
                                     const fallbackUnitPrice = mi.unitType === 'gram' && mi.pricePerUnit ? mi.pricePerUnit / 1000 : mi.price;
-                                    const unitPrice = mi.unitType === 'gram'
+                                    const baseUnitPrice = mi.unitType === 'gram'
                                         ? (priced?.unitPricePerKg ? (priced.unitPricePerKg / 1000) : (Number(priced?.unitPrice) || fallbackUnitPrice))
                                         : (Number(priced?.unitPrice) || fallbackUnitPrice);
                                     const available = typeof mi.availableStock === 'number' ? mi.availableStock : undefined;
-                                    let addonsCost = 0;
+                                    let baseAddonsCost = 0;
                                     if (line.selectedAddons && mi.addons) {
                                         Object.entries(line.selectedAddons).forEach(([aid, qty]) => {
                                             const addon = mi.addons?.find(ad => ad.id === aid);
                                             if (addon) {
-                                                addonsCost += addon.price * qty;
+                                                baseAddonsCost += addon.price * qty;
                                             }
                                         });
                                     }
-                                    const lineTotal = isWeightBased
-                                        ? (unitPrice * (line.weight ?? 0)) + (addonsCost * 1)
-                                        : (unitPrice + addonsCost) * (line.quantity ?? 0);
+                                    const baseLineTotal = isWeightBased
+                                        ? (baseUnitPrice * (line.weight ?? 0)) + (baseAddonsCost * 1)
+                                        : (baseUnitPrice + baseAddonsCost) * (line.quantity ?? 0);
+                                    const unitPrice = convertBaseToInStoreTxn(baseUnitPrice, Number(inStoreTransactionFxRate) || 1);
+                                    const lineTotal = convertBaseToInStoreTxn(baseLineTotal, Number(inStoreTransactionFxRate) || 1);
                                     const currentValue = isWeightBased ? (line.weight ?? 0) : (line.quantity ?? 0);
                                     const exceeded = typeof available === 'number' ? currentValue > available : false;
 

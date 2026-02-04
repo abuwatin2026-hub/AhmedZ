@@ -32,7 +32,7 @@ CREATE OR REPLACE FUNCTION public.encrypt_text(p_text text)
 RETURNS BYTEA
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = extensions, public
 AS $$
 DECLARE
   v_key text;
@@ -47,7 +47,7 @@ BEGIN
     RETURN NULL;
   END IF;
 
-  RETURN pgp_sym_encrypt(p_text, v_key);
+  RETURN extensions.pgp_sym_encrypt(p_text, v_key);
 END;
 $$;
 -- Fixing the function logic properly (idempotent override)
@@ -55,7 +55,7 @@ CREATE OR REPLACE FUNCTION public.encrypt_text(p_text text)
 RETURNS BYTEA
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = extensions, public
 AS $$
 DECLARE
   v_key text;
@@ -67,7 +67,7 @@ BEGIN
   IF p_text IS NULL OR p_text = '' THEN 
     RETURN NULL;
   END IF;
-  RETURN pgp_sym_encrypt(p_text, v_key);
+  RETURN extensions.pgp_sym_encrypt(p_text, v_key);
 END;
 $$;
 -- 6. Update decrypt_text function to read from private.keys
@@ -75,7 +75,7 @@ CREATE OR REPLACE FUNCTION public.decrypt_text(p_encrypted BYTEA)
 RETURNS TEXT
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = extensions, public
 AS $$
 DECLARE
   v_key text;
@@ -91,7 +91,7 @@ BEGIN
 
   -- Try decrypting
   BEGIN
-    RETURN pgp_sym_decrypt(p_encrypted, v_key);
+    RETURN extensions.pgp_sym_decrypt(p_encrypted, v_key);
   EXCEPTION WHEN OTHERS THEN
     RETURN NULL; -- Return null if decryption fails (wrong key)
   END;
@@ -111,14 +111,14 @@ BEGIN
   IF v_key IS NOT NULL AND v_key != '' THEN
     -- Update Address
     UPDATE public.customers
-    SET address_encrypted = pgp_sym_encrypt(data->>'address', v_key)
+    SET address_encrypted = extensions.pgp_sym_encrypt(data->>'address', v_key)
     WHERE (data->>'address') IS NOT NULL 
       AND (data->>'address') != ''
       AND address_encrypted IS NULL;
 
     -- Update Phone
     UPDATE public.customers
-    SET phone_encrypted = pgp_sym_encrypt(phone_number, v_key)
+    SET phone_encrypted = extensions.pgp_sym_encrypt(phone_number, v_key)
     WHERE phone_number IS NOT NULL 
       AND phone_number != ''
       AND phone_encrypted IS NULL;

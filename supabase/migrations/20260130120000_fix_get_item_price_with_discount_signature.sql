@@ -1,9 +1,9 @@
--- Drop the old function with text signature to avoid ambiguity
-DROP FUNCTION IF EXISTS public.get_item_price_with_discount(text, uuid, numeric);
+-- Drop the old function with UUID signature (schema uses text item_id)
+DROP FUNCTION IF EXISTS public.get_item_price_with_discount(uuid, uuid, numeric);
 
--- Create new function with UUID signature
+-- Create function with text signature (matches public.menu_items.id and pricing tables)
 CREATE OR REPLACE FUNCTION public.get_item_price_with_discount(
-  p_item_id uuid,
+  p_item_id text,
   p_customer_id uuid default null,
   p_quantity numeric default 1
 )
@@ -22,7 +22,7 @@ DECLARE
   v_price_per_unit numeric;
   v_final_unit_price numeric;
 BEGIN
-  IF p_item_id IS NULL THEN
+  IF p_item_id IS NULL OR btrim(p_item_id) = '' THEN
     RAISE EXCEPTION 'p_item_id is required';
   END IF;
   
@@ -32,7 +32,7 @@ BEGIN
 
   SELECT
     COALESCE(mi.unit_type, 'piece'),
-    COALESCE(mi.price_per_unit, NULLIF((mi.data->>'pricePerUnit')::numeric, NULL)),
+    NULLIF((mi.data->>'pricePerUnit')::numeric, NULL),
     COALESCE(NULLIF((mi.data->>'price')::numeric, NULL), mi.price, 0)
   INTO v_unit_type, v_price_per_unit, v_base_unit_price
   FROM public.menu_items mi
@@ -61,7 +61,6 @@ BEGIN
     FROM public.customer_special_prices csp
     WHERE csp.customer_id = p_customer_id
       AND csp.item_id = p_item_id
-      AND csp.is_active = true
       AND (csp.valid_from IS NULL OR csp.valid_from <= now())
       AND (csp.valid_to IS NULL OR csp.valid_to >= now())
     ORDER BY csp.created_at DESC
@@ -99,5 +98,5 @@ END;
 $$;
 
 -- Grant permissions
-REVOKE ALL ON FUNCTION public.get_item_price_with_discount(uuid, uuid, numeric) FROM public;
-GRANT EXECUTE ON FUNCTION public.get_item_price_with_discount(uuid, uuid, numeric) TO anon, authenticated;
+REVOKE ALL ON FUNCTION public.get_item_price_with_discount(text, uuid, numeric) FROM public;
+GRANT EXECUTE ON FUNCTION public.get_item_price_with_discount(text, uuid, numeric) TO anon, authenticated;

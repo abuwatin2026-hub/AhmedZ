@@ -46,12 +46,13 @@ begin
     ('USD', 2.500000, current_date, 'accounting'),
     (v_base, 1.000000, current_date, 'operational'),
     (v_base, 1.100000, current_date, 'accounting')
-  on conflict do nothing;
+  on conflict (currency_code, rate_date, rate_type) do update
+  set rate = excluded.rate;
 
   -- Case 1: USD Invoice → payment at different rate → FX realized
   begin
     insert into public.orders(id, status, data, created_at, updated_at, invoice_terms, net_days, currency, fx_rate, total, base_total)
-    values (gen_random_uuid(), 'pending', jsonb_build_object('orderSource','in_store'), now(), now(), 'cash', 0, 'USD', 2.000000, 100, 200)
+    values (gen_random_uuid(), 'pending', jsonb_build_object('orderSource','in_store','total',100), now(), now(), 'cash', 0, 'USD', 2.000000, 100, 200)
     returning id into v_order_id;
     insert into public.payments(id, direction, method, amount, currency, fx_rate, base_amount, reference_table, reference_id, occurred_at, created_by, data, created_at)
     values (gen_random_uuid(), 'in', 'bank', 100, 'USD', 2.100000, 210, 'orders', v_order_id::text, now(), auth.uid(), '{}'::jsonb, now())
@@ -70,7 +71,7 @@ begin
   -- Case 2: AR Open USD → Month End → Unrealized + Auto-Reverse
   begin
     insert into public.orders(id, status, data, created_at, updated_at, invoice_terms, net_days, currency, fx_rate, total, base_total)
-    values (gen_random_uuid(), 'pending', jsonb_build_object('orderSource','in_store'), now(), now(), 'cash', 0, 'USD', 2.000000, 100, 200)
+    values (gen_random_uuid(), 'pending', jsonb_build_object('orderSource','in_store','total',100), now(), now(), 'cash', 0, 'USD', 2.000000, 100, 200)
     returning id into v_order_id;
     insert into public.journal_entries(entry_date, memo, source_table, source_id, source_event, created_by)
     values (current_date, concat('Invoice fixture ', v_order_id::text), 'orders', v_order_id::text, 'fixture', v_user)
@@ -116,7 +117,7 @@ begin
   -- Case 4: YER Long-term → Revaluation mandatory
   begin
     insert into public.orders(id, status, data, created_at, updated_at, invoice_terms, net_days, currency, fx_rate, total, base_total)
-    values (gen_random_uuid(), 'pending', jsonb_build_object('orderSource','in_store'), now(), now(), 'credit', 30, 'YER', 1, 1000, 1000)
+    values (gen_random_uuid(), 'pending', jsonb_build_object('orderSource','in_store','total',1000), now(), now(), 'credit', 30, 'YER', 1, 1000, 1000)
     returning id into v_order_id;
     insert into public.journal_entries(entry_date, memo, source_table, source_id, source_event, created_by)
     values (current_date, concat('Invoice fixture ', v_order_id::text), 'orders', v_order_id::text, 'fixture', v_user)

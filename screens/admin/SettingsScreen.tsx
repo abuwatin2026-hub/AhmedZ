@@ -1508,13 +1508,20 @@ const SettingsScreen: React.FC = () => {
                         const code = (e.currentTarget.value || '').trim().toUpperCase();
                         if (!code) return;
                         const next = Array.from(new Set([...(formState.operationalCurrencies || []), code]));
-                        handleChange({ target: { name: 'operationalCurrencies', value: next } } as any);
+                        const nextState = { ...formState, operationalCurrencies: next };
+                        setFormState(nextState);
                         try {
                           const supabase = getSupabaseClient();
                           if (supabase) {
                             await supabase.from('currencies').upsert({ code, name: code, is_base: false }, { onConflict: 'code' });
                           }
                         } catch {}
+                        try {
+                          await updateSettings(nextState);
+                          showNotification('تم حفظ العملات التشغيلية.', 'success');
+                        } catch (err) {
+                          showNotification(err instanceof Error ? err.message : 'تعذر حفظ العملات التشغيلية.', 'error');
+                        }
                         (e.currentTarget as HTMLInputElement).value = '';
                       }
                     }}
