@@ -9,6 +9,7 @@ import { useToast } from '../../contexts/ToastContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { getBaseCurrencyCode, getSupabaseClient } from '../../supabase';
 import { useSessionScope } from '../../contexts/SessionScopeContext';
+import { useWarehouses } from '../../contexts/WarehouseContext';
 
 import RecordWastageModal from '../../components/admin/RecordWastageModal';
 
@@ -378,8 +379,11 @@ const ManageStockScreen: React.FC = () => {
     // const { language } = useSettings();
     const { categories: categoryDefs, getCategoryLabel, getUnitLabel } = useItemMeta();
     const { showNotification } = useToast();
+    const { userId, hasPermission } = useAuth();
     const sessionScope = useSessionScope();
+    const { warehouses } = useWarehouses();
     const warehouseId = sessionScope.scope?.warehouseId || '';
+    const [pendingWarehouseId, setPendingWarehouseId] = useState('');
     const [baseCode, setBaseCode] = useState('—');
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedCategory, setSelectedCategory] = useState('all');
@@ -397,6 +401,46 @@ const ManageStockScreen: React.FC = () => {
             setBaseCode(c);
         });
     }, []);
+
+    useEffect(() => {
+        setPendingWarehouseId(warehouseId);
+    }, [warehouseId]);
+
+    const canSwitchWarehouse = hasPermission('stock.manage') || hasPermission('inventory.view');
+    const activeWarehouses = useMemo(() => {
+        return (warehouses || []).filter((w: any) => Boolean((w as any)?.isActive ?? (w as any)?.is_active ?? true));
+    }, [warehouses]);
+
+    const currentWarehouseName = useMemo(() => {
+        if (!warehouseId) return '—';
+        return String((activeWarehouses.find((w: any) => String(w.id) === String(warehouseId)) as any)?.name || '—');
+    }, [activeWarehouses, warehouseId]);
+
+    const saveActiveWarehouse = async () => {
+        try {
+            const supabase = getSupabaseClient();
+            if (!supabase || !userId) return;
+            const wid = String(pendingWarehouseId || '').trim();
+            if (!wid) {
+                showNotification('اختر مستودعًا أولاً.', 'error');
+                return;
+            }
+            const exists = activeWarehouses.some((w: any) => String(w.id) === wid);
+            if (!exists) {
+                showNotification('المستودع المحدد غير نشط.', 'error');
+                return;
+            }
+            const { error } = await supabase
+                .from('admin_users')
+                .update({ warehouse_id: wid })
+                .eq('auth_user_id', userId);
+            if (error) throw error;
+            await sessionScope.refreshScope();
+            showNotification('تم تغيير المستودع النشط للجلسة.', 'success');
+        } catch (e: any) {
+            showNotification(String(e?.message || 'تعذر تحديث المستودع النشط'), 'error');
+        }
+    };
 
     // Get unique categories
     const categories = useMemo(() => {
@@ -478,12 +522,42 @@ const ManageStockScreen: React.FC = () => {
     return (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
             <div className="mb-8">
-                <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-                    إدارة المخزون
-                </h1>
-                <p className="text-gray-600 dark:text-gray-400">
-                    تحديث وإدارة كميات المخزون المتوفرة
-                </p>
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <div>
+                        <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+                            إدارة المخزون
+                        </h1>
+                        <p className="text-gray-600 dark:text-gray-400">
+                            تحديث وإدارة كميات المخزون المتوفرة
+                        </p>
+                    </div>
+                    {canSwitchWarehouse && (
+                        <div className="flex items-center gap-2">
+                            <select
+                                value={pendingWarehouseId || ''}
+                                onChange={(e) => setPendingWarehouseId(e.target.value)}
+                                className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                            >
+                                <option value="" disabled>اختر المستودع</option>
+                                {activeWarehouses.map((w: any) => (
+                                    <option key={String(w.id)} value={String(w.id)}>
+                                        {String((w as any).name || '')}
+                                    </option>
+                                ))}
+                            </select>
+                            <button
+                                onClick={saveActiveWarehouse}
+                                className="px-3 py-2 rounded bg-blue-600 hover:bg-blue-700 text-white text-sm disabled:opacity-60"
+                                disabled={!pendingWarehouseId || pendingWarehouseId === warehouseId}
+                            >
+                                تعيين للجلسة
+                            </button>
+                        </div>
+                    )}
+                </div>
+                <div className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                    المستودع الحالي: {currentWarehouseName}
+                </div>
             </div>
 
             {/* Filters */}

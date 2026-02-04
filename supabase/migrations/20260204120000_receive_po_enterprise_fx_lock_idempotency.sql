@@ -6,6 +6,20 @@ begin
     exception when duplicate_column then null;
     end;
     begin
+      if to_regclass('public.import_shipments') is not null then
+        alter table public.purchase_receipts
+          add column import_shipment_id uuid references public.import_shipments(id) on delete set null;
+      else
+        alter table public.purchase_receipts
+          add column import_shipment_id uuid;
+      end if;
+    exception when duplicate_column then null;
+    end;
+    begin
+      create index if not exists idx_purchase_receipts_import_shipment on public.purchase_receipts(import_shipment_id);
+    exception when others then null;
+    end;
+    begin
       create unique index if not exists uq_purchase_receipts_idempotency
       on public.purchase_receipts(purchase_order_id, idempotency_key)
       where idempotency_key is not null and btrim(idempotency_key) <> '';

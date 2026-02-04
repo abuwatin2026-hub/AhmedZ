@@ -3,6 +3,7 @@ import type { MenuItem } from '../types';
 import { disableRealtime, getSupabaseClient, isRealtimeEnabled } from '../supabase';
 import { logger } from '../utils/logger';
 import { isAbortLikeError, localizeSupabaseError } from '../utils/errorUtils';
+import { useSessionScope } from './SessionScopeContext';
 
 const normalizeCategoryKey = (value: unknown) => {
   const raw = typeof value === 'string' ? value.trim() : '';
@@ -29,6 +30,7 @@ export const MenuProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [loading, setLoading] = useState<boolean>(false);
   const didInitialFetchRef = useRef(false);
   const lastSnapshotRef = useRef<{ items: MenuItem[]; ts: number }>({ items: [], ts: 0 });
+  const sessionScope = useSessionScope();
 
   const fetchMenuItems = useCallback(async () => {
     setLoading(true);
@@ -68,9 +70,18 @@ export const MenuProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       let stockMap: Record<string, { available_quantity?: number; reserved_quantity?: number }> = {};
       if (isStaff && !isSlow && ids.length > 0) {
         try {
+          let warehouseId = sessionScope.scope?.warehouseId || '';
+          if (!warehouseId) {
+            const { data: w } = await supabase.rpc('_resolve_default_admin_warehouse_id');
+            if (typeof w === 'string' && w.trim()) warehouseId = w.trim();
+          }
+          if (!warehouseId) {
+            throw new Error('warehouse_id is required');
+          }
           const { data: stockRows } = await supabase
             .from('stock_management')
             .select('item_id, available_quantity, reserved_quantity')
+            .eq('warehouse_id', warehouseId)
             .in('item_id', ids);
           for (const r of stockRows || []) {
             const k = typeof (r as any)?.item_id === 'string' ? (r as any).item_id : '';
@@ -161,7 +172,7 @@ export const MenuProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [sessionScope.scope?.warehouseId]);
 
   useEffect(() => {
     if (didInitialFetchRef.current) return;
