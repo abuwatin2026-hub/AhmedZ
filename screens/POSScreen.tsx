@@ -475,12 +475,24 @@ const POSScreen: React.FC = () => {
       try {
         const pricingItems = items.filter((it) => !isPromotionLine(it));
         const warehouseId = sessionScope.requireScope().warehouseId;
+        const sessionData = await supabase.auth.getSession();
+        const hasSession = Boolean(sessionData.data.session);
+        if (!hasSession) {
+          fefoPricingDisabledRef.current = true;
+        }
         const results = await Promise.all(pricingItems.map(async (item) => {
           const pricingQty = getPricingQty(item);
           const key = `${transactionCurrency}:${warehouseId}:${item.id}:${item.unitType || ''}:${pricingQty}:${selectedCustomerId || ''}`;
           const cached = pricingCacheRef.current.get(key);
           if (cached) return { key, itemId: item.id, unitType: item.unitType, ...cached };
           const customerId = (selectedCustomerId && selectedCustomerId.trim() !== '') ? selectedCustomerId : null;
+          const resolveLocal = async () => {
+            const baseUnitPrice = Number((item as any)?._basePrice != null ? (item as any)._basePrice : (item as any).price) || 0;
+            const unitPrice = convertBaseToTxn(baseUnitPrice, fxRateRef.current);
+            const baseUnitPricePerKg = item.unitType === 'gram' ? baseUnitPrice * 1000 : undefined;
+            const unitPricePerKg = item.unitType === 'gram' ? convertBaseToTxn(baseUnitPricePerKg || 0, fxRateRef.current) : undefined;
+            return { baseUnitPrice, unitPrice, baseUnitPricePerKg, unitPricePerKg };
+          };
           const fallbackCall = async () => {
             return await supabase.rpc('get_item_price_with_discount', {
               p_item_id: item.id,
@@ -497,6 +509,7 @@ const POSScreen: React.FC = () => {
             });
           };
           const resolveViaFallback = async () => {
+            if (!hasSession) return await resolveLocal();
             let { data, error } = await fallbackCall();
             if (error && isRpcNotFoundError(error)) {
               const reloaded = await reloadPostgrestSchema();
@@ -521,7 +534,7 @@ const POSScreen: React.FC = () => {
           };
 
           let entry: any;
-          if (fefoPricingDisabledRef.current) {
+          if (!hasSession || fefoPricingDisabledRef.current) {
             entry = await resolveViaFallback();
           } else {
             let { data, error } = await call();

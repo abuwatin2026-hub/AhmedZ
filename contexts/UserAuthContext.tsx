@@ -1,12 +1,12 @@
 import type React from 'react';
-import { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
+import { createContext, useContext, useState, ReactNode, useEffect, useCallback, useRef } from 'react';
 import type { Customer } from '../types';
 import { useToast } from './ToastContext';
 import { useSettings } from './SettingsContext';
 import { validatePasswordStrength } from '../utils/passwordUtils';
 import { usernameSchema, validateData } from '../utils/validationSchemas';
 import { createLogger } from '../utils/logger';
-import { getSupabaseClient } from '../supabase';
+import { SUPABASE_AUTH_ERROR_EVENT, getSupabaseClient } from '../supabase';
 import { localizeSupabaseError } from '../utils/errorUtils';
 
 interface UserAuthContextType {
@@ -135,6 +135,7 @@ export const UserAuthProvider: React.FC<{ children: ReactNode }> = ({ children }
   const [loading, setLoading] = useState(true);
   const { showNotification } = useToast();
   const { settings } = useSettings();
+  const authIssueHandledAtRef = useRef<number>(0);
 
   const hydrateCurrentUser = useCallback(async (authUserId: string | null): Promise<Customer | null> => {
     if (!authUserId) {
@@ -302,6 +303,26 @@ export const UserAuthProvider: React.FC<{ children: ReactNode }> = ({ children }
       sub.subscription.unsubscribe();
     };
   }, [fetchCustomers, hydrateCurrentUser]);
+
+  useEffect(() => {
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+    if (typeof window === 'undefined') return;
+    const handler = async () => {
+      const now = Date.now();
+      if (now - authIssueHandledAtRef.current < 3000) return;
+      authIssueHandledAtRef.current = now;
+      try {
+        await supabase.auth.signOut({ scope: 'local' });
+      } catch {
+      }
+      setCurrentUser(null);
+    };
+    window.addEventListener(SUPABASE_AUTH_ERROR_EVENT, handler as any);
+    return () => {
+      window.removeEventListener(SUPABASE_AUTH_ERROR_EVENT, handler as any);
+    };
+  }, []);
 
   const localizeAuthProviderError = (message?: string, context?: 'register' | 'login') => {
     if (!message) return context === 'register' ? 'فشل التسجيل' : 'حدث خطأ ما';

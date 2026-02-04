@@ -1,10 +1,10 @@
 
-import React, { createContext, useContext, useEffect, useMemo, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useRef, useState, ReactNode } from 'react';
 import type { AdminPermission, AdminRole, AdminUser } from '../types';
 export type { AdminPermission, AdminRole, AdminUser }; // Re-export types
 import { ADMIN_PERMISSION_DEFS, defaultAdminPermissionsForRole } from '../types';
 import { useSettings } from './SettingsContext';
-import { getSupabaseClient } from '../supabase';
+import { SUPABASE_AUTH_ERROR_EVENT, getSupabaseClient } from '../supabase';
 import { validatePasswordStrength } from '../utils/passwordUtils';
 import { createLogger } from '../utils/logger';
 import { localizeSupabaseError } from '../utils/errorUtils';
@@ -40,6 +40,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isConfigured, setIsConfigured] = useState(false);
   const { language } = useSettings();
+  const authIssueHandledAtRef = useRef<number>(0);
 
   const normalizeUsername = (value: string) => value.trim();
   const makeServiceEmail = (value: string) => {
@@ -224,6 +225,26 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     });
     return () => {
       sub.subscription.unsubscribe();
+    };
+  }, [supabase]);
+
+  useEffect(() => {
+    if (!supabase) return;
+    if (typeof window === 'undefined') return;
+    const handler = async () => {
+      const now = Date.now();
+      if (now - authIssueHandledAtRef.current < 3000) return;
+      authIssueHandledAtRef.current = now;
+      try {
+        await supabase.auth.signOut({ scope: 'local' });
+      } catch {
+      }
+      setIsAuthenticated(false);
+      setUser(null);
+    };
+    window.addEventListener(SUPABASE_AUTH_ERROR_EVENT, handler as any);
+    return () => {
+      window.removeEventListener(SUPABASE_AUTH_ERROR_EVENT, handler as any);
     };
   }, [supabase]);
 

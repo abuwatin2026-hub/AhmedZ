@@ -3,6 +3,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 let client: SupabaseClient | null = null;
 const RPC_STRICT_MODE_KEY = 'RPC_STRICT_MODE';
 const REALTIME_DISABLED_KEY = 'AZTA_DISABLE_REALTIME';
+export const SUPABASE_AUTH_ERROR_EVENT = 'AZTA_SUPABASE_AUTH_ERROR';
 let realtimeDisabled = false;
 let postgrestReloadAttempt: Promise<boolean> | null = null;
 
@@ -111,6 +112,67 @@ const createRetryFetch = (baseFetch: (input: RequestInfo | URL, init?: RequestIn
   };
 };
 
+const toHeaders = (value?: HeadersInit): Headers => {
+  if (value instanceof Headers) return new Headers(value);
+  const headers = new Headers();
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      if (!entry) continue;
+      const k = String((entry as any)[0] ?? '').trim();
+      if (!k) continue;
+      const v = String((entry as any)[1] ?? '');
+      headers.set(k, v);
+    }
+    return headers;
+  }
+  if (value && typeof value === 'object') {
+    for (const [k, v] of Object.entries(value as Record<string, any>)) {
+      const key = String(k ?? '').trim();
+      if (!key) continue;
+      if (v == null) continue;
+      headers.set(key, String(v));
+    }
+  }
+  return headers;
+};
+
+const withSupabaseHeaders = (baseFetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>, anonKey: string) => {
+  const key = String(anonKey || '').trim();
+  return async (input: RequestInfo | URL, init?: RequestInit) => {
+    const headers = toHeaders(init?.headers);
+    if (key) {
+      if (!headers.has('apikey')) headers.set('apikey', key);
+      if (!headers.has('authorization')) headers.set('Authorization', `Bearer ${key}`);
+    }
+
+    const res = await baseFetch(input, { ...init, headers });
+
+    if (typeof window !== 'undefined') {
+      const status = Number(res.status);
+      if (status === 400 || status === 401 || status === 403) {
+        try {
+          const urlStr = typeof input === 'string' ? input : (input instanceof URL ? input.toString() : String((input as any)?.url || ''));
+          const cloned = res.clone();
+          const txt = await cloned.text();
+          const normalized = String(txt || '').toLowerCase();
+          const isAuthHeaderIssue =
+            normalized.includes('no api key found') ||
+            normalized.includes('no `apikey`') ||
+            normalized.includes('jwt cryptographic operation failed') ||
+            normalized.includes('invalid jwt') ||
+            normalized.includes('session_verification_failed');
+          if (isAuthHeaderIssue) {
+            window.dispatchEvent(new CustomEvent(SUPABASE_AUTH_ERROR_EVENT, { detail: { status, url: urlStr, message: txt } }));
+          }
+        } catch {
+        }
+      }
+    }
+
+    return res;
+  };
+};
+
 export const isSupabaseConfigured = (): boolean => {
   const url = (import.meta.env.VITE_SUPABASE_URL as string | undefined) || '';
   const anonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined) || '';
@@ -158,10 +220,11 @@ export const getSupabaseClient = (): SupabaseClient | null => {
   const anonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY as string).trim();
   const timeoutMs = Number((import.meta.env.VITE_SUPABASE_REQUEST_TIMEOUT_MS as any) || 45_000);
   const retryCount = Number((import.meta.env.VITE_SUPABASE_REQUEST_RETRIES as any) || 2);
+  const baseFetch = createRetryFetch(createTimeoutFetch(timeoutMs), { retries: retryCount, baseDelayMs: 250 });
 
   client = createClient(url, anonKey, {
     auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
-    global: { fetch: createRetryFetch(createTimeoutFetch(timeoutMs), { retries: retryCount, baseDelayMs: 250 }) },
+    global: { fetch: withSupabaseHeaders(baseFetch, anonKey) },
   });
 
   return client;
