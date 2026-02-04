@@ -724,24 +724,58 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           }
 
           if (receiveNow) {
-            const idempotencyKey = (() => {
+            const occurredAtIso = toUtcIsoAtMiddayFromYmd(normalizedDate);
+            const rawReceiveItems = items.map(i => ({
+              itemId: String(i.itemId || '').trim(),
+              quantity: Number(i.quantity || 0),
+              harvestDate: toIsoDateOnlyOrNull(i.productionDate),
+              expiryDate: toIsoDateOnlyOrNull(i.expiryDate),
+            })).filter(x => x.itemId && Number(x.quantity || 0) > 0);
+
+            const mergedByItemId = new Map<string, any>();
+            for (const row of rawReceiveItems) {
+              const key = String(row.itemId || '').trim();
+              if (!key) continue;
+              const prev = mergedByItemId.get(key);
+              if (!prev) {
+                mergedByItemId.set(key, { ...row });
+                continue;
+              }
+              prev.quantity = Number(prev.quantity || 0) + Number(row.quantity || 0);
+              if (!prev.harvestDate && row.harvestDate) prev.harvestDate = row.harvestDate;
+              if (!prev.expiryDate && row.expiryDate) prev.expiryDate = row.expiryDate;
+            }
+            const receiveItems = Array.from(mergedByItemId.values()).filter((r: any) => Number(r?.quantity || 0) > 0);
+
+            const computeIdempotencyKey = async () => {
+              const parts = receiveItems
+                .map((x: any) => [
+                  String(x.itemId || ''),
+                  String(Number(x.quantity || 0)),
+                  String(x.harvestDate || ''),
+                  String(x.expiryDate || ''),
+                ].join(':'))
+                .sort()
+                .join('|');
+              const raw = `receive:${orderId}:${occurredAtIso}:${parts}`;
               try {
                 const anyCrypto: any = (globalThis as any)?.crypto;
-                if (anyCrypto && typeof anyCrypto.randomUUID === 'function') return String(anyCrypto.randomUUID());
+                if (anyCrypto?.subtle?.digest) {
+                  const enc = new TextEncoder();
+                  const buf = await anyCrypto.subtle.digest('SHA-256', enc.encode(raw));
+                  const hex = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+                  return `rcv_${hex}`;
+                }
               } catch {
               }
-              return `rcv_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-            })();
+              return raw.length > 180 ? raw.slice(0, 180) : raw;
+            };
+            const idempotencyKey = await computeIdempotencyKey();
+            const receiveItemsWithIdempotency = receiveItems.map((x: any) => ({ ...x, idempotencyKey }));
               const { error: receiveError } = await supabase.rpc('receive_purchase_order_partial', {
                   p_order_id: orderId,
-                  p_items: items.map(i => ({
-                      itemId: i.itemId,
-                      quantity: i.quantity,
-                      harvestDate: toIsoDateOnlyOrNull(i.productionDate),
-                  expiryDate: toIsoDateOnlyOrNull(i.expiryDate),
-                  idempotencyKey,
-                  })),
-                  p_occurred_at: toUtcIsoAtMiddayFromYmd(normalizedDate)
+                  p_items: receiveItemsWithIdempotency,
+                  p_occurred_at: occurredAtIso
               });
               let errAny: any = receiveError;
               if (errAny) {
@@ -750,14 +784,8 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                 if (code === '23505' && /uq_purchase_receipts_idempotency/i.test(msg)) {
                   const retry = await supabase.rpc('receive_purchase_order_partial', {
                     p_order_id: orderId,
-                    p_items: items.map(i => ({
-                      itemId: i.itemId,
-                      quantity: i.quantity,
-                      harvestDate: toIsoDateOnlyOrNull(i.productionDate),
-                      expiryDate: toIsoDateOnlyOrNull(i.expiryDate),
-                      idempotencyKey,
-                    })),
-                    p_occurred_at: toUtcIsoAtMiddayFromYmd(normalizedDate)
+                    p_items: receiveItemsWithIdempotency,
+                    p_occurred_at: occurredAtIso
                   });
                   if (!retry.error) {
                     await updateMenuItemDates(items);
@@ -959,8 +987,29 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               supplyTaxCost: (i as any).supplyTaxCost,
             };
           });
+          const mergedByItemId = new Map<string, any>();
+          for (const row of normalizedItems) {
+            const key = String(row.itemId || '').trim();
+            if (!key) continue;
+            const prev = mergedByItemId.get(key);
+            if (!prev) {
+              mergedByItemId.set(key, { ...row });
+              continue;
+            }
+            prev.quantity = Number(prev.quantity || 0) + Number(row.quantity || 0);
+            if (!prev.harvestDate && row.harvestDate) prev.harvestDate = row.harvestDate;
+            if (!prev.expiryDate && row.expiryDate) prev.expiryDate = row.expiryDate;
+            const prevTransport = Number(prev.transportCost || 0);
+            const rowTransport = Number(row.transportCost || 0);
+            if (prevTransport === 0 && rowTransport !== 0) prev.transportCost = row.transportCost;
+            const prevTax = Number(prev.supplyTaxCost || 0);
+            const rowTax = Number(row.supplyTaxCost || 0);
+            if (prevTax === 0 && rowTax !== 0) prev.supplyTaxCost = row.supplyTaxCost;
+          }
+          const mergedItems = Array.from(mergedByItemId.values()).filter((r: any) => Number(r?.quantity || 0) > 0);
+          if (mergedItems.length === 0) throw new Error('كمية الاستلام غير صالحة.');
           const buildIdempotencyPayload = () => {
-            const parts = normalizedItems
+            const parts = mergedItems
               .map((x: any) => [
                 String(x.itemId || ''),
                 String(Number(x.quantity || 0)),
@@ -988,7 +1037,7 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             return raw.length > 180 ? raw.slice(0, 180) : raw;
           };
           const idempotencyKey = await computeIdempotencyKey();
-          const normalizedItemsWithIdempotency = normalizedItems.map((x: any) => ({ ...x, idempotencyKey }));
+          const normalizedItemsWithIdempotency = mergedItems.map((x: any) => ({ ...x, idempotencyKey }));
           const { error: whErr } = await supabase.rpc('_resolve_default_warehouse_id');
           if (whErr) throw whErr;
           const args = {

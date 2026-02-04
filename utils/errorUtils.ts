@@ -23,6 +23,9 @@ export const isAbortLikeError = (error: unknown): boolean => {
 export const localizeError = (message: string): string => {
   const raw = message.trim().toLowerCase();
   if (!raw) return 'فشل العملية.';
+  if (raw.includes('no api key found in request') || raw.includes('no `apikey` request header') || raw.includes('apikey request header')) {
+    return 'مفتاح Supabase (apikey) غير موجود في الطلب. تأكد من ضبط VITE_SUPABASE_ANON_KEY في بيئة البناء ثم أعد النشر.';
+  }
   if (raw === 'food_sale_requires_batch') return 'لا يمكن بيع صنف غذائي بدون تحديد دفعة.';
   if (raw === 'sale_out_requires_batch') return 'لا يمكن تنفيذ الخصم بدون تحديد دفعة.';
   if (raw === 'no_valid_batch') return 'NO_VALID_BATCH';
@@ -137,7 +140,25 @@ export const localizeSupabaseError = (error: unknown): string => {
   if (isAbortLikeError(error)) return '';
   const anyErr = error as any;
   const code = typeof anyErr?.code === 'string' ? anyErr.code : '';
-  if (code === '23505') return 'البيانات المدخلة موجودة مسبقًا.';
+  if (code === '23505') {
+    const msg = typeof anyErr?.message === 'string' ? anyErr.message : '';
+    const details = typeof anyErr?.details === 'string' ? anyErr.details : '';
+    const hint = typeof anyErr?.hint === 'string' ? anyErr.hint : '';
+    const combined = `${msg}\n${details}\n${hint}`.toLowerCase();
+    if (combined.includes('uq_purchase_receipts_idempotency') || combined.includes('purchase_receipts') && combined.includes('idempotency')) {
+      return 'تم تنفيذ هذا الاستلام مسبقًا (طلب مكرر).';
+    }
+    if (
+      combined.includes('purchase_receipt_items') ||
+      combined.includes('receipt_id') && combined.includes('item_id') && combined.includes('purchase')
+    ) {
+      return 'تم إرسال نفس الصنف أكثر من مرة ضمن نفس الاستلام. حدّث الصفحة ثم أعد المحاولة.';
+    }
+    if (combined.includes('approval_requests')) {
+      return 'يوجد طلب موافقة مطابق سابقًا. افتح قسم الموافقات وتحقق من الحالة.';
+    }
+    return 'البيانات المدخلة موجودة مسبقًا.';
+  }
   const message = resolveErrorMessage(error);
   return localizeError(message || '');
 };
