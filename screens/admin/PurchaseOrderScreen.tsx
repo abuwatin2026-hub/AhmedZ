@@ -255,9 +255,21 @@ const PurchaseOrderScreen: React.FC = () => {
     };
 
     const getItemById = (id: string) => activeMenuItems.find(i => i.id === id);
+    const isFoodCategoryValue = (categoryValue: unknown) => {
+        const raw = String(categoryValue || '').trim();
+        if (!raw) return false;
+        const compact = raw.toLowerCase().replace(/\s+/g, '').replace(/[-_]/g, '');
+        if (compact === 'food') return true;
+        if (compact === 'موادغذائية') return true;
+        if (raw.includes('غذ')) return true;
+        if (raw.toLowerCase().includes('food')) return true;
+        return false;
+    };
     const isFoodItem = (itemId: string) => {
         const item = getItemById(itemId);
-        return String((item as any)?.category || '') === 'food';
+        const flagged = Boolean((item as any)?.isFood ?? (item as any)?.is_food ?? (item as any)?.expiryRequired ?? (item as any)?.expiry_required);
+        if (flagged) return true;
+        return isFoodCategoryValue((item as any)?.category);
     };
     const getQuantityStep = (itemId: string) => {
         const unit = getItemById(itemId)?.unitType;
@@ -512,7 +524,7 @@ const PurchaseOrderScreen: React.FC = () => {
             const received = Number(it.receivedQuantity || 0);
             const remaining = Math.max(0, ordered - received);
             const base = getItemById(it.itemId);
-            const isFood = String((base as any)?.category || '') === 'food';
+            const isFood = isFoodItem(it.itemId);
             return {
                 itemId: it.itemId,
                 itemName: it.itemName || it.itemId,
@@ -583,21 +595,23 @@ const PurchaseOrderScreen: React.FC = () => {
             for (const r of normalizedRows) {
                 if (Number(r.receiveNow) <= 0) continue;
                 const item = getItemById(r.itemId);
-                const isFood = Boolean((item as any)?.isFood ?? (item as any)?.is_food ?? (item as any)?.expiryRequired ?? (item as any)?.expiry_required) || (item && item.category === 'food');
+                const isFood = isFoodItem(r.itemId);
                 if (item && isFood) {
                     const exp = typeof r.expiryDate === 'string' ? r.expiryDate.trim() : '';
                     if (!exp) {
-                        alert(`يرجى إدخال تاريخ الانتهاء للصنف الغذائي: ${item.name.ar}`);
+                        const nm = String(item?.name?.ar || item?.name?.en || r.itemName || r.itemId);
+                        alert(`يرجى إدخال تاريخ الانتهاء للصنف الغذائي: ${nm}`);
                         return;
                     }
                     if (!isIsoDate(exp)) {
-                        alert(`صيغة تاريخ الانتهاء غير صحيحة (YYYY-MM-DD) للصنف: ${item.name.ar}`);
+                        const nm = String(item?.name?.ar || item?.name?.en || r.itemName || r.itemId);
+                        alert(`صيغة تاريخ الانتهاء غير صحيحة (YYYY-MM-DD) للصنف: ${nm}`);
                         return;
                     }
                 }
                 const hv = typeof r.productionDate === 'string' ? r.productionDate.trim() : '';
                 if (hv && !isIsoDate(hv)) {
-                    const nm = item ? item.name.ar : r.itemName || r.itemId;
+                    const nm = item ? (item.name?.ar || item.name?.en || r.itemName || r.itemId) : (r.itemName || r.itemId);
                     alert(`صيغة تاريخ الإنتاج غير صحيحة (YYYY-MM-DD) للصنف: ${nm}`);
                     return;
                 }
