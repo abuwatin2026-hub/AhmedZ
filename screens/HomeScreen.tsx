@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useMenu } from '../contexts/MenuContext';
 import MenuItemCard from '../components/MenuItemCard';
 import FeaturedMenuItemCard from '../components/FeaturedMenuItemCard';
@@ -13,6 +13,8 @@ import OrderAgainItemCardSkeleton from '../components/OrderAgainItemCardSkeleton
 import AdCarousel from '../components/AdCarousel';
 import YemeniPattern from '../components/YemeniPattern';
 import { usePromotions } from '../contexts/PromotionContext';
+import { useSettings } from '../contexts/SettingsContext';
+import { getBaseCurrencyCode, getOperationalFxRate } from '../supabase';
 // removed unused import
 
 const normalizeCategoryKey = (value: unknown) => {
@@ -28,8 +30,78 @@ const HomeScreen: React.FC = () => {
   const { isAuthenticated } = useUserAuth();
   const { categories: categoryDefs, getCategoryLabel } = useItemMeta();
   const { activePromotions } = usePromotions();
+  const { settings } = useSettings();
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const [baseCode, setBaseCode] = useState<string>('');
+  const [displayCurrency, setDisplayCurrency] = useState<string>(() => {
+    try {
+      return String(localStorage.getItem('AZTA_CUSTOMER_DISPLAY_CURRENCY') || '').trim().toUpperCase();
+    } catch {
+      return '';
+    }
+  });
+  const [displayFxRate, setDisplayFxRate] = useState<number | null>(null);
+
+  useEffect(() => {
+    void getBaseCurrencyCode().then((c) => {
+      if (!c) return;
+      setBaseCode(String(c || '').trim().toUpperCase());
+    });
+  }, []);
+
+  const operationalCurrencies = useMemo<string[]>(() => {
+    const rawOperationalCurrencies = (settings as { operationalCurrencies?: unknown } | null | undefined)?.operationalCurrencies;
+    const fromSettings = Array.isArray(rawOperationalCurrencies) ? rawOperationalCurrencies : [];
+    const normalized = fromSettings
+      .map((c) => String(c ?? '').trim().toUpperCase())
+      .filter((c) => c.length > 0);
+    const unique = Array.from(new Set(normalized));
+    const base = String(baseCode || '').trim().toUpperCase();
+    const withBase = base && !unique.includes(base) ? [...unique, base] : unique;
+    return withBase.length > 0 ? withBase : (base ? [base] : []);
+  }, [baseCode, settings]);
+
+  useEffect(() => {
+    const current = String(displayCurrency || '').trim().toUpperCase();
+    if (current && operationalCurrencies.includes(current)) return;
+    const next = operationalCurrencies[0] || '';
+    if (!next) return;
+    setDisplayCurrency(next);
+    try {
+      localStorage.setItem('AZTA_CUSTOMER_DISPLAY_CURRENCY', next);
+    } catch {
+    }
+  }, [displayCurrency, operationalCurrencies]);
+
+  useEffect(() => {
+    const code = String(displayCurrency || '').trim().toUpperCase();
+    const base = String(baseCode || '').trim().toUpperCase();
+    if (!code || !base) return;
+    let cancelled = false;
+    const run = async () => {
+      if (code === base) {
+        if (!cancelled) setDisplayFxRate(1);
+        return;
+      }
+      const rate = await getOperationalFxRate(code);
+      if (cancelled) return;
+      if (!rate) {
+        setDisplayCurrency(base);
+        setDisplayFxRate(1);
+        try {
+          localStorage.setItem('AZTA_CUSTOMER_DISPLAY_CURRENCY', base);
+        } catch {
+        }
+        return;
+      }
+      setDisplayFxRate(rate);
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [baseCode, displayCurrency]);
 
   const activeMenuItems = useMemo(() => {
     return menuItems.filter(item => item.status !== 'archived');
@@ -179,7 +251,30 @@ const HomeScreen: React.FC = () => {
           </div>
 
           <div className="space-y-4 relative z-10">
-            <SearchBar searchTerm={searchTerm} onSearchChange={setSearchTerm} />
+            <div className="flex flex-col gap-3">
+              <SearchBar searchTerm={searchTerm} onSearchChange={setSearchTerm} />
+              {operationalCurrencies.length > 1 && (
+                <div className="flex items-center justify-end gap-2">
+                  <span className="text-xs font-semibold text-gray-600 dark:text-gray-300">العملة</span>
+                  <select
+                    value={displayCurrency}
+                    onChange={(e) => {
+                      const next = String(e.target.value || '').trim().toUpperCase();
+                      setDisplayCurrency(next);
+                      try {
+                        localStorage.setItem('AZTA_CUSTOMER_DISPLAY_CURRENCY', next);
+                      } catch {
+                      }
+                    }}
+                    className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-xs font-mono"
+                  >
+                    {operationalCurrencies.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
             <div className="sm:overflow-visible overflow-x-auto no-scrollbar mx-0">
               <div className="flex justify-start sm:justify-center gap-2 sm:gap-3 pt-2 px-1">
                 {categories.map((category) => (
@@ -214,7 +309,13 @@ const HomeScreen: React.FC = () => {
               Array.from({ length: 4 }).map((_, index) => <OrderAgainItemCardSkeleton key={index} />)
             ) : (
               orderAgainItems.map(item => (
-                <OrderAgainItemCard key={`${item.id}-reorder`} item={item} />
+                <OrderAgainItemCard
+                  key={`${item.id}-reorder`}
+                  item={item}
+                  baseCurrencyCode={baseCode}
+                  displayCurrencyCode={displayCurrency}
+                  displayFxRate={displayFxRate}
+                />
               ))
             )}
           </div>
@@ -244,7 +345,13 @@ const HomeScreen: React.FC = () => {
                 </>
               ) : (
                 featuredItems.map(item => (
-                  <FeaturedMenuItemCard key={item.id} item={item} />
+                  <FeaturedMenuItemCard
+                    key={item.id}
+                    item={item}
+                    baseCurrencyCode={baseCode}
+                    displayCurrencyCode={displayCurrency}
+                    displayFxRate={displayFxRate}
+                  />
                 ))
               )}
             </div>
@@ -273,7 +380,13 @@ const HomeScreen: React.FC = () => {
               Array.from({ length: 8 }).map((_, index) => <MenuItemCardSkeleton key={index} />)
             ) : (
               filteredItems.map((item) => (
-                <MenuItemCard key={item.id} item={item} />
+                <MenuItemCard
+                  key={item.id}
+                  item={item}
+                  baseCurrencyCode={baseCode}
+                  displayCurrencyCode={displayCurrency}
+                  displayFxRate={displayFxRate}
+                />
               ))
             )}
           </div>

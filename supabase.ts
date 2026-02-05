@@ -445,6 +445,9 @@ export const reloadPostgrestSchema = async (): Promise<boolean> => {
 
 let cachedBaseCurrencyCode: string | null = null;
 let baseCurrencyCodePromise: Promise<string | null> | null = null;
+const OP_FX_TTL_MS = 5 * 60_000;
+let opFxCache: Map<string, { at: number; value: number | null }> | null = null;
+let opFxInflight: Map<string, Promise<number | null>> | null = null;
 
 export const invalidateBaseCurrencyCodeCache = (): void => {
   cachedBaseCurrencyCode = null;
@@ -490,4 +493,70 @@ export const getBaseCurrencyCode = async (): Promise<string | null> => {
     });
 
   return baseCurrencyCodePromise;
+};
+
+export const getOperationalFxRate = async (currencyCode: string, rateDate?: string | Date): Promise<number | null> => {
+  const code = String(currencyCode || '').trim().toUpperCase();
+  if (!code) return null;
+  const supabase = getSupabaseClient();
+  if (!supabase) return null;
+
+  const dateStr = (() => {
+    if (typeof rateDate === 'string' && rateDate.trim()) return rateDate.trim().slice(0, 10);
+    if (rateDate instanceof Date && !Number.isNaN(rateDate.getTime())) return rateDate.toISOString().slice(0, 10);
+    return new Date().toISOString().slice(0, 10);
+  })();
+
+  const cacheKey = `${code}:${dateStr}:operational`;
+  if (!opFxCache) opFxCache = new Map();
+  if (!opFxInflight) opFxInflight = new Map();
+  const cached = opFxCache.get(cacheKey);
+  if (cached && Date.now() - cached.at <= OP_FX_TTL_MS) return cached.value;
+  const inflight = opFxInflight.get(cacheKey);
+  if (inflight) return inflight;
+
+  const p = (async () => {
+    const base = (await getBaseCurrencyCode()) || '';
+    if (base && code === base) return 1;
+
+    try {
+      const { data, error } = await supabase.rpc('get_fx_rate', {
+        p_currency: code,
+        p_date: dateStr,
+        p_rate_type: 'operational',
+      } as any);
+      if (!error) {
+        const n = Number(data);
+        if (Number.isFinite(n) && n > 0) return n;
+        if (data == null) return null;
+      }
+    } catch {
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('fx_rates')
+        .select('rate,rate_date')
+        .eq('currency_code', code)
+        .eq('rate_type', 'operational')
+        .lte('rate_date', dateStr)
+        .order('rate_date', { ascending: false })
+        .limit(1);
+      if (error) return null;
+      const n = Number((Array.isArray(data) && data.length > 0 ? (data[0] as any)?.rate : null));
+      return Number.isFinite(n) && n > 0 ? n : null;
+    } catch {
+      return null;
+    }
+  })()
+    .then((value) => {
+      opFxCache!.set(cacheKey, { at: Date.now(), value });
+      return value;
+    })
+    .finally(() => {
+      opFxInflight!.delete(cacheKey);
+    });
+
+  opFxInflight.set(cacheKey, p);
+  return p;
 };

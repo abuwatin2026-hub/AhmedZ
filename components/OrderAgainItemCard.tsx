@@ -1,26 +1,27 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { CartItem } from '../types';
 import { useCart } from '../contexts/CartContext';
 import { CheckIcon, PlusIcon } from './icons';
 import CurrencyDualAmount from './common/CurrencyDualAmount';
-import { getBaseCurrencyCode } from '../supabase';
 
 interface OrderAgainItemCardProps {
   item: CartItem;
+  baseCurrencyCode?: string;
+  displayCurrencyCode?: string;
+  displayFxRate?: number | null;
 }
 
-const OrderAgainItemCard: React.FC<OrderAgainItemCardProps> = ({ item }) => {
+const OrderAgainItemCard: React.FC<OrderAgainItemCardProps> = ({ item, baseCurrencyCode, displayCurrencyCode, displayFxRate }) => {
   const { addToCart } = useCart();
   const [isAdded, setIsAdded] = useState(false);
-  const [baseCode, setBaseCode] = useState('');
-
-  useEffect(() => {
-    void getBaseCurrencyCode().then((c) => {
-      if (!c) return;
-      setBaseCode(c);
-    });
-  }, []);
+  const baseCode = String(baseCurrencyCode || '').trim().toUpperCase();
+  const displayCode = String(displayCurrencyCode || '').trim().toUpperCase();
+  const fxRate = typeof displayFxRate === 'number' && Number.isFinite(displayFxRate) ? displayFxRate : null;
+  const basePrice = Number(item.price || 0);
+  const useFx = Boolean(displayCode && baseCode && displayCode !== baseCode && fxRate && fxRate > 0);
+  const shownAmount = useFx ? (basePrice / (fxRate as number)) : basePrice;
+  const shownCurrency = useFx ? displayCode : (baseCode || displayCode || '—');
 
   const handleQuickAdd = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -56,7 +57,13 @@ const OrderAgainItemCard: React.FC<OrderAgainItemCardProps> = ({ item }) => {
           </Link>
           <div className="flex justify-between items-center mt-2">
             <span className="text-md font-bold bg-red-gradient bg-clip-text text-transparent">
-              <CurrencyDualAmount amount={Number(item.price || 0)} currencyCode={baseCode} compact />
+              <CurrencyDualAmount
+                amount={shownAmount}
+                currencyCode={shownCurrency}
+                baseAmount={useFx ? basePrice : undefined}
+                fxRate={useFx ? (fxRate as number) : undefined}
+                compact
+              />
             </span>
             <button
               onClick={handleQuickAdd}

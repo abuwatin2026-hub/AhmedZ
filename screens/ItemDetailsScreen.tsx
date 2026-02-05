@@ -10,7 +10,8 @@ import StarRating from '../components/StarRating';
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
 import { BackArrowIcon, MinusIcon, PlusIcon } from '../components/icons';
 import CurrencyDualAmount from '../components/common/CurrencyDualAmount';
-import { getBaseCurrencyCode } from '../supabase';
+import { useSettings } from '../contexts/SettingsContext';
+import { getBaseCurrencyCode, getOperationalFxRate } from '../supabase';
 
 const ItemDetailsScreen: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -19,7 +20,16 @@ const ItemDetailsScreen: React.FC = () => {
   const { getReviewsByItemId } = useReviews();
   const { getStockByItemId } = useStock();
   const { getUnitLabel, getFreshnessLabel, getFreshnessTone, isWeightBasedUnit } = useItemMeta();
+  const { settings } = useSettings();
   const [baseCode, setBaseCode] = useState('');
+  const [displayCurrency, setDisplayCurrency] = useState<string>(() => {
+    try {
+      return String(localStorage.getItem('AZTA_CUSTOMER_DISPLAY_CURRENCY') || '').trim().toUpperCase();
+    } catch {
+      return '';
+    }
+  });
+  const [displayFxRate, setDisplayFxRate] = useState<number | null>(null);
   const item = getMenuItemById(id || '');
   const reviews = useMemo(() => getReviewsByItemId(id || ''), [id, getReviewsByItemId]);
   const stock = getStockByItemId(id || '');
@@ -56,6 +66,59 @@ const ItemDetailsScreen: React.FC = () => {
 
     setSelectedAddons(initialAddons);
   }, [id, item]);
+
+  const operationalCurrencies = useMemo<string[]>(() => {
+    const rawOperationalCurrencies = (settings as { operationalCurrencies?: unknown } | null | undefined)?.operationalCurrencies;
+    const fromSettings = Array.isArray(rawOperationalCurrencies) ? rawOperationalCurrencies : [];
+    const normalized = fromSettings
+      .map((c) => String(c ?? '').trim().toUpperCase())
+      .filter((c) => c.length > 0);
+    const unique = Array.from(new Set(normalized));
+    const base = String(baseCode || '').trim().toUpperCase();
+    const withBase = base && !unique.includes(base) ? [...unique, base] : unique;
+    return withBase.length > 0 ? withBase : (base ? [base] : []);
+  }, [baseCode, settings]);
+
+  useEffect(() => {
+    const current = String(displayCurrency || '').trim().toUpperCase();
+    if (current && operationalCurrencies.includes(current)) return;
+    const next = operationalCurrencies[0] || '';
+    if (!next) return;
+    setDisplayCurrency(next);
+    try {
+      localStorage.setItem('AZTA_CUSTOMER_DISPLAY_CURRENCY', next);
+    } catch {
+    }
+  }, [displayCurrency, operationalCurrencies]);
+
+  useEffect(() => {
+    const code = String(displayCurrency || '').trim().toUpperCase();
+    const base = String(baseCode || '').trim().toUpperCase();
+    if (!code || !base) return;
+    let cancelled = false;
+    const run = async () => {
+      if (code === base) {
+        if (!cancelled) setDisplayFxRate(1);
+        return;
+      }
+      const rate = await getOperationalFxRate(code);
+      if (cancelled) return;
+      if (!rate) {
+        setDisplayCurrency(base);
+        setDisplayFxRate(1);
+        try {
+          localStorage.setItem('AZTA_CUSTOMER_DISPLAY_CURRENCY', base);
+        } catch {
+        }
+        return;
+      }
+      setDisplayFxRate(rate);
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [baseCode, displayCurrency]);
 
   const { defaultIngredients, extras } = useMemo(() => {
     const allAddons = Array.isArray(item?.addons) ? item.addons : [];
@@ -157,7 +220,12 @@ const ItemDetailsScreen: React.FC = () => {
   // Safe accessors
   const displayName = item.name?.['ar'] || item.name?.['en'] || 'Unknown Item';
   const displayDesc = item.description?.['ar'] || item.description?.['en'] || '';
-  const displayPrice = Number(item.price || 0);
+  const baseItemPrice = Number(item.price || 0);
+  const fxBase = String(baseCode || '').trim().toUpperCase();
+  const fxCode = String(displayCurrency || '').trim().toUpperCase();
+  const fxRate = typeof displayFxRate === 'number' && Number.isFinite(displayFxRate) ? displayFxRate : null;
+  const useFx = Boolean(fxCode && fxBase && fxCode !== fxBase && fxRate && fxRate > 0);
+  const displayPrice = useFx ? (baseItemPrice / (fxRate as number)) : baseItemPrice;
   const ratingAvg = item.rating?.average || 0;
   const ratingCount = item.rating?.count || 0;
 
@@ -200,13 +268,40 @@ const ItemDetailsScreen: React.FC = () => {
 
             <div className="my-4">
               <p className="text-2xl font-bold text-gold-500">
-                <CurrencyDualAmount amount={displayPrice} currencyCode={baseCode} compact />
+                <CurrencyDualAmount
+                  amount={displayPrice}
+                  currencyCode={useFx ? fxCode : fxBase}
+                  baseAmount={useFx ? baseItemPrice : undefined}
+                  fxRate={useFx ? (fxRate as number) : undefined}
+                  compact
+                />
                 {item.unitType && (
                   <span className="text-base text-gray-500 dark:text-gray-400 ml-2">
                     {`/ ${getUnitLabel(item.unitType, 'ar')}`}
                   </span>
                 )}
               </p>
+              {operationalCurrencies.length > 1 && (
+                <div className="mt-2 flex items-center gap-2">
+                  <span className="text-xs font-semibold text-gray-600 dark:text-gray-300">العملة</span>
+                  <select
+                    value={displayCurrency}
+                    onChange={(e) => {
+                      const next = String(e.target.value || '').trim().toUpperCase();
+                      setDisplayCurrency(next);
+                      try {
+                        localStorage.setItem('AZTA_CUSTOMER_DISPLAY_CURRENCY', next);
+                      } catch {
+                      }
+                    }}
+                    className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-xs font-mono"
+                  >
+                    {operationalCurrencies.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
 
             {isInStock && availableQuantity <= 10 && (
@@ -254,7 +349,13 @@ const ItemDetailsScreen: React.FC = () => {
                         <span className="font-semibold text-gray-800 dark:text-gray-200">{addon.name?.['ar'] || addon.name?.ar}</span>
                         {addon.size && <span className="text-xs text-gray-500 dark:text-gray-400 mx-2">{addon.size['ar']}</span>}
                         <span className="block text-sm text-gold-500">
-                          + <CurrencyDualAmount amount={Number(addon.price || 0)} currencyCode={baseCode} compact />
+                          + <CurrencyDualAmount
+                            amount={useFx ? (Number(addon.price || 0) / (fxRate as number)) : Number(addon.price || 0)}
+                            currencyCode={useFx ? fxCode : fxBase}
+                            baseAmount={useFx ? Number(addon.price || 0) : undefined}
+                            fxRate={useFx ? (fxRate as number) : undefined}
+                            compact
+                          />
                         </span>
                       </div>
                       <div className="flex items-center border border-gray-300 dark:border-gray-600 rounded-lg">
@@ -300,7 +401,13 @@ const ItemDetailsScreen: React.FC = () => {
               <div>
                 <span className="text-gray-600 dark:text-gray-400">{'الإجمالي'}</span>
                 <p className="text-3xl font-bold text-gray-900 dark:text-white">
-                  <CurrencyDualAmount amount={Number(totalPrice) || 0} currencyCode={baseCode} compact />
+                  <CurrencyDualAmount
+                    amount={useFx ? ((Number(totalPrice) || 0) / (fxRate as number)) : (Number(totalPrice) || 0)}
+                    currencyCode={useFx ? fxCode : fxBase}
+                    baseAmount={useFx ? (Number(totalPrice) || 0) : undefined}
+                    fxRate={useFx ? (fxRate as number) : undefined}
+                    compact
+                  />
                 </p>
               </div>
               <button

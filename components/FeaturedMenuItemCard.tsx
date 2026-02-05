@@ -1,22 +1,23 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { Link } from 'react-router-dom';
 import type { MenuItem } from '../types';
 import CurrencyDualAmount from './common/CurrencyDualAmount';
-import { getBaseCurrencyCode } from '../supabase';
 
 interface FeaturedMenuItemCardProps {
   item: MenuItem;
+  baseCurrencyCode?: string;
+  displayCurrencyCode?: string;
+  displayFxRate?: number | null;
 }
 
-const FeaturedMenuItemCard: React.FC<FeaturedMenuItemCardProps> = ({ item }) => {
-  const [baseCode, setBaseCode] = useState('');
-
-  useEffect(() => {
-    void getBaseCurrencyCode().then((c) => {
-      if (!c) return;
-      setBaseCode(c);
-    });
-  }, []);
+const FeaturedMenuItemCard: React.FC<FeaturedMenuItemCardProps> = ({ item, baseCurrencyCode, displayCurrencyCode, displayFxRate }) => {
+  const baseCode = String(baseCurrencyCode || '').trim().toUpperCase();
+  const displayCode = String(displayCurrencyCode || '').trim().toUpperCase();
+  const fxRate = typeof displayFxRate === 'number' && Number.isFinite(displayFxRate) ? displayFxRate : null;
+  const basePrice = Number(item.price || 0);
+  const useFx = Boolean(displayCode && baseCode && displayCode !== baseCode && fxRate && fxRate > 0);
+  const shownAmount = useFx ? (basePrice / (fxRate as number)) : basePrice;
+  const shownCurrency = useFx ? displayCode : (baseCode || displayCode || '—');
 
   return (
     <Link to={`/item/${item.id}`} className="block group">
@@ -43,7 +44,13 @@ const FeaturedMenuItemCard: React.FC<FeaturedMenuItemCardProps> = ({ item }) => 
           </p>
           <div className="mt-2">
             <span className="text-lg font-bold bg-red-gradient bg-clip-text text-transparent">
-              <CurrencyDualAmount amount={Number(item.price || 0)} currencyCode={baseCode} compact />
+              <CurrencyDualAmount
+                amount={shownAmount}
+                currencyCode={shownCurrency}
+                baseAmount={useFx ? basePrice : undefined}
+                fxRate={useFx ? (fxRate as number) : undefined}
+                compact
+              />
             </span>
           </div>
         </div>
