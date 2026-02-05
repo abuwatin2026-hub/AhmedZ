@@ -3061,7 +3061,99 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         }
         if (confirmed.status !== 'delivered') {
           const st = confirmed.status || 'غير معروفة';
-          throw new Error(`لم يتم تحديث حالة الطلب على الخادم (الحالة الحالية: ${st}).`);
+          const callDeliveryRpc = async (mode: 'wrapper' | 'direct4') => {
+            if (isWholesaleCustomer) {
+              if (mode === 'direct4') {
+                const { error } = await supabase.rpc('confirm_order_delivery_with_credit', {
+                  p_order_id: updated.id,
+                  p_items: payloadItems,
+                  p_updated_data: updated,
+                  p_warehouse_id: warehouseId,
+                });
+                return error;
+              }
+              const { error } = await supabase.rpc('confirm_order_delivery_with_credit', {
+                p_payload: {
+                  p_order_id: updated.id,
+                  p_items: payloadItems,
+                  p_updated_data: updated,
+                  p_warehouse_id: warehouseId,
+                },
+              });
+              return error;
+            }
+            if (mode === 'direct4') {
+              const { error } = await supabase.rpc('confirm_order_delivery', {
+                p_order_id: updated.id,
+                p_items: payloadItems,
+                p_updated_data: updated,
+                p_warehouse_id: warehouseId,
+              });
+              return error;
+            }
+            const { error } = await supabase.rpc('confirm_order_delivery', {
+              p_payload: {
+                p_order_id: updated.id,
+                p_items: payloadItems,
+                p_updated_data: updated,
+                p_warehouse_id: warehouseId,
+              },
+            });
+            return error;
+          };
+
+          const modeRef = isWholesaleCustomer ? confirmDeliveryWithCreditRpcModeRef : confirmDeliveryRpcModeRef;
+          const preferredMode = modeRef.current || 'wrapper';
+          const alternateMode: 'wrapper' | 'direct4' = preferredMode === 'wrapper' ? 'direct4' : 'wrapper';
+
+          let retryErr = await callDeliveryRpc(alternateMode);
+          if (retryErr && isRpcNotFoundError(retryErr)) {
+            const reloaded = await reloadPostgrestSchema();
+            if (reloaded) retryErr = await callDeliveryRpc(alternateMode);
+          }
+          if (retryErr && isRpcNotFoundError(retryErr)) {
+            retryErr = await callDeliveryRpc(preferredMode);
+            if (retryErr && isRpcNotFoundError(retryErr)) {
+              const reloaded = await reloadPostgrestSchema();
+              if (reloaded) retryErr = await callDeliveryRpc(preferredMode);
+            }
+          }
+          if (retryErr) {
+            throw new Error(localizeSupabaseError(retryErr));
+          }
+
+          for (let i = 0; i < 3; i++) {
+            confirmed = await readBack(i);
+            if (confirmed && confirmed.status === 'delivered') break;
+          }
+          if (confirmed && confirmed.status === 'delivered') {
+            deliveredSnapshot = ({ ...(confirmed.data || {}), id: updated.id, status: 'delivered' } as any) as Order;
+          } else {
+            let hasSaleOut: boolean | undefined;
+            try {
+              const { data: mv, error: mvErr } = await supabase
+                .from('inventory_movements')
+                .select('id')
+                .eq('reference_table', 'orders')
+                .eq('reference_id', updated.id)
+                .eq('movement_type', 'sale_out')
+                .eq('warehouse_id', warehouseId)
+                .limit(1);
+              if (!mvErr) {
+                hasSaleOut = Array.isArray(mv) && mv.length > 0;
+              }
+            } catch {
+            }
+
+            const saleOutHint =
+              typeof hasSaleOut === 'boolean'
+                ? hasSaleOut
+                  ? 'تم رصد حركة مخزون sale_out للطلب، لكن الحالة لم تُثبت.'
+                  : 'لم يتم رصد حركة مخزون sale_out للطلب؛ غالباً فشل خصم المخزون أو تم منع التحديث بواسطة Trigger.'
+                : 'تعذر التحقق من حركة المخزون لهذا الطلب.';
+
+            throw new Error(`لم يتم تحديث حالة الطلب على الخادم (الحالة الحالية: ${st}). ${saleOutHint}`);
+          }
         }
         deliveredSnapshot = ({ ...(confirmed.data || {}), id: updated.id, status: 'delivered' } as any) as Order;
       }
