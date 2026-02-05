@@ -680,7 +680,10 @@ const ManageOrdersScreen: React.FC = () => {
             await updateOrderStatus(orderId, newStatus);
             showNotification(`تم تحديث الطلب #${orderId.slice(-6).toUpperCase()} إلى "${statusTranslations[newStatus] || newStatus}"`, 'success');
         } catch (error) {
-            showNotification(localizeSupabaseError(error), 'error');
+            const localized = localizeSupabaseError(error);
+            const raw = error instanceof Error ? error.message : '';
+            const message = localized || raw || 'تعذر تنفيذ العملية. أعد المحاولة.';
+            showNotification(message, 'error');
         }
     };
 
@@ -747,7 +750,10 @@ const ManageOrdersScreen: React.FC = () => {
             setDeliverPinOrderId(null);
             setDeliveryPinInput('');
         } catch (error) {
-            showNotification(localizeSupabaseError(error), 'error');
+            const localized = localizeSupabaseError(error);
+            const raw = error instanceof Error ? error.message : '';
+            const message = localized || raw || 'تعذر تنفيذ العملية. أعد المحاولة.';
+            showNotification(message, 'error');
         } finally {
             setIsDeliverConfirming(false);
         }

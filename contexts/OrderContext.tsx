@@ -3035,6 +3035,12 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           console.error('Delivery confirmation failed:', rpcError);
           throw new Error(localizeSupabaseError(rpcError));
         }
+      } else {
+        const confirmed = await fetchRemoteOrderById(updated.id);
+        deliveredSnapshot = confirmed || updated;
+        if (!deliveredSnapshot || deliveredSnapshot.status !== 'delivered') {
+          throw new Error('تعذر تثبيت حالة "تم التسليم" على الخادم. أعد المحاولة.');
+        }
       }
     }
     if (willCancel) {
@@ -3063,7 +3069,10 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       throw new Error('تمت إضافة عملية التسليم إلى الطابور. سيتم الخصم والتأكيد عند توفر الاتصال.');
     }
     if (willDeliver) {
-      let updated = { ...existing, ...updates } as Order;
+      let updated = (deliveredSnapshot || ({ ...existing, ...updates } as Order)) as Order;
+      if (updated.status !== 'delivered') {
+        throw new Error('لا يمكن تسجيل الدفع قبل تثبيت حالة "تم التسليم".');
+      }
       // بعد تأكيد التسليم، نتعامل مع مسار non-COD لضمان عدم ضبط paidAt بدون تسجيل Payment بنجاح.
       if (!isCodDeliveryOrder) {
         try {
@@ -3154,6 +3163,9 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     if (!existing) return;
     if (!canMarkPaidOrder()) {
       throw new Error('ليس لديك صلاحية تأكيد الدفع/التحصيل.');
+    }
+    if (existing.status !== 'delivered') {
+      throw new Error('لا يمكن تأكيد التحصيل قبل تسليم الطلب.');
     }
 
     const nowIso = new Date().toISOString();
