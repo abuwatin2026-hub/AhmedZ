@@ -576,8 +576,18 @@ const ManageCustomersScreen: React.FC = () => {
                         if (!trimmed) return null;
                         try {
                           const parsed = JSON.parse(trimmed);
-                          const msg = parsed?.error || parsed?.message;
-                          return typeof msg === 'string' ? msg : trimmed;
+                          const parsedError = parsed?.error;
+                          const parsedMessage = parsed?.message;
+                          const parsedDetails = parsed?.details;
+                          if (typeof parsedError === 'string' && typeof parsedDetails === 'string') {
+                            if (parsedError === 'insert_failed') return parsedDetails;
+                            if (parsedError === 'create_auth_user_failed') return parsedDetails;
+                            if (parsedError === 'duplicate_check_failed') return parsedDetails;
+                          }
+                          if (typeof parsedMessage === 'string') return parsedMessage;
+                          if (typeof parsedError === 'string') return parsedError;
+                          if (typeof parsedDetails === 'string') return parsedDetails;
+                          return trimmed;
                         } catch {
                           return trimmed;
                         }
@@ -594,8 +604,18 @@ const ManageCustomersScreen: React.FC = () => {
                       if (typeof maybeContext.json === 'function') {
                         try {
                           const body = await maybeContext.json();
-                          const serverMessage = body?.error || body?.message || body?.details;
-                          return typeof serverMessage === 'string' ? serverMessage : JSON.stringify(body);
+                          const bodyError = body?.error;
+                          const bodyMessage = body?.message;
+                          const bodyDetails = body?.details;
+                          if (typeof bodyError === 'string' && typeof bodyDetails === 'string') {
+                            if (bodyError === 'insert_failed') return bodyDetails;
+                            if (bodyError === 'create_auth_user_failed') return bodyDetails;
+                            if (bodyError === 'duplicate_check_failed') return bodyDetails;
+                          }
+                          if (typeof bodyMessage === 'string') return bodyMessage;
+                          if (typeof bodyError === 'string') return bodyError;
+                          if (typeof bodyDetails === 'string') return bodyDetails;
+                          return JSON.stringify(body);
                         } catch {
                         }
                       }
