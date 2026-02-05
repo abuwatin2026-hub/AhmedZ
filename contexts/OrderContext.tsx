@@ -328,16 +328,16 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const rpcConfirmOrderDeliveryWithCredit = async (supabase: any, input: { orderId: string; items: any[]; updatedData: any; warehouseId: string }) => {
     const tryDirect4 = async () => {
-      const { error } = await supabase.rpc('confirm_order_delivery_with_credit', {
+      const { data, error } = await supabase.rpc('confirm_order_delivery_with_credit', {
         p_order_id: input.orderId,
         p_items: input.items,
         p_updated_data: input.updatedData,
         p_warehouse_id: input.warehouseId,
       });
-      return error;
+      return { data, error };
     };
     const tryWrapper = async () => {
-      const { error } = await supabase.rpc('confirm_order_delivery_with_credit', {
+      const { data, error } = await supabase.rpc('confirm_order_delivery_with_credit', {
         p_payload: {
           p_order_id: input.orderId,
           p_items: input.items,
@@ -345,70 +345,70 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           p_warehouse_id: input.warehouseId,
         }
       });
-      return error;
+      return { data, error };
     };
 
     const runByMode = async (mode: 'wrapper' | 'direct4') => (mode === 'wrapper' ? await tryWrapper() : await tryDirect4());
     const cached = confirmDeliveryWithCreditRpcModeRef.current;
     if (cached) {
-      const err = await runByMode(cached);
-      if (!err || !isRpcNotFoundError(err)) return err;
+      const res = await runByMode(cached);
+      if (!res.error || !isRpcNotFoundError(res.error)) return res;
       confirmDeliveryWithCreditRpcModeRef.current = null;
     }
 
     const strict = isRpcStrictMode();
     if (strict) {
-      let err = await tryWrapper();
-      if (err && isRpcNotFoundError(err)) {
+      let res = await tryWrapper();
+      if (res.error && isRpcNotFoundError(res.error)) {
         const reloaded = await reloadPostgrestSchema();
-        if (reloaded) err = await tryWrapper();
+        if (reloaded) res = await tryWrapper();
       }
-      if (!err || !isRpcNotFoundError(err)) {
+      if (!res.error || !isRpcNotFoundError(res.error)) {
         confirmDeliveryWithCreditRpcModeRef.current = 'wrapper';
         if (await isRpcWrappersAvailable()) markRpcStrictModeEnabled();
-        return err;
+        return res;
       }
-      return err;
+      return res;
     }
 
-    let err = await tryWrapper();
-    if (!err || !isRpcNotFoundError(err)) {
+    let res = await tryWrapper();
+    if (!res.error || !isRpcNotFoundError(res.error)) {
       confirmDeliveryWithCreditRpcModeRef.current = 'wrapper';
       if (await isRpcWrappersAvailable()) markRpcStrictModeEnabled();
-      return err;
+      return res;
     }
 
     {
       const reloaded = await reloadPostgrestSchema();
       if (reloaded) {
-        err = await tryWrapper();
-        if (!err || !isRpcNotFoundError(err)) {
+        res = await tryWrapper();
+        if (!res.error || !isRpcNotFoundError(res.error)) {
           confirmDeliveryWithCreditRpcModeRef.current = 'wrapper';
           if (await isRpcWrappersAvailable()) markRpcStrictModeEnabled();
-          return err;
+          return res;
         }
       }
     }
 
-    err = await tryDirect4();
-    if (!err || !isRpcNotFoundError(err)) {
+    res = await tryDirect4();
+    if (!res.error || !isRpcNotFoundError(res.error)) {
       confirmDeliveryWithCreditRpcModeRef.current = 'direct4';
     }
-    return err;
+    return res;
   };
 
   const rpcConfirmOrderDelivery = async (supabase: any, input: { orderId: string; items: any[]; updatedData: any; warehouseId: string }) => {
     const tryDirect4 = async () => {
-      const { error } = await supabase.rpc('confirm_order_delivery', {
+      const { data, error } = await supabase.rpc('confirm_order_delivery', {
         p_order_id: input.orderId,
         p_items: input.items,
         p_updated_data: input.updatedData,
         p_warehouse_id: input.warehouseId,
       });
-      return error;
+      return { data, error };
     };
     const tryWrapper = async () => {
-      const { error } = await supabase.rpc('confirm_order_delivery', {
+      const { data, error } = await supabase.rpc('confirm_order_delivery', {
         p_payload: {
           p_order_id: input.orderId,
           p_items: input.items,
@@ -416,56 +416,56 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           p_warehouse_id: input.warehouseId,
         }
       });
-      return error;
+      return { data, error };
     };
 
     const runByMode = async (mode: 'wrapper' | 'direct4') => (mode === 'wrapper' ? await tryWrapper() : await tryDirect4());
     const cached = confirmDeliveryRpcModeRef.current;
     if (cached) {
-      const err = await runByMode(cached);
-      if (!err || !isRpcNotFoundError(err)) return err;
+      const res = await runByMode(cached);
+      if (!res.error || !isRpcNotFoundError(res.error)) return res;
       confirmDeliveryRpcModeRef.current = null;
     }
 
     const strict = isRpcStrictMode();
     if (strict) {
-      let err = await tryWrapper();
-      if (err && isRpcNotFoundError(err)) {
+      let res = await tryWrapper();
+      if (res.error && isRpcNotFoundError(res.error)) {
         const reloaded = await reloadPostgrestSchema();
-        if (reloaded) err = await tryWrapper();
+        if (reloaded) res = await tryWrapper();
       }
-      if (!err || !isRpcNotFoundError(err)) {
+      if (!res.error || !isRpcNotFoundError(res.error)) {
         confirmDeliveryRpcModeRef.current = 'wrapper';
         if (await isRpcWrappersAvailable()) markRpcStrictModeEnabled();
-        return err;
+        return res;
       }
-      return err;
+      return res;
     }
 
-    let err = await tryWrapper();
-    if (!err || !isRpcNotFoundError(err)) {
+    let res = await tryWrapper();
+    if (!res.error || !isRpcNotFoundError(res.error)) {
       confirmDeliveryRpcModeRef.current = 'wrapper';
       if (await isRpcWrappersAvailable()) markRpcStrictModeEnabled();
-      return err;
+      return res;
     }
 
     {
       const reloaded = await reloadPostgrestSchema();
       if (reloaded) {
-        err = await tryWrapper();
-        if (!err || !isRpcNotFoundError(err)) {
+        res = await tryWrapper();
+        if (!res.error || !isRpcNotFoundError(res.error)) {
           confirmDeliveryRpcModeRef.current = 'wrapper';
           if (await isRpcWrappersAvailable()) markRpcStrictModeEnabled();
-          return err;
+          return res;
         }
       }
     }
 
-    err = await tryDirect4();
-    if (!err || !isRpcNotFoundError(err)) {
+    res = await tryDirect4();
+    if (!res.error || !isRpcNotFoundError(res.error)) {
       confirmDeliveryRpcModeRef.current = 'direct4';
     }
-    return err;
+    return res;
   };
 
   const resolveOrderAddress = useCallback(async (order: Order): Promise<Order> => {
@@ -1994,7 +1994,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       if (!supabase) throw new Error('Supabase غير مهيأ.');
       const sb2 = supabase!;
       if (canMarkPaidUi) {
-        const rpcError = await rpcConfirmOrderDeliveryWithCredit(sb2, {
+        const { error: rpcError } = await rpcConfirmOrderDeliveryWithCredit(sb2, {
           orderId: newOrder.id,
           items: payloadItems,
           updatedData: newOrder,
@@ -2667,7 +2667,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       throw new Error('لا يمكن إتمام الطلب: تأكد من الكمية/الوزن للأصناف.');
     }
     const updatedDelivered: Order = { ...existing, status: 'delivered', deliveredAt: nowIso, paidAt: nowIso, paymentMethod: payment.paymentMethod };
-    const rpcError = await rpcConfirmOrderDeliveryWithCredit(supabase, {
+    const { error: rpcError } = await rpcConfirmOrderDeliveryWithCredit(supabase, {
       orderId: existing.id,
       items: payloadItems,
       updatedData: updatedDelivered,
@@ -3004,7 +3004,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       } catch {
       }
 
-      const rpcError = isWholesaleCustomer
+      const rpcRes = isWholesaleCustomer
         ? await rpcConfirmOrderDeliveryWithCredit(supabase, {
           orderId: updated.id,
           items: payloadItems,
@@ -3017,6 +3017,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           updatedData: updated,
           warehouseId,
         });
+      const rpcError = rpcRes?.error;
 
       if (rpcError) {
         const isOffline = typeof navigator !== 'undefined' && navigator.onLine === false;
@@ -3036,8 +3037,14 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           throw new Error(localizeSupabaseError(rpcError));
         }
       } else {
+        const rpcStatus = typeof rpcRes?.data === 'object' && rpcRes?.data
+          ? String((rpcRes.data as any)?.status || '')
+          : '';
+        const rpcOrderData = typeof rpcRes?.data === 'object' && rpcRes?.data
+          ? (rpcRes.data as any)?.data
+          : undefined;
         const readBack = async (attempt: number): Promise<{ status: string; data: any } | null> => {
-          const waitMs = attempt === 0 ? 0 : 200 * Math.pow(2, attempt - 1);
+          const waitMs = attempt === 0 ? 0 : Math.min(250 * Math.pow(2, attempt - 1), 3000);
           if (waitMs > 0) await new Promise((r) => setTimeout(r, waitMs));
           const { data: row, error: readErr } = await supabase
             .from('orders')
@@ -3052,9 +3059,13 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         };
 
         let confirmed: { status: string; data: any } | null = null;
-        for (let i = 0; i < 3; i++) {
-          confirmed = await readBack(i);
-          if (confirmed && confirmed.status === 'delivered') break;
+        if (rpcStatus === 'delivered') {
+          confirmed = { status: 'delivered', data: rpcOrderData || updated };
+        } else {
+          for (let i = 0; i < 6; i++) {
+            confirmed = await readBack(i);
+            if (confirmed && confirmed.status === 'delivered') break;
+          }
         }
         if (!confirmed) {
           throw new Error('تعذر قراءة الطلب من الخادم بعد التسليم. تحقق من الاتصال/الصلاحيات ثم أعد المحاولة.');
@@ -3122,7 +3133,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             throw new Error(localizeSupabaseError(retryErr));
           }
 
-          for (let i = 0; i < 3; i++) {
+          for (let i = 0; i < 6; i++) {
             confirmed = await readBack(i);
             if (confirmed && confirmed.status === 'delivered') break;
           }
