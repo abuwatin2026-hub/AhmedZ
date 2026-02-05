@@ -3036,11 +3036,34 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           throw new Error(localizeSupabaseError(rpcError));
         }
       } else {
-        const confirmed = await fetchRemoteOrderById(updated.id);
-        deliveredSnapshot = confirmed || updated;
-        if (!deliveredSnapshot || deliveredSnapshot.status !== 'delivered') {
-          throw new Error('تعذر تثبيت حالة "تم التسليم" على الخادم. أعد المحاولة.');
+        const readBack = async (attempt: number): Promise<{ status: string; data: any } | null> => {
+          const waitMs = attempt === 0 ? 0 : 200 * Math.pow(2, attempt - 1);
+          if (waitMs > 0) await new Promise((r) => setTimeout(r, waitMs));
+          const { data: row, error: readErr } = await supabase
+            .from('orders')
+            .select('status,data')
+            .eq('id', updated.id)
+            .maybeSingle();
+          if (readErr) {
+            throw new Error(localizeSupabaseError(readErr) || (readErr instanceof Error ? readErr.message : String((readErr as any)?.message || 'تعذر قراءة الطلب من الخادم')));
+          }
+          if (!row) return null;
+          return { status: String((row as any).status || ''), data: (row as any).data };
+        };
+
+        let confirmed: { status: string; data: any } | null = null;
+        for (let i = 0; i < 3; i++) {
+          confirmed = await readBack(i);
+          if (confirmed && confirmed.status === 'delivered') break;
         }
+        if (!confirmed) {
+          throw new Error('تعذر قراءة الطلب من الخادم بعد التسليم. تحقق من الاتصال/الصلاحيات ثم أعد المحاولة.');
+        }
+        if (confirmed.status !== 'delivered') {
+          const st = confirmed.status || 'غير معروفة';
+          throw new Error(`لم يتم تحديث حالة الطلب على الخادم (الحالة الحالية: ${st}).`);
+        }
+        deliveredSnapshot = ({ ...(confirmed.data || {}), id: updated.id, status: 'delivered' } as any) as Order;
       }
     }
     if (willCancel) {
