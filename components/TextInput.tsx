@@ -10,6 +10,10 @@ interface TextInputProps {
   required?: boolean;
   icon?: React.ReactNode;
   disabled?: boolean;
+  autoComplete?: string;
+  autoCorrect?: 'on' | 'off';
+  autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
+  spellCheck?: boolean;
 }
 
 const TextInput: React.FC<TextInputProps> = ({
@@ -22,6 +26,10 @@ const TextInput: React.FC<TextInputProps> = ({
   required,
   icon,
   disabled,
+  autoComplete,
+  autoCorrect,
+  autoCapitalize,
+  spellCheck,
 }) => {
   return (
     <div className="relative">
@@ -39,6 +47,10 @@ const TextInput: React.FC<TextInputProps> = ({
         placeholder={placeholder}
         required={required}
         disabled={disabled}
+        autoComplete={autoComplete}
+        autoCorrect={autoCorrect}
+        autoCapitalize={autoCapitalize}
+        spellCheck={spellCheck}
         className="w-full p-3 pr-10 rtl:pl-10 rtl:pr-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition disabled:bg-gray-200 dark:disabled:bg-gray-800 disabled:cursor-not-allowed"
       />
     </div>

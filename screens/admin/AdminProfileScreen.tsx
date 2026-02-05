@@ -171,7 +171,7 @@ const AdminProfileScreen: React.FC = () => {
       <h1 className="text-3xl font-bold dark:text-white">الملف الشخصي للمدير</h1>
 
       {/* Profile Info Form */}
-      <form onSubmit={handleInfoSubmit} className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-8">
+      <form onSubmit={handleInfoSubmit} autoComplete="off" className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-8">
         <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-6 border-r-4 rtl:border-l-4 rtl:border-r-0 border-gold-500 pr-4 rtl:pr-0 rtl:pl-4">
           المعلومات الشخصية
         </h2>
@@ -194,20 +194,20 @@ const AdminProfileScreen: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
             <label htmlFor="fullName" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">الاسم الكامل</label>
-            <TextInput id="fullName" name="fullName" value={formData.fullName || ''} onChange={handleInfoChange} icon={<UserIcon />} required />
+            <TextInput id="fullName" name="fullName" value={formData.fullName || ''} onChange={handleInfoChange} icon={<UserIcon />} required autoComplete="name" />
           </div>
           <div>
             <label htmlFor="username" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">اسم المستخدم</label>
-            <TextInput id="username" name="username" value={formData.username || ''} onChange={handleInfoChange} icon={<AtSymbolIcon />} required />
+            <TextInput id="username" name="username" value={formData.username || ''} onChange={handleInfoChange} icon={<AtSymbolIcon />} required autoComplete="off" autoCorrect="off" autoCapitalize="none" spellCheck={false} />
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">يستخدم لتسجيل الدخول إلى لوحة التحكم.</p>
           </div>
           <div>
             <label htmlFor="email" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">البريد الإلكتروني</label>
-            <TextInput id="email" name="email" type="email" value={formData.email || ''} onChange={handleInfoChange} icon={<MailIcon />} required />
+            <TextInput id="email" name="email" type="email" value={formData.email || ''} onChange={handleInfoChange} icon={<MailIcon />} required autoComplete="email" autoCapitalize="none" spellCheck={false} />
           </div>
           <div>
             <label htmlFor="phoneNumber" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">رقم الهاتف</label>
-            <TextInput id="phoneNumber" name="phoneNumber" type="tel" value={formData.phoneNumber || ''} onChange={handleInfoChange} icon={<PhoneIcon />} required />
+            <TextInput id="phoneNumber" name="phoneNumber" type="tel" value={formData.phoneNumber || ''} onChange={handleInfoChange} icon={<PhoneIcon />} required autoComplete="tel" />
           </div>
         </div>
         <div className="pt-6 mt-6 border-t border-gray-200 dark:border-gray-700 flex justify-end">
@@ -260,15 +260,16 @@ const AdminProfileScreen: React.FC = () => {
                 setIsCreatingUser(false);
               }
             }}
+            autoComplete="off"
             className="grid grid-cols-1 md:grid-cols-2 gap-6"
           >
             <div>
               <label htmlFor="newUsername" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">اسم المستخدم</label>
-              <TextInput id="newUsername" name="newUsername" value={newUser.username} onChange={(e) => setNewUser({ ...newUser, username: e.target.value })} icon={<AtSymbolIcon />} required />
+              <TextInput id="newUsername" name="newUsername" value={newUser.username} onChange={(e) => setNewUser({ ...newUser, username: e.target.value })} icon={<AtSymbolIcon />} required autoComplete="off" autoCorrect="off" autoCapitalize="none" spellCheck={false} />
             </div>
             <div>
               <label htmlFor="newFullName" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">الاسم الكامل</label>
-              <TextInput id="newFullName" name="newFullName" value={newUser.fullName} onChange={(e) => setNewUser({ ...newUser, fullName: e.target.value })} icon={<UserIcon />} required />
+              <TextInput id="newFullName" name="newFullName" value={newUser.fullName} onChange={(e) => setNewUser({ ...newUser, fullName: e.target.value })} icon={<UserIcon />} required autoComplete="name" />
             </div>
             <div>
               <label htmlFor="newRole" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">الدور</label>
@@ -354,11 +355,11 @@ const AdminProfileScreen: React.FC = () => {
             <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label htmlFor="newPasswordUser" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">كلمة المرور</label>
-                <PasswordInput id="newPasswordUser" name="newPasswordUser" value={newUser.password} onChange={(e) => setNewUser({ ...newUser, password: e.target.value })} required />
+                <PasswordInput id="newPasswordUser" name="newPasswordUser" value={newUser.password} onChange={(e) => setNewUser({ ...newUser, password: e.target.value })} required autoComplete="new-password" />
               </div>
               <div>
                 <label htmlFor="newPasswordUserConfirm" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">تأكيد كلمة المرور</label>
-                <PasswordInput id="newPasswordUserConfirm" name="newPasswordUserConfirm" value={newUser.confirmPassword} onChange={(e) => setNewUser({ ...newUser, confirmPassword: e.target.value })} required />
+                <PasswordInput id="newPasswordUserConfirm" name="newPasswordUserConfirm" value={newUser.confirmPassword} onChange={(e) => setNewUser({ ...newUser, confirmPassword: e.target.value })} required autoComplete="new-password" />
               </div>
             </div>
             <div className="md:col-span-2 flex justify-end">
