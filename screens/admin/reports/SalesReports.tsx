@@ -684,7 +684,7 @@ const SalesReports: React.FC = () => {
                 <div className="flex gap-4 mt-2 text-sm border-t pt-2">
                     <span>الإيراد: {reportData.netRevenue.toFixed(2)} {currency}</span>
                     <span>|</span>
-                    <span>التكلفة: {reportData.cogs.toFixed(2)} {currency}</span>
+                    <span>تكلفة البضاعة (COGS): {reportData.cogs.toFixed(2)} {currency}</span>
                     <span>|</span>
                     <span>صافي الربح: {reportData.netProfit.toFixed(2)} {currency}</span>
                 </div>
@@ -719,10 +719,18 @@ const SalesReports: React.FC = () => {
 
                 {/* Profitability Section */}
                 <h3 className="text-xl font-bold dark:text-gray-200 mb-4 px-1">الملخص المالي والربحية</h3>
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
                     <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-lg shadow-md text-center border border-red-200 dark:border-red-800">
                         <h3 className="text-gray-600 dark:text-gray-400 font-semibold">تكلفة البضاعة المباعة</h3>
                         <p className="text-2xl font-bold text-red-600 dark:text-red-400">{reportData.cogs.toFixed(2)} {currency}</p>
+                    </div>
+                    <div className="bg-amber-50 dark:bg-amber-900/20 p-4 rounded-lg shadow-md text-center border border-amber-200 dark:border-amber-800">
+                        <h3 className="text-gray-600 dark:text-gray-400 font-semibold">تكلفة التوصيل</h3>
+                        <p className="text-2xl font-bold text-amber-700 dark:text-amber-300">{reportData.deliveryCost.toFixed(2)} {currency}</p>
+                    </div>
+                    <div className="bg-slate-50 dark:bg-slate-900/20 p-4 rounded-lg shadow-md text-center border border-slate-200 dark:border-slate-800">
+                        <h3 className="text-gray-600 dark:text-gray-400 font-semibold">المصاريف</h3>
+                        <p className="text-2xl font-bold text-slate-700 dark:text-slate-200">{reportData.totalExpenses.toFixed(2)} {currency}</p>
                     </div>
                     <div className="bg-orange-50 dark:bg-orange-900/20 p-4 rounded-lg shadow-md text-center border border-orange-200 dark:border-orange-800">
                         <h3 className="text-gray-600 dark:text-gray-400 font-semibold">خسائر التالف</h3>

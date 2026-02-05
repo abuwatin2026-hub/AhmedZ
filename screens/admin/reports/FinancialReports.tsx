@@ -354,8 +354,9 @@ const FinancialReports: React.FC = () => {
   const { settings } = useSettings();
   const [baseCode, setBaseCode] = useState('—');
   const formatMoney = (value: number) => {
-    const n = Number(value) || 0;
-    return `${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${baseCode || '—'}`;
+    const n = Number(value);
+    const v = Number.isFinite(n) ? n : 0;
+    return `${v.toLocaleString('ar-EG-u-nu-latn', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${baseCode || '—'}`;
   };
   const ledgerSectionRef = useRef<HTMLDivElement | null>(null);
   const canViewAccounting = hasPermission('accounting.view');
