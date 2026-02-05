@@ -154,11 +154,43 @@ const ManageCustomersScreen: React.FC = () => {
         }
         const { data: rows, error } = await supabase
           .from('orders')
-          .select('id,data,customer_auth_user_id')
+          .select('id,data,customer_auth_user_id,created_at,status,total,payment_method,currency,fx_rate,base_total')
           .or(`customer_auth_user_id.eq.${selectedCustomer.id},data->>customerId.eq.${selectedCustomer.id}`);
         if (error) throw error;
-        const orders = (rows || []).map(r => r.data as Order).filter(Boolean);
-        orders.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+        const orders = (rows || [])
+          .map((r: any) => {
+            const base = (r?.data && typeof r.data === 'object') ? r.data : {};
+            const id = String(r?.id || (base as any)?.id || '').trim();
+            if (!id) return null;
+            const createdAt = String((base as any)?.createdAt || r?.created_at || '').trim() || new Date().toISOString();
+            const status = ((base as any)?.status || r?.status || 'pending') as OrderStatus;
+            const total = Number((base as any)?.total ?? r?.total ?? 0) || 0;
+            const paymentMethod = String((base as any)?.paymentMethod || r?.payment_method || '').trim() || 'cash';
+            const currency = String((base as any)?.currency || r?.currency || '').trim() || undefined;
+            const fxRate = Number((base as any)?.fxRate ?? r?.fx_rate ?? 0) || undefined;
+            const baseTotal = Number((base as any)?.baseTotal ?? r?.base_total ?? 0) || undefined;
+            const userId = String((base as any)?.userId || r?.customer_auth_user_id || '').trim() || undefined;
+            return {
+              ...base,
+              id,
+              userId,
+              createdAt,
+              status,
+              total,
+              paymentMethod,
+              currency,
+              fxRate,
+              baseTotal,
+              items: Array.isArray((base as any)?.items) ? (base as any).items : [],
+              subtotal: Number((base as any)?.subtotal ?? 0) || 0,
+              deliveryFee: Number((base as any)?.deliveryFee ?? 0) || 0,
+              customerName: String((base as any)?.customerName ?? ''),
+              phoneNumber: String((base as any)?.phoneNumber ?? ''),
+              address: String((base as any)?.address ?? ''),
+            } as Order;
+          })
+          .filter(Boolean) as Order[];
+        orders.sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
         if (!cancelled) setCustomerOrders(orders);
       } catch (error) {
         if (!cancelled) {
@@ -534,6 +566,72 @@ const ManageCustomersScreen: React.FC = () => {
                       showNotification('تعذر الوصول للخادم.', 'error');
                       return;
                     }
+
+                    const extractFunctionMessage = async (err: unknown): Promise<string | null> => {
+                      const maybeContext = (err as { context?: { text?: () => Promise<string>; json?: () => Promise<any> } })?.context;
+                      if (!maybeContext) return null;
+
+                      const tryParse = (text: string) => {
+                        const trimmed = text.trim();
+                        if (!trimmed) return null;
+                        try {
+                          const parsed = JSON.parse(trimmed);
+                          const msg = parsed?.error || parsed?.message;
+                          return typeof msg === 'string' ? msg : trimmed;
+                        } catch {
+                          return trimmed;
+                        }
+                      };
+
+                      if (typeof maybeContext.text === 'function') {
+                        try {
+                          const text = await maybeContext.text();
+                          return tryParse(String(text));
+                        } catch {
+                        }
+                      }
+
+                      if (typeof maybeContext.json === 'function') {
+                        try {
+                          const body = await maybeContext.json();
+                          const serverMessage = body?.error || body?.message || body?.details;
+                          return typeof serverMessage === 'string' ? serverMessage : JSON.stringify(body);
+                        } catch {
+                        }
+                      }
+
+                      return null;
+                    };
+
+                    const localizeCreateCustomerError = (rawMessage: string) => {
+                      const raw = String(rawMessage || '').trim();
+                      if (!raw) return 'فشل إنشاء العميل.';
+                      const normalized = raw.toLowerCase();
+                      if (normalized.includes('duplicate_phone') || (normalized.includes('duplicate') && normalized.includes('phone'))) {
+                        return 'رقم الهاتف مستخدم مسبقاً.';
+                      }
+                      if (normalized.includes('missing_function_env')) {
+                        return 'إعدادات الخادم ناقصة لإنشاء العملاء.';
+                      }
+                      if (normalized.includes('503') || normalized.includes('service temporarily unavailable')) {
+                        return 'خدمة إنشاء العملاء غير متاحة حالياً. تأكد من تشغيل وظائف Supabase.';
+                      }
+                      if (normalized.includes('name resolution failed')) {
+                        return 'تعذر الوصول لخدمة إنشاء العملاء. تحقق من تشغيل Supabase Edge Functions.';
+                      }
+                      if (normalized.includes('encryption key not configured')) {
+                        return 'مفتاح تشفير بيانات العملاء غير مضبوط على الخادم.';
+                      }
+                      if (normalized.includes('forbidden') || normalized.includes('permission') || normalized.includes('not allowed')) {
+                        return 'ليس لديك صلاحية إنشاء العملاء.';
+                      }
+                      if (normalized.includes('insert_failed')) {
+                        return 'فشل حفظ بيانات العميل في قاعدة البيانات.';
+                      }
+                      if (/[\u0600-\u06FF]/.test(raw)) return raw;
+                      return `فشل إنشاء العميل: ${raw}`;
+                    };
+
                     const fullName = newCustomerDraft.fullName.trim();
                     const phone = newCustomerDraft.phone.trim();
                     const customerType = newCustomerDraft.customerType === 'wholesale' ? 'wholesale' : 'retail';
@@ -544,20 +642,22 @@ const ManageCustomersScreen: React.FC = () => {
                       return;
                     }
                     try {
-                      const { error } = await (supabase as any).functions.invoke('create_admin_customer', {
+                      const { error } = await (supabase as any).functions.invoke('create-admin-customer', {
                         body: { fullName, phone, customerType, creditLimit, notes },
                       });
                       if (error) {
-                        const msg = (error as any)?.message || String(error);
-                        showNotification(/CREDIT|duplicate|موجود|exists/i.test(msg) ? msg : 'فشل إنشاء العميل.', 'error');
+                        const fromContext = await extractFunctionMessage(error);
+                        const msg = fromContext || (error as any)?.message || String(error);
+                        showNotification(localizeCreateCustomerError(msg), 'error');
                         return;
                       }
                       showNotification('تم إنشاء العميل بنجاح.', 'success');
                       setNewCustomerModalOpen(false);
                       setNewCustomerDraft({ fullName: '', phone: '', customerType: 'retail', creditLimit: undefined, notes: '' });
                     } catch (err) {
-                      const raw = err instanceof Error ? err.message : String(err || '');
-                      showNotification(raw && /[\u0600-\u06FF]/.test(raw) ? raw : 'حدث خطأ أثناء إنشاء العميل.', 'error');
+                      const fromContext = await extractFunctionMessage(err);
+                      const raw = fromContext || (err instanceof Error ? err.message : String(err || ''));
+                      showNotification(localizeCreateCustomerError(raw), 'error');
                     }
                   }}
                   className="px-4 py-2 rounded-md bg-gray-800 text-white text-sm font-semibold"
@@ -761,9 +861,9 @@ const ManageCustomersScreen: React.FC = () => {
                           </tr>
                         </thead>
                         <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                          {customerOrders.slice(0, 30).map((order) => (
-                            <tr key={order.id}>
-                              <td className="px-4 py-3 text-sm font-mono text-gray-800 dark:text-gray-200">{order.id.slice(0, 8)}</td>
+                          {customerOrders.slice(0, 30).map((order, idx) => (
+                            <tr key={(order as any)?.id || `row-${idx}`}>
+                              <td className="px-4 py-3 text-sm font-mono text-gray-800 dark:text-gray-200">{String((order as any)?.id || '').slice(0, 8) || '-'}</td>
                               <td className="px-4 py-3 text-sm font-mono text-gray-700 dark:text-gray-300">{order.createdAt || '-'}</td>
                               <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">
                                 {canUpdateAllStatuses || canUpdateDeliveryStatuses ? (

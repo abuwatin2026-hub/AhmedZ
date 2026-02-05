@@ -200,16 +200,16 @@ const createWholesaleCustomerWithCredit = async (fullName, phone, creditLimit) =
   if (!accessToken) throw new Error('no access token');
 
   const headers = { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'x-user-token': accessToken };
-  const result = await supabase.functions.invoke('create_admin_customer', {
+  const result = await supabase.functions.invoke('create-admin-customer', {
     body: { fullName, phone, customerType: 'wholesale', creditLimit },
     headers,
   });
   if (result.error) {
     const msg = String((result.error).message || '');
-    throw new Error(msg || 'create_admin_customer failed');
+    throw new Error(msg || 'create-admin-customer failed');
   }
   const customer = (result.data || {}).customer || null;
-  if (!customer?.auth_user_id) throw new Error('create_admin_customer returned no customer');
+  if (!customer?.auth_user_id) throw new Error('create-admin-customer returned no customer');
   return String(customer.auth_user_id);
 };
 

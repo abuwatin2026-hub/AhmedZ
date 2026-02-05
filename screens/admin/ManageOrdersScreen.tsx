@@ -162,6 +162,9 @@ const ManageOrdersScreen: React.FC = () => {
     const [inStoreLines, setInStoreLines] = useState<Array<{ menuItemId: string; quantity?: number; weight?: number; selectedAddons?: Record<string, number> }>>([]);
     const [inStoreCustomerMode, setInStoreCustomerMode] = useState<'walk_in' | 'existing'>('walk_in');
     const [inStoreCustomerPhoneSearch, setInStoreCustomerPhoneSearch] = useState('');
+    const [inStoreCustomerMatches, setInStoreCustomerMatches] = useState<Array<{ id: string; fullName?: string; phoneNumber?: string }>>([]);
+    const [inStoreCustomerSearching, setInStoreCustomerSearching] = useState(false);
+    const [inStoreCustomerDropdownOpen, setInStoreCustomerDropdownOpen] = useState(false);
     const [inStoreCustomerSearchResult, setInStoreCustomerSearchResult] = useState<{ id: string; fullName?: string; phoneNumber?: string } | null>(null);
     const [inStoreSelectedCustomerId, setInStoreSelectedCustomerId] = useState<string>('');
     const [inStorePricingBusy, setInStorePricingBusy] = useState(false);
@@ -222,6 +225,78 @@ const ManageOrdersScreen: React.FC = () => {
         if (!Number.isFinite(n)) return 0;
         return Math.round(n * 100) / 100;
     };
+
+    const fetchInStoreCustomerMatches = useCallback(async (query: string, opts?: { silent?: boolean }) => {
+        const supabase = getSupabaseClient();
+        if (!supabase) return [];
+        const raw = String(query || '').trim();
+        if (!raw) return [];
+        const q = raw.replace(/[%_]/g, '');
+        const digits = raw.replace(/\D/g, '');
+        const parts: string[] = [];
+        if (q.length >= 2) parts.push(`full_name.ilike.%${q}%`);
+        if (digits.length >= 3) {
+            parts.push(`phone_number.ilike.%${digits}%`);
+        } else if (q.length >= 2) {
+            parts.push(`phone_number.ilike.%${q}%`);
+        }
+        if (parts.length === 0) return [];
+        try {
+            const { data, error } = await supabase
+                .from('customers')
+                .select('auth_user_id, full_name, phone_number')
+                .or(parts.join(','))
+                .limit(8);
+            if (error) throw error;
+            return (Array.isArray(data) ? data : [])
+                .map((r: any) => ({
+                    id: String(r?.auth_user_id || ''),
+                    fullName: typeof r?.full_name === 'string' ? r.full_name : undefined,
+                    phoneNumber: typeof r?.phone_number === 'string' ? r.phone_number : undefined,
+                }))
+                .filter((c) => Boolean(c.id));
+        } catch (e) {
+            if (!opts?.silent) {
+                showNotification('تعذر البحث عن العميل.', 'error');
+            }
+            return [];
+        }
+    }, [showNotification]);
+
+    const selectInStoreCustomer = useCallback((c: { id: string; fullName?: string; phoneNumber?: string }) => {
+        setInStoreCustomerSearchResult(c);
+        setInStoreSelectedCustomerId(c.id);
+        setInStoreCustomerDropdownOpen(false);
+        setInStoreCustomerMatches([]);
+        if (c.fullName) setInStoreCustomerName(c.fullName);
+        if (c.phoneNumber) setInStorePhoneNumber(c.phoneNumber);
+    }, []);
+
+    useEffect(() => {
+        if (!isInStoreSaleOpen) return;
+        if (inStoreCustomerMode !== 'existing') return;
+        const q = inStoreCustomerPhoneSearch.trim();
+        if (!q) {
+            setInStoreCustomerSearching(false);
+            setInStoreCustomerMatches([]);
+            return;
+        }
+        let cancelled = false;
+        const t = window.setTimeout(() => {
+            setInStoreCustomerSearching(true);
+            fetchInStoreCustomerMatches(q, { silent: true }).then((list) => {
+                if (cancelled) return;
+                setInStoreCustomerMatches(list);
+            }).finally(() => {
+                if (cancelled) return;
+                setInStoreCustomerSearching(false);
+            });
+        }, 250);
+        return () => {
+            cancelled = true;
+            window.clearTimeout(t);
+        };
+    }, [fetchInStoreCustomerMatches, inStoreCustomerMode, inStoreCustomerPhoneSearch, isInStoreSaleOpen]);
 
     const convertBaseToInStoreTxn = (baseAmount: number, rate: number) => {
         const r = Number(rate) || 0;
@@ -2393,43 +2468,78 @@ const ManageOrdersScreen: React.FC = () => {
                         {inStoreCustomerMode === 'existing' && (
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
                                 <div className="md:col-span-2">
-                                    <label className="block text-[11px] text-gray-600 dark:text-gray-300 mb-1">رقم الهاتف</label>
-                                    <input
-                                        type="text"
-                                        value={inStoreCustomerPhoneSearch}
-                                        onChange={(e) => setInStoreCustomerPhoneSearch(e.target.value)}
-                                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                                        placeholder="مثال: 771234567"
-                                    />
+                                    <label className="block text-[11px] text-gray-600 dark:text-gray-300 mb-1">بحث بالاسم أو رقم الهاتف</label>
+                                    <div className="relative">
+                                        <input
+                                            type="text"
+                                            value={inStoreCustomerPhoneSearch}
+                                            onChange={(e) => {
+                                                setInStoreCustomerPhoneSearch(e.target.value);
+                                                setInStoreCustomerSearchResult(null);
+                                                setInStoreSelectedCustomerId('');
+                                                setInStoreCustomerDropdownOpen(true);
+                                            }}
+                                            onFocus={() => setInStoreCustomerDropdownOpen(true)}
+                                            onBlur={() => window.setTimeout(() => setInStoreCustomerDropdownOpen(false), 150)}
+                                            onKeyDown={(e) => {
+                                                if (e.key !== 'Enter') return;
+                                                const first = inStoreCustomerMatches[0];
+                                                if (first) selectInStoreCustomer(first);
+                                            }}
+                                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                                            placeholder="مثال: 771234567 أو محمد"
+                                        />
+                                        {inStoreCustomerDropdownOpen && inStoreCustomerPhoneSearch.trim() !== '' && (
+                                            <div className="absolute z-20 mt-1 w-full max-h-56 overflow-auto rounded-lg border bg-white dark:bg-gray-800 dark:border-gray-600 shadow-lg">
+                                                {inStoreCustomerMatches.length > 0 ? (
+                                                    inStoreCustomerMatches.map((c) => {
+                                                        const title = c.fullName || c.phoneNumber || 'غير معروف';
+                                                        const meta = [c.phoneNumber].filter(Boolean).join(' • ');
+                                                        return (
+                                                            <button
+                                                                key={c.id}
+                                                                type="button"
+                                                                onMouseDown={(ev) => ev.preventDefault()}
+                                                                onClick={() => selectInStoreCustomer(c)}
+                                                                className="w-full px-3 py-2 text-right hover:bg-gray-50 dark:hover:bg-gray-700"
+                                                            >
+                                                                <div className="font-semibold truncate dark:text-white">{title}</div>
+                                                                <div className="text-xs text-gray-500 dark:text-gray-400 truncate">{meta}</div>
+                                                            </button>
+                                                        );
+                                                    })
+                                                ) : (
+                                                    <div className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">
+                                                        {inStoreCustomerSearching ? 'جاري البحث...' : 'لا نتائج'}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                                 <button
                                     type="button"
                                     onClick={async () => {
-                                        const supabase = getSupabaseClient();
-                                        if (!supabase) return;
-                                        const phone = inStoreCustomerPhoneSearch.trim();
-                                        if (!phone) { setInStoreCustomerSearchResult(null); setInStoreSelectedCustomerId(''); return; }
-                                        const { data, error } = await supabase
-                                            .from('customers')
-                                            .select('id, full_name, phone_number')
-                                            .eq('phone_number', phone)
-                                            .limit(1)
-                                            .maybeSingle();
-                                        if (error) {
+                                        const q = inStoreCustomerPhoneSearch.trim();
+                                        if (!q) {
                                             setInStoreCustomerSearchResult(null);
                                             setInStoreSelectedCustomerId('');
-                                            showNotification('تعذر البحث عن العميل.', 'error');
+                                            setInStoreCustomerMatches([]);
                                             return;
                                         }
-                                        if (data) {
-                                            const c = { id: String((data as any).id), fullName: (data as any).full_name, phoneNumber: (data as any).phone_number };
-                                            setInStoreCustomerSearchResult(c);
-                                            setInStoreSelectedCustomerId(c.id);
-                                        } else {
-                                            setInStoreCustomerSearchResult(null);
-                                            setInStoreSelectedCustomerId('');
-                                            showNotification('لم يتم العثور على عميل بهذا الرقم.', 'error');
+                                        setInStoreCustomerSearching(true);
+                                        const list = await fetchInStoreCustomerMatches(q);
+                                        setInStoreCustomerMatches(list);
+                                        setInStoreCustomerSearching(false);
+                                        if (list.length === 1) {
+                                            selectInStoreCustomer(list[0]);
+                                            return;
                                         }
+                                        if (list.length === 0) {
+                                            showNotification('لا نتائج.', 'error');
+                                            return;
+                                        }
+                                        setInStoreCustomerDropdownOpen(true);
                                     }}
                                     className="px-3 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 transition text-xs font-semibold"
                                 >

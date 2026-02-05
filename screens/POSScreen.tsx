@@ -1026,15 +1026,34 @@ const POSScreen: React.FC = () => {
   }, [orders]);
 
   const filteredCustomers = useMemo(() => {
-    const q = customerQuery.trim().toLowerCase();
+    const qRaw = customerQuery.trim();
+    const q = qRaw.toLowerCase();
     if (!q) return [];
+    const qCompact = q.replace(/\s+/g, '');
+    const qDigits = qRaw.replace(/\D/g, '');
     return customers
       .filter(customer => {
         const name = String(customer.fullName || '').toLowerCase();
-        const phone = String(customer.phoneNumber || '').toLowerCase();
+        const nameCompact = name.replace(/\s+/g, '');
+        const phone = String(customer.phoneNumber || '');
+        const phoneLower = phone.toLowerCase();
+        const phoneDigits = phone.replace(/\D/g, '');
         const email = String(customer.email || '').toLowerCase();
         const login = String(customer.loginIdentifier || '').toLowerCase();
-        return name.includes(q) || phone.includes(q) || email.includes(q) || login.includes(q);
+        const phoneMatches = qDigits
+          ? (
+            (phoneDigits && phoneDigits.includes(qDigits)) ||
+            (qDigits.length >= 6 && phoneDigits && phoneDigits.endsWith(qDigits)) ||
+            (qDigits.length >= 6 && phoneDigits && phoneDigits.endsWith(qDigits.slice(-9)))
+          )
+          : phoneLower.includes(q);
+        return (
+          name.includes(q) ||
+          (qCompact.length >= 2 && nameCompact.includes(qCompact)) ||
+          phoneMatches ||
+          email.includes(q) ||
+          login.includes(q)
+        );
       })
       .slice(0, 8);
   }, [customerQuery, customers]);

@@ -48,10 +48,10 @@ select
   mi.status,
   coalesce(s.available_quantity, 0) as available_quantity,
   mi.category,
-  mi.group_key,
   mi.is_featured,
   mi.freshness_level,
-  mi.data
+  mi.data,
+  mi.group_key
 from public.menu_items mi
 left join stock s on s.item_id = mi.id
 left join valid_batches vb on vb.item_id = mi.id
