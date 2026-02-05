@@ -1686,16 +1686,13 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       const supabaseFx = getSupabaseClient();
       if (!supabaseFx) throw new Error('Supabase غير مهيأ.');
       const d = new Date().toISOString().slice(0, 10);
-      const { data: fxRows, error: fxErr } = await supabaseFx
-        .from('fx_rates')
-        .select('rate,rate_date')
-        .eq('currency_code', desiredCurrency)
-        .eq('rate_type', 'operational')
-        .lte('rate_date', d)
-        .order('rate_date', { ascending: false })
-        .limit(1);
+      const { data: fxValue, error: fxErr } = await supabaseFx.rpc('get_fx_rate', {
+        p_currency: desiredCurrency,
+        p_date: d,
+        p_rate_type: 'operational',
+      });
       if (fxErr) throw new Error(localizeSupabaseError(fxErr));
-      const fx = Number((Array.isArray(fxRows) && fxRows.length > 0 ? (fxRows[0] as any).rate : null));
+      const fx = Number(fxValue);
       if (!Number.isFinite(fx) || !(fx > 0)) {
         throw new Error('لا يوجد سعر صرف تشغيلي صالح لهذه العملة. أضف السعر من شاشة أسعار الصرف.');
       }
@@ -2344,16 +2341,13 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       const supabaseFx = getSupabaseClient();
       if (!supabaseFx) throw new Error('Supabase غير مهيأ.');
       const d = new Date().toISOString().slice(0, 10);
-      const { data: fxRows, error: fxErr } = await supabaseFx
-        .from('fx_rates')
-        .select('rate,rate_date')
-        .eq('currency_code', desiredCurrency)
-        .eq('rate_type', 'operational')
-        .lte('rate_date', d)
-        .order('rate_date', { ascending: false })
-        .limit(1);
+      const { data: fxValue, error: fxErr } = await supabaseFx.rpc('get_fx_rate', {
+        p_currency: desiredCurrency,
+        p_date: d,
+        p_rate_type: 'operational',
+      });
       if (fxErr) throw new Error(localizeSupabaseError(fxErr));
-      const fx = Number((Array.isArray(fxRows) && fxRows.length > 0 ? (fxRows[0] as any).rate : null));
+      const fx = Number(fxValue);
       if (!Number.isFinite(fx) || !(fx > 0)) {
         throw new Error('لا يوجد سعر صرف تشغيلي صالح لهذه العملة. أضف السعر من شاشة أسعار الصرف.');
       }

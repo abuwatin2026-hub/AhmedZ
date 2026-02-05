@@ -13,6 +13,8 @@ begin
   end if;
 end $$;
 
+drop view if exists public.v_sellable_products;
+
 create or replace view public.v_sellable_products as
 with main_warehouse as (
   select w.id as warehouse_id

@@ -244,16 +244,13 @@ const ManageOrdersScreen: React.FC = () => {
         if (!supabase) return null;
         const d = new Date().toISOString().slice(0, 10);
         try {
-            const { data, error } = await supabase
-                .from('fx_rates')
-                .select('rate,rate_date')
-                .eq('currency_code', code)
-                .eq('rate_type', 'operational')
-                .lte('rate_date', d)
-                .order('rate_date', { ascending: false })
-                .limit(1);
+            const { data, error } = await supabase.rpc('get_fx_rate', {
+                p_currency: code,
+                p_date: d,
+                p_rate_type: 'operational',
+            });
             if (error) return null;
-            const n = Number((Array.isArray(data) && data.length > 0 ? (data[0] as any)?.rate : null));
+            const n = Number(data);
             return Number.isFinite(n) && n > 0 ? n : null;
         } catch {
             return null;
