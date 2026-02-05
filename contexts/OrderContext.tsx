@@ -119,7 +119,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const addressCacheRef = useRef<Map<string, string>>(new Map());
   const reserveStockRpcModeRef = useRef<null | 'wrapper' | 'direct3' | 'legacy1'>(null);
   const confirmDeliveryWithCreditRpcModeRef = useRef<null | 'wrapper' | 'direct4'>(null);
-  const confirmDeliveryRpcModeRef = useRef<null | 'wrapper' | 'direct4'>(null);
+  const confirmDeliveryRpcModeRef = useRef<null | 'wrapper' | 'direct4' | 'direct3'>(null);
 
 
   const logAudit = async (action: string, details: string, metadata?: any) => {
@@ -407,6 +407,14 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       });
       return { data, error };
     };
+    const tryDirect3 = async () => {
+      const { data, error } = await supabase.rpc('confirm_order_delivery', {
+        p_order_id: input.orderId,
+        p_items: input.items,
+        p_updated_data: input.updatedData,
+      });
+      return { data, error };
+    };
     const tryWrapper = async () => {
       const { data, error } = await supabase.rpc('confirm_order_delivery', {
         p_payload: {
@@ -419,7 +427,11 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       return { data, error };
     };
 
-    const runByMode = async (mode: 'wrapper' | 'direct4') => (mode === 'wrapper' ? await tryWrapper() : await tryDirect4());
+    const runByMode = async (mode: 'wrapper' | 'direct4' | 'direct3') => {
+      if (mode === 'wrapper') return await tryWrapper();
+      if (mode === 'direct3') return await tryDirect3();
+      return await tryDirect4();
+    };
     const cached = confirmDeliveryRpcModeRef.current;
     if (cached) {
       const res = await runByMode(cached);
@@ -464,6 +476,12 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     res = await tryDirect4();
     if (!res.error || !isRpcNotFoundError(res.error)) {
       confirmDeliveryRpcModeRef.current = 'direct4';
+      return res;
+    }
+
+    res = await tryDirect3();
+    if (!res.error || !isRpcNotFoundError(res.error)) {
+      confirmDeliveryRpcModeRef.current = 'direct3';
     }
     return res;
   };
@@ -3066,9 +3084,9 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         }
         if (confirmed.status !== 'delivered') {
           const st = confirmed.status || 'غير معروفة';
-          const callDeliveryRpc = async (mode: 'wrapper' | 'direct4') => {
+          const callDeliveryRpc = async (mode: 'wrapper' | 'direct4' | 'direct3') => {
             if (isWholesaleCustomer) {
-              if (mode === 'direct4') {
+              if (mode === 'direct4' || mode === 'direct3') {
                 const { error } = await supabase.rpc('confirm_order_delivery_with_credit', {
                   p_order_id: updated.id,
                   p_items: payloadItems,
@@ -3096,6 +3114,14 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
               });
               return error;
             }
+            if (mode === 'direct3') {
+              const { error } = await supabase.rpc('confirm_order_delivery', {
+                p_order_id: updated.id,
+                p_items: payloadItems,
+                p_updated_data: updated,
+              });
+              return error;
+            }
             const { error } = await supabase.rpc('confirm_order_delivery', {
               p_payload: {
                 p_order_id: updated.id,
@@ -3108,8 +3134,8 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           };
 
           const modeRef = isWholesaleCustomer ? confirmDeliveryWithCreditRpcModeRef : confirmDeliveryRpcModeRef;
-          const preferredMode = modeRef.current || 'wrapper';
-          const alternateMode: 'wrapper' | 'direct4' = preferredMode === 'wrapper' ? 'direct4' : 'wrapper';
+          const preferredMode = (modeRef.current || 'wrapper') as 'wrapper' | 'direct4' | 'direct3';
+          const alternateMode: 'wrapper' | 'direct4' | 'direct3' = preferredMode === 'wrapper' ? 'direct4' : 'wrapper';
 
           let retryErr = await callDeliveryRpc(alternateMode);
           if (retryErr && isRpcNotFoundError(retryErr)) {
@@ -3121,6 +3147,13 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             if (retryErr && isRpcNotFoundError(retryErr)) {
               const reloaded = await reloadPostgrestSchema();
               if (reloaded) retryErr = await callDeliveryRpc(preferredMode);
+            }
+          }
+          if (!isWholesaleCustomer && retryErr && isRpcNotFoundError(retryErr)) {
+            retryErr = await callDeliveryRpc('direct3');
+            if (retryErr && isRpcNotFoundError(retryErr)) {
+              const reloaded = await reloadPostgrestSchema();
+              if (reloaded) retryErr = await callDeliveryRpc('direct3');
             }
           }
           if (retryErr) {

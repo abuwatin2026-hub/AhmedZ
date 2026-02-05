@@ -18,19 +18,80 @@ type CreateCustomerBody = {
   notes?: string | null;
 };
 
-const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
-const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+function getAllowedOrigin(origin: string | null): string {
+  const raw = (Deno.env.get('AZTA_ALLOWED_ORIGINS') || '').trim();
+  if (!origin) {
+    if (!raw) return '*';
+    const first = raw.split(',').map(s => s.trim()).filter(Boolean)[0];
+    return first || '*';
+  }
+
+  const originUrl = (() => { try { return new URL(origin); } catch { return null; } })();
+  const host = originUrl?.hostname || '';
+  const isLocal = host === 'localhost' || host === '127.0.0.1';
+  const isPrivateIp = /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[0-1])\.)/.test(host);
+  if (!raw) return origin;
+
+  const list = raw.split(',').map(s => s.trim()).filter(Boolean);
+  if (list.includes('*')) return origin;
+  if (isLocal || isPrivateIp) return origin;
+
+  const matches = (allowed: string) => {
+    if (!allowed) return false;
+    if (allowed === origin) return true;
+    if (allowed.startsWith('*.')) {
+      const suffix = allowed.slice(1);
+      return host.endsWith(suffix) && host.length > suffix.length;
+    }
+    if (!allowed.includes('://')) return host === allowed;
+    const allowedUrl = (() => { try { return new URL(allowed); } catch { return null; } })();
+    if (!allowedUrl) return false;
+    if (allowedUrl.hostname !== host) return false;
+    if (allowedUrl.port && originUrl?.port && allowedUrl.port !== originUrl.port) return false;
+    return true;
+  };
+
+  return list.some(matches) ? origin : 'null';
+}
+
+function buildCors(origin: string | null, req?: Request) {
+  const allowOrigin = getAllowedOrigin(origin);
+  const requestHeaders = (req?.headers.get('access-control-request-headers') || '').trim();
+  const allowHeaders = requestHeaders || 'authorization, x-client-info, apikey, content-type, x-user-token, x-supabase-api-version, x-supabase-user-agent';
+  return {
+    'Access-Control-Allow-Origin': allowOrigin,
+    'Access-Control-Allow-Headers': allowHeaders,
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Vary': 'Origin, Access-Control-Request-Headers',
+  } as Record<string, string>;
+}
+
+const SUPABASE_URL = ((Deno.env.get('AZTA_SUPABASE_URL') ?? Deno.env.get('SUPABASE_URL')) ?? '').trim();
+const SUPABASE_ANON_KEY = ((Deno.env.get('AZTA_SUPABASE_ANON_KEY') ?? Deno.env.get('SUPABASE_ANON_KEY')) ?? '').trim();
+const SUPABASE_SERVICE_ROLE_KEY = ((Deno.env.get('AZTA_SUPABASE_SERVICE_ROLE_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')) ?? '').trim();
 
 serve(async (req: Request) => {
+  const origin = req.headers.get('origin');
+  const corsHeaders = buildCors(origin, req);
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders });
+  }
+
   try {
     if (req.method !== 'POST') {
-      return new Response(JSON.stringify({ error: 'Method Not Allowed' }), { status: 405 });
+      return new Response(JSON.stringify({ error: 'Method Not Allowed' }), { status: 405, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
-    const authHeader = req.headers.get('Authorization') || '';
-    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+
+    if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !SUPABASE_SERVICE_ROLE_KEY) {
+      return new Response(JSON.stringify({ error: 'missing_function_env' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+    const token = (req.headers.get('x-user-token') || '').trim() || (() => {
+      const authHeader = req.headers.get('Authorization') || '';
+      return authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+    })();
     if (!token) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
     const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       global: { headers: { Authorization: `Bearer ${token}` } },
@@ -38,10 +99,10 @@ serve(async (req: Request) => {
     // Permission check: customers.manage
     const { data: canManage, error: permErr } = await userClient.rpc('has_admin_permission', { p: 'customers.manage' });
     if (permErr) {
-      return new Response(JSON.stringify({ error: 'Permission check failed' }), { status: 403 });
+      return new Response(JSON.stringify({ error: 'Permission check failed' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
     if (!canManage) {
-      return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403 });
+      return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
     const body: CreateCustomerBody = await req.json();
@@ -52,7 +113,7 @@ serve(async (req: Request) => {
     const notes = (body.notes || '') || null;
 
     if (!phone) {
-      return new Response(JSON.stringify({ error: 'Phone is required' }), { status: 400 });
+      return new Response(JSON.stringify({ error: 'Phone is required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
     const adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
@@ -66,17 +127,17 @@ serve(async (req: Request) => {
         .limit(1)
         .maybeSingle();
       if (dupErr) {
-        return new Response(JSON.stringify({ error: 'Duplicate check failed' }), { status: 500 });
+        return new Response(JSON.stringify({ error: 'Duplicate check failed' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
       if (existingByPhone) {
-        return new Response(JSON.stringify({ error: 'duplicate_phone' }), { status: 409 });
+        return new Response(JSON.stringify({ error: 'duplicate_phone' }), { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
     }
 
     const businessCustomerId = crypto.randomUUID();
     const customerPassword = `${crypto.randomUUID()}${crypto.randomUUID()}`;
     const { data: created, error: createErr } = await adminClient.auth.admin.createUser({
-      email: `manual-${businessCustomerId}@azta.local`,
+      email: `manual-${businessCustomerId}@azta.com`,
       password: customerPassword,
       email_confirm: true,
       user_metadata: {
@@ -89,7 +150,7 @@ serve(async (req: Request) => {
 
     const authUserId = created?.user?.id || null;
     if (createErr || !authUserId) {
-      return new Response(JSON.stringify({ error: 'create_auth_user_failed', details: createErr?.message || '' }), { status: 500 });
+      return new Response(JSON.stringify({ error: 'create_auth_user_failed', details: createErr?.message || '' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
     const insertPayload: any = {
@@ -111,11 +172,11 @@ serve(async (req: Request) => {
 
     if (insErr) {
       try { await adminClient.auth.admin.deleteUser(authUserId); } catch {}
-      return new Response(JSON.stringify({ error: 'insert_failed', details: insErr.message }), { status: 500 });
+      return new Response(JSON.stringify({ error: 'insert_failed', details: insErr.message }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    return new Response(JSON.stringify({ customer: inserted?.[0] || null }), { status: 200 });
+    return new Response(JSON.stringify({ customer: inserted?.[0] || null }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   } catch (e) {
-    return new Response(JSON.stringify({ error: (e as Error)?.message || 'internal_error' }), { status: 500 });
+    return new Response(JSON.stringify({ error: (e as Error)?.message || 'internal_error' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   }
 });
