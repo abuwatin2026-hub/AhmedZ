@@ -1,5 +1,5 @@
 Param(
-  [string]$ProjectRef = "twcjjisnxmfpseksqnhb",
+  [string]$ProjectRef = "pmhivhtaoydfolseelyc",
   [string]$ApiUrl,
   [string]$AnonKey,
   [string]$ServiceRoleKey,
@@ -21,5 +21,6 @@ npx supabase secrets set AZTA_ALLOWED_ORIGINS=$AllowedOrigins
 npx supabase secrets list
 
 npx supabase functions deploy create-admin-user
+npx supabase functions deploy create-admin-customer
 npx supabase functions deploy reset-admin-password
 npx supabase functions deploy delete-admin-user
