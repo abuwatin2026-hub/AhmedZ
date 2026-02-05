@@ -7,6 +7,7 @@ import { useSettings } from '../../contexts/SettingsContext';
 import { useToast } from '../../contexts/ToastContext';
 import { useWarehouses } from '../../contexts/WarehouseContext';
 import { useSessionScope } from '../../contexts/SessionScopeContext';
+import { useItemMeta } from '../../contexts/ItemMetaContext';
 import * as Icons from '../../components/icons';
 import CurrencyDualAmount from '../../components/common/CurrencyDualAmount';
 import { getBaseCurrencyCode, getSupabaseClient } from '../../supabase';
@@ -43,6 +44,7 @@ const PurchaseOrderScreen: React.FC = () => {
     const { stockItems } = useStock();
     const { user } = useAuth();
     const { settings } = useSettings();
+    const { groups: itemGroups } = useItemMeta();
     const [baseCode, setBaseCode] = useState('—');
     const [poCurrency, setPoCurrency] = useState<string>('');
     const [poFxRate, setPoFxRate] = useState<number>(1);
@@ -258,18 +260,32 @@ const PurchaseOrderScreen: React.FC = () => {
     const isFoodCategoryValue = (categoryValue: unknown) => {
         const raw = String(categoryValue || '').trim();
         if (!raw) return false;
-        const compact = raw.toLowerCase().replace(/\s+/g, '').replace(/[-_]/g, '');
+        const compact = raw
+            .toLowerCase()
+            .replace(/[\u064B-\u065F\u0670\u0640]/g, '')
+            .replace(/\s+/g, '')
+            .replace(/[-_]/g, '');
         if (compact === 'food') return true;
+        if (compact === 'grocery' || compact === 'groceries') return true;
         if (compact === 'موادغذائية') return true;
-        if (raw.includes('غذ')) return true;
-        if (raw.toLowerCase().includes('food')) return true;
+        if (compact.includes('غذ')) return true;
+        if (compact.includes('food')) return true;
+        if (compact.includes('grocery')) return true;
         return false;
     };
     const isFoodItem = (itemId: string) => {
-        const item = getItemById(itemId);
+        const item = getItemById(itemId) || (menuItems || []).find((i) => i && i.id === itemId);
         const flagged = Boolean((item as any)?.isFood ?? (item as any)?.is_food ?? (item as any)?.expiryRequired ?? (item as any)?.expiry_required);
         if (flagged) return true;
-        return isFoodCategoryValue((item as any)?.category);
+        if (isFoodCategoryValue((item as any)?.category)) return true;
+        const groupKeyRaw =
+            String((item as any)?.group || (item as any)?.groupKey || (item as any)?.group_key || (item as any)?.data?.group || '').trim();
+        if (!groupKeyRaw) return false;
+        const groupKey = groupKeyRaw.toLowerCase();
+        const matches = (itemGroups || []).filter((g: any) => String(g?.key || '').trim().toLowerCase() === groupKey);
+        if (matches.some((m: any) => isFoodCategoryValue(m?.categoryKey))) return true;
+        if (matches.length === 1) return isFoodCategoryValue(matches[0]?.categoryKey);
+        return false;
     };
     const getQuantityStep = (itemId: string) => {
         const unit = getItemById(itemId)?.unitType;

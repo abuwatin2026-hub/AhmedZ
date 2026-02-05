@@ -82,7 +82,7 @@ const ItemDetailsScreen: React.FC = () => {
   useEffect(() => {
     const current = String(displayCurrency || '').trim().toUpperCase();
     if (current && operationalCurrencies.includes(current)) return;
-    const next = operationalCurrencies[0] || '';
+    const next = operationalCurrencies.includes('YER') ? 'YER' : (operationalCurrencies[0] || '');
     if (!next) return;
     setDisplayCurrency(next);
     try {

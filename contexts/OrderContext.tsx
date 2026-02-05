@@ -1288,7 +1288,8 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         p_coupon_code: orderData.appliedCouponCode || null,
         p_points_redeemed_value: orderData.pointsRedeemedValue || 0,
         p_payment_proof_type: orderData.paymentProofType || null,
-        p_payment_proof: orderData.paymentProof || null
+        p_payment_proof: orderData.paymentProof || null,
+        p_currency: (orderData as any)?.currency ? String((orderData as any).currency).trim().toUpperCase() : null
     };
 
     const { data: createdOrderData, error } = await supabase.rpc('create_order_secure_with_payment_proof', rpcPayload);
