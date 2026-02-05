@@ -464,7 +464,9 @@ const SupplierStockReportScreen: React.FC = () => {
               )}
               {!loading && rows.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="p-8 text-center text-gray-500 dark:text-gray-400">{selectedSupplier ? 'لا توجد نتائج.' : 'اختر موردًا لعرض التقرير.'}</td>
+                  <td colSpan={10} className="p-8 text-center text-gray-500 dark:text-gray-400">
+                    {selectedSupplier ? 'لا توجد نتائج لهذا المورد ضمن الفلاتر الحالية. إذا كانت هذه أول مرة تتعامل مع المورد، أنشئ أمر شراء له أو اربط الأصناف به.' : 'اختر موردًا لعرض التقرير.'}
+                  </td>
                 </tr>
               )}
             </tbody>

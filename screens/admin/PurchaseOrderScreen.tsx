@@ -122,6 +122,7 @@ const PurchaseOrderScreen: React.FC = () => {
     const [orderItems, setOrderItems] = useState<OrderItemRow[]>([]);
     const [receiveOnCreate, setReceiveOnCreate] = useState(true);
     const [quickAddCode, setQuickAddCode] = useState<string>('');
+    const [quickAddName, setQuickAddName] = useState<string>('');
     const [quickAddQuantity, setQuickAddQuantity] = useState<number>(1);
     const [quickAddUnitCost, setQuickAddUnitCost] = useState<number>(0);
     const [bulkLinesText, setBulkLinesText] = useState<string>('');
@@ -254,6 +255,10 @@ const PurchaseOrderScreen: React.FC = () => {
     };
 
     const getItemById = (id: string) => activeMenuItems.find(i => i.id === id);
+    const isFoodItem = (itemId: string) => {
+        const item = getItemById(itemId);
+        return String((item as any)?.category || '') === 'food';
+    };
     const getQuantityStep = (itemId: string) => {
         const unit = getItemById(itemId)?.unitType;
         return unit === 'kg' || unit === 'gram' ? 0.5 : 1;
@@ -296,6 +301,38 @@ const PurchaseOrderScreen: React.FC = () => {
         }
         appendOrderItem(item.id, quickAddQuantity, quickAddUnitCost);
         setQuickAddCode('');
+    };
+
+    const quickAddNameMatches = useMemo(() => {
+        const needle = quickAddName.trim().toLowerCase();
+        if (!needle) return [];
+        const scored: Array<{ item: MenuItem; score: number }> = [];
+        for (const item of activeMenuItems) {
+            const ar = String(item?.name?.ar || '').toLowerCase();
+            const en = String(item?.name?.en || '').toLowerCase();
+            const id = String(item?.id || '').toLowerCase();
+            const barcode = String((item as any)?.barcode || '').toLowerCase();
+            const hay = [ar, en, id, barcode].filter(Boolean);
+            const hit = hay.some((h) => h.includes(needle));
+            if (!hit) continue;
+            const starts = hay.some((h) => h.startsWith(needle));
+            const score = (starts ? 0 : 1) + (ar.includes(needle) ? 0 : 1) + (en.includes(needle) ? 0 : 1);
+            scored.push({ item, score });
+        }
+        scored.sort((a, b) => a.score - b.score);
+        return scored.slice(0, 8).map(s => s.item);
+    }, [activeMenuItems, quickAddName]);
+
+    const handleQuickAddByName = (itemId?: string) => {
+        const chosen = itemId
+            ? activeMenuItems.find(i => i.id === itemId)
+            : (quickAddNameMatches[0] || null);
+        if (!chosen) {
+            showNotification('أدخل اسم الصنف واختره من القائمة.', 'error');
+            return;
+        }
+        appendOrderItem(chosen.id, quickAddQuantity, quickAddUnitCost);
+        setQuickAddName('');
     };
 
     const parseBulkNumber = (value: string) => {
@@ -475,6 +512,7 @@ const PurchaseOrderScreen: React.FC = () => {
             const received = Number(it.receivedQuantity || 0);
             const remaining = Math.max(0, ordered - received);
             const base = getItemById(it.itemId);
+            const isFood = String((base as any)?.category || '') === 'food';
             return {
                 itemId: it.itemId,
                 itemName: it.itemName || it.itemId,
@@ -482,8 +520,8 @@ const PurchaseOrderScreen: React.FC = () => {
                 received,
                 remaining,
                 receiveNow: remaining,
-                productionDate: (base?.productionDate || (base as any)?.harvestDate || ''),
-                expiryDate: base?.expiryDate || '',
+                productionDate: isFood ? (base?.productionDate || (base as any)?.harvestDate || '') : '',
+                expiryDate: isFood ? (base?.expiryDate || '') : '',
                 transportCost: Number(base?.transportCost || 0),
                 supplyTaxCost: Number(base?.supplyTaxCost || 0),
             };
@@ -493,6 +531,15 @@ const PurchaseOrderScreen: React.FC = () => {
         setReceiveOccurredAt(toDateTimeLocalInputValue());
         setIsReceiveModalOpen(true);
     };
+
+    const showCreateDates = useMemo(() => {
+        if (!receiveOnCreate) return false;
+        return orderItems.some((r) => r.itemId && isFoodItem(r.itemId));
+    }, [isFoodItem, orderItems, receiveOnCreate]);
+
+    const showReceiveDates = useMemo(() => {
+        return receiveRows.some((r) => r.itemId && isFoodItem(r.itemId));
+    }, [isFoodItem, receiveRows]);
 
     const updateReceiveRow = (index: number, value: number) => {
         const next = [...receiveRows];
@@ -1395,6 +1442,45 @@ const PurchaseOrderScreen: React.FC = () => {
                                                 placeholder="امسح الباركود ثم Enter"
                                             />
                                         </div>
+                                        <div className="md:col-span-2">
+                                            <label className="block text-sm font-medium mb-1 dark:text-gray-300">بحث باسم الصنف</label>
+                                            <div className="relative">
+                                                <input
+                                                    type="text"
+                                                    value={quickAddName}
+                                                    onChange={(e) => setQuickAddName(e.target.value)}
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === 'Enter') {
+                                                            e.preventDefault();
+                                                            handleQuickAddByName();
+                                                        }
+                                                    }}
+                                                    className="w-full p-2 border rounded-lg dark:bg-gray-800 dark:border-gray-600 dark:text-white"
+                                                    placeholder="اكتب اسم الصنف ثم Enter"
+                                                />
+                                                {quickAddName.trim() && quickAddNameMatches.length > 0 ? (
+                                                    <div className="absolute z-10 mt-1 w-full max-h-56 overflow-auto rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-lg">
+                                                        {quickAddNameMatches.map((it) => {
+                                                            const label = it.name?.ar || it.name?.en || it.id;
+                                                            const stock = typeof (it as any).availableStock === 'number' ? Number((it as any).availableStock) : null;
+                                                            return (
+                                                                <button
+                                                                    key={it.id}
+                                                                    type="button"
+                                                                    onClick={() => handleQuickAddByName(it.id)}
+                                                                    className="w-full text-right px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center justify-between gap-3"
+                                                                >
+                                                                    <span className="min-w-0 truncate">{label}</span>
+                                                                    <span className="text-xs text-gray-500 dark:text-gray-400 font-mono" dir="ltr">
+                                                                        {stock === null ? '' : `حالي: ${stock}`}
+                                                                    </span>
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                ) : null}
+                                            </div>
+                                        </div>
                                         <div>
                                             <label className="block text-sm font-medium mb-1 dark:text-gray-300">الكمية</label>
                                             <input
@@ -1424,7 +1510,15 @@ const PurchaseOrderScreen: React.FC = () => {
                                             onClick={handleQuickAdd}
                                             className="px-4 py-2 rounded-lg bg-primary-600 text-white font-semibold hover:bg-primary-700"
                                         >
-                                            إضافة
+                                            إضافة (كود)
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleQuickAddByName()}
+                                            className="px-4 py-2 rounded-lg bg-gray-900 text-white font-semibold hover:bg-black"
+                                            disabled={!quickAddName.trim() || quickAddNameMatches.length === 0}
+                                        >
+                                            إضافة (اسم)
                                         </button>
                                     </div>
                                     <div className="grid grid-cols-1 gap-2">
@@ -1462,7 +1556,7 @@ const PurchaseOrderScreen: React.FC = () => {
                                                     <th className="p-2 sm:p-3 w-24">الكمية</th>
                                                     <th className="p-2 sm:p-3 w-32">سعر الشراء (للوحدة)</th>
                                                     <th className="p-2 sm:p-3 w-32">الإجمالي</th>
-                                                    {receiveOnCreate ? (
+                                                    {showCreateDates ? (
                                                         <>
                                                             <th className="p-2 sm:p-3 w-40">تاريخ الإنتاج</th>
                                                             <th className="p-2 sm:p-3 w-40">تاريخ الانتهاء</th>
@@ -1512,24 +1606,34 @@ const PurchaseOrderScreen: React.FC = () => {
                                                         <td className="p-2 sm:p-2 font-mono font-bold text-gray-700">
                                                             <CurrencyDualAmount amount={Number(row.quantity * row.unitCost) || 0} currencyCode={poCurrency} compact />
                                                         </td>
-                                                        {receiveOnCreate ? (
+                                                        {showCreateDates ? (
                                                             <>
-                                                                <td className="p-2 sm:p-2">
-                                                                    <input
-                                                                        type="date"
-                                                                        value={row.productionDate || ''}
-                                                                        onChange={(e) => updateRow(index, 'productionDate', e.target.value)}
-                                                                        className="w-full p-1 border rounded"
-                                                                    />
-                                                                </td>
-                                                                <td className="p-2 sm:p-2">
-                                                                    <input
-                                                                        type="date"
-                                                                        value={row.expiryDate || ''}
-                                                                        onChange={(e) => updateRow(index, 'expiryDate', e.target.value)}
-                                                                        className="w-full p-1 border rounded"
-                                                                    />
-                                                                </td>
+                                                                {isFoodItem(row.itemId) ? (
+                                                                    <>
+                                                                        <td className="p-2 sm:p-2">
+                                                                            <input
+                                                                                type="date"
+                                                                                value={row.productionDate || ''}
+                                                                                onChange={(e) => updateRow(index, 'productionDate', e.target.value)}
+                                                                                className="w-full p-1 border rounded"
+                                                                            />
+                                                                        </td>
+                                                                        <td className="p-2 sm:p-2">
+                                                                            <input
+                                                                                type="date"
+                                                                                value={row.expiryDate || ''}
+                                                                                onChange={(e) => updateRow(index, 'expiryDate', e.target.value)}
+                                                                                className="w-full p-1 border rounded"
+                                                                                required
+                                                                            />
+                                                                        </td>
+                                                                    </>
+                                                                ) : (
+                                                                    <>
+                                                                        <td className="p-2 sm:p-2 text-center text-gray-400">—</td>
+                                                                        <td className="p-2 sm:p-2 text-center text-gray-400">—</td>
+                                                                    </>
+                                                                )}
                                                             </>
                                                         ) : null}
                                                         <td className="p-2 sm:p-2 text-center">
@@ -1809,8 +1913,12 @@ const PurchaseOrderScreen: React.FC = () => {
                                                     <th className="p-2 sm:p-3 w-24">المستلم</th>
                                                     <th className="p-2 sm:p-3 w-24">المتبقي</th>
                                                     <th className="p-2 sm:p-3 w-32">استلام الآن</th>
-                                                    <th className="p-2 sm:p-3 w-40">تاريخ الإنتاج</th>
-                                                    <th className="p-2 sm:p-3 w-40">تاريخ الانتهاء</th>
+                                                    {showReceiveDates ? (
+                                                        <>
+                                                            <th className="p-2 sm:p-3 w-40">تاريخ الإنتاج</th>
+                                                            <th className="p-2 sm:p-3 w-40">تاريخ الانتهاء</th>
+                                                        </>
+                                                    ) : null}
                                                     <th className="p-2 sm:p-3 w-32">تكلفة النقل/وحدة</th>
                                                     <th className="p-2 sm:p-3 w-32">ضريبة المورد/وحدة</th>
                                                 </tr>
@@ -1832,22 +1940,34 @@ const PurchaseOrderScreen: React.FC = () => {
                                                                 className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white text-center font-mono"
                                                             />
                                                         </td>
-                                                        <td className="p-2 sm:p-2">
-                                                            <input
-                                                                type="date"
-                                                                value={r.productionDate || ''}
-                                                                onChange={(e) => updateReceiveProduction(idx, e.target.value)}
-                                                                className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                                                            />
-                                                        </td>
-                                                        <td className="p-2 sm:p-2">
-                                                            <input
-                                                                type="date"
-                                                                value={r.expiryDate || ''}
-                                                                onChange={(e) => updateReceiveExpiry(idx, e.target.value)}
-                                                                className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                                                            />
-                                                        </td>
+                                                        {showReceiveDates ? (
+                                                            isFoodItem(r.itemId) ? (
+                                                                <>
+                                                                    <td className="p-2 sm:p-2">
+                                                                        <input
+                                                                            type="date"
+                                                                            value={r.productionDate || ''}
+                                                                            onChange={(e) => updateReceiveProduction(idx, e.target.value)}
+                                                                            className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                                                        />
+                                                                    </td>
+                                                                    <td className="p-2 sm:p-2">
+                                                                        <input
+                                                                            type="date"
+                                                                            value={r.expiryDate || ''}
+                                                                            onChange={(e) => updateReceiveExpiry(idx, e.target.value)}
+                                                                            className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                                                            required={Boolean(r.receiveNow) && r.receiveNow > 0}
+                                                                        />
+                                                                    </td>
+                                                                </>
+                                                            ) : (
+                                                                <>
+                                                                    <td className="p-2 sm:p-2 text-center text-gray-400">—</td>
+                                                                    <td className="p-2 sm:p-2 text-center text-gray-400">—</td>
+                                                                </>
+                                                            )
+                                                        ) : null}
                                                             <td className="p-2 sm:p-2">
                                                                 <input
                                                                     type="number"
