@@ -509,12 +509,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const anonKeyValue = (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined) || '';
       const accessToken = await getFreshAccessToken();
       const headers: Record<string, string> = {};
-      if (anonKeyValue.trim()) {
-        headers.apikey = anonKeyValue.trim();
-        headers.Authorization = `Bearer ${anonKeyValue.trim()}`;
-      } else if (accessToken) {
-        headers.Authorization = `Bearer ${accessToken}`;
-      }
+      if (anonKeyValue.trim()) headers.apikey = anonKeyValue.trim();
+      if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
       if (accessToken) headers['x-user-token'] = accessToken;
 
       const result = await supabase.functions.invoke(functionName, { body, headers });
@@ -534,12 +530,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
 
       const retryHeaders: Record<string, string> = {};
-      if (anonKeyValue.trim()) {
-        retryHeaders.apikey = anonKeyValue.trim();
-        retryHeaders.Authorization = `Bearer ${anonKeyValue.trim()}`;
-      } else {
-        retryHeaders.Authorization = `Bearer ${refreshed.session.access_token}`;
-      }
+      if (anonKeyValue.trim()) retryHeaders.apikey = anonKeyValue.trim();
+      retryHeaders.Authorization = `Bearer ${refreshed.session.access_token}`;
       retryHeaders['x-user-token'] = refreshed.session.access_token;
       return await supabase.functions.invoke(functionName, { body, headers: retryHeaders });
     };

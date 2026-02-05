@@ -240,15 +240,13 @@ const withSupabaseHeaders = (baseFetch: (input: RequestInfo | URL, init?: Reques
 
     if (typeof window !== 'undefined') {
       const status = Number(res.status);
-      if (status === 400 || status === 401 || status === 403) {
+      if (status === 401 || status === 403) {
         try {
           const urlStr = typeof input === 'string' ? input : (input instanceof URL ? input.toString() : String((input as any)?.url || ''));
           const cloned = res.clone();
           const txt = await cloned.text();
           const normalized = String(txt || '').toLowerCase();
           const isAuthHeaderIssue =
-            normalized.includes('no api key found') ||
-            normalized.includes('no `apikey`') ||
             normalized.includes('jwt cryptographic operation failed') ||
             normalized.includes('invalid jwt') ||
             normalized.includes('session_verification_failed');
