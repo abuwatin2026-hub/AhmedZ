@@ -6,6 +6,11 @@ const REALTIME_DISABLED_KEY = 'AZTA_DISABLE_REALTIME';
 export const SUPABASE_AUTH_ERROR_EVENT = 'AZTA_SUPABASE_AUTH_ERROR';
 let realtimeDisabled = false;
 let postgrestReloadAttempt: Promise<boolean> | null = null;
+const RPC_HAS_FUNCTION_TTL_MS = 10 * 60_000;
+let rpcHasFunctionInflight: Map<string, Promise<boolean>> | null = null;
+let rpcHasFunctionCache: Map<string, { at: number; value: boolean }> | null = null;
+let rpcWrappersAvailableInflight: Promise<boolean> | null = null;
+let rpcWrappersAvailableCache: { at: number; value: boolean } | null = null;
 
 const createTimeoutFetch = (timeoutMs: number) => {
   return async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -109,6 +114,92 @@ const createRetryFetch = (baseFetch: (input: RequestInfo | URL, init?: RequestIn
         await sleep(wait);
       }
     }
+  };
+};
+
+const createConcurrencyFetch = (
+  baseFetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
+  options?: { maxConcurrent?: number; maxQueue?: number }
+) => {
+  const maxConcurrent = Number.isFinite(options?.maxConcurrent) ? Math.max(1, Number(options?.maxConcurrent)) : 6;
+  const maxQueue = Number.isFinite(options?.maxQueue) ? Math.max(0, Number(options?.maxQueue)) : 250;
+
+  let active = 0;
+  const queue: Array<{
+    input: RequestInfo | URL;
+    init?: RequestInit;
+    resolve: (res: Response) => void;
+    reject: (err: any) => void;
+    signal?: AbortSignal | null;
+  }> = [];
+
+  const makeAbortError = () => {
+    try {
+      // @ts-ignore
+      return new DOMException('Aborted', 'AbortError');
+    } catch {
+      const e: any = new Error('Aborted');
+      e.name = 'AbortError';
+      return e;
+    }
+  };
+
+  const pump = () => {
+    while (active < maxConcurrent && queue.length) {
+      const job = queue.shift()!;
+      if (job.signal?.aborted) {
+        job.reject(makeAbortError());
+        continue;
+      }
+      active += 1;
+      Promise.resolve()
+        .then(() => baseFetch(job.input, job.init))
+        .then(job.resolve, job.reject)
+        .finally(() => {
+          active -= 1;
+          pump();
+        });
+    }
+  };
+
+  return async (input: RequestInfo | URL, init?: RequestInit) => {
+    const signal = init?.signal ?? null;
+    if (signal?.aborted) throw makeAbortError();
+    if (active < maxConcurrent && queue.length === 0) {
+      active += 1;
+      try {
+        return await baseFetch(input, init);
+      } finally {
+        active -= 1;
+        pump();
+      }
+    }
+
+    if (maxQueue > 0 && queue.length >= maxQueue) {
+      const err: any = new Error('Too many pending requests');
+      err.name = 'ConcurrencyQueueOverflow';
+      throw err;
+    }
+
+    return await new Promise<Response>((resolve, reject) => {
+      const job = { input, init, resolve, reject, signal };
+      queue.push(job);
+
+      if (signal) {
+        const onAbort = () => {
+          const idx = queue.indexOf(job);
+          if (idx >= 0) queue.splice(idx, 1);
+          reject(makeAbortError());
+        };
+        if (signal.aborted) {
+          onAbort();
+          return;
+        }
+        signal.addEventListener('abort', onAbort, { once: true });
+      }
+
+      pump();
+    });
   };
 };
 
@@ -220,7 +311,11 @@ export const getSupabaseClient = (): SupabaseClient | null => {
   const anonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY as string).trim();
   const timeoutMs = Number((import.meta.env.VITE_SUPABASE_REQUEST_TIMEOUT_MS as any) || 45_000);
   const retryCount = Number((import.meta.env.VITE_SUPABASE_REQUEST_RETRIES as any) || 2);
-  const baseFetch = createRetryFetch(createTimeoutFetch(timeoutMs), { retries: retryCount, baseDelayMs: 250 });
+  const maxConcurrent = Number((import.meta.env.VITE_SUPABASE_MAX_CONCURRENT_REQUESTS as any) || 6);
+  const baseFetch = createConcurrencyFetch(
+    createRetryFetch(createTimeoutFetch(timeoutMs), { retries: retryCount, baseDelayMs: 250 }),
+    { maxConcurrent }
+  );
 
   client = createClient(url, anonKey, {
     auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
@@ -247,13 +342,34 @@ export const markRpcStrictModeEnabled = (): void => {
 export const rpcHasFunction = async (name: string): Promise<boolean> => {
   const supabase = getSupabaseClient();
   if (!supabase) return false;
-  try {
-    const { data, error } = await supabase.rpc('rpc_has_function', { p_name: name });
-    if (error) return false;
-    return Boolean(data);
-  } catch {
-    return false;
-  }
+  if (!rpcHasFunctionInflight) rpcHasFunctionInflight = new Map();
+  if (!rpcHasFunctionCache) rpcHasFunctionCache = new Map();
+  const key = String(name || '').trim();
+  if (!key) return false;
+
+  const now = Date.now();
+  const cached = rpcHasFunctionCache.get(key);
+  if (cached && (now - cached.at) < RPC_HAS_FUNCTION_TTL_MS) return cached.value;
+
+  const inflight = rpcHasFunctionInflight.get(key);
+  if (inflight) return inflight;
+
+  const p = (async () => {
+    try {
+      const { data, error } = await supabase.rpc('rpc_has_function', { p_name: key });
+      const ok = !error && Boolean(data);
+      rpcHasFunctionCache!.set(key, { at: Date.now(), value: ok });
+      return ok;
+    } catch {
+      rpcHasFunctionCache!.set(key, { at: Date.now(), value: false });
+      return false;
+    }
+  })().finally(() => {
+    rpcHasFunctionInflight!.delete(key);
+  });
+
+  rpcHasFunctionInflight.set(key, p);
+  return p;
 };
 
 export const isRpcWrappersAvailable = async (): Promise<boolean> => {
@@ -262,12 +378,26 @@ export const isRpcWrappersAvailable = async (): Promise<boolean> => {
   try {
     const { data: sessionData } = await supabase.auth.getSession();
     if (!sessionData?.session) return false;
-    const checks = await Promise.all([
+    const now = Date.now();
+    if (rpcWrappersAvailableCache && (now - rpcWrappersAvailableCache.at) < RPC_HAS_FUNCTION_TTL_MS) return rpcWrappersAvailableCache.value;
+    if (rpcWrappersAvailableInflight) return rpcWrappersAvailableInflight;
+
+    rpcWrappersAvailableInflight = Promise.all([
       rpcHasFunction('public.confirm_order_delivery(jsonb)'),
       rpcHasFunction('public.confirm_order_delivery_with_credit(jsonb)'),
       rpcHasFunction('public.reserve_stock_for_order(jsonb)'),
-    ]);
-    return checks.every(Boolean);
+    ])
+      .then((checks) => {
+        const ok = checks.every(Boolean);
+        rpcWrappersAvailableCache = { at: Date.now(), value: ok };
+        return ok;
+      })
+      .catch(() => false)
+      .finally(() => {
+        rpcWrappersAvailableInflight = null;
+      });
+
+    return await rpcWrappersAvailableInflight;
   } catch {
     return false;
   }
