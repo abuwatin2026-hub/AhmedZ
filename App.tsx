@@ -62,6 +62,8 @@ const CustomerReports = lazy(() => import('./screens/admin/reports/CustomerRepor
 const FinancialReports = lazy(() => import('./screens/admin/reports/FinancialReports'));
 const ReservationsReports = lazy(() => import('./screens/admin/reports/ReservationsReports'));
 const FoodTraceReports = lazy(() => import('./screens/admin/reports/FoodTraceReports'));
+const InventoryStockReportScreen = lazy(() => import('./screens/admin/reports/InventoryStockReportScreen'));
+const SupplierStockReportScreen = lazy(() => import('./screens/admin/reports/SupplierStockReportScreen'));
 const AdminProfileScreen = lazy(() => import('./screens/admin/AdminProfileScreen'));
 const SettingsScreen = lazy(() => import('./screens/admin/SettingsScreen'));
 const SuppliersScreen = lazy(() => import('./screens/admin/SuppliersScreen'));
@@ -359,6 +361,8 @@ const App: React.FC = () => {
                 <Route path="reports/customers" element={<AdminProtectedRoute permissions={['reports.view']}><CustomerReports /></AdminProtectedRoute>} />
                 <Route path="reports/reservations" element={<AdminProtectedRoute permissions={['reports.view']}><ReservationsReports /></AdminProtectedRoute>} />
                 <Route path="reports/food-trace" element={<AdminProtectedRoute permissions={['reports.view']}><FoodTraceReports /></AdminProtectedRoute>} />
+                <Route path="reports/inventory-stock" element={<AdminProtectedRoute permissions={['reports.view']}><InventoryStockReportScreen /></AdminProtectedRoute>} />
+                <Route path="reports/supplier-stock" element={<AdminProtectedRoute permissions={['reports.view']}><SupplierStockReportScreen /></AdminProtectedRoute>} />
                 <Route path="reports/financial" element={<AdminProtectedRoute permissions={['accounting.view']}><FinancialReports /></AdminProtectedRoute>} />
                 <Route path="accounting" element={<AdminProtectedRoute permissions={['accounting.view']}><FinancialReports /></AdminProtectedRoute>} />
                 <Route path="chart-of-accounts" element={<AdminProtectedRoute roles={['owner']}><ChartOfAccountsScreen /></AdminProtectedRoute>} />

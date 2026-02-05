@@ -70,6 +70,38 @@ export interface Supplier {
   updatedAt?: string;
 }
 
+export interface SupplierItemLink {
+  id: string;
+  supplierId: string;
+  itemId: string;
+  isActive: boolean;
+  reorderPoint: number;
+  targetCoverDays: number;
+  leadTimeDays: number;
+  packSize: number;
+  notes?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface SupplierStockReportRow {
+  itemId: string;
+  itemName: LocalizedString;
+  category?: string;
+  itemGroup?: string;
+  unit?: string;
+  currentStock: number;
+  reservedStock: number;
+  availableStock: number;
+  avgDailySales?: number | null;
+  daysCover?: number | null;
+  reorderPoint?: number;
+  targetCoverDays?: number;
+  leadTimeDays?: number;
+  packSize?: number;
+  suggestedQty: number;
+}
+
 export interface SupplierContract {
   id: string;
   supplierId: string;
