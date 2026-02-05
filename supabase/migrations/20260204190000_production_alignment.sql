@@ -148,10 +148,19 @@ $$;
 drop view if exists public.v_sellable_products;
 
 create view public.v_sellable_products as
-with stock as (
+with main_warehouse as (
+  select w.id as warehouse_id
+  from public.warehouses w
+  where w.is_active = true
+    and upper(coalesce(w.code, '')) = 'MAIN'
+  order by w.code asc
+  limit 1
+),
+stock as (
   select sm.item_id::text as item_id,
-         sum(coalesce(sm.available_quantity, 0)) as available_quantity
+         sum(greatest(coalesce(sm.available_quantity, 0) - coalesce(sm.reserved_quantity, 0), 0)) as available_quantity
   from public.stock_management sm
+  join main_warehouse mw on mw.warehouse_id = sm.warehouse_id
   group by sm.item_id::text
 ),
 valid_batches as (
@@ -173,6 +182,7 @@ valid_batches as (
       and (b.expiry_date is null or b.expiry_date >= current_date)
     ) as has_valid_batch
   from public.batches b
+  join main_warehouse mw on mw.warehouse_id = b.warehouse_id
   group by b.item_id::text
 )
 select

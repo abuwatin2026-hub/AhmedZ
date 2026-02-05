@@ -1,18 +1,3 @@
-do $$
-begin
-  if to_regclass('public.menu_items') is not null then
-    begin
-      alter table public.menu_items
-        add column group_key text generated always as (
-          upper(nullif(btrim(coalesce(data->>'group','')), ''))
-        ) stored;
-    exception when duplicate_column then
-      null;
-    end;
-    create index if not exists idx_menu_items_group_key on public.menu_items(group_key);
-  end if;
-end $$;
-
 create or replace view public.v_sellable_products as
 with main_warehouse as (
   select w.id as warehouse_id
