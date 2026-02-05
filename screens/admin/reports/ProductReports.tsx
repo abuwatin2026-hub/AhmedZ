@@ -247,7 +247,7 @@ const ProductReports: React.FC = () => {
                 for (const ids of chunk(orderIds, 200)) {
                     const { data: orders, error: oErr } = await supabase
                         .from('orders')
-                        .select('id,status,created_at,delivery_zone_id,data')
+                        .select('id,status,created_at,delivery_zone_id,data,fx_rate')
                         .in('id', ids);
                     if (oErr) throw oErr;
                     for (const o of orders || []) {
@@ -338,6 +338,7 @@ const ProductReports: React.FC = () => {
                 const orderLinesByOrderId = new Map<string, Map<string, { qtyStock: number; grossSales: number; netSales: number }>>();
                 for (const [id, o] of ordersById.entries()) {
                     const data = (o as any)?.data || {};
+                    const fxRate = Math.max(parseNumber((o as any)?.fx_rate) || 1, 0);
                     const lines = computeOrderItemLines(data);
                     const orderDiscount = parseNumber(data?.discountAmount ?? data?.discountTotal ?? data?.discount);
                     const orderGross = lines.reduce((s, ln) => s + ln.salesAmountGross, 0);
@@ -368,7 +369,7 @@ const ProductReports: React.FC = () => {
                         agg.item_name = agg.item_name || ln.name;
                         agg.unit_type = agg.unit_type || ln.unitType;
                         agg.quantity_sold += ln.qtyStock;
-                        agg.gross_sales += netSalesAmount;
+                        agg.gross_sales += (netSalesAmount * fxRate);
                         salesAgg.set(ln.itemId, agg);
                     }
                     orderLinesByOrderId.set(id, perItem);
@@ -388,7 +389,7 @@ const ProductReports: React.FC = () => {
                     for (const ids of chunk(returnOrderIds, 200)) {
                         const { data: orders, error: oErr } = await supabase
                             .from('orders')
-                            .select('id,delivery_zone_id,data')
+                            .select('id,delivery_zone_id,data,fx_rate')
                             .in('id', ids);
                         if (oErr) throw oErr;
                         for (const o of orders || []) {
@@ -421,8 +422,9 @@ const ProductReports: React.FC = () => {
                     const items = Array.isArray((sr as any)?.items) ? (sr as any).items : [];
                     if (!orderId || refund <= 0 || items.length === 0) continue;
                     if (zoneArg && !returnOrdersInZone.has(orderId)) continue;
-                    const order = ordersById.get(orderId);
+                    const order = ordersById.get(orderId) || returnOrdersInfo.get(orderId);
                     const orderData = (order as any)?.data || {};
+                    const fxRate = Math.max(parseNumber((order as any)?.fx_rate) || 1, 0);
                     const orderLines = orderLinesByOrderId.get(orderId) || (() => {
                         const lines = computeOrderItemLines(orderData);
                         const perItem = new Map<string, { qtyStock: number; grossSales: number; netSales: number }>();
@@ -452,7 +454,7 @@ const ProductReports: React.FC = () => {
                     const scale = refund / grossSum;
                     for (const row of perItemGrossValue) {
                         returnedQtyByItem.set(row.itemId, (returnedQtyByItem.get(row.itemId) || 0) + row.qty);
-                        returnedSalesByItem.set(row.itemId, (returnedSalesByItem.get(row.itemId) || 0) + (row.grossValue * scale));
+                        returnedSalesByItem.set(row.itemId, (returnedSalesByItem.get(row.itemId) || 0) + ((row.grossValue * scale) * fxRate));
                     }
                 }
 
