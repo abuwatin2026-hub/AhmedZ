@@ -1,16 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useMenu } from '../../../contexts/MenuContext';
 import { useItemMeta } from '../../../contexts/ItemMetaContext';
 import { useWarehouses } from '../../../contexts/WarehouseContext';
 import { useSessionScope } from '../../../contexts/SessionScopeContext';
 import { usePurchases } from '../../../contexts/PurchasesContext';
 import { useSettings } from '../../../contexts/SettingsContext';
 import { useToast } from '../../../contexts/ToastContext';
-import { exportToXlsx } from '../../../utils/export';
-import { buildXlsxBrandOptions } from '../../../utils/branding';
+import { exportToXlsx, printPdfFromElement, sharePdf } from '../../../utils/export';
+import { buildPdfBrandOptions, buildXlsxBrandOptions } from '../../../utils/branding';
 import { toYmdLocal } from '../../../utils/dateUtils';
 import { getSupabaseClient } from '../../../supabase';
-import type { MenuItem } from '../../../types';
 
 type SupplierStockRow = {
   itemId: string;
@@ -19,11 +17,15 @@ type SupplierStockRow = {
   group: string;
   unit: string;
   currentStock: number;
-  qcHold: number;
   reservedStock: number;
-  availableToSell: number;
-  lowStockThreshold: number;
-  supplierIds: string[];
+  availableStock: number;
+  avgDailySales: number;
+  daysCover?: number;
+  reorderPoint: number;
+  targetCoverDays: number;
+  leadTimeDays: number;
+  packSize: number;
+  suggestedQty: number;
 };
 
 const parseNumber = (v: unknown) => {
@@ -32,7 +34,6 @@ const parseNumber = (v: unknown) => {
 };
 
 const SupplierStockReportScreen: React.FC = () => {
-  const { menuItems } = useMenu();
   const { categories: categoryDefs, groups: groupDefs, getCategoryLabel, getGroupLabel, getUnitLabel } = useItemMeta();
   const { warehouses } = useWarehouses();
   const { scope } = useSessionScope();
@@ -41,15 +42,16 @@ const SupplierStockReportScreen: React.FC = () => {
   const { showNotification } = useToast();
 
   const [warehouseId, setWarehouseId] = useState<string>('');
-  const [selectedSupplier, setSelectedSupplier] = useState<string>('all');
+  const [selectedSupplier, setSelectedSupplier] = useState<string>('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedGroup, setSelectedGroup] = useState<string>('all');
   const [stockFilter, setStockFilter] = useState<'all' | 'in' | 'low' | 'out'>('all');
   const [searchTerm, setSearchTerm] = useState<string>('');
+  const [salesDays, setSalesDays] = useState<number>(7);
+  const [isSharing, setIsSharing] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
-  const [stockByItemId, setStockByItemId] = useState<Record<string, { currentStock: number; qcHold: number; reservedStock: number; unit: string; lowStockThreshold: number }>>({});
-  const [supplierIdsByItemId, setSupplierIdsByItemId] = useState<Record<string, string[]>>({});
+  const [rowsRaw, setRowsRaw] = useState<SupplierStockRow[]>([]);
 
   useEffect(() => {
     if (warehouseId) return;
@@ -63,162 +65,134 @@ const SupplierStockReportScreen: React.FC = () => {
   }, [scope?.warehouseId, warehouseId, warehouses]);
 
   useEffect(() => {
+    if (selectedSupplier) return;
+    const first = suppliers?.[0]?.id ? String(suppliers[0].id) : '';
+    if (first) setSelectedSupplier(first);
+  }, [selectedSupplier, suppliers]);
+
+  const supplierOptions = useMemo(() => {
+    const list = [...(suppliers || [])].sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+    return [{ id: '', name: 'اختر المورد' }, ...list.map(s => ({ id: String(s.id), name: String(s.name || s.id) }))];
+  }, [suppliers]);
+
+  const categoryOptions = useMemo(() => {
+    const activeKeys = categoryDefs.filter(c => c.isActive).map(c => String(c.key));
+    const usedKeys = [...new Set((rowsRaw || []).map(r => String(r.category || '')).filter((v) => v.length > 0))];
+    const merged = Array.from(new Set([...activeKeys, ...usedKeys])).sort((a, b) => a.localeCompare(b));
+    return ['all', ...merged];
+  }, [categoryDefs, rowsRaw]);
+
+  const groupOptions = useMemo(() => {
+    const activeKeys = groupDefs.filter(g => g.isActive).map(g => String(g.key));
+    const usedKeys = [...new Set((rowsRaw || []).map(r => String(r.group || '')).filter(Boolean))];
+    const merged = Array.from(new Set([...activeKeys, ...usedKeys])).sort((a, b) => a.localeCompare(b));
+    return ['all', ...merged];
+  }, [groupDefs, rowsRaw]);
+
+  useEffect(() => {
     let active = true;
     const run = async () => {
+      if (!selectedSupplier) {
+        if (active) setRowsRaw([]);
+        return;
+      }
       if (!warehouseId) return;
       const supabase = getSupabaseClient();
       if (!supabase) return;
       setLoading(true);
       try {
         setError('');
-        const { data, error: qErr } = await supabase
-          .from('stock_management')
-          .select('item_id,available_quantity,qc_hold_quantity,reserved_quantity,unit,low_stock_threshold')
-          .eq('warehouse_id', warehouseId)
-          .limit(10000);
+        const { data, error: qErr } = await supabase.rpc('get_supplier_stock_report', {
+          p_supplier_id: selectedSupplier,
+          p_warehouse_id: warehouseId || null,
+          p_days: Math.max(1, Number(salesDays) || 7),
+        } as any);
         if (qErr) throw qErr;
-        const map: Record<string, { currentStock: number; qcHold: number; reservedStock: number; unit: string; lowStockThreshold: number }> = {};
-        for (const r of Array.isArray(data) ? data : []) {
-          const itemId = String((r as any)?.item_id || '');
-          if (!itemId) continue;
-          map[itemId] = {
-            currentStock: parseNumber((r as any)?.available_quantity),
-            qcHold: parseNumber((r as any)?.qc_hold_quantity),
-            reservedStock: parseNumber((r as any)?.reserved_quantity),
-            unit: String((r as any)?.unit || 'piece'),
-            lowStockThreshold: Math.max(0, parseNumber((r as any)?.low_stock_threshold) || 5),
+        const mapped: SupplierStockRow[] = (Array.isArray(data) ? data : []).map((r: any) => {
+          const itemId = String(r?.item_id || '');
+          const nameJson = r?.item_name && typeof r.item_name === 'object' ? r.item_name : {};
+          const name = String(nameJson?.ar || nameJson?.en || itemId);
+          const currentStock = parseNumber(r?.current_stock);
+          const reservedStock = parseNumber(r?.reserved_stock);
+          const availableStock = parseNumber(r?.available_stock);
+          const daysCoverRaw = r?.days_cover;
+          const daysCover = daysCoverRaw === null || daysCoverRaw === undefined ? undefined : parseNumber(daysCoverRaw);
+          return {
+            itemId,
+            name,
+            category: String(r?.category || ''),
+            group: String(r?.item_group || ''),
+            unit: String(r?.unit || 'piece'),
+            currentStock,
+            reservedStock,
+            availableStock,
+            avgDailySales: parseNumber(r?.avg_daily_sales),
+            daysCover,
+            reorderPoint: parseNumber(r?.reorder_point),
+            targetCoverDays: Math.max(0, Math.floor(parseNumber(r?.target_cover_days) || 0)),
+            leadTimeDays: Math.max(0, Math.floor(parseNumber(r?.lead_time_days) || 0)),
+            packSize: Math.max(0, parseNumber(r?.pack_size) || 1),
+            suggestedQty: Math.max(0, parseNumber(r?.suggested_qty)),
           };
-        }
-        if (active) setStockByItemId(map);
+        }).filter((r: SupplierStockRow) => Boolean(r.itemId));
+        if (active) setRowsRaw(mapped);
       } catch (e: any) {
         const msg = String(e?.message || '');
-        if (active) setError(msg || 'فشل تحميل بيانات المخزون.');
+        if (active) {
+          setRowsRaw([]);
+          setError(msg || 'فشل تحميل تقرير المورد.');
+        }
       } finally {
         if (active) setLoading(false);
       }
     };
     void run();
-    return () => {
-      active = false;
-    };
-  }, [warehouseId]);
+    return () => { active = false; };
+  }, [salesDays, selectedSupplier, warehouseId]);
 
-  useEffect(() => {
-    let active = true;
-    const run = async () => {
-      const supabase = getSupabaseClient();
-      if (!supabase) return;
-      try {
-        const { data, error: qErr } = await supabase
-          .from('supplier_items')
-          .select('supplier_id,item_id,is_active')
-          .eq('is_active', true)
-          .limit(20000);
-        if (qErr) throw qErr;
-        const map: Record<string, string[]> = {};
-        for (const r of Array.isArray(data) ? data : []) {
-          const itemId = String((r as any)?.item_id || '');
-          const supplierId = String((r as any)?.supplier_id || '');
-          if (!itemId || !supplierId) continue;
-          map[itemId] = map[itemId] ? Array.from(new Set([...map[itemId], supplierId])) : [supplierId];
-        }
-        if (active) setSupplierIdsByItemId(map);
-      } catch {
-        if (active) setSupplierIdsByItemId({});
-      }
-    };
-    void run();
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  const supplierOptions = useMemo(() => {
-    const list = [...(suppliers || [])].sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
-    return [{ id: 'all', name: 'الكل' }, ...list.map(s => ({ id: s.id, name: s.name }))];
-  }, [suppliers]);
-
-  const categoryOptions = useMemo(() => {
-    const activeKeys = categoryDefs.filter(c => c.isActive).map(c => String(c.key));
-    const usedKeys = [...new Set(menuItems.map(it => String((it as any)?.category || '')).filter((v) => v.length > 0))];
-    const merged = Array.from(new Set([...activeKeys, ...usedKeys])).sort((a, b) => a.localeCompare(b));
-    return ['all', ...merged];
-  }, [categoryDefs, menuItems]);
-
-  const groupOptions = useMemo(() => {
-    const activeKeys = groupDefs.filter(g => g.isActive).map(g => String(g.key));
-    const usedKeys = [...new Set(menuItems.map((it: any) => String(it?.group || '')).filter(Boolean))];
-    const merged = Array.from(new Set([...activeKeys, ...usedKeys])).sort((a, b) => a.localeCompare(b));
-    return ['all', ...merged];
-  }, [groupDefs, menuItems]);
-
-  const rows = useMemo<SupplierStockRow[]>(() => {
+  const rows = useMemo(() => {
     const needle = searchTerm.trim().toLowerCase();
-    return (menuItems || [])
-      .filter((it: MenuItem) => String(it?.status || 'active') === 'active')
-      .map((it: any) => {
-        const itemId = String(it?.id || '');
-        if (!itemId) return null;
-        const supplierIds = supplierIdsByItemId[itemId] || [];
-        if (selectedSupplier !== 'all' && !supplierIds.includes(selectedSupplier)) return null;
-        const name = String(it?.name?.ar || it?.name?.en || itemId);
-        const category = String(it?.category || '');
-        const group = String(it?.group || '');
-        const stock = stockByItemId[itemId];
-        const currentStock = parseNumber(stock?.currentStock);
-        const qcHold = parseNumber(stock?.qcHold);
-        const reservedStock = parseNumber(stock?.reservedStock);
-        const availableToSell = currentStock - reservedStock;
-        const lowStockThreshold = Math.max(0, parseNumber(stock?.lowStockThreshold) || 5);
-        const unit = String(stock?.unit || it?.unitType || 'piece');
-        const normalized: SupplierStockRow = {
-          itemId,
-          name,
-          category,
-          group,
-          unit,
-          currentStock,
-          qcHold,
-          reservedStock,
-          availableToSell,
-          lowStockThreshold,
-          supplierIds,
-        };
-        if (selectedCategory !== 'all' && normalized.category !== selectedCategory) return null;
-        if (selectedGroup !== 'all' && normalized.group !== selectedGroup) return null;
-        if (needle && !normalized.name.toLowerCase().includes(needle) && !normalized.itemId.toLowerCase().includes(needle)) return null;
-        if (stockFilter === 'in') return normalized.availableToSell > normalized.lowStockThreshold ? normalized : null;
-        if (stockFilter === 'low') return normalized.availableToSell > 0 && normalized.availableToSell <= normalized.lowStockThreshold ? normalized : null;
-        if (stockFilter === 'out') return normalized.availableToSell <= 0 ? normalized : null;
-        return normalized;
+    return (rowsRaw || [])
+      .filter((r) => {
+        if (selectedCategory !== 'all' && r.category !== selectedCategory) return false;
+        if (selectedGroup !== 'all' && r.group !== selectedGroup) return false;
+        if (needle && !r.name.toLowerCase().includes(needle) && !r.itemId.toLowerCase().includes(needle)) return false;
+        if (stockFilter === 'out') return r.availableStock <= 0;
+        if (stockFilter === 'low') return r.availableStock > 0 && (r.suggestedQty > 0 || r.availableStock <= r.reorderPoint);
+        if (stockFilter === 'in') return r.availableStock > 0 && r.suggestedQty <= 0 && r.availableStock > r.reorderPoint;
+        return true;
       })
-      .filter(Boolean) as SupplierStockRow[];
-  }, [menuItems, searchTerm, selectedSupplier, selectedCategory, selectedGroup, stockFilter, stockByItemId, supplierIdsByItemId]);
+      .sort((a, b) => (b.suggestedQty - a.suggestedQty) || (a.availableStock - b.availableStock));
+  }, [rowsRaw, searchTerm, selectedCategory, selectedGroup, stockFilter]);
 
   const selectedWarehouse = useMemo(() => warehouses.find(w => String(w.id) === String(warehouseId)), [warehouses, warehouseId]);
   const selectedSupplierName = useMemo(() => {
-    if (selectedSupplier === 'all') return 'الكل';
+    if (!selectedSupplier) return '—';
     return suppliers.find(s => String(s.id) === String(selectedSupplier))?.name || selectedSupplier;
   }, [selectedSupplier, suppliers]);
+
+  const filtersText = useMemo(() => {
+    const parts: string[] = [];
+    parts.push(`المورد: ${selectedSupplierName}`);
+    parts.push(`الفترة: ${Math.max(1, Number(salesDays) || 7)} يوم`);
+    parts.push(`المخزن: ${selectedWarehouse?.code || ''}${selectedWarehouse?.name ? ` — ${selectedWarehouse?.name}` : ''}`);
+    parts.push(`الفئة: ${selectedCategory === 'all' ? 'الكل' : getCategoryLabel(selectedCategory, 'ar')}`);
+    parts.push(`المجموعة: ${selectedGroup === 'all' ? 'الكل' : getGroupLabel(selectedGroup, selectedCategory !== 'all' ? selectedCategory : undefined, 'ar')}`);
+    parts.push(`الحالة: ${stockFilter === 'all' ? 'الكل' : stockFilter === 'in' ? 'متوفر' : stockFilter === 'low' ? 'منخفض' : 'منعدم'}`);
+    if (searchTerm.trim()) parts.push(`بحث: ${searchTerm.trim()}`);
+    return parts.join(' • ');
+  }, [getCategoryLabel, getGroupLabel, salesDays, searchTerm, selectedCategory, selectedGroup, selectedSupplierName, selectedWarehouse?.code, selectedWarehouse?.name, stockFilter]);
 
   const summary = useMemo(() => {
     let inCount = 0;
     let lowCount = 0;
     let outCount = 0;
-    let currentTotal = 0;
-    let qcTotal = 0;
-    let reservedTotal = 0;
-    let availableTotal = 0;
     for (const r of rows) {
-      currentTotal += r.currentStock;
-      qcTotal += r.qcHold;
-      reservedTotal += r.reservedStock;
-      availableTotal += r.availableToSell;
-      if (r.availableToSell <= 0) outCount += 1;
-      else if (r.availableToSell <= r.lowStockThreshold) lowCount += 1;
+      if (r.availableStock <= 0) outCount += 1;
+      else if (r.suggestedQty > 0 || r.availableStock <= r.reorderPoint) lowCount += 1;
       else inCount += 1;
     }
-    return { inCount, lowCount, outCount, currentTotal, qcTotal, reservedTotal, availableTotal };
+    return { inCount, lowCount, outCount };
   }, [rows]);
 
   const handleExport = async () => {
@@ -229,40 +203,66 @@ const SupplierStockReportScreen: React.FC = () => {
       'المجموعة',
       'الوحدة',
       'المخزون الحالي',
-      'تحت QC',
       'محجوز',
-      'متاح للبيع',
-      'حد التنبيه',
+      'متاح',
+      'متوسط البيع اليومي',
+      'تغطية بالأيام',
+      'نقطة إعادة الطلب',
+      'هدف تغطية (يوم)',
+      'مدة توريد (يوم)',
+      'حجم العبوة',
       'كمية مقترحة للتوريد',
     ];
-    const nameBySupplierId = new Map<string, string>((suppliers || []).map(s => [String(s.id), String(s.name || s.id)]));
     const exportRows = rows.slice(0, 5000).map((r) => {
-      const supplierLabel = selectedSupplier !== 'all'
-        ? selectedSupplierName
-        : (r.supplierIds || []).map(id => nameBySupplierId.get(String(id)) || String(id)).filter(Boolean).join('، ') || '—';
-      const suggested = Math.max(0, (r.lowStockThreshold || 0) - r.availableToSell);
       return [
-        supplierLabel,
+        selectedSupplierName,
         r.name,
         r.category ? getCategoryLabel(r.category, 'ar') : 'غير مصنف',
         r.group ? getGroupLabel(r.group, r.category || undefined, 'ar') : '—',
         getUnitLabel(r.unit as any, 'ar'),
         Number(r.currentStock.toFixed(2)),
-        Number(r.qcHold.toFixed(2)),
         Number(r.reservedStock.toFixed(2)),
-        Number(r.availableToSell.toFixed(2)),
-        Number((r.lowStockThreshold || 0).toFixed(2)),
-        Number(suggested.toFixed(2)),
+        Number(r.availableStock.toFixed(2)),
+        Number(r.avgDailySales.toFixed(4)),
+        r.daysCover === undefined ? '' : Number(r.daysCover.toFixed(2)),
+        Number((r.reorderPoint || 0).toFixed(2)),
+        r.targetCoverDays || 0,
+        r.leadTimeDays || 0,
+        Number((r.packSize || 1).toFixed(2)),
+        Number((r.suggestedQty || 0).toFixed(2)),
       ];
     });
-    const filename = `supplier_stock_${selectedSupplier === 'all' ? 'all' : selectedSupplier}_${toYmdLocal(new Date())}.xlsx`;
+    const filename = `supplier_stock_${selectedSupplier || 'supplier'}_${toYmdLocal(new Date())}.xlsx`;
     const ok = await exportToXlsx(
       headers,
       exportRows,
       filename,
-      { sheetName: 'Supplier Stock', ...buildXlsxBrandOptions(settings, 'مخزون الموردين', headers.length, { periodText: `المورد: ${selectedSupplierName} • المخزن: ${selectedWarehouse?.code || ''} ${selectedWarehouse?.name || ''}` }) }
+      { sheetName: 'Supplier Stock', ...buildXlsxBrandOptions(settings, 'مخزون المورد', headers.length, { periodText: filtersText }) }
     );
     showNotification(ok ? 'تم حفظ التقرير في مجلد المستندات' : 'فشل تصدير الملف.', ok ? 'success' : 'error');
+  };
+
+  const handleSharePdf = async () => {
+    setIsSharing(true);
+    const ok = await sharePdf(
+      'supplier-stock-print-area',
+      'تقرير مخزون المورد',
+      `supplier_stock_${selectedSupplier || 'supplier'}_${toYmdLocal(new Date())}.pdf`,
+      buildPdfBrandOptions(settings, `تقرير مخزون المورد • ${filtersText}`, { pageNumbers: true })
+    );
+    showNotification(ok ? 'تم حفظ التقرير في مجلد المستندات' : 'فشل مشاركة الملف.', ok ? 'success' : 'error');
+    setIsSharing(false);
+  };
+
+  const handlePrintPdf = async () => {
+    const ok = await printPdfFromElement(
+      'supplier-stock-print-area',
+      'تقرير مخزون المورد',
+      buildPdfBrandOptions(settings, `تقرير مخزون المورد • ${filtersText}`, { pageNumbers: true })
+    );
+    if (!ok) {
+      showNotification('تعذر الطباعة على هذا الجهاز. استخدم PDF للمشاركة.', 'error');
+    }
   };
 
   return (
@@ -279,9 +279,25 @@ const SupplierStockReportScreen: React.FC = () => {
             type="button"
             onClick={() => void handleExport()}
             className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-sm font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-60"
-            disabled={loading || rows.length === 0}
+            disabled={loading || rows.length === 0 || !selectedSupplier}
           >
             تصدير Excel
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleSharePdf()}
+            className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-sm font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-60"
+            disabled={loading || isSharing || rows.length === 0 || !selectedSupplier}
+          >
+            PDF
+          </button>
+          <button
+            type="button"
+            onClick={() => void handlePrintPdf()}
+            className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-sm font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-60"
+            disabled={loading || rows.length === 0 || !selectedSupplier}
+          >
+            طباعة
           </button>
         </div>
       </div>
@@ -327,8 +343,21 @@ const SupplierStockReportScreen: React.FC = () => {
               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
             >
               {supplierOptions.map(s => (
-                <option key={s.id} value={s.id}>{s.name}</option>
+                <option key={s.id} value={s.id} disabled={s.id === ''}>{s.name}</option>
               ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">نافذة المبيعات (يوم)</label>
+            <select
+              value={String(salesDays)}
+              onChange={(e) => setSalesDays(Math.max(1, Number(e.target.value) || 7))}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+            >
+              <option value="7">7</option>
+              <option value="14">14</option>
+              <option value="30">30</option>
+              <option value="60">60</option>
             </select>
           </div>
           <div>
@@ -397,18 +426,17 @@ const SupplierStockReportScreen: React.FC = () => {
                 <th className="p-3 text-sm font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">المجموعة</th>
                 <th className="p-3 text-sm font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">الوحدة</th>
                 <th className="p-3 text-sm font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">المخزون الحالي</th>
-                <th className="p-3 text-sm font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">تحت QC</th>
                 <th className="p-3 text-sm font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">محجوز</th>
-                <th className="p-3 text-sm font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">متاح للبيع</th>
-                <th className="p-3 text-sm font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">حد التنبيه</th>
-                <th className="p-3 text-sm font-semibold text-gray-600 dark:text-gray-300">التوريد</th>
+                <th className="p-3 text-sm font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">متاح</th>
+                <th className="p-3 text-sm font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">تغطية (يوم)</th>
+                <th className="p-3 text-sm font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">إعادة الطلب</th>
+                <th className="p-3 text-sm font-semibold text-gray-600 dark:text-gray-300">توريد مقترح</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
               {(loading ? [] : rows).map((r) => {
-                const statusColor = r.availableToSell <= 0 ? 'text-red-600' : r.availableToSell <= r.lowStockThreshold ? 'text-orange-600' : 'text-green-600';
-                const suggested = Math.max(0, (r.lowStockThreshold || 0) - r.availableToSell);
-                const supplyText = suggested > 0 ? `مطلوب +${suggested.toFixed(2)}` : '—';
+                const statusColor = r.availableStock <= 0 ? 'text-red-600' : (r.suggestedQty > 0 || r.availableStock <= r.reorderPoint) ? 'text-orange-600' : 'text-green-600';
+                const supplyText = r.suggestedQty > 0 ? `مطلوب +${r.suggestedQty.toFixed(2)}` : '—';
                 return (
                   <tr key={r.itemId} className="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors">
                     <td className="p-3 border-r dark:border-gray-700">
@@ -421,11 +449,11 @@ const SupplierStockReportScreen: React.FC = () => {
                     </td>
                     <td className="p-3 text-gray-700 dark:text-gray-200 border-r dark:border-gray-700">{getUnitLabel(r.unit as any, 'ar')}</td>
                     <td className="p-3 text-gray-700 dark:text-gray-200 border-r dark:border-gray-700 font-mono" dir="ltr">{r.currentStock.toFixed(2)}</td>
-                    <td className="p-3 text-gray-700 dark:text-gray-200 border-r dark:border-gray-700 font-mono" dir="ltr">{r.qcHold.toFixed(2)}</td>
                     <td className="p-3 text-gray-700 dark:text-gray-200 border-r dark:border-gray-700 font-mono" dir="ltr">{r.reservedStock.toFixed(2)}</td>
-                    <td className={`p-3 border-r dark:border-gray-700 font-mono ${statusColor}`} dir="ltr">{r.availableToSell.toFixed(2)}</td>
-                    <td className="p-3 text-gray-700 dark:text-gray-200 border-r dark:border-gray-700 font-mono" dir="ltr">{(r.lowStockThreshold || 0).toFixed(2)}</td>
-                    <td className={`p-3 font-semibold ${suggested > 0 ? 'text-orange-700 dark:text-orange-400' : 'text-gray-500 dark:text-gray-400'}`} dir="ltr">{supplyText}</td>
+                    <td className={`p-3 border-r dark:border-gray-700 font-mono ${statusColor}`} dir="ltr">{r.availableStock.toFixed(2)}</td>
+                    <td className="p-3 text-gray-700 dark:text-gray-200 border-r dark:border-gray-700 font-mono" dir="ltr">{r.daysCover === undefined ? '—' : r.daysCover.toFixed(1)}</td>
+                    <td className="p-3 text-gray-700 dark:text-gray-200 border-r dark:border-gray-700 font-mono" dir="ltr">{(r.reorderPoint || 0).toFixed(2)}</td>
+                    <td className={`p-3 font-semibold ${r.suggestedQty > 0 ? 'text-orange-700 dark:text-orange-400' : 'text-gray-500 dark:text-gray-400'}`} dir="ltr">{supplyText}</td>
                   </tr>
                 );
               })}
@@ -436,12 +464,53 @@ const SupplierStockReportScreen: React.FC = () => {
               )}
               {!loading && rows.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="p-8 text-center text-gray-500 dark:text-gray-400">لا توجد نتائج.</td>
+                  <td colSpan={10} className="p-8 text-center text-gray-500 dark:text-gray-400">{selectedSupplier ? 'لا توجد نتائج.' : 'اختر موردًا لعرض التقرير.'}</td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
+      </div>
+
+      <div className="fixed left-[-10000px] top-0 w-[900px] bg-white text-black p-6" id="supplier-stock-print-area">
+        <div className="mb-4 space-y-1">
+          <div className="text-xl font-bold">{settings.cafeteriaName?.ar || 'تقارير'}</div>
+          <div className="text-sm text-gray-700">تقرير مخزون المورد</div>
+          <div className="text-xs text-gray-600">{filtersText}</div>
+          <div className="text-xs text-gray-600" dir="ltr">{new Date().toLocaleString('ar-EG-u-nu-latn')}</div>
+        </div>
+        <table className="w-full text-right">
+          <thead>
+            <tr>
+              <th className="p-2 border">الصنف</th>
+              <th className="p-2 border">الفئة</th>
+              <th className="p-2 border">المجموعة</th>
+              <th className="p-2 border">الوحدة</th>
+              <th className="p-2 border">الحالي</th>
+              <th className="p-2 border">محجوز</th>
+              <th className="p-2 border">متاح</th>
+              <th className="p-2 border">تغطية</th>
+              <th className="p-2 border">إعادة الطلب</th>
+              <th className="p-2 border">توريد</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.slice(0, 200).map((r) => (
+              <tr key={r.itemId}>
+                <td className="p-2 border">{r.name}</td>
+                <td className="p-2 border">{r.category ? getCategoryLabel(r.category, 'ar') : 'غير مصنف'}</td>
+                <td className="p-2 border">{r.group ? getGroupLabel(r.group, r.category || undefined, 'ar') : '—'}</td>
+                <td className="p-2 border">{getUnitLabel(r.unit as any, 'ar')}</td>
+                <td className="p-2 border" dir="ltr">{r.currentStock.toFixed(2)}</td>
+                <td className="p-2 border" dir="ltr">{r.reservedStock.toFixed(2)}</td>
+                <td className="p-2 border" dir="ltr">{r.availableStock.toFixed(2)}</td>
+                <td className="p-2 border" dir="ltr">{r.daysCover === undefined ? '—' : r.daysCover.toFixed(1)}</td>
+                <td className="p-2 border" dir="ltr">{(r.reorderPoint || 0).toFixed(2)}</td>
+                <td className="p-2 border" dir="ltr">{r.suggestedQty > 0 ? `+${r.suggestedQty.toFixed(2)}` : '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );
