@@ -22,6 +22,7 @@ import { useMenu } from '../../contexts/MenuContext';
 import { useItemMeta } from '../../contexts/ItemMetaContext';
 import { getBaseCurrencyCode, getSupabaseClient } from '../../supabase';
 import { printContent } from '../../utils/printUtils';
+import { printReceiptVoucherByPaymentId } from '../../utils/vouchers';
 import CurrencyDualAmount from '../../components/common/CurrencyDualAmount';
 import { toDateTimeLocalInputValue } from '../../utils/dateUtils';
 
@@ -426,6 +427,10 @@ const ManageOrdersScreen: React.FC = () => {
     const [partialPaymentMethod, setPartialPaymentMethod] = useState<string>('cash');
     const [partialPaymentOccurredAt, setPartialPaymentOccurredAt] = useState<string>('');
     const [isRecordingPartialPayment, setIsRecordingPartialPayment] = useState(false);
+    const [partialPaymentAdvancedAccounting, setPartialPaymentAdvancedAccounting] = useState(false);
+    const [partialPaymentOverrideAccountId, setPartialPaymentOverrideAccountId] = useState<string>('');
+    const [accounts, setAccounts] = useState<Array<{ id: string; code: string; name: string }>>([]);
+    const [accountsError, setAccountsError] = useState<string>('');
     const [driverCashByDriverId, setDriverCashByDriverId] = useState<Record<string, number>>({});
     const [codAuditOrderId, setCodAuditOrderId] = useState<string | null>(null);
     const [codAuditLoading, setCodAuditLoading] = useState(false);
@@ -435,6 +440,7 @@ const ManageOrdersScreen: React.FC = () => {
     const highlightedOrderId = (searchParams.get('orderId') || '') || (typeof (location.state as any)?.orderId === 'string' ? (location.state as any).orderId : '');
 
     const canViewAccounting = hasPermission('accounting.view') || hasPermission('accounting.manage');
+    const canManageAccounting = hasPermission('accounting.manage');
     const canVoidDelivered = hasPermission('accounting.void');
 
     const canUseCash = hasPermission('orders.markPaid') && hasPermission('cashShifts.open');
@@ -450,6 +456,44 @@ const ManageOrdersScreen: React.FC = () => {
     }, [inStoreAvailablePaymentMethods, canUseCash]);
 
     const isUuidText = (v: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(v || '').trim());
+
+    useEffect(() => {
+        if (!canViewAccounting) return;
+        if (!partialPaymentOrderId) return;
+        if (accounts.length > 0) return;
+        const run = async () => {
+            const supabase = getSupabaseClient();
+            if (!supabase) return;
+            setAccountsError('');
+            try {
+                const rpc = await supabase.rpc('list_active_accounts');
+                if (!rpc.error && Array.isArray(rpc.data)) {
+                    setAccounts((rpc.data as any[]).map((r: any) => ({
+                        id: String(r?.id || ''),
+                        code: String(r?.code || ''),
+                        name: String(r?.name || ''),
+                    })).filter((r: any) => Boolean(r.id)));
+                    return;
+                }
+                const { data, error } = await supabase
+                    .from('chart_of_accounts')
+                    .select('id,code,name,account_type,is_active')
+                    .eq('is_active', true)
+                    .order('code', { ascending: true });
+                if (error) throw error;
+                const list = Array.isArray(data) ? data : [];
+                setAccounts(list.map((r: any) => ({
+                    id: String(r?.id || ''),
+                    code: String(r?.code || ''),
+                    name: String(r?.name || ''),
+                })).filter((r: any) => Boolean(r.id)));
+            } catch (e) {
+                setAccounts([]);
+                setAccountsError(localizeSupabaseError(e));
+            }
+        };
+        void run();
+    }, [accounts.length, canViewAccounting, partialPaymentOrderId]);
 
     const inStorePricingSignature = useMemo(() => {
         if (!isInStoreSaleOpen) return '';
@@ -799,6 +843,61 @@ const ManageOrdersScreen: React.FC = () => {
             />
         );
         printContent(content, `سند تسليم #${order.id.slice(-6).toUpperCase()}`);
+    };
+
+    const handlePrintReceiptVoucher = async (order: Order) => {
+        const supabase = getSupabaseClient();
+        if (!supabase) {
+            showNotification('Supabase غير مهيأ.', 'error');
+            return;
+        }
+        try {
+            const { data: p, error } = await supabase
+                .from('payments')
+                .select('id,occurred_at')
+                .eq('reference_table', 'orders')
+                .eq('reference_id', order.id)
+                .eq('direction', 'in')
+                .order('occurred_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+            if (error) throw error;
+            const paymentId = String((p as any)?.id || '');
+            if (!paymentId) {
+                showNotification('لا توجد دفعات مسجلة لهذا الطلب.', 'error');
+                return;
+            }
+            const fallback = {
+                name: (settings.cafeteriaName?.[language] || settings.cafeteriaName?.ar || settings.cafeteriaName?.en || '').trim(),
+                address: (settings.address || '').trim(),
+                contactNumber: (settings.contactNumber || '').trim(),
+                logoUrl: (settings.logoUrl || '').trim(),
+            };
+            const warehouseId = (order as any)?.warehouseId || sessionScope.scope?.warehouseId || '';
+            const wh = warehouseId ? getWarehouseById(String(warehouseId)) : undefined;
+            const key = warehouseId ? String(warehouseId) : '';
+            const override = key ? settings.branchBranding?.[key] : undefined;
+            const brand: any = {
+                name: (override?.name || wh?.name || fallback.name || '').trim(),
+                address: (override?.address || wh?.address || wh?.location || fallback.address || '').trim(),
+                contactNumber: (override?.contactNumber || wh?.phone || fallback.contactNumber || '').trim(),
+                logoUrl: (override?.logoUrl || fallback.logoUrl || '').trim(),
+                branchName: '',
+                branchCode: '',
+            };
+            try {
+                const bid = String(sessionScope.scope?.branchId || '').trim();
+                if (bid) {
+                    const { data: b } = await supabase.from('branches').select('name,code').eq('id', bid).maybeSingle();
+                    brand.branchName = String((b as any)?.name || '');
+                    brand.branchCode = String((b as any)?.code || '');
+                }
+            } catch {
+            }
+            await printReceiptVoucherByPaymentId(paymentId, brand);
+        } catch (e: any) {
+            showNotification(String(e?.message || 'تعذر طباعة سند القبض'), 'error');
+        }
     };
 
     const confirmDeliveredWithPin = async () => {
@@ -1277,6 +1376,8 @@ const ManageOrdersScreen: React.FC = () => {
         setPartialPaymentAmount(remaining > 0 ? Number(remaining.toFixed(2)) : 0);
         setPartialPaymentMethod(isInStoreOrder(order) ? 'cash' : ((order.paymentMethod || 'cash').trim() || 'cash'));
         setPartialPaymentOccurredAt(toDateTimeLocalInputValue());
+        setPartialPaymentAdvancedAccounting(false);
+        setPartialPaymentOverrideAccountId('');
     };
 
     const confirmPartialPayment = async () => {
@@ -1304,9 +1405,64 @@ const ManageOrdersScreen: React.FC = () => {
                 throw new Error('يجب فتح وردية نقدية قبل تسجيل دفعة نقدية.');
             }
             const occurredAtIso = partialPaymentOccurredAt ? new Date(partialPaymentOccurredAt).toISOString() : undefined;
-            await recordOrderPaymentPartial(partialPaymentOrderId, amount, partialPaymentMethod, occurredAtIso);
+            const override = partialPaymentAdvancedAccounting && canManageAccounting && isUuidText(partialPaymentOverrideAccountId)
+                ? String(partialPaymentOverrideAccountId || '').trim()
+                : undefined;
+            await recordOrderPaymentPartial(partialPaymentOrderId, amount, partialPaymentMethod, occurredAtIso, override);
             await loadPaidSums(filteredAndSortedOrders.map(o => o.id));
             showNotification('تم تسجيل الدفعة بنجاح.', 'success');
+            const supabase = getSupabaseClient();
+            const occ = occurredAtIso || new Date().toISOString();
+            const idempotencyKey = `partial:${partialPaymentOrderId}:${occ}:${Number(amount) || 0}`;
+            if (supabase) {
+                try {
+                    const { data: p, error: pErr } = await supabase
+                        .from('payments')
+                        .select('id')
+                        .eq('reference_table', 'orders')
+                        .eq('reference_id', partialPaymentOrderId)
+                        .eq('direction', 'in')
+                        .eq('idempotency_key', idempotencyKey)
+                        .order('occurred_at', { ascending: false })
+                        .limit(1)
+                        .maybeSingle();
+                    const paymentId = !pErr && (p as any)?.id ? String((p as any).id) : '';
+                    if (paymentId) {
+                        const ok = window.confirm('هل تريد طباعة سند القبض لهذه الدفعة الآن؟');
+                        if (ok) {
+                            const fallback = {
+                                name: (settings.cafeteriaName?.[language] || settings.cafeteriaName?.ar || settings.cafeteriaName?.en || '').trim(),
+                                address: (settings.address || '').trim(),
+                                contactNumber: (settings.contactNumber || '').trim(),
+                                logoUrl: (settings.logoUrl || '').trim(),
+                            };
+                            const warehouseId = (order as any)?.warehouseId || sessionScope.scope?.warehouseId || '';
+                            const wh = warehouseId ? getWarehouseById(String(warehouseId)) : undefined;
+                            const key = warehouseId ? String(warehouseId) : '';
+                            const override = key ? settings.branchBranding?.[key] : undefined;
+                            const brand = {
+                                name: (override?.name || wh?.name || fallback.name || '').trim(),
+                                address: (override?.address || wh?.address || wh?.location || fallback.address || '').trim(),
+                                contactNumber: (override?.contactNumber || wh?.phone || fallback.contactNumber || '').trim(),
+                                logoUrl: (override?.logoUrl || fallback.logoUrl || '').trim(),
+                                branchName: '',
+                                branchCode: '',
+                            };
+                            try {
+                                const bid = String(sessionScope.scope?.branchId || '').trim();
+                                if (bid) {
+                                    const { data: b } = await supabase.from('branches').select('name,code').eq('id', bid).maybeSingle();
+                                    brand.branchName = String((b as any)?.name || '');
+                                    brand.branchCode = String((b as any)?.code || '');
+                                }
+                            } catch {
+                            }
+                            await printReceiptVoucherByPaymentId(paymentId, brand);
+                        }
+                    }
+                } catch {
+                }
+            }
             setPartialPaymentOrderId(null);
         } catch (error) {
             const raw = error instanceof Error ? error.message : '';
@@ -2081,6 +2237,15 @@ const ManageOrdersScreen: React.FC = () => {
                                                                     className="px-3 py-1 bg-gray-800 text-white rounded hover:bg-gray-900 transition text-xs font-semibold"
                                                                 >
                                                                     طباعة سند تسليم
+                                                                </button>
+                                                            )}
+                                                            {canViewAccounting && (Number(paidSumByOrderId[order.id]) || 0) > 0 && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => { void handlePrintReceiptVoucher(order); }}
+                                                                    className="px-3 py-1 bg-gray-900 text-white rounded hover:bg-black transition text-xs font-semibold"
+                                                                >
+                                                                    طباعة سند قبض
                                                                 </button>
                                                             )}
                                                             {paymentActions}
@@ -3444,6 +3609,37 @@ const ManageOrdersScreen: React.FC = () => {
                                     لضمان ربط الدفعة بالوردية الصحيحة، اختر وقتًا داخل فترة الوردية.
                                 </div>
                             </div>
+                            {canViewAccounting && (
+                                <div className="space-y-2 rounded-md border border-gray-200 dark:border-gray-700 p-3">
+                                    <label className="flex items-center gap-2 text-xs font-semibold text-gray-700 dark:text-gray-200">
+                                        <input
+                                            type="checkbox"
+                                            checked={partialPaymentAdvancedAccounting}
+                                            onChange={(e) => setPartialPaymentAdvancedAccounting(e.target.checked)}
+                                        />
+                                        إعدادات محاسبية متقدمة
+                                    </label>
+                                    {partialPaymentAdvancedAccounting && (
+                                        <div>
+                                            <label className="block text-xs text-gray-600 dark:text-gray-300 mb-1">الحساب المحاسبي البديل (Advanced)</label>
+                                            <select
+                                                value={partialPaymentOverrideAccountId}
+                                                onChange={(e) => setPartialPaymentOverrideAccountId(e.target.value)}
+                                                disabled={!canManageAccounting}
+                                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white disabled:opacity-60"
+                                            >
+                                                <option value="">-- بدون --</option>
+                                                {accounts.map(a => (
+                                                    <option key={a.id} value={a.id}>{a.code} — {a.name}</option>
+                                                ))}
+                                            </select>
+                                            {accountsError && (
+                                                <div className="mt-1 text-[10px] text-red-600">{accountsError}</div>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     );
                 })()}

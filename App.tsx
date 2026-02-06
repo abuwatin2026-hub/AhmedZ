@@ -68,6 +68,8 @@ const AdminProfileScreen = lazy(() => import('./screens/admin/AdminProfileScreen
 const SettingsScreen = lazy(() => import('./screens/admin/SettingsScreen'));
 const SuppliersScreen = lazy(() => import('./screens/admin/SuppliersScreen'));
 const ApprovalsScreen = lazy(() => import('./screens/admin/ApprovalsScreen'));
+const PrintedDocumentsScreen = lazy(() => import('./screens/admin/PrintedDocumentsScreen'));
+const PayrollScreen = lazy(() => import('./screens/admin/PayrollScreen'));
 const PurchaseOrderScreen = lazy(() => import('./screens/admin/PurchaseOrderScreen'));
 const ShiftReportsScreen = lazy(() => import('./screens/admin/ShiftReportsScreen'));
 const ShiftDetailsScreen = lazy(() => import('./screens/admin/ShiftDetailsScreen'));
@@ -365,6 +367,8 @@ const App: React.FC = () => {
                 <Route path="reports/supplier-stock" element={<AdminProtectedRoute permissions={['reports.view']}><SupplierStockReportScreen /></AdminProtectedRoute>} />
                 <Route path="reports/financial" element={<AdminProtectedRoute permissions={['accounting.view']}><FinancialReports /></AdminProtectedRoute>} />
                 <Route path="accounting" element={<AdminProtectedRoute permissions={['accounting.view']}><FinancialReports /></AdminProtectedRoute>} />
+                <Route path="printed-documents" element={<AdminProtectedRoute permissions={['accounting.view']}><PrintedDocumentsScreen /></AdminProtectedRoute>} />
+                <Route path="payroll" element={<AdminProtectedRoute permissions={['expenses.manage', 'accounting.manage']} requireAllPermissions={false}><PayrollScreen /></AdminProtectedRoute>} />
                 <Route path="chart-of-accounts" element={<AdminProtectedRoute roles={['owner']}><ChartOfAccountsScreen /></AdminProtectedRoute>} />
                 <Route path="fx-rates" element={<AdminProtectedRoute permissions={['accounting.manage']}><FxRatesScreen /></AdminProtectedRoute>} />
                 <Route path="profile" element={<AdminProtectedRoute permissions={['profile.view']}><AdminProfileScreen /></AdminProtectedRoute>} />

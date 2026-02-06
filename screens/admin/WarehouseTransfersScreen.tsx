@@ -3,6 +3,12 @@ import { useWarehouses } from '../../contexts/WarehouseContext';
 import { useMenu } from '../../contexts/MenuContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
+import { useSettings } from '../../contexts/SettingsContext';
+import { useSessionScope } from '../../contexts/SessionScopeContext';
+import { getSupabaseClient } from '../../supabase';
+import { printContent } from '../../utils/printUtils';
+import { renderToString } from 'react-dom/server';
+import PrintableWarehouseTransfer, { PrintableWarehouseTransferData } from '../../components/admin/documents/PrintableWarehouseTransfer';
 import * as Icons from '../../components/icons';
 import type { WarehouseTransfer } from '../../types';
 import { toYmdLocal } from '../../utils/dateUtils';
@@ -12,6 +18,8 @@ const WarehouseTransfersScreen: React.FC = () => {
     const { menuItems } = useMenu();
     const { hasPermission } = useAuth();
     const { showNotification } = useToast();
+    const { settings } = useSettings();
+    const { scope } = useSessionScope();
 
     const [showModal, setShowModal] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
@@ -27,6 +35,107 @@ const WarehouseTransfersScreen: React.FC = () => {
     });
 
     const canManage = hasPermission('stock.manage');
+
+    const resolveBrandingForWarehouseId = (warehouseId?: string) => {
+        const fallback = {
+            name: (settings as any)?.cafeteriaName?.ar || (settings as any)?.cafeteriaName?.en || '',
+            address: settings?.address || '',
+            contactNumber: settings?.contactNumber || '',
+            logoUrl: settings?.logoUrl || '',
+        };
+        const wid = String(warehouseId || '').trim();
+        const wh = wid ? warehouses.find(w => String(w.id) === wid) : undefined;
+        const override = wid ? settings?.branchBranding?.[wid] : undefined;
+        return {
+            name: (override?.name || wh?.name || fallback.name || '').trim(),
+            address: (override?.address || wh?.address || wh?.location || fallback.address || '').trim(),
+            contactNumber: (override?.contactNumber || wh?.phone || fallback.contactNumber || '').trim(),
+            logoUrl: (override?.logoUrl || fallback.logoUrl || '').trim(),
+        };
+    };
+
+    const fetchBranchHeader = async (branchId?: string) => {
+        const supabase = getSupabaseClient();
+        const bid = String(branchId || '').trim();
+        if (!supabase || !bid) return { branchName: '', branchCode: '' };
+        try {
+            const { data, error } = await supabase.from('branches').select('name,code').eq('id', bid).maybeSingle();
+            if (error) throw error;
+            return {
+                branchName: String((data as any)?.name || ''),
+                branchCode: String((data as any)?.code || ''),
+            };
+        } catch {
+            return { branchName: '', branchCode: '' };
+        }
+    };
+
+    const handlePrintTransfer = async (transfer: WarehouseTransfer) => {
+        const supabase = getSupabaseClient();
+        if (!supabase) {
+            showNotification('قاعدة البيانات غير متاحة', 'error');
+            return;
+        }
+        try {
+            const { data: items, error } = await supabase
+                .from('warehouse_transfer_items')
+                .select('item_id,quantity,notes,menu_items(name)')
+                .eq('transfer_id', transfer.id)
+                .order('created_at', { ascending: true });
+            if (error) throw error;
+            const list = (Array.isArray(items) ? items : []).map((r: any) => ({
+                itemId: String(r.item_id),
+                itemName: String(r?.menu_items?.name?.ar || r?.menu_items?.name?.en || r.item_id),
+                quantity: Number(r.quantity || 0),
+                notes: r.notes ?? null,
+            })).filter((x: any) => x.quantity > 0);
+
+            const data: PrintableWarehouseTransferData = {
+                transferNumber: String(transfer.transferNumber || ''),
+                documentStatus: transfer.status === 'completed' ? 'Approved' : transfer.status === 'cancelled' ? 'Cancelled' : 'Draft',
+                referenceId: String(transfer.id || ''),
+                transferDate: String(transfer.transferDate || transfer.createdAt || ''),
+                status: getStatusLabel(transfer.status),
+                fromWarehouseName: String(transfer.fromWarehouseName || ''),
+                toWarehouseName: String(transfer.toWarehouseName || ''),
+                notes: transfer.notes ?? null,
+                items: list,
+            };
+
+            const brand = resolveBrandingForWarehouseId(String(transfer.fromWarehouseId || ''));
+            const branchHdr = await fetchBranchHeader(scope?.branchId);
+            const content = renderToString(
+                <PrintableWarehouseTransfer
+                    data={data}
+                    language="ar"
+                    brand={{
+                        ...brand,
+                        branchName: branchHdr.branchName,
+                        branchCode: branchHdr.branchCode,
+                    }}
+                />
+            );
+            printContent(content, `تحويل مخزني #${data.transferNumber}`);
+            try {
+                await supabase.from('system_audit_logs').insert({
+                    action: 'print',
+                    module: 'documents',
+                    details: `Printed transfer ${data.transferNumber}`,
+                    metadata: {
+                        docType: 'transfer',
+                        docNumber: data.transferNumber,
+                        status: data.documentStatus,
+                        sourceTable: 'warehouse_transfers',
+                        sourceId: transfer.id,
+                        template: 'PrintableWarehouseTransfer',
+                    }
+                } as any);
+            } catch {
+            }
+        } catch (e: any) {
+            showNotification(String(e?.message || 'تعذر طباعة التحويل'), 'error');
+        }
+    };
 
     // Filter transfers
     const filteredTransfers = useMemo(() => {
@@ -258,6 +367,15 @@ const WarehouseTransfersScreen: React.FC = () => {
                                     <p className="text-sm text-gray-600 dark:text-gray-400">
                                         {new Date(transfer.transferDate).toLocaleDateString('ar-EG-u-nu-latn')}
                                     </p>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => { void handlePrintTransfer(transfer); }}
+                                        className="px-3 py-2 bg-gray-900 text-white rounded-lg hover:bg-black text-sm font-semibold"
+                                    >
+                                        طباعة
+                                    </button>
                                 </div>
                             </div>
 

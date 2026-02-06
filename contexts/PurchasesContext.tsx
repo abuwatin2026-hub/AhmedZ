@@ -34,12 +34,12 @@ interface PurchasesContextType {
         method: string,
         occurredAt?: string,
         data?: Record<string, unknown>
-    ) => Promise<void>;
+    ) => Promise<string>;
     receivePurchaseOrderPartial: (
         purchaseOrderId: string,
         items: Array<{ itemId: string; quantity: number; productionDate?: string; expiryDate?: string }>,
         occurredAt?: string
-    ) => Promise<void>;
+    ) => Promise<string>;
     createPurchaseReturn: (
         purchaseOrderId: string,
         items: Array<{ itemId: string; quantity: number }>,
@@ -886,7 +886,7 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         method: string,
         occurredAt?: string,
         data?: Record<string, unknown>
-    ) => {
+    ): Promise<string> => {
         if (!supabase) throw new Error('Supabase غير مهيأ.');
         if (!user) throw new Error('لم يتم تسجيل الدخول.');
         try {
@@ -941,6 +941,36 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           }
           if (error) throw error;
           await fetchPurchaseOrders();
+          const idempotencyKey = typeof (payloadData as any)?.idempotencyKey === 'string'
+            ? String((payloadData as any).idempotencyKey || '').trim()
+            : (typeof (payloadData as any)?.idempotency_key === 'string' ? String((payloadData as any).idempotency_key || '').trim() : '');
+          if (idempotencyKey) {
+            const { data: p, error: qErr } = await supabase
+              .from('payments')
+              .select('id')
+              .eq('reference_table', 'purchase_orders')
+              .eq('reference_id', id)
+              .eq('direction', 'out')
+              .eq('idempotency_key', idempotencyKey)
+              .order('occurred_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+            if (!qErr && (p as any)?.id) return String((p as any).id);
+          }
+          const minIso = new Date(new Date(occurredAtIso).getTime() - 15_000).toISOString();
+          const maxIso = new Date(new Date(occurredAtIso).getTime() + 15_000).toISOString();
+          const { data: p2 } = await supabase
+            .from('payments')
+            .select('id,occurred_at,amount')
+            .eq('reference_table', 'purchase_orders')
+            .eq('reference_id', id)
+            .eq('direction', 'out')
+            .gte('occurred_at', minIso)
+            .lte('occurred_at', maxIso)
+            .order('occurred_at', { ascending: false })
+            .limit(5);
+          const best = (Array.isArray(p2) ? p2 : []).find((x: any) => Math.abs(Number(x?.amount || 0) - numericAmount) < 0.0001);
+          return best?.id ? String(best.id) : '';
         } catch (err) {
           const anyErr = err as any;
           const localized = localizeSupabaseError(err);
@@ -960,8 +990,8 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         purchaseOrderId: string,
         items: Array<{ itemId: string; quantity: number; productionDate?: string; expiryDate?: string }>,
         occurredAt?: string
-    ) => {
-        if (!supabase || !user) return;
+    ): Promise<string> => {
+        if (!supabase || !user) throw new Error('قاعدة البيانات غير متاحة.');
         try {
           const orderId = String(purchaseOrderId || '').trim();
           if (!isUuid(orderId)) throw new Error('معرف أمر الشراء غير صالح.');
@@ -1040,7 +1070,7 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             p_items: normalizedItemsWithIdempotency,
             p_occurred_at: occurredAtIso
           } as any;
-          let { error } = await supabase.rpc('receive_purchase_order_partial', args);
+          let { data, error } = await supabase.rpc('receive_purchase_order_partial', args);
           if (error) {
             const msg = String((error as any)?.message || '');
             const code = String((error as any)?.code || '');
@@ -1049,7 +1079,7 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               if (!retry.error) {
                 await updateMenuItemDates(items);
                 await fetchPurchaseOrders();
-                return;
+                return String(retry.data || '');
               }
               error = retry.error as any;
             }
@@ -1090,7 +1120,7 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                 if (!retry.error) {
                   await updateMenuItemDates(items);
                   await fetchPurchaseOrders();
-                  return;
+                  return String(retry.data || '');
                 }
                 error = retry.error as any;
               }
@@ -1105,6 +1135,7 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           }
           await updateMenuItemDates(items);
           await fetchPurchaseOrders();
+          return String(data || '');
         } catch (err) {
           throw new Error(localizeSupabaseError(err));
         }

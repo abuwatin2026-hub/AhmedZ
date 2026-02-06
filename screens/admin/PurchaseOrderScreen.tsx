@@ -14,6 +14,12 @@ import { getBaseCurrencyCode, getSupabaseClient } from '../../supabase';
 import { MenuItem } from '../../types';
 import { PurchaseOrder } from '../../types';
 import { isIsoDate, normalizeIsoDateOnly, toDateInputValue, toDateTimeLocalInputValue } from '../../utils/dateUtils';
+import { printContent } from '../../utils/printUtils';
+import { renderToString } from 'react-dom/server';
+import PrintablePurchaseOrder from '../../components/admin/documents/PrintablePurchaseOrder';
+import PrintableGrn, { PrintableGrnData } from '../../components/admin/documents/PrintableGrn';
+import { printPaymentVoucherByPaymentId } from '../../utils/vouchers';
+import { localizeSupabaseError } from '../../utils/errorUtils';
 
 interface OrderItemRow {
     itemId: string;
@@ -42,7 +48,7 @@ const PurchaseOrderScreen: React.FC = () => {
     const { purchaseOrders, suppliers, createPurchaseOrder, deletePurchaseOrder, cancelPurchaseOrder, recordPurchaseOrderPayment, receivePurchaseOrderPartial, createPurchaseReturn, updatePurchaseOrderInvoiceNumber, getPurchaseReturnSummary, loading, error: purchasesError, fetchPurchaseOrders } = usePurchases();
     const { menuItems } = useMenu();
     const { stockItems } = useStock();
-    const { user } = useAuth();
+    const { user, hasPermission } = useAuth();
     const { settings } = useSettings();
     const { groups: itemGroups } = useItemMeta();
     const [baseCode, setBaseCode] = useState('—');
@@ -55,6 +61,165 @@ const PurchaseOrderScreen: React.FC = () => {
     const { scope } = useSessionScope();
     const canDelete = user?.role === 'owner';
     const canCancel = user?.role === 'owner' || user?.role === 'manager';
+    const canViewAccounting = hasPermission('accounting.view') || hasPermission('accounting.manage');
+    const canManageAccounting = hasPermission('accounting.manage');
+    const resolveBrandingForWarehouseId = (warehouseId?: string) => {
+        const fallback = {
+            name: (settings as any)?.cafeteriaName?.ar || (settings as any)?.cafeteriaName?.en || '',
+            address: settings?.address || '',
+            contactNumber: settings?.contactNumber || '',
+            logoUrl: settings?.logoUrl || '',
+        };
+        const wid = String(warehouseId || '').trim();
+        const wh = wid ? warehouses.find(w => String(w.id) === wid) : undefined;
+        const override = wid ? settings?.branchBranding?.[wid] : undefined;
+        return {
+            name: (override?.name || wh?.name || fallback.name || '').trim(),
+            address: (override?.address || wh?.address || wh?.location || fallback.address || '').trim(),
+            contactNumber: (override?.contactNumber || wh?.phone || fallback.contactNumber || '').trim(),
+            logoUrl: (override?.logoUrl || fallback.logoUrl || '').trim(),
+        };
+    };
+
+    const fetchBranchHeader = async (branchId?: string) => {
+        const supabase = getSupabaseClient();
+        const bid = String(branchId || '').trim();
+        if (!supabase || !bid) return { branchName: '', branchCode: '' };
+        try {
+            const { data, error } = await supabase.from('branches').select('name,code').eq('id', bid).maybeSingle();
+            if (error) throw error;
+            return {
+                branchName: String((data as any)?.name || ''),
+                branchCode: String((data as any)?.code || ''),
+            };
+        } catch {
+            return { branchName: '', branchCode: '' };
+        }
+    };
+
+    const handlePrintPo = async (order: PurchaseOrder) => {
+        const brand = resolveBrandingForWarehouseId(order.warehouseId);
+        const branchHdr = await fetchBranchHeader(scope?.branchId);
+        const statusLabel = order.status === 'draft'
+            ? 'Draft'
+            : order.status === 'cancelled'
+                ? 'Cancelled'
+                : 'Approved';
+        const content = renderToString(
+            <PrintablePurchaseOrder
+                order={order}
+                language="ar"
+                brand={{
+                    ...brand,
+                    branchName: branchHdr.branchName,
+                    branchCode: branchHdr.branchCode,
+                }}
+                documentStatus={statusLabel}
+                referenceId={order.id}
+            />
+        );
+        printContent(content, `أمر شراء #${String(order.poNumber || order.id).slice(-12)}`);
+        const supabase = getSupabaseClient();
+        if (supabase) {
+            try {
+                await supabase.from('system_audit_logs').insert({
+                    action: 'print',
+                    module: 'documents',
+                    details: `Printed PO ${String(order.poNumber || '').trim() || order.id}`,
+                    metadata: {
+                        docType: 'po',
+                        docNumber: order.poNumber || null,
+                        status: statusLabel,
+                        sourceTable: 'purchase_orders',
+                        sourceId: order.id,
+                        template: 'PrintablePurchaseOrder',
+                    }
+                } as any);
+            } catch {
+            }
+        }
+    };
+
+    const handlePrintGrn = async (receiptId: string, po: PurchaseOrder) => {
+        const supabase = getSupabaseClient();
+        if (!supabase) throw new Error('قاعدة البيانات غير متاحة.');
+        const { data: receipt, error: rErr } = await supabase
+            .from('purchase_receipts')
+            .select('id,grn_number,received_at,notes,branch_id,warehouse_id,approval_status,requires_approval')
+            .eq('id', receiptId)
+            .maybeSingle();
+        if (rErr) throw rErr;
+        const branchId = String((receipt as any)?.branch_id || scope?.branchId || '');
+        const brand = resolveBrandingForWarehouseId(String((receipt as any)?.warehouse_id || po.warehouseId || ''));
+        const branchHdr = await fetchBranchHeader(branchId);
+        const { data: batchRows, error: bErr } = await supabase
+            .from('batches')
+            .select('item_id,quantity_received,unit_cost,production_date,expiry_date,menu_items(name)')
+            .eq('receipt_id', receiptId)
+            .order('created_at', { ascending: true });
+        if (bErr) throw bErr;
+        const items = (Array.isArray(batchRows) ? batchRows : []).map((b: any) => ({
+            itemId: String(b.item_id),
+            itemName: String(b?.menu_items?.name?.ar || b?.menu_items?.name?.en || b.item_id),
+            quantity: Number(b.quantity_received || 0),
+            unitCost: Number(b.unit_cost || 0),
+            productionDate: b.production_date ? String(b.production_date) : null,
+            expiryDate: b.expiry_date ? String(b.expiry_date) : null,
+            totalCost: Number(b.quantity_received || 0) * Number(b.unit_cost || 0),
+        })).filter((x: any) => Number(x.quantity || 0) > 0);
+
+        const approvalStatus = String((receipt as any)?.approval_status || '').toLowerCase();
+        const requiresApproval = Boolean((receipt as any)?.requires_approval);
+        const docStatus = approvalStatus === 'approved'
+            ? 'Approved'
+            : requiresApproval
+                ? 'Draft'
+                : 'Approved';
+
+        const grn: PrintableGrnData = {
+            grnNumber: String((receipt as any)?.grn_number || `GRN-${receiptId.slice(-6).toUpperCase()}`),
+            documentStatus: docStatus,
+            referenceId: receiptId,
+            receivedAt: String((receipt as any)?.received_at || new Date().toISOString()),
+            purchaseOrderNumber: po.poNumber || undefined,
+            supplierName: po.supplierName || undefined,
+            warehouseName: po.warehouseName || undefined,
+            notes: (receipt as any)?.notes ?? null,
+            items,
+            currency: String(po.currency || ''),
+        };
+
+        const content = renderToString(
+            <PrintableGrn
+                data={grn}
+                language="ar"
+                brand={{
+                    ...brand,
+                    branchName: branchHdr.branchName,
+                    branchCode: branchHdr.branchCode,
+                }}
+            />
+        );
+        printContent(content, `GRN #${grn.grnNumber}`);
+        try {
+            await supabase.from('system_audit_logs').insert({
+                action: 'print',
+                module: 'documents',
+                details: `Printed GRN ${grn.grnNumber}`,
+                metadata: {
+                    docType: 'grn',
+                    docNumber: grn.grnNumber,
+                    status: docStatus,
+                    sourceTable: 'purchase_receipts',
+                    sourceId: receiptId,
+                    template: 'PrintableGrn',
+                    purchaseOrderId: po.id,
+                    purchaseOrderNumber: po.poNumber || null,
+                }
+            } as any);
+        } catch {
+        }
+    };
 
     useEffect(() => {
         void getBaseCurrencyCode().then((c) => {
@@ -138,6 +303,10 @@ const PurchaseOrderScreen: React.FC = () => {
     const [paymentDeclaredAmount, setPaymentDeclaredAmount] = useState<number>(0);
     const [paymentAmountConfirmed, setPaymentAmountConfirmed] = useState<boolean>(false);
     const [paymentIdempotencyKey, setPaymentIdempotencyKey] = useState<string>('');
+    const [paymentAdvancedAccounting, setPaymentAdvancedAccounting] = useState(false);
+    const [paymentOverrideAccountId, setPaymentOverrideAccountId] = useState<string>('');
+    const [accounts, setAccounts] = useState<Array<{ id: string; code: string; name: string }>>([]);
+    const [accountsError, setAccountsError] = useState<string>('');
     const [receiveOrder, setReceiveOrder] = useState<PurchaseOrder | null>(null);
     const [receiveRows, setReceiveRows] = useState<ReceiveRow[]>([]);
     const [receiveOccurredAt, setReceiveOccurredAt] = useState<string>(toDateTimeLocalInputValue());
@@ -646,7 +815,17 @@ const PurchaseOrderScreen: React.FC = () => {
                 alert('الرجاء إدخال كمية للاستلام.');
                 return;
             }
-            await receivePurchaseOrderPartial(receiveOrder.id, items, receiveOccurredAt);
+            const receiptId = await receivePurchaseOrderPartial(receiveOrder.id, items, receiveOccurredAt);
+            if (receiptId) {
+                const ok = window.confirm('تم الاستلام بنجاح. هل تريد طباعة إشعار الاستلام (GRN) الآن؟');
+                if (ok) {
+                    try {
+                        await handlePrintGrn(String(receiptId), receiveOrder);
+                    } catch (e2) {
+                        alert(getErrorMessage(e2, 'تعذر طباعة إشعار الاستلام.'));
+                    }
+                }
+            }
             setIsReceiveModalOpen(false);
             setReceiveOrder(null);
             setReceiveRows([]);
@@ -735,6 +914,45 @@ const PurchaseOrderScreen: React.FC = () => {
         return enabled;
     }, [settings.paymentMethods]);
 
+    useEffect(() => {
+        if (!canViewAccounting) return;
+        if (!isPaymentModalOpen) return;
+        if (accounts.length > 0) return;
+        const run = async () => {
+            const supabase = getSupabaseClient();
+            if (!supabase) return;
+            setAccountsError('');
+            try {
+                const { data, error } = await supabase
+                    .from('chart_of_accounts')
+                    .select('id,code,name,account_type,is_active')
+                    .eq('is_active', true)
+                    .order('code', { ascending: true });
+                if (error) {
+                    const { data: rpcData, error: rpcError } = await supabase.rpc('list_active_accounts');
+                    if (rpcError) throw rpcError;
+                    const list = Array.isArray(rpcData) ? rpcData : [];
+                    setAccounts(list.map((r: any) => ({
+                        id: String(r?.id || ''),
+                        code: String(r?.code || ''),
+                        name: String(r?.name || ''),
+                    })).filter((r: any) => Boolean(r.id)));
+                    return;
+                }
+                const list = Array.isArray(data) ? data : [];
+                setAccounts(list.map((r: any) => ({
+                    id: String(r?.id || ''),
+                    code: String(r?.code || ''),
+                    name: String(r?.name || ''),
+                })).filter((r: any) => Boolean(r.id)));
+            } catch (e) {
+                setAccounts([]);
+                setAccountsError(localizeSupabaseError(e));
+            }
+        };
+        void run();
+    }, [accounts.length, canViewAccounting, isPaymentModalOpen]);
+
     const getPaymentMethodLabel = (method: string) => {
         if (method === 'cash') return 'نقدًا';
         if (method === 'kuraimi') return 'حسابات بنكية';
@@ -755,6 +973,8 @@ const PurchaseOrderScreen: React.FC = () => {
         setPaymentDeclaredAmount(remaining);
         setPaymentAmountConfirmed(false);
         setPaymentIdempotencyKey(typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
+        setPaymentAdvancedAccounting(false);
+        setPaymentOverrideAccountId('');
         setIsPaymentModalOpen(true);
     };
 
@@ -804,27 +1024,49 @@ const PurchaseOrderScreen: React.FC = () => {
                 }
             }
 
-            await recordPurchaseOrderPayment(
+            const payloadData: Record<string, unknown> = needsReference
+                ? {
+                    idempotencyKey: paymentIdempotencyKey,
+                    paymentProofType: 'ref_number',
+                    paymentProof: paymentReferenceNumber.trim(),
+                    paymentReferenceNumber: paymentReferenceNumber.trim(),
+                    paymentSenderName: paymentSenderName.trim(),
+                    paymentSenderPhone: paymentSenderPhone.trim() || null,
+                    paymentDeclaredAmount: Number(paymentDeclaredAmount) || 0,
+                    paymentAmountConfirmed: Boolean(paymentAmountConfirmed),
+                }
+                : { idempotencyKey: paymentIdempotencyKey };
+
+            if (paymentAdvancedAccounting && canManageAccounting) {
+                const override = String(paymentOverrideAccountId || '').trim();
+                if (override) payloadData.overrideAccountId = override;
+            }
+
+            const paymentId = await recordPurchaseOrderPayment(
                 paymentOrder.id,
                 amount,
                 paymentMethod,
                 paymentOccurredAt,
-                needsReference
-                    ? {
-                        idempotencyKey: paymentIdempotencyKey,
-                        paymentProofType: 'ref_number',
-                        paymentProof: paymentReferenceNumber.trim(),
-                        paymentReferenceNumber: paymentReferenceNumber.trim(),
-                        paymentSenderName: paymentSenderName.trim(),
-                        paymentSenderPhone: paymentSenderPhone.trim() || null,
-                        paymentDeclaredAmount: Number(paymentDeclaredAmount) || 0,
-                        paymentAmountConfirmed: Boolean(paymentAmountConfirmed),
-                      }
-                    : { idempotencyKey: paymentIdempotencyKey }
+                payloadData
             );
+
+            if (paymentId) {
+                const ok = window.confirm('تم تسجيل الدفعة بنجاح. هل تريد طباعة سند الصرف الآن؟');
+                if (ok) {
+                    try {
+                        const brand = resolveBrandingForWarehouseId(paymentOrder.warehouseId);
+                        const branchHdr = await fetchBranchHeader(scope?.branchId);
+                        await printPaymentVoucherByPaymentId(paymentId, { ...brand, branchName: branchHdr.branchName, branchCode: branchHdr.branchCode });
+                    } catch (e2) {
+                        alert(getErrorMessage(e2, 'تعذر طباعة سند الصرف.'));
+                    }
+                }
+            }
 
             setIsPaymentModalOpen(false);
             setPaymentOrder(null);
+            setPaymentAdvancedAccounting(false);
+            setPaymentOverrideAccountId('');
         } catch (error) {
             console.error(error);
             alert(getErrorMessage(error, 'فشل تسجيل الدفعة.'));
@@ -1177,6 +1419,14 @@ const PurchaseOrderScreen: React.FC = () => {
                                     </td>
                                     <td className="p-4">
                                         <div className="flex flex-wrap gap-2 justify-end">
+                                            <button
+                                                type="button"
+                                                onClick={() => { void handlePrintPo(order); }}
+                                                disabled={order.status === 'cancelled'}
+                                                className="px-3 py-2 rounded-lg text-sm font-semibold bg-gray-900 text-white hover:bg-black disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                طباعة PO
+                                            </button>
                                             <button
                                                 type="button"
                                                 onClick={() => openReceiveModal(order)}
@@ -1881,6 +2131,37 @@ const PurchaseOrderScreen: React.FC = () => {
                                     className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                                 />
                             </div>
+                            {canViewAccounting && (
+                                <div className="space-y-2 rounded-lg border border-gray-200 dark:border-gray-600 p-3">
+                                    <label className="flex items-center gap-2 text-sm font-medium dark:text-gray-300">
+                                        <input
+                                            type="checkbox"
+                                            checked={paymentAdvancedAccounting}
+                                            onChange={(e) => setPaymentAdvancedAccounting(e.target.checked)}
+                                        />
+                                        إعدادات محاسبية متقدمة
+                                    </label>
+                                    {paymentAdvancedAccounting && (
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1 dark:text-gray-300">الحساب المحاسبي البديل (Advanced)</label>
+                                            <select
+                                                value={paymentOverrideAccountId}
+                                                onChange={(e) => setPaymentOverrideAccountId(e.target.value)}
+                                                disabled={!canManageAccounting}
+                                                className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white disabled:opacity-60"
+                                            >
+                                                <option value="">-- بدون --</option>
+                                                {accounts.map(a => (
+                                                    <option key={a.id} value={a.id}>{a.code} — {a.name}</option>
+                                                ))}
+                                            </select>
+                                            {accountsError && (
+                                                <div className="mt-1 text-xs text-red-600">{accountsError}</div>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                             <div className="flex justify-end gap-2 pt-2">
                                 <button
                                     type="button"

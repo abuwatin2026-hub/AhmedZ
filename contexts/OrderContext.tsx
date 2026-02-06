@@ -99,7 +99,7 @@ interface OrderContextType {
   awardPointsForReviewedOrder: (orderId: string) => Promise<boolean>;
   incrementInvoicePrintCount: (orderId: string) => Promise<void>;
   markOrderPaid: (orderId: string) => Promise<void>;
-  recordOrderPaymentPartial: (orderId: string, amount: number, method?: string, occurredAt?: string) => Promise<void>;
+  recordOrderPaymentPartial: (orderId: string, amount: number, method?: string, occurredAt?: string, overrideAccountId?: string) => Promise<void>;
   issueInvoiceNow: (orderId: string) => Promise<void>;
 }
 
@@ -185,8 +185,31 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const rpcRecordOrderPayment = async (
     supabase: any,
-    input: { orderId: string; amount: number; method: string; occurredAt: string; currency?: string; idempotencyKey?: string }
+    input: { orderId: string; amount: number; method: string; occurredAt: string; currency?: string; idempotencyKey?: string; overrideAccountId?: string }
   ): Promise<any> => {
+    const callV2 = async () => {
+      const base: any = {
+        p_order_id: input.orderId,
+        p_amount: input.amount,
+        p_method: input.method,
+        p_occurred_at: input.occurredAt,
+        p_data: {},
+      };
+      if (typeof input.currency === 'string' && input.currency.trim()) {
+        base.p_currency = input.currency.trim().toUpperCase();
+      }
+      const key = String(input.idempotencyKey || '').trim();
+      if (key) {
+        base.p_idempotency_key = key;
+      }
+      const override = String(input.overrideAccountId || '').trim();
+      if (override) {
+        base.p_data.overrideAccountId = override;
+      }
+      const { error } = await supabase.rpc('record_order_payment_v2', base);
+      return error;
+    };
+
     const call = async (includeIdempotencyKey: boolean) => {
       const base: any = {
         p_order_id: input.orderId,
@@ -209,7 +232,19 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       return error;
     };
 
-    let error = await call(true);
+    const hasOverride = String(input.overrideAccountId || '').trim().length > 0;
+    let error: any = null;
+    if (hasOverride) {
+      error = await callV2();
+      if (!error) return null;
+      if (isRecordOrderPaymentNotFoundError(error)) {
+        const reloaded = await reloadPostgrestSchema();
+        if (reloaded) error = await callV2();
+      }
+      if (!error) return null;
+    }
+
+    error = await call(true);
     if (!error) return null;
 
     if (isRecordOrderPaymentNotFoundError(error)) {
@@ -3401,7 +3436,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   const recordOrderPaymentPartial = useCallback(
-    async (orderId: string, amount: number, method?: string, occurredAt?: string) => {
+    async (orderId: string, amount: number, method?: string, occurredAt?: string, overrideAccountId?: string) => {
       const existing = (await fetchRemoteOrderById(orderId)) || orders.find(o => o.id === orderId);
       if (!existing) return;
       if (!canMarkPaidOrder()) {
@@ -3434,6 +3469,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         occurredAt: occurredAtIso,
         currency: String((existing as any).currency || (await getBaseCurrencyCode()) || '').toUpperCase(),
         idempotencyKey: `partial:${existing.id}:${occurredAtIso}:${Number(numericAmount) || 0}`,
+        overrideAccountId,
       });
       if (error) {
         const isOffline = typeof navigator !== 'undefined' && navigator.onLine === false;

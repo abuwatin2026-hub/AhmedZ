@@ -5,6 +5,7 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { sharePdf, exportToXlsx, printPdfFromElement } from '../../../utils/export';
 import { buildPdfBrandOptions, buildXlsxBrandOptions } from '../../../utils/branding';
 import { printContent } from '../../../utils/printUtils';
+import { printJournalVoucherByEntryId } from '../../../utils/vouchers';
 import { CostCenter } from '../../../types';
 import { useSettings } from '../../../contexts/SettingsContext';
 import LineChart from '../../../components/admin/charts/LineChart';
@@ -1739,6 +1740,25 @@ const FinancialReports: React.FC = () => {
                   )}
                 </div>
                 <div className="flex items-center gap-2">
+                  {entryHeader && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const brand = {
+                          name: (settings.cafeteriaName?.ar || settings.cafeteriaName?.en || '').trim(),
+                          address: (settings.address || '').trim(),
+                          contactNumber: (settings.contactNumber || '').trim(),
+                          logoUrl: (settings.logoUrl || '').trim(),
+                        };
+                        void printJournalVoucherByEntryId(entryHeader.id, brand).catch((e) => {
+                          showNotification(String((e as any)?.message || 'تعذر طباعة القيد'), 'error');
+                        });
+                      }}
+                      className="px-3 py-2 rounded-lg bg-gray-900 text-white font-semibold hover:bg-black"
+                    >
+                      طباعة JV
+                    </button>
+                  )}
                   {entryHeader?.status === 'draft' && canApproveAccounting && (
                     <button
                       type="button"

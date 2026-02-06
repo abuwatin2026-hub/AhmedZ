@@ -2,12 +2,15 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { getBaseCurrencyCode, getSupabaseClient } from '../../supabase';
 import { Expense, CostCenter } from '../../types';
 import { useToast } from '../../contexts/ToastContext';
+import { useAuth } from '../../contexts/AuthContext';
+import { localizeSupabaseError } from '../../utils/errorUtils';
 // import { useSettings } from '../../contexts/SettingsContext';
 import NumberInput from '../../components/NumberInput';
 import { nextMonthStartYmd, toDateInputValue, toDateTimeLocalInputValue, toMonthInputValue, toUtcIsoAtMiddayFromYmd } from '../../utils/dateUtils';
 
 const ManageExpensesScreen: React.FC = () => {
     const { showNotification } = useToast();
+    const { hasPermission } = useAuth();
     const [expenses, setExpenses] = useState<Expense[]>([]);
     const [costCenters, setCostCenters] = useState<CostCenter[]>([]);
     const [loading, setLoading] = useState(true);
@@ -19,6 +22,8 @@ const ManageExpensesScreen: React.FC = () => {
     const [paymentAmount, setPaymentAmount] = useState<number>(0);
     const [paymentMethod, setPaymentMethod] = useState<string>('cash');
     const [paymentOccurredAt, setPaymentOccurredAt] = useState<string>(toDateTimeLocalInputValue());
+    const [paymentAdvancedAccounting, setPaymentAdvancedAccounting] = useState(false);
+    const [paymentOverrideAccountId, setPaymentOverrideAccountId] = useState<string>('');
 
     // Form State
     const [formData, setFormData] = useState<Partial<Expense>>({
@@ -31,6 +36,14 @@ const ManageExpensesScreen: React.FC = () => {
     });
     const [payNow, setPayNow] = useState(true);
     const [formPaymentMethod, setFormPaymentMethod] = useState<string>('cash');
+    const [formAdvancedAccounting, setFormAdvancedAccounting] = useState(false);
+    const [formOverrideAccountId, setFormOverrideAccountId] = useState<string>('');
+
+    const [accounts, setAccounts] = useState<Array<{ id: string; code: string; name: string; account_type?: string }>>([]);
+    const [accountsError, setAccountsError] = useState<string>('');
+
+    const canViewAccounting = hasPermission('accounting.view') || hasPermission('accounting.manage');
+    const canManageAccounting = hasPermission('accounting.manage');
 
     const normalizePaymentMethod = (value: string) => {
         const raw = (value || '').trim();
@@ -40,12 +53,64 @@ const ManageExpensesScreen: React.FC = () => {
         return raw;
     };
 
+    const isUuidText = (v: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(v || '').trim());
+
+    const buildDataWithOverride = (current: any, override: string | null) => {
+        const base = current && typeof current === 'object' && !Array.isArray(current) ? { ...current } : {};
+        if (!override) {
+            if (Object.prototype.hasOwnProperty.call(base, 'overrideAccountId')) {
+                delete (base as any).overrideAccountId;
+            }
+            return base;
+        }
+        return { ...base, overrideAccountId: override };
+    };
+
     useEffect(() => {
         void getBaseCurrencyCode().then((c) => {
             if (!c) return;
             setBaseCode(c);
         });
     }, []);
+
+    useEffect(() => {
+        if (!canViewAccounting) return;
+        const run = async () => {
+            const supabase = getSupabaseClient();
+            if (!supabase) return;
+            setAccountsError('');
+            try {
+                const { data, error } = await supabase
+                    .from('chart_of_accounts')
+                    .select('id,code,name,account_type,is_active')
+                    .eq('is_active', true)
+                    .order('code', { ascending: true });
+                if (error) {
+                    const { data: rpcData, error: rpcError } = await supabase.rpc('list_active_accounts');
+                    if (rpcError) throw rpcError;
+                    const list = Array.isArray(rpcData) ? rpcData : [];
+                    setAccounts(list.map((r: any) => ({
+                        id: String(r?.id || ''),
+                        code: String(r?.code || ''),
+                        name: String(r?.name || ''),
+                        account_type: typeof r?.account_type === 'string' ? r.account_type : undefined,
+                    })).filter((r: any) => Boolean(r.id)));
+                    return;
+                }
+                const list = Array.isArray(data) ? data : [];
+                setAccounts(list.map((r: any) => ({
+                    id: String(r?.id || ''),
+                    code: String(r?.code || ''),
+                    name: String(r?.name || ''),
+                    account_type: typeof r?.account_type === 'string' ? r.account_type : undefined,
+                })).filter((r: any) => Boolean(r.id)));
+            } catch (e) {
+                setAccounts([]);
+                setAccountsError(localizeSupabaseError(e));
+            }
+        };
+        void run();
+    }, [canViewAccounting]);
 
     useEffect(() => {
         fetchExpenses();
@@ -103,7 +168,10 @@ const ManageExpensesScreen: React.FC = () => {
                 category: formData.category,
                 date: formData.date,
                 notes: formData.notes,
-                cost_center_id: formData.cost_center_id || null
+                cost_center_id: formData.cost_center_id || null,
+                data: formAdvancedAccounting && canManageAccounting && isUuidText(formOverrideAccountId)
+                    ? buildDataWithOverride({}, formOverrideAccountId.trim())
+                    : {},
             }).select('*').single();
 
             if (error) throw error;
@@ -140,6 +208,8 @@ const ManageExpensesScreen: React.FC = () => {
             });
             setPayNow(true);
             setFormPaymentMethod('cash');
+            setFormAdvancedAccounting(false);
+            setFormOverrideAccountId('');
             fetchExpenses();
         } catch (error) {
             console.error('Error adding expense:', error);
@@ -148,10 +218,14 @@ const ManageExpensesScreen: React.FC = () => {
     };
 
     const openPaymentModal = (exp: Expense) => {
+        const d = (exp as any)?.data || {};
+        const existingOverride = typeof d?.overrideAccountId === 'string' ? d.overrideAccountId : '';
         setPaymentExpense(exp);
         setPaymentAmount(exp.amount);
         setPaymentMethod('cash');
         setPaymentOccurredAt(toDateTimeLocalInputValue());
+        setPaymentOverrideAccountId(existingOverride);
+        setPaymentAdvancedAccounting(canViewAccounting && Boolean(String(existingOverride || '').trim()));
         setIsPaymentModalOpen(true);
     };
 
@@ -162,6 +236,13 @@ const ManageExpensesScreen: React.FC = () => {
             const supabase = getSupabaseClient();
             if (!supabase) return;
             const occurredAt = paymentOccurredAt ? new Date(paymentOccurredAt).toISOString() : new Date().toISOString();
+            if (paymentAdvancedAccounting && canManageAccounting) {
+                const override = isUuidText(paymentOverrideAccountId) ? paymentOverrideAccountId.trim() : '';
+                const current = (paymentExpense as any)?.data || {};
+                const next = buildDataWithOverride(current, override || null);
+                const { error: upErr } = await supabase.from('expenses').update({ data: next }).eq('id', paymentExpense.id);
+                if (upErr) throw upErr;
+            }
             const { error } = await supabase.rpc('record_expense_payment', {
                 p_expense_id: paymentExpense.id,
                 p_amount: Number(paymentAmount),
@@ -172,6 +253,9 @@ const ManageExpensesScreen: React.FC = () => {
             showNotification('تم تسجيل الدفع بنجاح', 'success');
             setIsPaymentModalOpen(false);
             setPaymentExpense(null);
+            setPaymentAdvancedAccounting(false);
+            setPaymentOverrideAccountId('');
+            fetchExpenses();
         } catch (error) {
             console.error('Error recording expense payment:', error);
             showNotification('فشل تسجيل الدفع', 'error');
@@ -368,6 +452,37 @@ const ManageExpensesScreen: React.FC = () => {
                                     </select>
                                 </div>
                             </div>
+                            {canViewAccounting && (
+                                <div className="space-y-2 rounded-lg border border-gray-200 dark:border-gray-600 p-3">
+                                    <label className="flex items-center gap-2 text-sm font-medium dark:text-gray-300">
+                                        <input
+                                            type="checkbox"
+                                            checked={formAdvancedAccounting}
+                                            onChange={(e) => setFormAdvancedAccounting(e.target.checked)}
+                                        />
+                                        إعدادات محاسبية متقدمة
+                                    </label>
+                                    {formAdvancedAccounting && (
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1 dark:text-gray-300">الحساب المحاسبي البديل (Advanced)</label>
+                                            <select
+                                                value={formOverrideAccountId}
+                                                onChange={(e) => setFormOverrideAccountId(e.target.value)}
+                                                disabled={!canManageAccounting}
+                                                className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600 disabled:opacity-60"
+                                            >
+                                                <option value="">-- بدون --</option>
+                                                {accounts.map(a => (
+                                                    <option key={a.id} value={a.id}>{a.code} — {a.name}</option>
+                                                ))}
+                                            </select>
+                                            {accountsError && (
+                                                <div className="mt-1 text-xs text-red-600">{accountsError}</div>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                             <div className="flex justify-end gap-2 pt-4">
                                 <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 text-gray-800">إلغاء</button>
                                 <button type="submit" className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700">حفظ</button>
@@ -419,6 +534,37 @@ const ManageExpensesScreen: React.FC = () => {
                                     className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600"
                                 />
                             </div>
+                            {canViewAccounting && (
+                                <div className="space-y-2 rounded-lg border border-gray-200 dark:border-gray-600 p-3">
+                                    <label className="flex items-center gap-2 text-sm font-medium dark:text-gray-300">
+                                        <input
+                                            type="checkbox"
+                                            checked={paymentAdvancedAccounting}
+                                            onChange={(e) => setPaymentAdvancedAccounting(e.target.checked)}
+                                        />
+                                        إعدادات محاسبية متقدمة
+                                    </label>
+                                    {paymentAdvancedAccounting && (
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1 dark:text-gray-300">الحساب المحاسبي البديل (Advanced)</label>
+                                            <select
+                                                value={paymentOverrideAccountId}
+                                                onChange={(e) => setPaymentOverrideAccountId(e.target.value)}
+                                                disabled={!canManageAccounting}
+                                                className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600 disabled:opacity-60"
+                                            >
+                                                <option value="">-- بدون --</option>
+                                                {accounts.map(a => (
+                                                    <option key={a.id} value={a.id}>{a.code} — {a.name}</option>
+                                                ))}
+                                            </select>
+                                            {accountsError && (
+                                                <div className="mt-1 text-xs text-red-600">{accountsError}</div>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                             <div className="flex justify-end gap-2 pt-4">
                                 <button
                                     type="button"
