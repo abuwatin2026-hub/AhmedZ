@@ -27,12 +27,15 @@ const ManageCustomersScreen: React.FC = () => {
   const [detailsTab, setDetailsTab] = useState<'overview' | 'orders' | 'actions'>('overview');
   const [isSelectedCustomerAppLinked, setIsSelectedCustomerAppLinked] = useState<boolean>(true);
   const [currencyOptions, setCurrencyOptions] = useState<string[]>([]);
-  const [customerDraft, setCustomerDraft] = useState<{ fullName: string; phoneNumber: string; loyaltyTier: Customer['loyaltyTier']; firstOrderDiscountApplied: boolean; preferredCurrency: string }>({
+  const [customerDraft, setCustomerDraft] = useState<{ fullName: string; phoneNumber: string; loyaltyTier: Customer['loyaltyTier']; firstOrderDiscountApplied: boolean; preferredCurrency: string; customerType?: Customer['customerType']; paymentTerms?: Customer['paymentTerms']; creditLimit?: number }>({
     fullName: '',
     phoneNumber: '',
     loyaltyTier: 'regular',
     firstOrderDiscountApplied: false,
     preferredCurrency: '',
+    customerType: undefined,
+    paymentTerms: undefined,
+    creditLimit: undefined,
   });
   const [savingCustomer, setSavingCustomer] = useState(false);
   const [cancelOrderId, setCancelOrderId] = useState<string | null>(null);
@@ -90,6 +93,9 @@ const ManageCustomersScreen: React.FC = () => {
       loyaltyTier: customer.loyaltyTier || 'regular',
       firstOrderDiscountApplied: Boolean(customer.firstOrderDiscountApplied),
       preferredCurrency: String((customer as any).preferredCurrency || ''),
+      customerType: customer.customerType,
+      paymentTerms: customer.paymentTerms,
+      creditLimit: typeof customer.creditLimit === 'number' ? customer.creditLimit : undefined,
     });
     setDetailsTab('overview');
   };
@@ -208,6 +214,26 @@ const ManageCustomersScreen: React.FC = () => {
   }, [selectedCustomer?.id]);
 
   useEffect(() => {
+    let cancelled = false;
+    const loadCredit = async () => {
+      if (!selectedCustomer) return;
+      try {
+        const supabase = getSupabaseClient();
+        if (!supabase) return;
+        const { data } = await supabase.rpc('get_customer_credit_summary', { p_customer_id: selectedCustomer.id });
+        const exists = Boolean((data as any)?.exists);
+        if (!exists || cancelled) return;
+        const limit = Number((data as any)?.credit_limit);
+        const bal = Number((data as any)?.current_balance);
+        setSelectedCustomer(prev => prev ? { ...prev, creditLimit: Number.isFinite(limit) ? limit : prev.creditLimit, currentBalance: Number.isFinite(bal) ? bal : prev.currentBalance } : prev);
+      } catch {
+      }
+    };
+    void loadCredit();
+    return () => { cancelled = true; };
+  }, [selectedCustomer?.id]);
+
+  useEffect(() => {
     // Simple badge: show "غير مرتبط بالتطبيق" if customers.auth_user_id is null
     let cancelled = false;
     const probe = async () => {
@@ -279,6 +305,9 @@ const ManageCustomersScreen: React.FC = () => {
         loyaltyTier: customerDraft.loyaltyTier,
         firstOrderDiscountApplied: Boolean(customerDraft.firstOrderDiscountApplied),
         preferredCurrency: pref || undefined,
+        customerType: customerDraft.customerType,
+        paymentTerms: customerDraft.paymentTerms,
+        creditLimit: typeof customerDraft.creditLimit === 'number' ? customerDraft.creditLimit : undefined,
       };
       const { error } = await supabase.from('customers').upsert({
         auth_user_id: next.id,
@@ -296,6 +325,9 @@ const ManageCustomersScreen: React.FC = () => {
         first_order_discount_applied: Boolean(next.firstOrderDiscountApplied ?? false),
         avatar_url: next.avatarUrl ?? null,
         preferred_currency: next.preferredCurrency ?? null,
+        customer_type: next.customerType ?? null,
+        payment_terms: next.paymentTerms ?? null,
+        credit_limit: typeof next.creditLimit === 'number' ? next.creditLimit : null,
         data: next,
       }, { onConflict: 'auth_user_id' });
       if (error) throw error;
@@ -634,10 +666,10 @@ const ManageCustomersScreen: React.FC = () => {
                         return 'إعدادات الخادم ناقصة لإنشاء العملاء.';
                       }
                       if (normalized.includes('503') || normalized.includes('service temporarily unavailable')) {
-                        return 'خدمة إنشاء العملاء غير متاحة حالياً. تأكد من تشغيل وظائف Supabase.';
+                        return 'خدمة إنشاء العملاء غير متاحة حالياً. شغّل Supabase Edge Functions (npm run supabase:functions) أو استخدم npm run dev:local.';
                       }
                       if (normalized.includes('name resolution failed')) {
-                        return 'تعذر الوصول لخدمة إنشاء العملاء. تحقق من تشغيل Supabase Edge Functions.';
+                        return 'تعذر الوصول لخدمة إنشاء العملاء. غالباً Edge Runtime غير شغال محلياً (Docker/Functions Serve). شغّل: npm run supabase:functions';
                       }
                       if (normalized.includes('encryption key not configured')) {
                         return 'مفتاح تشفير بيانات العملاء غير مضبوط على الخادم.';
@@ -1062,6 +1094,45 @@ const ManageCustomersScreen: React.FC = () => {
                             حذف العميل
                           </button>
                         )}
+                        {!isSelectedCustomerAppLinked && canManageCustomers && (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                const supabase = getSupabaseClient();
+                                if (!supabase) {
+                                  showNotification('تعذر الوصول للخادم.', 'error');
+                                  return;
+                                }
+                                const fullName = customerDraft.fullName.trim() || selectedCustomer.fullName || '';
+                                const phone = customerDraft.phoneNumber.trim();
+                                const creditLimit = typeof customerDraft.creditLimit === 'number' ? customerDraft.creditLimit : undefined;
+                                const { data, error } = await (supabase as any).functions.invoke('convert-party-to-customer', {
+                                  body: { partyId: selectedCustomer.id, fullName, phone, customerType: 'wholesale', creditLimit }
+                                });
+                                if (error) {
+                                  const msg = (error as any)?.message || String(error);
+                                  showNotification(`فشل تحويل الطرف إلى عميل: ${msg}`, 'error');
+                                  return;
+                                }
+                                showNotification('تم تحويل الطرف إلى عميل بنجاح.', 'success');
+                                await fetchCustomers();
+                                try {
+                                  const authId = String((data as any)?.customer?.auth_user_id || '');
+                                  const next = (customers || []).find(c => c.id === authId);
+                                  if (next) setSelectedCustomer(next);
+                                } catch {}
+                                setIsSelectedCustomerAppLinked(true);
+                              } catch (err) {
+                                const raw = err instanceof Error ? err.message : String(err || '');
+                                showNotification((raw || 'فشل تحويل الطرف إلى عميل.'), 'error');
+                              }
+                            }}
+                            className="px-4 py-2 rounded-lg bg-emerald-600 text-white font-semibold"
+                          >
+                            تحويل إلى عميل
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1071,6 +1142,52 @@ const ManageCustomersScreen: React.FC = () => {
                     <div className="text-sm text-gray-700 dark:text-gray-300 space-y-2">
                       <div>العناوين داخل الطلبات مشفرة على جهاز العميل، لذلك قد لا تظهر نصاً واضحاً هنا.</div>
                       <div>يمكنك إدارة نقاط الولاء من زر إدارة النقاط.</div>
+                    </div>
+                  </div>
+                  
+                  <div className="bg-gray-50 dark:bg-gray-700/40 rounded-xl p-5">
+                    <div className="text-sm font-bold text-gray-900 dark:text-white mb-4">الائتمان</div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">نوع العميل</label>
+                        <select
+                          value={String(customerDraft.customerType || (selectedCustomer.customerType || 'retail'))}
+                          onChange={(e) => setCustomerDraft(prev => ({ ...prev, customerType: e.target.value as any }))}
+                          className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-gold-500 focus:border-gold-500 transition"
+                        >
+                          <option value="retail">retail</option>
+                          <option value="wholesale">wholesale</option>
+                          <option value="distributor">distributor</option>
+                          <option value="vip">vip</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">شروط الدفع</label>
+                        <select
+                          value={String(customerDraft.paymentTerms || (selectedCustomer.paymentTerms || 'cash'))}
+                          onChange={(e) => setCustomerDraft(prev => ({ ...prev, paymentTerms: e.target.value as any }))}
+                          className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-gold-500 focus:border-gold-500 transition"
+                        >
+                          <option value="cash">cash</option>
+                          <option value="net_15">net_15</option>
+                          <option value="net_30">net_30</option>
+                          <option value="net_45">net_45</option>
+                          <option value="net_60">net_60</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">حد الائتمان</label>
+                        <input
+                          type="number"
+                          value={typeof customerDraft.creditLimit === 'number' ? customerDraft.creditLimit : (typeof selectedCustomer.creditLimit === 'number' ? selectedCustomer.creditLimit : 0)}
+                          onChange={(e) => setCustomerDraft(prev => ({ ...prev, creditLimit: parseFloat(e.target.value || '0') }))}
+                          className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-gold-500 focus:border-gold-500 transition"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">الرصيد الحالي</label>
+                        <div className="font-mono text-sm text-gray-900 dark:text-white">{typeof selectedCustomer.currentBalance === 'number' ? selectedCustomer.currentBalance : '-'}</div>
+                      </div>
                     </div>
                   </div>
                 </div>

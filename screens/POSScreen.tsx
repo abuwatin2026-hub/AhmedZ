@@ -484,7 +484,12 @@ const POSScreen: React.FC = () => {
           const pricingQty = getPricingQty(item);
           const key = `${transactionCurrency}:${warehouseId}:${item.id}:${item.unitType || ''}:${pricingQty}:${selectedCustomerId || ''}`;
           const cached = pricingCacheRef.current.get(key);
-          if (cached) return { key, itemId: item.id, unitType: item.unitType, ...cached };
+          if (cached) {
+            const hasFefoSignal = Boolean((cached as any)?.batchId) || (cached as any)?.baseMinPrice != null || (cached as any)?.minPrice != null;
+            if (!hasSession || fefoPricingDisabledRef.current || hasFefoSignal) {
+              return { key, itemId: item.id, unitType: item.unitType, ...cached };
+            }
+          }
           const customerId = (selectedCustomerId && selectedCustomerId.trim() !== '') ? selectedCustomerId : null;
           const resolveLocal = async () => {
             const baseUnitPrice = Number((item as any)?._basePrice != null ? (item as any)._basePrice : (item as any).price) || 0;
@@ -504,8 +509,8 @@ const POSScreen: React.FC = () => {
             return await supabase.rpc('get_fefo_pricing', {
               p_item_id: item.id,
               p_warehouse_id: warehouseId,
-              p_customer_id: customerId,
               p_quantity: pricingQty,
+              p_customer_id: customerId,
             });
           };
           const resolveViaFallback = async () => {

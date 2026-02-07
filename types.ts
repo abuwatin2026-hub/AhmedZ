@@ -500,6 +500,10 @@ export interface Customer {
   fullName?: string;
   avatarUrl?: string;
   preferredCurrency?: string;
+  customerType?: 'retail' | 'wholesale' | 'distributor' | 'vip' | (string & {});
+  paymentTerms?: 'cash' | 'net_15' | 'net_30' | 'net_45' | 'net_60' | (string & {});
+  creditLimit?: number;
+  currentBalance?: number;
   authProvider: 'password' | 'phone' | 'google';
   passwordSalt?: string;
   passwordHash?: string;

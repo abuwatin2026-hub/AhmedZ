@@ -1528,6 +1528,22 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
     const nowIso = new Date().toISOString();
     const warehouseId = sessionScope.requireScope().warehouseId;
+    if (input.isCredit) {
+      const supabase = getSupabaseClient();
+      if (!supabase) throw new Error('Supabase غير مهيأ.');
+      const rawId = String(input.customerId || '').trim();
+      if (!isUuid(rawId)) {
+        throw new Error('لا يمكن البيع الآجل بدون عميل تجاري صالح.');
+      }
+      const { data: cRow } = await supabase
+        .from('customers')
+        .select('auth_user_id, customer_type, payment_terms, credit_limit')
+        .eq('auth_user_id', rawId)
+        .maybeSingle();
+      if (!cRow?.auth_user_id) {
+        throw new Error('البيع الآجل متاح فقط لعميل مسجل في قسم إدارة العملاء بنوع wholesale.');
+      }
+    }
     let items: CartItem[] = normalizedMenuLines.map((line, idx) => {
       const menuItem = menuItems[idx]!;
       const unitType = menuItem.unitType;
@@ -1667,6 +1683,24 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             data = retry.data;
             error = retry.error;
           }
+          if (error && /could not choose the best candidate function/i.test(msg)) {
+            const { data: d2, error: e2 } = await supabaseForPricing!.rpc('get_item_price', {
+              p_item_id: item.id,
+              p_quantity: pricingQty,
+              p_customer_id: rawCustomerId,
+            });
+            data = d2;
+            error = e2;
+            if (error && /operator does not exist:\s*text\s*=\s*uuid/i.test(String((error as any)?.message || ''))) {
+              const { data: d3, error: e3 } = await supabaseForPricing!.rpc('get_item_price', {
+                p_item_id: item.id,
+                p_quantity: pricingQty,
+                p_customer_id: null,
+              });
+              data = d3;
+              error = e3;
+            }
+          }
         }
         if (error) throw new Error(localizeSupabaseError(error));
         const unitPrice = Number(data);
@@ -1710,13 +1744,13 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     };
 
     items = items.map((item: any) => {
-      const basePrice = Number(item.price) || 0;
+      const basePrice = Number(item._basePrice != null ? item._basePrice : item.price) || 0;
       const selected = item.selectedAddons && typeof item.selectedAddons === 'object' ? item.selectedAddons : {};
       const nextSelected: any = {};
       for (const [id, entry] of Object.entries(selected)) {
         const e: any = entry as any;
         const addon = e?.addon;
-        const addonBase = Number(addon?.price) || 0;
+        const addonBase = Number(addon?._basePrice != null ? addon._basePrice : addon?.price) || 0;
         nextSelected[id] = {
           ...e,
           addon: addon ? { ...addon, _basePrice: addonBase } : addon,
@@ -1728,7 +1762,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         selectedAddons: nextSelected,
       };
       if (item.unitType === 'gram') {
-        const basePerUnit = Number(item.pricePerUnit) || basePrice * 1000;
+        const basePerUnit = Number(item._basePricePerUnit != null ? item._basePricePerUnit : (Number(item.pricePerUnit) || basePrice * 1000)) || 0;
         next._basePricePerUnit = basePerUnit;
       }
       return next as CartItem;
@@ -1927,9 +1961,23 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       }));
 
     const shouldAttemptImmediatePayment = canMarkPaidUi;
+    let effectiveCustomerAuthId: string | undefined = undefined;
+    if (isUuid(input.customerId || '')) {
+      try {
+        const supabase = getSupabaseClient();
+        if (supabase) {
+          const { data: cRow } = await supabase
+            .from('customers')
+            .select('auth_user_id')
+            .eq('auth_user_id', String(input.customerId))
+            .maybeSingle();
+          if (cRow?.auth_user_id) effectiveCustomerAuthId = String(input.customerId);
+        }
+      } catch {}
+    }
     const newOrder: Order = {
       id: crypto.randomUUID(),
-      userId: isUuid(input.customerId) ? input.customerId : undefined,
+      userId: effectiveCustomerAuthId,
       orderSource: 'in_store',
       warehouseId,
       currency: desiredCurrency,

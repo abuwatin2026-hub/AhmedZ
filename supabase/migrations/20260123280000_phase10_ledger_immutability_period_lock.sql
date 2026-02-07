@@ -3,7 +3,9 @@ returns boolean
 language sql
 stable
 as $$
-  select current_user in ('postgres','supabase_admin');
+  select
+    session_user in ('postgres','supabase_admin')
+    and coalesce(nullif(current_setting('request.jwt.claims', true), ''), '') = '';
 $$;
 
 create or replace function public.trg_journal_entries_immutable()

@@ -561,12 +561,13 @@ const ManageOrdersScreen: React.FC = () => {
                         return { key: r.key, unitPrice, unitPricePerKg, unitType: r.unitType };
                     };
 
-                    if (warehouseId && isUuidText(r.itemId)) {
+                    if (warehouseId) {
                         try {
                             const { data, error } = await supabase.rpc('get_fefo_pricing', {
                                 p_item_id: r.itemId,
                                 p_warehouse_id: warehouseId,
                                 p_quantity: r.pricingQty,
+                                p_customer_id: (inStoreSelectedCustomerId && inStoreSelectedCustomerId.trim()) ? inStoreSelectedCustomerId : null,
                             });
                             if (error) throw error;
                             const row = (Array.isArray(data) ? data[0] : data) as any;

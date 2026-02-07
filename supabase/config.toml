@@ -22,6 +22,11 @@ enabled = true
 verify_jwt = false
 entrypoint = "./functions/create-admin-customer/index.ts"
 
+[functions.convert-party-to-customer]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/convert-party-to-customer/index.ts"
+
 [functions.delete-admin-user]
 enabled = true
 verify_jwt = false

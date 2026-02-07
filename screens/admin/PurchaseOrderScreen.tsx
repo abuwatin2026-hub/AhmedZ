@@ -55,6 +55,8 @@ const PurchaseOrderScreen: React.FC = () => {
     const [poCurrency, setPoCurrency] = useState<string>('');
     const [poFxRate, setPoFxRate] = useState<number>(1);
     const [poFxSource, setPoFxSource] = useState<'base' | 'system' | 'manual' | 'unknown'>('unknown');
+    const poCurrencyTouchedRef = useRef(false);
+    const poCurrencyInitRef = useRef(false);
     const [currencyOptions, setCurrencyOptions] = useState<string[]>([]);
     const { showNotification } = useToast();
     const { warehouses } = useWarehouses();
@@ -321,12 +323,21 @@ const PurchaseOrderScreen: React.FC = () => {
 
     useEffect(() => {
         if (!isModalOpen) return;
+        poCurrencyTouchedRef.current = false;
+        poCurrencyInitRef.current = false;
+    }, [isModalOpen]);
+
+    useEffect(() => {
+        if (!isModalOpen) return;
+        if (poCurrencyTouchedRef.current) return;
+        if (poCurrencyInitRef.current) return;
         const supplier = suppliers.find(s => s.id === supplierId);
         const preferred = String((supplier as any)?.preferredCurrency || '').trim().toUpperCase();
         const nextCurrency = preferred || baseCode || '';
         if (nextCurrency && nextCurrency !== poCurrency) {
             setPoCurrency(nextCurrency);
         }
+        poCurrencyInitRef.current = true;
     }, [baseCode, isModalOpen, poCurrency, supplierId, suppliers]);
 
     useEffect(() => {
@@ -1651,6 +1662,7 @@ const PurchaseOrderScreen: React.FC = () => {
                                             required
                                             onChange={(e) => {
                                                 const code = String(e.target.value || '').trim().toUpperCase();
+                                                poCurrencyTouchedRef.current = true;
                                                 setPoCurrency(code);
                                                 setPoFxRate(0);
                                                 setPoFxSource('unknown');
@@ -1834,7 +1846,7 @@ const PurchaseOrderScreen: React.FC = () => {
                                                 <tr>
                                                     <th className="p-2 sm:p-3 w-1/2">الصنف</th>
                                                     <th className="p-2 sm:p-3 w-24">الكمية</th>
-                                                    <th className="p-2 sm:p-3 w-32">سعر الشراء (للوحدة)</th>
+                                                    <th className="p-2 sm:p-3 w-32">{`سعر الشراء (للوحدة)${poCurrency ? ` (${poCurrency})` : ''}`}</th>
                                                     <th className="p-2 sm:p-3 w-32">الإجمالي</th>
                                                     {showCreateDates ? (
                                                         <>

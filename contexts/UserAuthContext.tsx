@@ -104,6 +104,10 @@ const toCustomerFromRow = (row: any): Customer => {
     fullName: typeof row?.full_name === 'string' ? row.full_name : (typeof (data as any).fullName === 'string' ? (data as any).fullName : undefined),
     avatarUrl: typeof row?.avatar_url === 'string' ? row.avatar_url : (typeof (data as any).avatarUrl === 'string' ? (data as any).avatarUrl : undefined),
     preferredCurrency: typeof row?.preferred_currency === 'string' ? row.preferred_currency : (typeof (data as any).preferredCurrency === 'string' ? (data as any).preferredCurrency : undefined),
+    customerType: typeof row?.customer_type === 'string' ? row.customer_type : (typeof (data as any).customerType === 'string' ? (data as any).customerType : undefined),
+    paymentTerms: typeof row?.payment_terms === 'string' ? row.payment_terms : (typeof (data as any).paymentTerms === 'string' ? (data as any).paymentTerms : undefined),
+    creditLimit: Number.isFinite(Number(row?.credit_limit)) ? Number(row.credit_limit) : (Number.isFinite(Number((data as any).creditLimit)) ? Number((data as any).creditLimit) : undefined),
+    currentBalance: Number.isFinite(Number(row?.current_balance)) ? Number(row.current_balance) : (Number.isFinite(Number((data as any).currentBalance)) ? Number((data as any).currentBalance) : undefined),
     authProvider: (typeof row?.auth_provider === 'string' ? row.auth_provider : (data as any).authProvider) === 'google'
       ? 'google'
       : ((typeof row?.auth_provider === 'string' ? row.auth_provider : (data as any).authProvider) === 'phone' ? 'phone' : 'password'),
@@ -263,7 +267,34 @@ export const UserAuthProvider: React.FC<{ children: ReactNode }> = ({ children }
         .map(toCustomerFromRow)
         .filter(Boolean)
         .filter((c) => !adminIds.has(String((c as any).id || '')));
-      setCustomers(remoteCustomers as Customer[]);
+      let partyCustomers: Customer[] = [];
+      try {
+        const { data: partyRows } = await supabase
+          .from('financial_parties')
+          .select('id,name,currency_preference,party_type,is_active')
+          .eq('party_type', 'customer')
+          .eq('is_active', true);
+        const list = (partyRows || []).map((r: any) => {
+          const now = new Date().toISOString();
+          return {
+            id: String(r?.id || ''),
+            fullName: typeof r?.name === 'string' ? r.name : undefined,
+            preferredCurrency: typeof r?.currency_preference === 'string' ? r.currency_preference : undefined,
+            authProvider: 'password',
+            loyaltyPoints: 0,
+            loyaltyTier: 'regular',
+            totalSpent: 0,
+            firstOrderDiscountApplied: false,
+            createdAt: now,
+            updatedAt: now,
+          } as Customer;
+        }).filter((c: Customer) => Boolean(c.id));
+        partyCustomers = list;
+      } catch {
+        partyCustomers = [];
+      }
+      const merged = [...remoteCustomers, ...partyCustomers];
+      setCustomers(merged as Customer[]);
     } catch (error) {
       setCustomers([]);
       if (import.meta.env.DEV) {
