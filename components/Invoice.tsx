@@ -187,7 +187,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                             </div>
                             <div className="inline-flex flex-col items-end border-r-4 border-slate-300 pr-4 mt-1">
                                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">التاريخ / Date</span>
-                                <span className="text-lg font-bold font-mono text-slate-700" dir="ltr">{new Date(invoiceDate).toLocaleDateString('ar-EG-u-nu-latn')}</span>
+                                <span className="text-lg font-bold font-mono text-slate-700" dir="ltr">{new Date(invoiceDate).toLocaleDateString('en-GB')}</span>
                             </div>
                         </div>
                     </div>
@@ -236,7 +236,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                         {invoiceTerms === 'credit' && invoiceDueDate && (
                             <div>
                                 <span className="block text-[10px] text-slate-400 font-bold uppercase mb-1">تاريخ الاستحقاق</span>
-                                <span className="font-bold text-red-600 font-mono bg-red-50 px-2 py-1 rounded text-xs" dir="ltr">{new Date(invoiceDueDate).toLocaleDateString('ar-EG-u-nu-latn')}</span>
+                                <span className="font-bold text-red-600 font-mono bg-red-50 px-2 py-1 rounded text-xs" dir="ltr">{new Date(invoiceDueDate).toLocaleDateString('en-GB')}</span>
                             </div>
                         )}
                         {invoiceOrder.orderSource && (
