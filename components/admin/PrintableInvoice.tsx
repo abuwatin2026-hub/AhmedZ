@@ -3,9 +3,10 @@ import QRCode from 'qrcode';
 import { Order } from '../../types';
 import { formatDateForPrint } from '../../utils/printUtils';
 import { computeCartItemPricing } from '../../utils/orderUtils';
+import { AZTA_IDENTITY } from '../../config/identity';
 
 // Helper to generate TLV base64 for ZATCA QR
-const generateZatcaTLV = (sellerName: string, vatRegistrationNumber: string, timestamp: string, total: string, vatTotal: string) => {
+export const generateZatcaTLV = (sellerName: string, vatRegistrationNumber: string, timestamp: string, total: string, vatTotal: string) => {
     // Note: Buffer is a Node.js API. In browser we might need a polyfill or simple byte array manipulation.
     // For simplicity in this React component, we'll assume a lightweight implementation:
     const simpleTLV = (tag: number, value: string) => {
@@ -61,6 +62,7 @@ interface PrintableInvoiceProps {
     isCopy?: boolean;
     copyNumber?: number;
     audit?: any;
+    qrCodeDataUrl?: string;
 }
 
 const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
@@ -77,6 +79,7 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
     isCopy = false,
     copyNumber,
     audit,
+    qrCodeDataUrl,
 }) => {
     const invoiceSnapshot = order.invoiceSnapshot;
     const invoiceOrder = invoiceSnapshot
@@ -112,6 +115,10 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
     const resolvedLogoUrl = logoUrl || '';
     const resolvedVatNumber = vatNumber || '';
     const resolvedThermalPaperWidth: '58mm' | '80mm' = thermalPaperWidth === '80mm' ? '80mm' : '58mm';
+    const systemName = language === 'ar' ? AZTA_IDENTITY.tradeNameAr : AZTA_IDENTITY.tradeNameEn;
+    const systemKey = AZTA_IDENTITY.merchantKey;
+    const branchName = resolvedCafeteriaName.trim();
+    const showBranchName = Boolean(branchName) && branchName !== systemName.trim();
 
     const numericCellStyle: React.CSSProperties = {
         textAlign: 'right',
@@ -133,7 +140,7 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
 
     // Generate ZATCA QR Code Data
     const qrData = generateZatcaTLV(
-        resolvedCafeteriaName,
+        systemName,
         resolvedVatNumber,
         invoiceOrder.invoiceIssuedAt || new Date().toISOString(),
         invoiceOrder.total.toFixed(2),
@@ -159,7 +166,7 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
     const invoiceDueDate = typeof (invoiceOrder as any).dueDate === 'string' ? String((invoiceOrder as any).dueDate) : '';
 
     return (
-        <div style={{ maxWidth: thermal ? resolvedThermalPaperWidth : '800px', width: thermal ? resolvedThermalPaperWidth : 'auto', margin: '0 auto', color: '#000', fontFamily: thermal ? 'Tahoma, Arial, sans-serif' : 'inherit', fontSize: thermal ? '12px' : '14px' }}>
+        <div style={{ maxWidth: thermal ? resolvedThermalPaperWidth : '800px', width: thermal ? resolvedThermalPaperWidth : 'auto', margin: '0 auto', color: '#000', fontFamily: thermal ? 'Tahoma, Arial, sans-serif' : 'inherit', fontSize: thermal ? '12px' : '14px', lineHeight: thermal ? 1.35 : 1.5 }}>
             {isCopy && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                     <div style={{ fontWeight: 700, color: '#b91c1c' }}>
@@ -172,9 +179,16 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
             )}
             <div style={{ textAlign: 'center', marginBottom: thermal ? '6px' : '10px' }}>
                 {resolvedLogoUrl ? (
-                    <img src={resolvedLogoUrl} alt={resolvedCafeteriaName} style={{ height: thermal ? '28px' : '40px', display: 'inline-block' }} />
+                    <img src={resolvedLogoUrl} alt={systemName || systemKey} style={{ height: thermal ? '28px' : '40px', display: 'inline-block' }} />
                 ) : null}
-                <div style={{ fontWeight: 800, fontSize: thermal ? '16px' : '20px', marginTop: '6px' }}>{resolvedCafeteriaName}</div>
+                <div style={{ fontWeight: 900, fontSize: thermal ? '12px' : '14px', marginTop: '6px', letterSpacing: '2px' }} dir="ltr">{systemKey}</div>
+                <div style={{ fontWeight: 800, fontSize: thermal ? '14px' : '18px', marginTop: '4px' }}>{systemName}</div>
+                {showBranchName ? (
+                    <div style={{ fontSize: thermal ? '11px' : '13px', marginTop: '2px' }}>
+                        {language === 'ar' ? 'المخزن: ' : 'Branch: '}
+                        {branchName}
+                    </div>
+                ) : null}
                 {resolvedCafeteriaAddress ? <div style={{ fontSize: thermal ? '11px' : '13px' }}>{resolvedCafeteriaAddress}</div> : null}
                 {resolvedCafeteriaPhone ? <div style={{ fontSize: thermal ? '11px' : '13px' }}>هاتف: {resolvedCafeteriaPhone}</div> : null}
                 {resolvedVatNumber ? <div style={{ fontSize: thermal ? '11px' : '13px', marginTop: '2px' }}>الرقم الضريبي: {resolvedVatNumber}</div> : null}
@@ -229,7 +243,7 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
                 <thead>
                     <tr>
                         <th style={{ width: thermal ? '24px' : '50px', borderBottom: '1px dashed #000', textAlign: 'center' }}>#</th>
-                        <th style={{ borderBottom: '1px dashed #000', textAlign: 'left' }}>الصنف</th>
+                        <th style={{ borderBottom: '1px dashed #000', textAlign: 'right' }}>الصنف</th>
                         <th style={{ width: thermal ? '60px' : '80px', borderBottom: '1px dashed #000', ...numericCellStyle }}>الكمية</th>
                         <th style={{ width: thermal ? '70px' : '100px', borderBottom: '1px dashed #000', ...numericCellStyle }}>السعر</th>
                         <th style={{ width: thermal ? '80px' : '100px', borderBottom: '1px dashed #000', ...numericCellStyle }}>المجموع</th>
@@ -246,7 +260,7 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
                             <React.Fragment key={item.cartItemId || index}>
                                 <tr>
                                     <td style={{ textAlign: 'center' }}>{index + 1}</td>
-                                    <td>
+                                    <td style={{ textAlign: 'right' }}>
                                         <div style={{ fontWeight: 700 }}>{item.name?.[language] || item.name?.ar || item.name?.en || item.id}</div>
                                         {Object.values(item.selectedAddons).length > 0 ? (
                                             <div style={{ fontSize: thermal ? '10px' : '12px', color: '#666', marginTop: '2px' }}>
@@ -405,7 +419,11 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
             </div>
             
             <div style={{ textAlign: 'center', marginTop: '10px', display: 'flex', justifyContent: 'center' }}>
-                <QRImage value={qrData} size={thermal ? 100 : 128} />
+                {qrCodeDataUrl ? (
+                    <img src={qrCodeDataUrl} alt="QR" style={{ width: thermal ? 100 : 128, height: thermal ? 100 : 128 }} />
+                ) : (
+                    <QRImage value={qrData} size={thermal ? 100 : 128} />
+                )}
             </div>
         </div>
     );

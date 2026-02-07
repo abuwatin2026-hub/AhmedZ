@@ -88,6 +88,7 @@ const ImportShipmentsScreen = lazy(() => import('./screens/admin/ImportShipments
 const ImportShipmentDetailsScreen = lazy(() => import('./screens/admin/ImportShipmentDetailsScreen'));
 const POSTestConsole = lazy(() => import('./screens/admin/POSTestConsole'));
 const WastageScreen = lazy(() => import('./screens/admin/WastageScreen'));
+const DocumentTemplatesScreen = lazy(() => import('./screens/admin/DocumentTemplatesScreen'));
 const ExpiryBatchesScreen = lazy(() => import('./screens/admin/ExpiryBatchesScreen'));
 const WastageExpiryReportsScreen = lazy(() => import('./screens/admin/WastageExpiryReportsScreen'));
 const ChartOfAccountsScreen = lazy(() => import('./screens/admin/ChartOfAccountsScreen'));
@@ -380,6 +381,7 @@ const App: React.FC = () => {
                 <Route path="reports/financial-journals" element={<AdminProtectedRoute permissions={['accounting.view']}><FinancialReportsByJournal /></AdminProtectedRoute>} />
                 <Route path="accounting" element={<AdminProtectedRoute permissions={['accounting.view']}><FinancialReports /></AdminProtectedRoute>} />
                 <Route path="printed-documents" element={<AdminProtectedRoute permissions={['accounting.view']}><PrintedDocumentsScreen /></AdminProtectedRoute>} />
+                <Route path="document-templates" element={<AdminProtectedRoute permissions={['accounting.view']}><DocumentTemplatesScreen /></AdminProtectedRoute>} />
                 <Route path="payroll" element={<AdminProtectedRoute permissions={['expenses.manage', 'accounting.manage']} requireAllPermissions={false}><PayrollScreen /></AdminProtectedRoute>} />
                 <Route path="chart-of-accounts" element={<AdminProtectedRoute roles={['owner']}><ChartOfAccountsScreen /></AdminProtectedRoute>} />
                 <Route path="journals" element={<AdminProtectedRoute permissions={['accounting.manage']}><JournalsScreen /></AdminProtectedRoute>} />

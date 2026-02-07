@@ -8,7 +8,7 @@ import { buildPdfBrandOptions } from '../utils/branding';
 import { BackArrowIcon, ShareIcon, PrinterIcon } from '../components/icons';
 import { buildPrintHtml, printContent } from '../utils/printUtils';
 import { renderToString } from 'react-dom/server';
-import PrintableInvoice from '../components/admin/PrintableInvoice';
+import PrintableInvoice, { generateZatcaTLV } from '../components/admin/PrintableInvoice';
 import PrintableOrder from '../components/admin/PrintableOrder';
 import { Capacitor } from '@capacitor/core';
 import PageLoader from '../components/PageLoader';
@@ -19,6 +19,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { useSessionScope } from '../contexts/SessionScopeContext';
 import { useWarehouses } from '../contexts/WarehouseContext';
 import { useDeliveryZones } from '../contexts/DeliveryZoneContext';
+import QRCode from 'qrcode';
+import { AZTA_IDENTITY } from '../config/identity';
 
 
 const InvoiceScreen: React.FC = () => {
@@ -179,7 +181,7 @@ const InvoiceScreen: React.FC = () => {
         setIsSharing(false);
     };
 
-    const handlePrint = () => {
+    const handlePrint = async () => {
         if (!order) return;
 
         const currentCount = typeof order.invoicePrintCount === 'number' ? order.invoicePrintCount : 0;
@@ -206,21 +208,39 @@ const InvoiceScreen: React.FC = () => {
             return;
         }
 
+        const brand = resolveBranding();
+        const vatNumber = (settings.taxSettings?.taxNumber || '').trim();
+        let qrCodeDataUrl: string | undefined = undefined;
+        if (vatNumber) {
+            const snap: any = (order as any).invoiceSnapshot || {};
+            const issuedAt = String(snap.invoiceIssuedAt || (order as any).invoiceIssuedAt || order.createdAt || new Date().toISOString());
+            const total = Number(snap.total ?? (order as any).total ?? 0).toFixed(2);
+            const vatTotal = Number(snap.taxAmount ?? (order as any).taxAmount ?? 0).toFixed(2);
+            try {
+                const sellerName = AZTA_IDENTITY.tradeNameAr;
+                const qrData = generateZatcaTLV(sellerName, vatNumber, issuedAt, total, vatTotal);
+                qrCodeDataUrl = await QRCode.toDataURL(qrData, { width: 100, margin: 1 });
+            } catch {
+                qrCodeDataUrl = undefined;
+            }
+        }
+
         const content = renderToString(
             <PrintableInvoice
                 order={order}
                 audit={invoiceAudit}
                 language="ar"
-                cafeteriaName={resolveBranding().name}
-                cafeteriaPhone={resolveBranding().contactNumber}
-                cafeteriaAddress={resolveBranding().address}
-                logoUrl={resolveBranding().logoUrl}
-                vatNumber={settings.taxSettings?.taxNumber}
+                cafeteriaName={brand.name}
+                cafeteriaPhone={brand.contactNumber}
+                cafeteriaAddress={brand.address}
+                logoUrl={brand.logoUrl}
+                vatNumber={vatNumber}
                 deliveryZoneName={resolveDeliveryZoneName(order)}
                 thermal
                 thermalPaperWidth={thermalPaperWidth}
                 isCopy={currentCount > 0}
                 copyNumber={currentCount > 0 ? currentCount + 1 : undefined}
+                qrCodeDataUrl={qrCodeDataUrl}
             />
         );
         printContent(content, `فاتورة #${order.id.slice(-6).toUpperCase()}`, { page: 'auto' });
@@ -239,7 +259,7 @@ const InvoiceScreen: React.FC = () => {
         const brand = resolveBranding();
         const brandSettings: any = {
             ...settings,
-            cafeteriaName: { ...(settings as any).cafeteriaName, ar: brand.name, en: brand.name },
+            cafeteriaName: { ...(settings as any).cafeteriaName, ar: AZTA_IDENTITY.tradeNameAr, en: AZTA_IDENTITY.tradeNameEn },
             logoUrl: brand.logoUrl,
             address: brand.address,
             contactNumber: brand.contactNumber,
@@ -276,7 +296,7 @@ const InvoiceScreen: React.FC = () => {
         const brand = resolveBranding();
         const brandSettings: any = {
             ...settings,
-            cafeteriaName: { ...(settings as any).cafeteriaName, ar: brand.name, en: brand.name },
+            cafeteriaName: { ...(settings as any).cafeteriaName, ar: AZTA_IDENTITY.tradeNameAr, en: AZTA_IDENTITY.tradeNameEn },
             logoUrl: brand.logoUrl,
             address: brand.address,
             contactNumber: brand.contactNumber,
@@ -310,36 +330,53 @@ const InvoiceScreen: React.FC = () => {
 
     const handlePrintDefault = () => {
         if (selectedTemplate === 'thermal') {
-            handlePrint();
+            void handlePrint();
         } else {
             handlePrintA4();
         }
     };
 
     const openPreviewDefault = () => {
-        openPreview(selectedTemplate);
+        void openPreview(selectedTemplate);
     };
 
-    const openPreview = (kind: 'thermal' | 'a4') => {
+    const openPreview = async (kind: 'thermal' | 'a4') => {
         if (!order) return;
         setPreviewKind(kind);
         if (kind === 'thermal') {
             const currentCount = typeof order.invoicePrintCount === 'number' ? order.invoicePrintCount : 0;
+            const brand = resolveBranding();
+            const vatNumber = (settings.taxSettings?.taxNumber || '').trim();
+            let qrCodeDataUrl: string | undefined = undefined;
+            if (vatNumber) {
+                const snap: any = (order as any).invoiceSnapshot || {};
+                const issuedAt = String(snap.invoiceIssuedAt || (order as any).invoiceIssuedAt || order.createdAt || new Date().toISOString());
+                const total = Number(snap.total ?? (order as any).total ?? 0).toFixed(2);
+                const vatTotal = Number(snap.taxAmount ?? (order as any).taxAmount ?? 0).toFixed(2);
+                try {
+                    const sellerName = AZTA_IDENTITY.tradeNameAr;
+                    const qrData = generateZatcaTLV(sellerName, vatNumber, issuedAt, total, vatTotal);
+                    qrCodeDataUrl = await QRCode.toDataURL(qrData, { width: 100, margin: 1 });
+                } catch {
+                    qrCodeDataUrl = undefined;
+                }
+            }
             const content = renderToString(
                 <PrintableInvoice
                     order={order}
                     audit={invoiceAudit}
                     language="ar"
-                    cafeteriaName={resolveBranding().name}
-                    cafeteriaPhone={resolveBranding().contactNumber}
-                    cafeteriaAddress={resolveBranding().address}
-                    logoUrl={resolveBranding().logoUrl}
-                    vatNumber={settings.taxSettings?.taxNumber}
+                    cafeteriaName={brand.name}
+                    cafeteriaPhone={brand.contactNumber}
+                    cafeteriaAddress={brand.address}
+                    logoUrl={brand.logoUrl}
+                    vatNumber={vatNumber}
                     deliveryZoneName={resolveDeliveryZoneName(order)}
                     thermal
                     thermalPaperWidth={thermalPaperWidth}
                     isCopy={currentCount > 0}
                     copyNumber={currentCount > 0 ? currentCount + 1 : undefined}
+                    qrCodeDataUrl={qrCodeDataUrl}
                 />
             );
             setPreviewHtml(buildPrintHtml(content, `فاتورة #${order.id.slice(-6).toUpperCase()}`, { page: 'auto' }));
@@ -364,7 +401,7 @@ const InvoiceScreen: React.FC = () => {
             autoPrintRunKeyRef.current = runKey;
             let printed = 0;
             const run = () => {
-                handlePrint();
+                void handlePrint();
                 printed += 1;
                 if (printed < copies) {
                     window.setTimeout(run, 300);

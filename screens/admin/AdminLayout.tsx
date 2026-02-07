@@ -154,6 +154,7 @@ const navLinks: Array<{ to: string; label: string; icon: React.ReactNode; permis
   { to: 'approvals', label: 'الموافقات', icon: <Icons.ListIcon />, permission: 'approvals.manage' },
   { to: 'audit', label: 'سجل النظام', icon: <Icons.ListIcon />, permission: 'settings.manage' },
   { to: 'database', label: 'قاعدة البيانات', icon: <Icons.ListIcon />, permission: 'settings.manage' },
+  { to: 'document-templates', label: 'قوالب المستندات', icon: <Icons.FileText />, permission: 'accounting.view' },
 ];
 
 const routePermissions: Record<string, AdminPermission> = {
@@ -206,6 +207,7 @@ const routePermissions: Record<string, AdminPermission> = {
   'approvals': 'approvals.manage',
   'audit': 'settings.manage',
   'database': 'settings.manage',
+  'document-templates': 'accounting.view',
 };
 
 const AdminLayout: React.FC = () => {
