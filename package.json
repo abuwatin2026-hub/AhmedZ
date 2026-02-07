@@ -10,6 +10,9 @@
     "build:capacitor": "node --max-old-space-size=16384 ./node_modules/vite/bin/vite.js build --mode capacitor",
     "typecheck": "node --max-old-space-size=16384 ./node_modules/typescript/bin/tsc --noEmit",
     "preview": "vite preview",
+    "test:ui:smoke": "playwright test --config=playwright.config.ts",
+    "test:ui:smoke:headed": "playwright test --config=playwright.config.ts --headed",
+    "test:ui:smoke:report": "playwright show-report",
     "deploy:pages": "npm run build && npx wrangler pages deploy dist --project-name ahmedzangah",
     "search": "node scripts/code-search.mjs",
     "sync": "npm run build:capacitor && node scripts/prepare-native-dist.mjs && npx capacitor sync android && node scripts/restore-web-dist.mjs && node scripts/verify-native-sync.mjs",
@@ -20,7 +23,9 @@
     "db:pull": "supabase db pull",
     "db:push": "supabase db push",
     "db:seed": "supabase db seed",
-    "db:reset": "supabase db reset"
+    "db:reset": "supabase db reset",
+    "smoke:full": "node scripts/smoke-full.mjs",
+    "smoke:party": "node scripts/smoke-full.mjs --sql supabase/smoke/smoke_party_ledger_full.sql --report SMOKE_PARTY_LEDGER_REPORT.md --ok-token PARTY_LEDGER_SMOKE_OK"
   },
   "dependencies": {
     "@capacitor-community/file-opener": "^6.0.1",
@@ -45,6 +50,7 @@
     "@capacitor/assets": "^3.0.5",
     "@capacitor/cli": "^6.0.0",
     "@tailwindcss/forms": "^0.5.7",
+    "@playwright/test": "^1.55.0",
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^20.14.2",
     "@types/qrcode": "^1.5.1",

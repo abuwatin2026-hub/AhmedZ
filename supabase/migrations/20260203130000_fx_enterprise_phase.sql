@@ -148,6 +148,7 @@ set search_path = public
 as $$
 declare
   v_base text;
+  v_lock_amounts boolean := false;
 begin
   v_base := public.get_base_currency();
   if tg_op = 'INSERT' then
@@ -161,6 +162,24 @@ begin
     return new;
   end if;
   if tg_op = 'UPDATE' then
+    v_lock_amounts := coalesce(old.status, 'draft') <> 'draft'
+      or exists (select 1 from public.purchase_receipts pr where pr.purchase_order_id = old.id limit 1)
+      or exists (
+        select 1
+        from public.payments p
+        where p.reference_table = 'purchase_orders'
+          and p.direction = 'out'
+          and p.reference_id = old.id::text
+        limit 1
+      )
+      or exists (
+        select 1
+        from public.inventory_movements im
+        where im.reference_table = 'purchase_orders'
+          and im.reference_id = old.id::text
+        limit 1
+      );
+
     if (new.status = 'completed') and (old.status is distinct from 'completed') then
       if new.currency is null or new.fx_rate is null then
         raise exception 'currency/fx_rate required to complete PO';
@@ -172,6 +191,14 @@ begin
         raise exception 'fx locked: currency/fx_rate cannot change after completion';
       end if;
     end if;
+    if v_lock_amounts then
+      new.currency := old.currency;
+      new.fx_rate := old.fx_rate;
+      new.total_amount := old.total_amount;
+      new.base_total := old.base_total;
+      return new;
+    end if;
+
     new.base_total := coalesce(new.total_amount, 0) * coalesce(new.fx_rate, 0);
     return new;
   end if;
@@ -243,7 +270,25 @@ set search_path = public
 as $$
 declare
   v_rate numeric;
+  v_is_posted boolean := false;
 begin
+  if tg_op = 'UPDATE' then
+    v_is_posted := exists (
+      select 1
+      from public.journal_entries je
+      where je.source_table = 'payments'
+        and je.source_id = old.id::text
+      limit 1
+    );
+    if v_is_posted then
+      new.amount := old.amount;
+      new.currency := old.currency;
+      new.fx_rate := old.fx_rate;
+      new.base_amount := old.base_amount;
+      return new;
+    end if;
+  end if;
+
   if new.currency is null then
     raise exception 'currency required';
   end if;
@@ -277,6 +322,36 @@ begin
     create trigger trg_set_payment_fx
     before insert or update on public.payments
     for each row execute function public.trg_set_payment_fx();
+  end if;
+end $$;
+
+create or replace function public.trg_forbid_delete_posted_payments()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if exists (
+    select 1
+    from public.journal_entries je
+    where je.source_table = 'payments'
+      and je.source_id = old.id::text
+    limit 1
+  ) then
+    raise exception 'cannot delete posted payment; create a reversal instead';
+  end if;
+  return old;
+end;
+$$;
+
+do $$
+begin
+  if to_regclass('public.payments') is not null then
+    drop trigger if exists trg_payments_forbid_delete_posted on public.payments;
+    create trigger trg_payments_forbid_delete_posted
+    before delete on public.payments
+    for each row execute function public.trg_forbid_delete_posted_payments();
   end if;
 end $$;
 

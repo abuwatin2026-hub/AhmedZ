@@ -39,6 +39,9 @@ type PayrollLine = {
   allowances?: number;
   deductions: number;
   net: number;
+  foreign_amount?: number;
+  fx_rate?: number;
+  currency_code?: string;
   line_memo?: string | null;
   cost_center_id?: string | null;
   employee_name?: string;
@@ -88,6 +91,8 @@ export default function PayrollScreen() {
   const { settings } = useSettings();
   const { scope } = useSessionScope();
   const { hasPermission } = useAuth();
+
+  const baseCurrencyCode = String((settings as any)?.baseCurrency || '').toUpperCase() || '—';
 
   const canViewAccounting = hasPermission('accounting.view');
   const canManageAccounting = hasPermission('accounting.manage');
@@ -409,7 +414,7 @@ export default function PayrollScreen() {
       setRunCostCenterId(String((run as any).cost_center_id || ''));
       const { data: lines, error: lErr } = await supabase
         .from('payroll_run_lines')
-        .select('id,employee_id,gross,allowances,deductions,net,line_memo,cost_center_id,payroll_employees(full_name,employee_code)')
+        .select('id,employee_id,gross,allowances,deductions,net,foreign_amount,fx_rate,currency_code,line_memo,cost_center_id,payroll_employees(full_name,employee_code)')
         .eq('run_id', run.id)
         .order('created_at', { ascending: true });
       if (lErr) throw lErr;
@@ -420,6 +425,9 @@ export default function PayrollScreen() {
         allowances: Number(l.allowances || 0),
         deductions: Number(l.deductions || 0),
         net: Number(l.net || 0),
+        foreign_amount: Number(l.foreign_amount || 0),
+        fx_rate: Number(l.fx_rate || 0),
+        currency_code: l.currency_code ? String(l.currency_code || '').toUpperCase() : undefined,
         line_memo: l.line_memo ? String(l.line_memo) : null,
         cost_center_id: l.cost_center_id ? String(l.cost_center_id) : null,
         employee_name: String(l?.payroll_employees?.full_name || ''),
@@ -467,6 +475,19 @@ export default function PayrollScreen() {
       showNotification('تم ترحيل استحقاق الرواتب.', 'success');
     } catch (e: any) {
       showNotification(String(e?.message || 'تعذر ترحيل الاستحقاق'), 'error');
+    }
+  };
+  const computeSelectedRun = async () => {
+    const supabase = getSupabaseClient();
+    if (!supabase || !selectedRun) return;
+    try {
+      const { error } = await supabase.rpc('compute_payroll_run_v3', { p_run_id: selectedRun.id } as any);
+      if (error) throw error;
+      await openRun(selectedRun);
+      await loadAll();
+      showNotification('تم احتساب الرواتب وتحديث السطور.', 'success');
+    } catch (e: any) {
+      showNotification(String(e?.message || 'تعذر احتساب الرواتب'), 'error');
     }
   };
 
@@ -869,9 +890,10 @@ export default function PayrollScreen() {
               <div className="p-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between gap-2">
                 <div className="min-w-0">
                   <div className="text-lg font-bold dark:text-white truncate">{`مسير رواتب ${selectedRun.period_ym}`}</div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400" dir="ltr">{`Status: ${selectedRun.status} · Total: ${formatMoney(selectedRun.total_net)} YER`}</div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400" dir="ltr">{`Status: ${selectedRun.status} · Total: ${formatMoney(selectedRun.total_net)} ${baseCurrencyCode}`}</div>
                 </div>
                 <div className="flex items-center gap-2">
+                  <button type="button" onClick={() => void computeSelectedRun()} className="px-3 py-2 rounded-lg bg-indigo-600 text-white font-semibold">احتساب الرواتب</button>
                   <button type="button" onClick={() => void accrueSelectedRun()} className="px-3 py-2 rounded-lg bg-blue-600 text-white font-semibold">ترحيل الاستحقاق</button>
                   <button type="button" onClick={openPayModal} className="px-3 py-2 rounded-lg bg-emerald-600 text-white font-semibold">دفع</button>
                   <button type="button" onClick={() => setRunModalOpen(false)} className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700">إغلاق</button>
@@ -885,15 +907,15 @@ export default function PayrollScreen() {
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                       <div className="p-3 rounded-lg border border-gray-100 dark:border-gray-700">
                         <div className="text-xs text-gray-500 dark:text-gray-400">إجمالي المسير</div>
-                        <div className="mt-1 font-mono dark:text-white" dir="ltr">{formatMoney(selectedRun.total_net)} YER</div>
+                        <div className="mt-1 font-mono dark:text-white" dir="ltr">{formatMoney(selectedRun.total_net)} {baseCurrencyCode}</div>
                       </div>
                       <div className="p-3 rounded-lg border border-gray-100 dark:border-gray-700">
                         <div className="text-xs text-gray-500 dark:text-gray-400">مدفوع</div>
-                        <div className="mt-1 font-mono dark:text-white" dir="ltr">{formatMoney(runPaidSum)} YER</div>
+                        <div className="mt-1 font-mono dark:text-white" dir="ltr">{formatMoney(runPaidSum)} {baseCurrencyCode}</div>
                       </div>
                       <div className="p-3 rounded-lg border border-gray-100 dark:border-gray-700">
                         <div className="text-xs text-gray-500 dark:text-gray-400">متبقي</div>
-                        <div className="mt-1 font-mono dark:text-white" dir="ltr">{formatMoney(Math.max(0, selectedRun.total_net - runPaidSum))} YER</div>
+                        <div className="mt-1 font-mono dark:text-white" dir="ltr">{formatMoney(Math.max(0, selectedRun.total_net - runPaidSum))} {baseCurrencyCode}</div>
                       </div>
                     </div>
 
@@ -927,20 +949,23 @@ export default function PayrollScreen() {
                     </div>
 
                     <div className="bg-gray-50 dark:bg-gray-700/30 rounded-xl border border-gray-100 dark:border-gray-700 overflow-x-auto">
-                      <table className="min-w-[980px] w-full text-right">
+                      <table className="min-w-[1180px] w-full text-right">
                         <thead>
                           <tr>
                             <th className="p-3 text-xs font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">الموظف</th>
                             <th className="p-3 text-xs font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">الكود</th>
-                            <th className="p-3 text-xs font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">إجمالي</th>
+                            <th className="p-3 text-xs font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">{`إجمالي (${baseCurrencyCode})`}</th>
                             <th className="p-3 text-xs font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">بدلات</th>
                             <th className="p-3 text-xs font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">استقطاع</th>
-                            <th className="p-3 text-xs font-semibold text-gray-600 dark:text-gray-300">صافي</th>
+                            <th className="p-3 text-xs font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">{`صافي (${baseCurrencyCode})`}</th>
+                            <th className="p-3 text-xs font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">العملة</th>
+                            <th className="p-3 text-xs font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">الأصلي</th>
+                            <th className="p-3 text-xs font-semibold text-gray-600 dark:text-gray-300">FX</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                           {runLines.length === 0 ? (
-                            <tr><td colSpan={6} className="p-6 text-center text-gray-500">لا توجد سطور.</td></tr>
+                            <tr><td colSpan={10} className="p-6 text-center text-gray-500">لا توجد سطور.</td></tr>
                           ) : runLines.map((l) => (
                             <tr key={l.id}>
                               <td className="p-3 text-sm dark:text-gray-200 border-r dark:border-gray-700">{l.employee_name || '—'}</td>
@@ -975,7 +1000,10 @@ export default function PayrollScreen() {
                                   />
                                 ) : formatMoney(l.deductions)}
                               </td>
-                              <td className="p-3 text-sm font-mono dark:text-gray-200" dir="ltr">{formatMoney(l.net)}</td>
+                              <td className="p-3 text-sm font-mono dark:text-gray-200 border-r dark:border-gray-700" dir="ltr">{formatMoney(l.net)}</td>
+                              <td className="p-3 text-sm font-mono dark:text-gray-200 border-r dark:border-gray-700" dir="ltr">{l.currency_code || '—'}</td>
+                              <td className="p-3 text-sm font-mono dark:text-gray-200 border-r dark:border-gray-700" dir="ltr">{Number(l.foreign_amount || 0) ? formatMoney(Number(l.foreign_amount || 0)) : '—'}</td>
+                              <td className="p-3 text-sm font-mono dark:text-gray-200" dir="ltr">{Number(l.fx_rate || 0) ? String(l.fx_rate) : '—'}</td>
                             </tr>
                           ))}
                         </tbody>

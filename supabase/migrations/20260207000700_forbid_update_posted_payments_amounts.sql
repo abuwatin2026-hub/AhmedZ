@@ -1,0 +1,47 @@
+set app.allow_ledger_ddl = '1';
+
+do $$
+begin
+  if to_regclass('public.payments') is null or to_regclass('public.journal_entries') is null then
+    return;
+  end if;
+
+  create or replace function public.trg_forbid_update_posted_payments_amounts()
+  returns trigger
+  language plpgsql
+  security definer
+  set search_path = public
+  as $fn$
+  begin
+    if exists (
+      select 1
+      from public.journal_entries je
+      where je.source_table = 'payments'
+        and je.source_id = old.id::text
+      limit 1
+    ) then
+      if new.base_amount is distinct from old.base_amount then
+        raise exception 'cannot modify posted payment base_amount; create reversal instead';
+      end if;
+      if new.amount is distinct from old.amount then
+        raise exception 'cannot modify posted payment amount; create reversal instead';
+      end if;
+      if new.currency is distinct from old.currency then
+        raise exception 'cannot modify posted payment currency; create reversal instead';
+      end if;
+      if new.fx_rate is distinct from old.fx_rate then
+        raise exception 'cannot modify posted payment fx_rate; create reversal instead';
+      end if;
+    end if;
+    return new;
+  end;
+  $fn$;
+
+  drop trigger if exists trg_payments_forbid_update_posted_amounts on public.payments;
+  create trigger trg_payments_forbid_update_posted_amounts
+  before update on public.payments
+  for each row execute function public.trg_forbid_update_posted_payments_amounts();
+end $$;
+
+notify pgrst, 'reload schema';
+

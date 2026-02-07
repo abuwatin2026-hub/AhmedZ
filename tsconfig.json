@@ -48,7 +48,8 @@
     "www",
     "supabase",
     "types-node",
-    ".tmp"
+    ".tmp",
+    "tests/e2e/.tmp"
   ],
   "references": [
     {

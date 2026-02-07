@@ -1,0 +1,22 @@
+{
+  "cookies": [],
+  "origins": [
+    {
+      "origin": "http://127.0.0.1:5174",
+      "localStorage": [
+        {
+          "name": "notifications_cache_v1_d41db932-f869-43b4-967b-7520920e5045",
+          "value": "[]"
+        },
+        {
+          "name": "sb-127-auth-token",
+          "value": "{\"access_token\":\"eyJhbGciOiJFUzI1NiIsImtpZCI6ImI4MTI2OWYxLTIxZDgtNGYyZS1iNzE5LWMyMjQwYTg0MGQ5MCIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwOi8vMTI3LjAuMC4xOjU0MzIxL2F1dGgvdjEiLCJzdWIiOiJkNDFkYjkzMi1mODY5LTQzYjQtOTY3Yi03NTIwOTIwZTUwNDUiLCJhdWQiOiJhdXRoZW50aWNhdGVkIiwiZXhwIjoxNzcwMzQ4NzE0LCJpYXQiOjE3NzAzNDUxMTQsImVtYWlsIjoib3duZXJAYXp0YS5jb20iLCJwaG9uZSI6IiIsImFwcF9tZXRhZGF0YSI6eyJwcm92aWRlciI6ImVtYWlsIiwicHJvdmlkZXJzIjpbImVtYWlsIl19LCJ1c2VyX21ldGFkYXRhIjp7ImZ1bGxfbmFtZSI6Ik93bmVyIFVzZXIifSwicm9sZSI6ImF1dGhlbnRpY2F0ZWQiLCJhYWwiOiJhYWwxIiwiYW1yIjpbeyJtZXRob2QiOiJwYXNzd29yZCIsInRpbWVzdGFtcCI6MTc3MDM0NTExNH1dLCJzZXNzaW9uX2lkIjoiMDAwMDI2N2UtZWM4ZS00ZWI1LTgzNzktNTBmM2M2ODM2MmY1IiwiaXNfYW5vbnltb3VzIjpmYWxzZX0.EDngBqs_6SWBZnUlj449qvt10a3k7l0PEKXmnN9c_5ETnPvLTVZBQv2e79mN3JOmMH5ZKzSNMYBGNavbKXu1wg\",\"token_type\":\"bearer\",\"expires_in\":3600,\"expires_at\":1770348714,\"refresh_token\":\"kagumcuk24ej\",\"user\":{\"id\":\"d41db932-f869-43b4-967b-7520920e5045\",\"aud\":\"authenticated\",\"role\":\"authenticated\",\"email\":\"owner@azta.com\",\"email_confirmed_at\":\"2026-02-06T02:04:11.537345Z\",\"phone\":\"\",\"confirmed_at\":\"2026-02-06T02:04:11.537345Z\",\"last_sign_in_at\":\"2026-02-06T02:31:54.179486883Z\",\"app_metadata\":{\"provider\":\"email\",\"providers\":[\"email\"]},\"user_metadata\":{\"full_name\":\"Owner User\"},\"identities\":[],\"created_at\":\"2026-02-06T02:04:11.537345Z\",\"updated_at\":\"2026-02-06T02:31:54.186885Z\",\"is_anonymous\":false},\"weak_password\":null}"
+        },
+        {
+          "name": "notification_settings_v1",
+          "value": "{\"allowToast\":true,\"allowSound\":true,\"allowBrowserNotification\":false,\"mutedTypes\":[]}"
+        }
+      ]
+    }
+  ]
+}

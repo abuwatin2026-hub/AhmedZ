@@ -60,6 +60,7 @@ const SalesReports = lazy(() => import('./screens/admin/reports/SalesReports'));
 const ProductReports = lazy(() => import('./screens/admin/reports/ProductReports'));
 const CustomerReports = lazy(() => import('./screens/admin/reports/CustomerReports'));
 const FinancialReports = lazy(() => import('./screens/admin/reports/FinancialReports'));
+const FinancialReportsByJournal = lazy(() => import('./screens/admin/reports/FinancialReportsByJournal'));
 const ReservationsReports = lazy(() => import('./screens/admin/reports/ReservationsReports'));
 const FoodTraceReports = lazy(() => import('./screens/admin/reports/FoodTraceReports'));
 const InventoryStockReportScreen = lazy(() => import('./screens/admin/reports/InventoryStockReportScreen'));
@@ -90,6 +91,14 @@ const WastageScreen = lazy(() => import('./screens/admin/WastageScreen'));
 const ExpiryBatchesScreen = lazy(() => import('./screens/admin/ExpiryBatchesScreen'));
 const WastageExpiryReportsScreen = lazy(() => import('./screens/admin/WastageExpiryReportsScreen'));
 const ChartOfAccountsScreen = lazy(() => import('./screens/admin/ChartOfAccountsScreen'));
+const JournalsScreen = lazy(() => import('./screens/admin/JournalsScreen'));
+const BankReconciliationScreen = lazy(() => import('./screens/admin/BankReconciliationScreen'));
+const PayrollConfigScreen = lazy(() => import('./screens/admin/PayrollConfigScreen'));
+const FinancialDimensionsScreen = lazy(() => import('./screens/admin/FinancialDimensionsScreen'));
+const FinancialPartiesScreen = lazy(() => import('./screens/admin/FinancialPartiesScreen'));
+const PartyLedgerStatementScreen = lazy(() => import('./screens/admin/PartyLedgerStatementScreen'));
+const PartyAgingReportsScreen = lazy(() => import('./screens/admin/reports/PartyAgingReportsScreen'));
+const PartyDocumentsScreen = lazy(() => import('./screens/admin/PartyDocumentsScreen'));
 
 const CustomerLayout: React.FC = () => {
   const { settings } = useSettings();
@@ -366,11 +375,27 @@ const App: React.FC = () => {
                 <Route path="reports/inventory-stock" element={<AdminProtectedRoute permissions={['reports.view']}><InventoryStockReportScreen /></AdminProtectedRoute>} />
                 <Route path="reports/supplier-stock" element={<AdminProtectedRoute permissions={['reports.view']}><SupplierStockReportScreen /></AdminProtectedRoute>} />
                 <Route path="reports/financial" element={<AdminProtectedRoute permissions={['accounting.view']}><FinancialReports /></AdminProtectedRoute>} />
+                <Route path="reports/financial-journals" element={<AdminProtectedRoute permissions={['accounting.view']}><FinancialReportsByJournal /></AdminProtectedRoute>} />
                 <Route path="accounting" element={<AdminProtectedRoute permissions={['accounting.view']}><FinancialReports /></AdminProtectedRoute>} />
                 <Route path="printed-documents" element={<AdminProtectedRoute permissions={['accounting.view']}><PrintedDocumentsScreen /></AdminProtectedRoute>} />
                 <Route path="payroll" element={<AdminProtectedRoute permissions={['expenses.manage', 'accounting.manage']} requireAllPermissions={false}><PayrollScreen /></AdminProtectedRoute>} />
                 <Route path="chart-of-accounts" element={<AdminProtectedRoute roles={['owner']}><ChartOfAccountsScreen /></AdminProtectedRoute>} />
+                <Route path="journals" element={<AdminProtectedRoute permissions={['accounting.manage']}><JournalsScreen /></AdminProtectedRoute>} />
                 <Route path="fx-rates" element={<AdminProtectedRoute permissions={['accounting.manage']}><FxRatesScreen /></AdminProtectedRoute>} />
+                <Route path="bank-reconciliation" element={<AdminProtectedRoute permissions={['accounting.manage']}><BankReconciliationScreen /></AdminProtectedRoute>} />
+                <Route path="payroll-config" element={<AdminProtectedRoute permissions={['accounting.manage']}><PayrollConfigScreen /></AdminProtectedRoute>} />
+                <Route path="financial-dimensions" element={<AdminProtectedRoute permissions={['accounting.manage']}><FinancialDimensionsScreen /></AdminProtectedRoute>} />
+                <Route path="financial-parties" element={<AdminProtectedRoute permissions={['accounting.view']}><FinancialPartiesScreen /></AdminProtectedRoute>} />
+                <Route path="financial-parties/:partyId" element={<AdminProtectedRoute permissions={['accounting.view']}><PartyLedgerStatementScreen /></AdminProtectedRoute>} />
+                <Route path="party-documents" element={<AdminProtectedRoute permissions={['accounting.manage']}><PartyDocumentsScreen /></AdminProtectedRoute>} />
+                <Route
+                  path="reports/party-aging"
+                  element={
+                    <AdminProtectedRoute permissions={['accounting.view', 'reports.view']} requireAllPermissions={false}>
+                      <PartyAgingReportsScreen />
+                    </AdminProtectedRoute>
+                  }
+                />
                 <Route path="profile" element={<AdminProtectedRoute permissions={['profile.view']}><AdminProfileScreen /></AdminProtectedRoute>} />
                 <Route path="settings" element={<AdminProtectedRoute permissions={['settings.manage']}><SettingsScreen /></AdminProtectedRoute>} />
                 <Route path="approvals" element={<AdminProtectedRoute permissions={['approvals.manage']}><ApprovalsScreen /></AdminProtectedRoute>} />

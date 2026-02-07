@@ -16,8 +16,29 @@ begin
     v_rate numeric;
     v_total numeric;
     v_data_fx numeric;
+    v_is_posted boolean := false;
   begin
     v_base := public.get_base_currency();
+
+    if tg_op = 'UPDATE' then
+      v_is_posted := exists (
+        select 1
+        from public.journal_entries je
+        where je.source_table = 'orders'
+          and je.source_id = old.id::text
+          and je.source_event in ('invoiced','delivered')
+        limit 1
+      );
+      if v_is_posted then
+        if (coalesce(new.data, '{}'::jsonb)->'invoiceSnapshot') is distinct from (coalesce(old.data, '{}'::jsonb)->'invoiceSnapshot') then
+          raise exception 'invoiceSnapshot is immutable after posting; create a reversal instead';
+        end if;
+        new.currency := old.currency;
+        new.fx_rate := old.fx_rate;
+        new.base_total := old.base_total;
+        return new;
+      end if;
+    end if;
 
     if tg_op = 'UPDATE' and coalesce(old.fx_locked, true) then
       new.currency := old.currency;
@@ -64,5 +85,33 @@ begin
   create trigger trg_set_order_fx
   before insert or update on public.orders
   for each row execute function public.trg_set_order_fx();
-end $$;
 
+  create or replace function public.trg_forbid_delete_posted_orders()
+  returns trigger
+  language plpgsql
+  security definer
+  set search_path = public
+  as $fn$
+  declare
+    v_is_posted boolean := false;
+  begin
+    v_is_posted := exists (
+      select 1
+      from public.journal_entries je
+      where je.source_table = 'orders'
+        and je.source_id = old.id::text
+        and je.source_event in ('invoiced','delivered')
+      limit 1
+    );
+    if v_is_posted then
+      raise exception 'cannot delete posted order; create a reversal instead';
+    end if;
+    return old;
+  end;
+  $fn$;
+
+  drop trigger if exists trg_orders_forbid_delete_posted on public.orders;
+  create trigger trg_orders_forbid_delete_posted
+  before delete on public.orders
+  for each row execute function public.trg_forbid_delete_posted_orders();
+end $$;

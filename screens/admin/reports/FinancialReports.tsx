@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { getBaseCurrencyCode, getSupabaseClient } from '../../../supabase';
 import { useToast } from '../../../contexts/ToastContext';
 import { useAuth } from '../../../contexts/AuthContext';
@@ -179,6 +180,7 @@ type FinancialReportFilters = {
   endDate: string;
   asOfDate: string;
   costCenterId?: string;
+  journalId?: string;
 };
 
 type LoadingKey = 'statements' | 'cashFlow' | 'aging' | 'periods' | 'ledger' | 'manualEntry' | 'closingPeriod' | 'creatingPeriod' | 'drilldown';
@@ -203,6 +205,14 @@ type AccountRow = {
 };
 
 type CoaFullRow = AccountRow & { is_active: boolean };
+
+type JournalOption = {
+  id: string;
+  code: string;
+  name: string;
+  is_default: boolean;
+  is_active: boolean;
+};
 
 type JournalEntryHeader = {
   id: string;
@@ -397,6 +407,27 @@ const FinancialReports: React.FC = () => {
     fetchCC();
   }, [supabase]);
 
+  const [journals, setJournals] = useState<JournalOption[]>([]);
+  useEffect(() => {
+    const fetchJournals = async () => {
+      if (!supabase) return;
+      const { data } = await supabase
+        .from('journals')
+        .select('id,code,name,is_default,is_active')
+        .eq('is_active', true)
+        .order('is_default', { ascending: false })
+        .order('code', { ascending: true });
+      setJournals((Array.isArray(data) ? data : []).map((r: any) => ({
+        id: String(r.id),
+        code: String(r.code || ''),
+        name: String(r.name || ''),
+        is_default: Boolean(r.is_default),
+        is_active: Boolean(r.is_active),
+      })));
+    };
+    fetchJournals();
+  }, [supabase]);
+
   const defaultFilters = useMemo<FinancialReportFilters>(() => {
     const now = new Date();
     const { start, end } = getMonthRange(now);
@@ -411,8 +442,9 @@ const FinancialReports: React.FC = () => {
     const end = params.get('end') || '';
     const asOf = params.get('asOf') || '';
     const ccId = params.get('ccId') || '';
-    if (start || end || asOf || ccId) {
-      const f = { startDate: start, endDate: end, asOfDate: asOf || toYmdLocal(new Date()), costCenterId: ccId };
+    const jId = params.get('jId') || '';
+    if (start || end || asOf || ccId || jId) {
+      const f = { startDate: start, endDate: end, asOfDate: asOf || toYmdLocal(new Date()), costCenterId: ccId, journalId: jId || undefined };
       setDraftFilters(f);
       setAppliedFilters(f);
     }
@@ -427,6 +459,7 @@ const FinancialReports: React.FC = () => {
     setOrDelete('end', appliedFilters.endDate);
     setOrDelete('asOf', appliedFilters.asOfDate);
     setOrDelete('ccId', appliedFilters.costCenterId || '');
+    setOrDelete('jId', appliedFilters.journalId || '');
     window.history.replaceState({}, '', url.toString());
   }, [appliedFilters]);
 
@@ -609,7 +642,8 @@ const FinancialReports: React.FC = () => {
       draftFilters.startDate !== appliedFilters.startDate ||
       draftFilters.endDate !== appliedFilters.endDate ||
       draftFilters.asOfDate !== appliedFilters.asOfDate ||
-      draftFilters.costCenterId !== appliedFilters.costCenterId
+      draftFilters.costCenterId !== appliedFilters.costCenterId ||
+      draftFilters.journalId !== appliedFilters.journalId
     );
   }, [appliedFilters, draftFilters]);
 
@@ -625,8 +659,9 @@ const FinancialReports: React.FC = () => {
     const p_start = appliedFilters.startDate ? appliedFilters.startDate : null;
     const p_end = appliedFilters.endDate ? appliedFilters.endDate : null;
     const p_cost_center_id = appliedFilters.costCenterId ? appliedFilters.costCenterId : null;
-    return { p_start, p_end, p_cost_center_id };
-  }, [appliedFilters.endDate, appliedFilters.startDate, appliedFilters.costCenterId]);
+    const p_journal_id = appliedFilters.journalId ? appliedFilters.journalId : null;
+    return { p_start, p_end, p_cost_center_id, p_journal_id };
+  }, [appliedFilters.endDate, appliedFilters.startDate, appliedFilters.costCenterId, appliedFilters.journalId]);
 
   const loadAccounts = useCallback(async () => {
     if (!supabase) return;
@@ -708,6 +743,7 @@ const FinancialReports: React.FC = () => {
         p_start: appliedFilters.startDate ? appliedFilters.startDate : null,
         p_end: appliedFilters.endDate ? appliedFilters.endDate : null,
         p_cost_center_id: appliedFilters.costCenterId ? appliedFilters.costCenterId : null,
+        p_journal_id: appliedFilters.journalId ? appliedFilters.journalId : null,
       });
       if (error) throw error;
       setLedgerRows(((data as any[]) || []).map((r) => ({
@@ -728,7 +764,7 @@ const FinancialReports: React.FC = () => {
     } finally {
       setLoadingKey('ledger', false);
     }
-  }, [appliedFilters.endDate, appliedFilters.startDate, setLoadingKey, showNotification, supabase]);
+  }, [appliedFilters.costCenterId, appliedFilters.endDate, appliedFilters.journalId, appliedFilters.startDate, setLoadingKey, showNotification, supabase]);
 
   const handleCoaLedgerClick = useCallback(async (code: string) => {
     setAccountCode(code);
@@ -745,7 +781,8 @@ const FinancialReports: React.FC = () => {
         supabase.rpc('income_statement', periodRangeParams),
         supabase.rpc('balance_sheet', { 
           p_as_of: appliedFilters.asOfDate || null,
-          p_cost_center_id: appliedFilters.costCenterId ? appliedFilters.costCenterId : null 
+          p_cost_center_id: appliedFilters.costCenterId ? appliedFilters.costCenterId : null,
+          p_journal_id: appliedFilters.journalId ? appliedFilters.journalId : null,
         }),
       ]);
 
@@ -921,7 +958,8 @@ const FinancialReports: React.FC = () => {
         supabase.rpc('income_statement', { 
           p_start: start || null, 
           p_end: end || null,
-          p_cost_center_id: appliedFilters.costCenterId ? appliedFilters.costCenterId : null
+          p_cost_center_id: appliedFilters.costCenterId ? appliedFilters.costCenterId : null,
+          p_journal_id: appliedFilters.journalId ? appliedFilters.journalId : null,
         }),
       ]);
       if (isError) throw isError;
@@ -930,7 +968,7 @@ const FinancialReports: React.FC = () => {
     } catch (err: any) {
       setPrevIncomeStatement(null);
     }
-  }, [appliedFilters.startDate, supabase]);
+  }, [appliedFilters.costCenterId, appliedFilters.journalId, appliedFilters.startDate, supabase]);
 
   const loadCashFlow = useCallback(async () => {
     if (!supabase) return;
@@ -965,7 +1003,8 @@ const FinancialReports: React.FC = () => {
       const { data: cfData, error: cfError } = await supabase.rpc('cash_flow_statement', {
         p_start: start || null,
         p_end: end || null,
-        p_cost_center_id: appliedFilters.costCenterId ? appliedFilters.costCenterId : null
+        p_cost_center_id: appliedFilters.costCenterId ? appliedFilters.costCenterId : null,
+        p_journal_id: appliedFilters.journalId ? appliedFilters.journalId : null,
       });
       if (cfError) throw cfError;
       const cfRow = ((cfData as any[]) || [])[0];
@@ -980,14 +1019,15 @@ const FinancialReports: React.FC = () => {
     } catch {
       setPrevCashFlow(null);
     }
-  }, [appliedFilters.startDate, appliedFilters.costCenterId, supabase]);
+  }, [appliedFilters.costCenterId, appliedFilters.journalId, appliedFilters.startDate, supabase]);
   const loadIncomeSeries = useCallback(async () => {
     if (!supabase) return;
     try {
       const { data, error } = await supabase.rpc('income_statement_series', {
         p_start: appliedFilters.startDate ? appliedFilters.startDate : null,
         p_end: appliedFilters.endDate ? appliedFilters.endDate : null,
-        p_cost_center_id: appliedFilters.costCenterId ? appliedFilters.costCenterId : null
+        p_cost_center_id: appliedFilters.costCenterId ? appliedFilters.costCenterId : null,
+        p_journal_id: appliedFilters.journalId ? appliedFilters.journalId : null,
       });
       if (error) throw error;
       const rows = ((data as any[]) || []).map((r) => ({
@@ -998,7 +1038,7 @@ const FinancialReports: React.FC = () => {
     } catch {
       setIncomeTrend([]);
     }
-  }, [appliedFilters.costCenterId, appliedFilters.endDate, appliedFilters.startDate, supabase]);
+  }, [appliedFilters.costCenterId, appliedFilters.endDate, appliedFilters.journalId, appliedFilters.startDate, supabase]);
 
   const loadLedger = useCallback(async () => {
     await loadLedgerFor(accountCode);
@@ -1179,7 +1219,8 @@ const FinancialReports: React.FC = () => {
       const { data, error } = await supabase.rpc('trial_balance', {
         p_start: null,
         p_end: asOfDate || null,
-        p_cost_center_id: appliedFilters.costCenterId || null
+        p_cost_center_id: appliedFilters.costCenterId || null,
+        p_journal_id: appliedFilters.journalId || null,
       });
       if (error) throw error;
       const rows = ((data as any[]) || []).map((r) => ({
@@ -1200,7 +1241,7 @@ const FinancialReports: React.FC = () => {
     } finally {
       setLoadingKey('drilldown', false);
     }
-  }, [setLoadingKey, showNotification, supabase]);
+  }, [appliedFilters.costCenterId, appliedFilters.journalId, setLoadingKey, showNotification, supabase]);
 
   const loadBalanceSheetComparison = useCallback(async () => {
     if (!supabase) return;
@@ -1212,7 +1253,8 @@ const FinancialReports: React.FC = () => {
       }
       const { data: bsData, error: bsError } = await supabase.rpc('balance_sheet', { 
         p_as_of: prevAsOf || null,
-        p_cost_center_id: appliedFilters.costCenterId ? appliedFilters.costCenterId : null
+        p_cost_center_id: appliedFilters.costCenterId ? appliedFilters.costCenterId : null,
+        p_journal_id: appliedFilters.journalId ? appliedFilters.journalId : null,
       });
       if (bsError) throw bsError;
       const bsRow = ((bsData as any[]) || [])[0];
@@ -1220,7 +1262,7 @@ const FinancialReports: React.FC = () => {
     } catch {
       setPrevBalanceSheet(null);
     }
-  }, [appliedFilters.asOfDate, supabase]);
+  }, [appliedFilters.asOfDate, appliedFilters.costCenterId, appliedFilters.journalId, supabase]);
 
   useEffect(() => {
     if (compareIncome) void loadStatementsComparison();
@@ -1703,6 +1745,7 @@ const FinancialReports: React.FC = () => {
         p_entry_date: new Date(`${manualDate}T12:00:00.000Z`).toISOString(),
         p_memo: manualMemo,
         p_lines: payloadLines,
+        p_journal_id: appliedFilters.journalId ? appliedFilters.journalId : null,
       });
       if (error) throw error;
       const entryId = typeof data === 'string' ? data : (data ? String(data) : '');
@@ -2409,6 +2452,20 @@ const FinancialReports: React.FC = () => {
           >
             طباعة
           </button>
+          <Link
+            to="/admin/bank-reconciliation"
+            className="px-4 py-2 rounded-lg bg-primary-500 text-white font-semibold"
+            title="التسويات البنكية"
+          >
+            التسويات البنكية
+          </Link>
+          <Link
+            to="/admin/financial-dimensions"
+            className="px-4 py-2 rounded-lg bg-gray-900 text-white font-semibold"
+            title="الأبعاد المالية"
+          >
+            الأبعاد المالية
+          </Link>
         </div>
       </div>
 
@@ -2484,7 +2541,7 @@ const FinancialReports: React.FC = () => {
             </div>
           )}
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
           <div>
             <label className="block text-sm font-semibold text-gray-700 dark:text-gray-200" title="في المحاسبة: الفترة تُطبّق على تاريخ القيد (journal_entries.entry_date) وتقارير GL/P&L.">من</label>
             <input value={draftFilters.startDate} onChange={(e) => setDraftFilters((prev) => ({ ...prev, startDate: e.target.value }))} type="date" className="mt-1 w-full px-3 py-2 rounded-lg border dark:border-gray-700 bg-white dark:bg-gray-900" />
@@ -2496,6 +2553,21 @@ const FinancialReports: React.FC = () => {
           <div>
             <label className="block text-sm font-semibold text-gray-700 dark:text-gray-200" title="كما في: تاريخ مرجعي للميزانية العمومية/ميزان المراجعة/أعمار الذمم.">كما في</label>
             <input value={draftFilters.asOfDate} onChange={(e) => setDraftFilters((prev) => ({ ...prev, asOfDate: e.target.value }))} type="date" className="mt-1 w-full px-3 py-2 rounded-lg border dark:border-gray-700 bg-white dark:bg-gray-900" />
+          </div>
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-200">دفتر اليومية</label>
+            <select
+              value={draftFilters.journalId || ''}
+              onChange={(e) => setDraftFilters((prev) => ({ ...prev, journalId: e.target.value || undefined }))}
+              className="mt-1 w-full px-3 py-2 rounded-lg border dark:border-gray-700 bg-white dark:bg-gray-900"
+            >
+              <option value="">الكل</option>
+              {journals.map(j => (
+                <option key={j.id} value={j.id}>
+                  {j.code} — {j.name}{j.is_default ? ' (افتراضي)' : ''}
+                </option>
+              ))}
+            </select>
           </div>
           <div>
             <label className="block text-sm font-semibold text-gray-700 dark:text-gray-200">مركز التكلفة</label>
