@@ -130,40 +130,44 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
             )}
 
             {/* Header Section */}
-            <div className="relative z-10 border-b-2 border-gray-800 pb-6 mb-8">
+            <div className="relative z-10 border-b-4 border-slate-800 pb-6 mb-8">
                 <div className="flex items-start justify-between gap-8">
                     {/* Brand Info */}
                     <div className="flex-1">
                         <div className="flex items-start gap-5">
                             {storeLogoUrl && (
-                                <img src={storeLogoUrl} alt="Logo" className="h-24 w-auto object-contain" />
+                                <img src={storeLogoUrl} alt="Logo" className="h-28 w-auto object-contain drop-shadow-sm" />
                             )}
                             <div>
-                                <h1 className="text-3xl font-black text-gray-900 tracking-tight">{systemName}</h1>
-                                <div className="text-sm font-semibold text-gray-600 mt-1 uppercase tracking-wider" dir="ltr">{systemKey}</div>
-                                <div className="mt-3 space-y-1 text-sm text-gray-600">
+                                <h1 className="text-4xl font-black text-slate-900 tracking-tight">{systemName}</h1>
+                                <div className="text-sm font-bold text-slate-500 mt-1 uppercase tracking-widest" dir="ltr">{systemKey}</div>
+                                <div className="mt-4 space-y-1.5 text-sm text-slate-600">
                                     {showBranchName && (
                                         <div className="flex items-center gap-2">
-                                            <span className="font-bold text-gray-800">الفرع:</span>
+                                            <span className="w-4 h-4 flex items-center justify-center bg-slate-100 rounded text-slate-500 text-[10px]">🏢</span>
+                                            <span className="font-bold text-slate-800">الفرع:</span>
                                             <span>{branchName}</span>
                                         </div>
                                     )}
                                     {storeAddress && (
                                         <div className="flex items-center gap-2">
-                                            <span className="font-bold text-gray-800">العنوان:</span>
+                                            <span className="w-4 h-4 flex items-center justify-center bg-slate-100 rounded text-slate-500 text-[10px]">📍</span>
+                                            <span className="font-bold text-slate-800">العنوان:</span>
                                             <span>{storeAddress}</span>
                                         </div>
                                     )}
                                     {storeContactNumber && (
                                         <div className="flex items-center gap-2">
-                                            <span className="font-bold text-gray-800">الهاتف:</span>
+                                            <span className="w-4 h-4 flex items-center justify-center bg-slate-100 rounded text-slate-500 text-[10px]">📞</span>
+                                            <span className="font-bold text-slate-800">الهاتف:</span>
                                             <span dir="ltr">{storeContactNumber}</span>
                                         </div>
                                     )}
                                     {vatNumber && (
                                         <div className="flex items-center gap-2">
-                                            <span className="font-bold text-gray-800">الرقم الضريبي:</span>
-                                            <span dir="ltr" className="font-mono">{vatNumber}</span>
+                                            <span className="w-4 h-4 flex items-center justify-center bg-slate-100 rounded text-slate-500 text-[10px]">🔢</span>
+                                            <span className="font-bold text-slate-800">الرقم الضريبي:</span>
+                                            <span dir="ltr" className="font-mono bg-slate-50 px-1 rounded">{vatNumber}</span>
                                         </div>
                                     )}
                                 </div>
@@ -173,17 +177,17 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
 
                     {/* Invoice Title & Meta */}
                     <div className="text-left rtl:text-left">
-                        <h2 className="text-4xl font-black text-gray-900 uppercase">فاتورة ضريبية</h2>
-                        <div className="text-gray-500 text-sm tracking-[0.2em] mt-1 uppercase">Tax Invoice</div>
+                        <h2 className="text-5xl font-black text-slate-900 uppercase tracking-tighter">فاتورة</h2>
+                        <div className="text-slate-400 text-sm font-bold tracking-[0.4em] mt-1 uppercase">Tax Invoice</div>
                         
-                        <div className="mt-6 flex flex-col gap-2 items-end">
-                            <div className="inline-flex flex-col items-end border-r-4 border-gray-900 pr-4">
-                                <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">رقم الفاتورة / Invoice No</span>
-                                <span className="text-xl font-bold font-mono" dir="ltr">{invoiceOrder.invoiceNumber || invoiceOrder.id.slice(-8).toUpperCase()}</span>
+                        <div className="mt-8 flex flex-col gap-3 items-end">
+                            <div className="inline-flex flex-col items-end border-r-4 border-blue-600 pr-4">
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">رقم الفاتورة / Invoice No</span>
+                                <span className="text-2xl font-black font-mono text-slate-800" dir="ltr">{invoiceOrder.invoiceNumber || invoiceOrder.id.slice(-8).toUpperCase()}</span>
                             </div>
-                            <div className="inline-flex flex-col items-end border-r-4 border-gray-900 pr-4 mt-2">
-                                <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">التاريخ / Date</span>
-                                <span className="text-lg font-bold font-mono" dir="ltr">{new Date(invoiceDate).toLocaleDateString('ar-EG-u-nu-latn')}</span>
+                            <div className="inline-flex flex-col items-end border-r-4 border-slate-300 pr-4 mt-1">
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">التاريخ / Date</span>
+                                <span className="text-lg font-bold font-mono text-slate-700" dir="ltr">{new Date(invoiceDate).toLocaleDateString('ar-EG-u-nu-latn')}</span>
                             </div>
                         </div>
                     </div>
@@ -191,58 +195,60 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
             </div>
 
             {/* Info Grid */}
-            <div className="grid grid-cols-2 gap-12 mb-8 relative z-10">
+            <div className="grid grid-cols-2 gap-12 mb-10 relative z-10">
                 {/* Bill To */}
-                <div className="bg-gray-50 rounded-lg p-6 border border-gray-100">
-                    <div className="flex items-center gap-2 mb-4 border-b border-gray-200 pb-2">
-                        <span className="text-sm font-black text-gray-900 uppercase tracking-wider">العميل (Bill To)</span>
+                <div className="bg-slate-50 rounded-xl p-6 border border-slate-100 shadow-sm relative overflow-hidden group">
+                    <div className="absolute top-0 right-0 w-1 h-full bg-blue-600"></div>
+                    <div className="flex items-center gap-2 mb-4 border-b border-slate-200 pb-2">
+                        <span className="text-sm font-black text-slate-800 uppercase tracking-wider">العميل (Bill To)</span>
                     </div>
-                    <div className="space-y-1">
-                        <div className="text-lg font-bold text-gray-900">{invoiceOrder.customerName}</div>
+                    <div className="space-y-1.5 relative z-10">
+                        <div className="text-xl font-bold text-slate-900">{invoiceOrder.customerName}</div>
                         {invoiceOrder.phoneNumber && (
-                            <div className="text-sm text-gray-600 font-mono" dir="ltr">{invoiceOrder.phoneNumber}</div>
+                            <div className="text-sm text-slate-600 font-mono flex items-center gap-2" dir="ltr">
+                                <span className="text-slate-400">📱</span>
+                                {invoiceOrder.phoneNumber}
+                            </div>
                         )}
                         {invoiceOrder.address && (
-                            <div className="text-sm text-gray-600 mt-1">{invoiceOrder.address}</div>
-                        )}
-                         {vatNumber && ( // Assuming customer might have VAT, but using system VAT for now. If customer VAT exists, it should be here.
-                            <div className="text-xs text-gray-500 mt-2">
-                                {/* Placeholder for Customer VAT if available in future */}
+                            <div className="text-sm text-slate-600 mt-1 flex items-start gap-2">
+                                <span className="text-slate-400 mt-1">📍</span>
+                                {invoiceOrder.address}
                             </div>
                         )}
                     </div>
                 </div>
 
                 {/* Details */}
-                <div className="bg-gray-50 rounded-lg p-6 border border-gray-100">
-                    <div className="flex items-center gap-2 mb-4 border-b border-gray-200 pb-2">
-                        <span className="text-sm font-black text-gray-900 uppercase tracking-wider">تفاصيل (Details)</span>
+                <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm relative">
+                    <div className="flex items-center gap-2 mb-4 border-b border-slate-100 pb-2">
+                        <span className="text-sm font-black text-slate-800 uppercase tracking-wider">تفاصيل (Details)</span>
                     </div>
-                    <div className="grid grid-cols-2 gap-y-4 gap-x-8 text-sm">
+                    <div className="grid grid-cols-2 gap-y-5 gap-x-8 text-sm">
                         <div>
-                            <span className="block text-xs text-gray-500 font-bold mb-1">طريقة الدفع</span>
-                            <span className="font-semibold text-gray-900">{getPaymentMethodName(invoiceOrder.paymentMethod)}</span>
+                            <span className="block text-[10px] text-slate-400 font-bold uppercase mb-1">طريقة الدفع</span>
+                            <span className="font-bold text-slate-800 bg-slate-100 px-2 py-1 rounded text-xs">{getPaymentMethodName(invoiceOrder.paymentMethod)}</span>
                         </div>
                         <div>
-                            <span className="block text-xs text-gray-500 font-bold mb-1">شروط الدفع</span>
-                            <span className="font-semibold text-gray-900">{invoiceTermsLabel}</span>
+                            <span className="block text-[10px] text-slate-400 font-bold uppercase mb-1">شروط الدفع</span>
+                            <span className="font-bold text-slate-800">{invoiceTermsLabel}</span>
                         </div>
                         {invoiceTerms === 'credit' && invoiceDueDate && (
                             <div>
-                                <span className="block text-xs text-gray-500 font-bold mb-1">تاريخ الاستحقاق</span>
-                                <span className="font-semibold text-gray-900 font-mono" dir="ltr">{new Date(invoiceDueDate).toLocaleDateString('ar-EG-u-nu-latn')}</span>
+                                <span className="block text-[10px] text-slate-400 font-bold uppercase mb-1">تاريخ الاستحقاق</span>
+                                <span className="font-bold text-red-600 font-mono bg-red-50 px-2 py-1 rounded text-xs" dir="ltr">{new Date(invoiceDueDate).toLocaleDateString('ar-EG-u-nu-latn')}</span>
                             </div>
                         )}
                         {invoiceOrder.orderSource && (
                             <div>
-                                <span className="block text-xs text-gray-500 font-bold mb-1">المصدر</span>
-                                <span className="font-semibold text-gray-900">{invoiceOrder.orderSource === 'in_store' ? 'داخل المتجر' : 'أونلاين'}</span>
+                                <span className="block text-[10px] text-slate-400 font-bold uppercase mb-1">المصدر</span>
+                                <span className="font-bold text-slate-800">{invoiceOrder.orderSource === 'in_store' ? 'داخل المتجر' : 'أونلاين'}</span>
                             </div>
                         )}
                         {invoiceOrder.deliveryZoneId && (
                              <div className="col-span-2">
-                                <span className="block text-xs text-gray-500 font-bold mb-1">منطقة التوصيل</span>
-                                <span className="font-semibold text-gray-900">{(deliveryZone?.name?.[lang] || deliveryZone?.name?.ar || deliveryZone?.name?.en) || invoiceOrder.deliveryZoneId}</span>
+                                <span className="block text-[10px] text-slate-400 font-bold uppercase mb-1">منطقة التوصيل</span>
+                                <span className="font-bold text-slate-800">{(deliveryZone?.name?.[lang] || deliveryZone?.name?.ar || deliveryZone?.name?.en) || invoiceOrder.deliveryZoneId}</span>
                             </div>
                         )}
                     </div>
@@ -250,32 +256,32 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
             </div>
 
             {/* Items Table */}
-            <div className="mb-8 relative z-10">
+            <div className="mb-10 relative z-10 overflow-hidden rounded-xl border border-slate-200 shadow-sm">
                 <table className="w-full text-right border-collapse">
                     <thead>
-                        <tr className="bg-gray-900 text-white">
-                            <th className="py-4 px-6 text-xs font-bold uppercase tracking-wider rounded-tr-lg">#</th>
-                            <th className="py-4 px-6 text-xs font-bold uppercase tracking-wider w-1/2">الصنف / Item</th>
-                            <th className="py-4 px-6 text-xs font-bold uppercase tracking-wider text-center">الكمية / Qty</th>
-                            <th className="py-4 px-6 text-xs font-bold uppercase tracking-wider text-left rounded-tl-lg pl-8">الإجمالي / Total</th>
+                        <tr className="bg-slate-900 text-white">
+                            <th className="py-4 px-6 text-[10px] font-black uppercase tracking-widest text-slate-400 w-16 text-center">#</th>
+                            <th className="py-4 px-6 text-[10px] font-black uppercase tracking-widest w-1/2">الصنف / Item</th>
+                            <th className="py-4 px-6 text-[10px] font-black uppercase tracking-widest text-center">الكمية / Qty</th>
+                            <th className="py-4 px-6 text-[10px] font-black uppercase tracking-widest text-left pl-8">الإجمالي / Total</th>
                         </tr>
                     </thead>
-                    <tbody className="text-gray-800 text-sm">
+                    <tbody className="text-slate-800 text-sm bg-white">
                         {invoiceOrder.items.map((item: CartItem, idx: number) => {
                             const pricing = computeCartItemPricing(item);
                             const displayQty = pricing.isWeightBased ? `${pricing.quantity} ${getUnitTypeName(pricing.unitType)}` : String(item.quantity);
                             
                             return (
-                                <tr key={item.cartItemId} className={`border-b border-gray-100 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
-                                    <td className="py-4 px-6 font-mono text-gray-500">{idx + 1}</td>
+                                <tr key={item.cartItemId} className={`border-b border-slate-100 last:border-0 hover:bg-slate-50 transition-colors`}>
+                                    <td className="py-4 px-6 font-mono text-slate-400 text-center text-xs">{idx + 1}</td>
                                     <td className="py-4 px-6">
-                                        <div className="font-bold text-gray-900 text-base">{item.name?.[lang] || item.name?.ar || item.name?.en || item.id}</div>
-                                        <div className="flex flex-wrap gap-2 text-xs text-gray-500 mt-1">
-                                            <span className="font-mono">{pricing.unitPrice.toFixed(2)} {currencyCode}</span>
+                                        <div className="font-bold text-slate-900 text-base">{item.name?.[lang] || item.name?.ar || item.name?.en || item.id}</div>
+                                        <div className="flex flex-wrap gap-2 text-xs text-slate-500 mt-1.5">
+                                            <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-slate-600">{pricing.unitPrice.toFixed(2)} {currencyCode}</span>
                                             {pricing.addonsArray.length > 0 && (
                                                 <div className="flex flex-wrap gap-1">
                                                     {pricing.addonsArray.map(({ addon, quantity }) => (
-                                                        <span key={addon.id} className="bg-gray-100 px-1.5 py-0.5 rounded text-gray-600">
+                                                        <span key={addon.id} className="bg-blue-50 px-1.5 py-0.5 rounded text-blue-700 border border-blue-100">
                                                             + {addon.name?.[lang] || addon.name?.ar} {quantity > 1 ? `(${quantity})` : ''}
                                                         </span>
                                                     ))}
@@ -283,8 +289,10 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                                             )}
                                         </div>
                                     </td>
-                                    <td className="py-4 px-6 text-center font-mono font-medium">{displayQty}</td>
-                                    <td className="py-4 px-6 text-left font-mono font-bold text-gray-900 pl-8" dir="ltr">
+                                    <td className="py-4 px-6 text-center">
+                                        <span className="font-mono font-bold bg-slate-100 px-3 py-1 rounded-full text-slate-800">{displayQty}</span>
+                                    </td>
+                                    <td className="py-4 px-6 text-left font-mono font-bold text-slate-900 pl-8 text-base" dir="ltr">
                                         <CurrencyDualAmount amount={pricing.lineTotal} currencyCode={currencyCode} compact />
                                     </td>
                                 </tr>
@@ -299,12 +307,14 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                 {/* Left: QR & Notes */}
                 <div className="flex-1">
                     {qrUrl && (
-                        <div className="flex items-center gap-6 bg-white border border-gray-200 p-4 rounded-xl shadow-sm w-fit">
-                            <img src={qrUrl} alt="ZATCA QR" className="w-32 h-32 object-contain" />
-                            <div className="space-y-1">
-                                <div className="text-xs font-bold text-gray-900 uppercase">QR Code</div>
-                                <div className="text-[10px] text-gray-500 max-w-[120px] leading-tight">
-                                    امسح الرمز للتحقق من الفاتورة عبر تطبيق هيئة الزكاة والضريبة والجمارك.
+                        <div className="flex items-start gap-5 bg-slate-50 border border-slate-200 p-5 rounded-2xl shadow-sm w-fit">
+                            <div className="bg-white p-2 rounded-xl shadow-sm border border-slate-100">
+                                <img src={qrUrl} alt="ZATCA QR" className="w-28 h-28 object-contain" />
+                            </div>
+                            <div className="space-y-2 pt-2">
+                                <div className="text-xs font-black text-slate-900 uppercase tracking-wider">التحقق الضريبي</div>
+                                <div className="text-[10px] text-slate-500 max-w-[140px] leading-relaxed">
+                                    هذه الفاتورة متوافقة مع متطلبات هيئة الزكاة والضريبة والجمارك (ZATCA). امسح الرمز للتحقق.
                                 </div>
                             </div>
                         </div>
@@ -312,13 +322,16 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                     
                     {/* Payment Breakdown if exists */}
                     {(invoiceOrder as any).paymentBreakdown?.methods && (invoiceOrder as any).paymentBreakdown.methods.length > 0 && (
-                        <div className="mt-6 text-sm">
-                            <div className="font-bold text-gray-900 mb-2">تفاصيل السداد:</div>
-                            <div className="space-y-1 text-gray-600">
+                        <div className="mt-8 text-sm border-t border-slate-200 pt-6 max-w-xs">
+                            <div className="font-bold text-slate-900 mb-3 flex items-center gap-2">
+                                <span className="w-1.5 h-1.5 bg-green-500 rounded-full"></span>
+                                تفاصيل السداد:
+                            </div>
+                            <div className="space-y-2 text-slate-600 bg-slate-50 p-3 rounded-lg border border-slate-100">
                                 {(invoiceOrder as any).paymentBreakdown.methods.map((m: any, idx: number) => (
-                                    <div key={idx} className="flex gap-2">
-                                        <span>• {getPaymentMethodName(m.method)}:</span>
-                                        <span className="font-mono" dir="ltr">{Number(m.amount).toFixed(2)}</span>
+                                    <div key={idx} className="flex justify-between items-center text-xs">
+                                        <span>{getPaymentMethodName(m.method)}</span>
+                                        <span className="font-mono font-bold text-slate-800" dir="ltr">{Number(m.amount).toFixed(2)}</span>
                                     </div>
                                 ))}
                             </div>
@@ -327,17 +340,21 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                 </div>
 
                 {/* Right: Totals */}
-                <div className="w-full md:w-[400px]">
-                    <div className="bg-gray-50 rounded-xl p-6 border border-gray-100 space-y-3">
-                        <div className="flex justify-between items-center text-gray-600">
+                <div className="w-full md:w-[420px]">
+                    <div className="bg-slate-900 text-white rounded-2xl p-8 shadow-lg space-y-4 relative overflow-hidden">
+                        {/* Decor */}
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500 opacity-10 rounded-full -mr-10 -mt-10 blur-2xl"></div>
+                        <div className="absolute bottom-0 left-0 w-24 h-24 bg-purple-500 opacity-10 rounded-full -ml-8 -mb-8 blur-xl"></div>
+
+                        <div className="flex justify-between items-center text-slate-300 relative z-10">
                             <span className="font-medium text-sm">المجموع الفرعي (Subtotal)</span>
-                            <span className="font-mono font-bold" dir="ltr">
+                            <span className="font-mono font-bold text-white" dir="ltr">
                                 <CurrencyDualAmount amount={Number(invoiceOrder.subtotal) || 0} currencyCode={currencyCode} compact />
                             </span>
                         </div>
                         
                         {(invoiceOrder.discountAmount || 0) > 0 && (
-                            <div className="flex justify-between items-center text-emerald-600">
+                            <div className="flex justify-between items-center text-emerald-400 relative z-10">
                                 <span className="font-medium text-sm">الخصم (Discount)</span>
                                 <span className="font-mono font-bold" dir="ltr">
                                     - <CurrencyDualAmount amount={Number(invoiceOrder.discountAmount) || 0} currencyCode={currencyCode} compact />
@@ -345,18 +362,18 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                             </div>
                         )}
 
-                        <div className="flex justify-between items-center text-gray-600">
+                        <div className="flex justify-between items-center text-slate-300 relative z-10">
                             <span className="font-medium text-sm">الضريبة (VAT {Number((invoiceOrder as any).taxRate) || 0}%)</span>
-                            <span className="font-mono font-bold" dir="ltr">
+                            <span className="font-mono font-bold text-white" dir="ltr">
                                 <CurrencyDualAmount amount={taxAmount} currencyCode={currencyCode} compact />
                             </span>
                         </div>
 
-                        <div className="h-px bg-gray-200 my-2"></div>
+                        <div className="h-px bg-slate-700 my-2 relative z-10"></div>
 
-                        <div className="flex justify-between items-center text-gray-900 text-lg">
-                            <span className="font-black">الإجمالي (Total)</span>
-                            <span className="font-black font-mono" dir="ltr">
+                        <div className="flex justify-between items-center relative z-10">
+                            <span className="font-black text-xl">الإجمالي (Total)</span>
+                            <span className="font-black font-mono text-3xl tracking-tight text-white" dir="ltr">
                                 <CurrencyDualAmount 
                                     amount={Number(invoiceOrder.total) || 0} 
                                     currencyCode={currencyCode} 
@@ -371,24 +388,31 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
             </div>
 
             {/* Footer Bottom */}
-            <div className="mt-auto pt-12">
-                <div className="grid grid-cols-3 gap-8 text-center text-sm text-gray-500 border-t border-gray-200 pt-8">
-                    <div className="space-y-2">
-                        <div className="font-bold text-gray-900">المستلم (Receiver)</div>
-                        <div className="h-16 border border-dashed border-gray-300 rounded-lg bg-gray-50/50"></div>
+            <div className="mt-auto pt-16">
+                <div className="grid grid-cols-3 gap-12 text-center text-sm text-slate-500 border-t border-slate-200 pt-8">
+                    <div className="space-y-3">
+                        <div className="font-bold text-slate-900 text-xs uppercase tracking-wider">المستلم (Receiver)</div>
+                        <div className="h-20 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50/50 flex items-end justify-center pb-2">
+                             <span className="text-[10px] text-slate-400">التوقيع / Signature</span>
+                        </div>
                     </div>
-                    <div className="space-y-1 pt-4">
-                        <div className="font-bold text-gray-900">{systemName}</div>
-                        <div className="text-xs">شكراً لتعاملكم معنا | Thank you for your business</div>
+                    <div className="space-y-2 pt-6 flex flex-col items-center justify-center">
+                        <div className="w-8 h-1 bg-blue-600 rounded-full mb-2"></div>
+                        <div className="font-black text-slate-900 text-lg">{systemName}</div>
+                        <div className="text-[10px] font-medium tracking-wide text-slate-400">شكراً لتعاملكم معنا | Thank you for your business</div>
                     </div>
-                    <div className="space-y-2">
-                        <div className="font-bold text-gray-900">البائع (Seller)</div>
-                        <div className="h-16 border border-dashed border-gray-300 rounded-lg bg-gray-50/50"></div>
+                    <div className="space-y-3">
+                        <div className="font-bold text-slate-900 text-xs uppercase tracking-wider">البائع (Seller)</div>
+                        <div className="h-20 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50/50 flex items-end justify-center pb-2">
+                             <span className="text-[10px] text-slate-400">الختم / Stamp</span>
+                        </div>
                     </div>
                 </div>
                 {/* Print Meta */}
-                <div className="text-center mt-8 text-[10px] text-gray-400 font-mono">
-                    System Ref: {invoiceOrder.id} | Printed: {new Date().toISOString()} | Page 1 of 1
+                <div className="flex justify-between items-center mt-10 pt-4 border-t border-slate-100 text-[9px] text-slate-400 font-mono">
+                    <span>System Ref: {invoiceOrder.id}</span>
+                    <span>Printed: {new Date().toISOString()}</span>
+                    <span>Page 1 of 1</span>
                 </div>
             </div>
         </div>
