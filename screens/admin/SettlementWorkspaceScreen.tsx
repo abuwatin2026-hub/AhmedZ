@@ -1,0 +1,536 @@
+import React, { useEffect, useMemo, useState } from 'react';
+import { getSupabaseClient } from '../../supabase';
+import * as Icons from '../../components/icons';
+
+type PartyRow = { id: string; name: string };
+
+type OpenItemRow = {
+  id: string;
+  party_id: string;
+  journal_entry_id: string;
+  journal_line_id: string;
+  account_code: string;
+  account_name: string;
+  direction: 'debit' | 'credit';
+  occurred_at: string;
+  due_date: string | null;
+  item_role: string | null;
+  item_type: string;
+  source_table: string | null;
+  source_id: string | null;
+  source_event: string | null;
+  currency_code: string;
+  foreign_amount: number | null;
+  base_amount: number;
+  open_foreign_amount: number | null;
+  open_base_amount: number;
+  status: string;
+};
+
+type AllocationDraft = {
+  fromOpenItemId: string;
+  toOpenItemId: string;
+  allocatedForeignAmount?: number;
+  allocatedBaseAmount?: number;
+};
+
+const formatTime = (iso: string) => {
+  try {
+    return new Date(iso).toLocaleString('ar-SA-u-nu-latn');
+  } catch {
+    return iso;
+  }
+};
+
+export default function SettlementWorkspaceScreen() {
+  const [loading, setLoading] = useState(true);
+  const [parties, setParties] = useState<PartyRow[]>([]);
+  const [partyId, setPartyId] = useState('');
+  const [currency, setCurrency] = useState('');
+  const [items, setItems] = useState<OpenItemRow[]>([]);
+  const [selectedDebit, setSelectedDebit] = useState<string>('');
+  const [selectedCredit, setSelectedCredit] = useState<string>('');
+  const [allocations, setAllocations] = useState<AllocationDraft[]>([]);
+  const [notes, setNotes] = useState('');
+  const [running, setRunning] = useState(false);
+  const [recentSettlements, setRecentSettlements] = useState<any[]>([]);
+
+  const loadParties = async () => {
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+    const { data, error } = await supabase
+      .from('financial_parties')
+      .select('id,name')
+      .eq('is_active', true)
+      .order('created_at', { ascending: false })
+      .limit(500);
+    if (error) throw error;
+    const rows = (Array.isArray(data) ? data : []).map((r: any) => ({ id: String(r.id), name: String(r.name || '—') }));
+    setParties(rows);
+    if (!partyId && rows.length > 0) setPartyId(rows[0].id);
+  };
+
+  const loadOpenItems = async () => {
+    if (!partyId) return;
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.rpc('list_party_open_items', {
+        p_party_id: partyId,
+        p_currency: currency.trim().toUpperCase() || null,
+        p_status: 'open_active',
+      } as any);
+      if (error) throw error;
+      setItems((Array.isArray(data) ? data : []) as any);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadRecentSettlements = async () => {
+    if (!partyId) return;
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+    const { data } = await supabase
+      .from('settlement_headers')
+      .select('id,settlement_date,currency_code,settlement_type,reverses_settlement_id,created_at,notes')
+      .eq('party_id', partyId)
+      .order('settlement_date', { ascending: false })
+      .limit(50);
+    setRecentSettlements(Array.isArray(data) ? data : []);
+  };
+
+  useEffect(() => {
+    void (async () => {
+      setLoading(true);
+      try {
+        await loadParties();
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    void loadOpenItems();
+    void loadRecentSettlements();
+  }, [partyId]);
+
+  const debits = useMemo(() => items.filter((x) => x.direction === 'debit').sort((a, b) => String(a.due_date || a.occurred_at).localeCompare(String(b.due_date || b.occurred_at))), [items]);
+  const credits = useMemo(() => items.filter((x) => x.direction === 'credit').sort((a, b) => String(a.due_date || a.occurred_at).localeCompare(String(b.due_date || b.occurred_at))), [items]);
+
+  const debitById = useMemo(() => {
+    const map: Record<string, OpenItemRow> = {};
+    debits.forEach((d) => { map[d.id] = d; });
+    return map;
+  }, [debits]);
+  const creditById = useMemo(() => {
+    const map: Record<string, OpenItemRow> = {};
+    credits.forEach((d) => { map[d.id] = d; });
+    return map;
+  }, [credits]);
+
+  const suggestedAmount = useMemo(() => {
+    const d = debitById[selectedDebit];
+    const c = creditById[selectedCredit];
+    if (!d || !c) return { kind: 'none' as const, value: 0 };
+    if (d.currency_code !== c.currency_code) return { kind: 'none' as const, value: 0 };
+    if (d.open_foreign_amount != null && c.open_foreign_amount != null) {
+      return { kind: 'foreign' as const, value: Math.max(0, Math.min(Number(d.open_foreign_amount || 0), Number(c.open_foreign_amount || 0))) };
+    }
+    return { kind: 'base' as const, value: Math.max(0, Math.min(Number(d.open_base_amount || 0), Number(c.open_base_amount || 0))) };
+  }, [creditById, debitById, selectedCredit, selectedDebit]);
+
+  const addAllocation = () => {
+    const d = debitById[selectedDebit];
+    const c = creditById[selectedCredit];
+    if (!d || !c) return;
+    if (d.currency_code !== c.currency_code) {
+      alert('العملة يجب أن تكون نفسها.');
+      return;
+    }
+    const baseDraft: AllocationDraft = { fromOpenItemId: d.id, toOpenItemId: c.id };
+    if (suggestedAmount.kind === 'foreign') baseDraft.allocatedForeignAmount = Number(suggestedAmount.value || 0);
+    if (suggestedAmount.kind === 'base') baseDraft.allocatedBaseAmount = Number(suggestedAmount.value || 0);
+    if (!baseDraft.allocatedForeignAmount && !baseDraft.allocatedBaseAmount) {
+      alert('حدد مبلغ تخصيص صحيح.');
+      return;
+    }
+    setAllocations((prev) => [...prev, baseDraft]);
+  };
+
+  const createSettlement = async () => {
+    if (!partyId) return;
+    if (allocations.length === 0) {
+      alert('لا توجد تخصيصات.');
+      return;
+    }
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+    setRunning(true);
+    try {
+      const payload = allocations.map((a) => ({
+        fromOpenItemId: a.fromOpenItemId,
+        toOpenItemId: a.toOpenItemId,
+        allocatedForeignAmount: a.allocatedForeignAmount ?? undefined,
+        allocatedBaseAmount: a.allocatedBaseAmount ?? undefined,
+      }));
+      const { data, error } = await supabase.rpc('create_settlement', {
+        p_party_id: partyId,
+        p_settlement_date: new Date().toISOString(),
+        p_allocations: payload as any,
+        p_notes: notes || null,
+      } as any);
+      if (error) throw error;
+      setAllocations([]);
+      setNotes('');
+      await loadOpenItems();
+      await loadRecentSettlements();
+      alert(`تم إنشاء التسوية: ${String(data || '').slice(-8)}`);
+    } catch (e: any) {
+      alert(String(e?.message || 'فشل إنشاء التسوية'));
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  const autoSettle = async () => {
+    if (!partyId) return;
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+    setRunning(true);
+    try {
+      const { data, error } = await supabase.rpc('auto_settle_party_items', { p_party_id: partyId } as any);
+      if (error) throw error;
+      await loadOpenItems();
+      await loadRecentSettlements();
+      alert(data ? `تمت التسوية التلقائية: ${String(data).slice(-8)}` : 'لا توجد عناصر قابلة للمطابقة.');
+    } catch (e: any) {
+      alert(String(e?.message || 'فشل التشغيل التلقائي'));
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  const reverseSettlement = async (id: string) => {
+    const reason = window.prompt('سبب عكس التسوية؟');
+    if (!reason) return;
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+    setRunning(true);
+    try {
+      const { error } = await supabase.rpc('void_settlement', { p_settlement_id: id, p_reason: reason } as any);
+      if (error) throw error;
+      await loadOpenItems();
+      await loadRecentSettlements();
+      alert('تم عكس التسوية.');
+    } catch (e: any) {
+      alert(String(e?.message || 'فشل عكس التسوية'));
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  const onDragStart = (openItemId: string) => (e: React.DragEvent) => {
+    e.dataTransfer.setData('text/plain', openItemId);
+  };
+
+  const onDropToDebit = (e: React.DragEvent) => {
+    e.preventDefault();
+    const id = e.dataTransfer.getData('text/plain');
+    if (debitById[id]) setSelectedDebit(id);
+    if (creditById[id]) setSelectedCredit('');
+  };
+
+  const onDropToCredit = (e: React.DragEvent) => {
+    e.preventDefault();
+    const id = e.dataTransfer.getData('text/plain');
+    if (creditById[id]) setSelectedCredit(id);
+    if (debitById[id]) setSelectedDebit('');
+  };
+
+  if (loading) return <div className="p-8 text-center text-gray-500">جاري التحميل...</div>;
+
+  return (
+    <div className="p-6 max-w-7xl mx-auto space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold dark:text-white">Settlement Workspace</h1>
+          <div className="text-sm text-gray-500 dark:text-gray-400">تسوية/تخصيص عناصر الطرف (AR/AP/Advances)</div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => void loadOpenItems()}
+            className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm"
+          >
+            تحديث
+          </button>
+        </div>
+      </div>
+
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow border border-gray-100 dark:border-gray-700 p-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div>
+          <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">الطرف</div>
+          <select
+            value={partyId}
+            onChange={(e) => setPartyId(e.target.value)}
+            className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
+          >
+            {parties.map((p) => (
+              <option key={p.id} value={p.id}>{p.name} — {p.id.slice(-6)}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">العملة (اختياري)</div>
+          <input
+            value={currency}
+            onChange={(e) => setCurrency(e.target.value)}
+            placeholder="USD"
+            className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-mono"
+          />
+        </div>
+        <div className="flex items-end gap-2">
+          <button
+            disabled={running}
+            onClick={() => void autoSettle()}
+            className="w-full px-3 py-2 rounded-lg bg-primary-600 text-white text-sm disabled:opacity-60"
+          >
+            تشغيل Auto Match (FIFO)
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div
+          className="bg-white dark:bg-gray-800 rounded-xl shadow border border-gray-100 dark:border-gray-700 overflow-hidden"
+          onDrop={onDropToDebit}
+          onDragOver={(e) => e.preventDefault()}
+        >
+          <div className="p-3 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
+            <div className="font-semibold dark:text-white">عناصر مدينة (Debits)</div>
+            <div className="text-xs text-gray-500 dark:text-gray-400">{debits.length}</div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-right text-sm">
+              <thead className="bg-gray-50 dark:bg-gray-700/50">
+                <tr>
+                  <th className="p-3 border-r dark:border-gray-700">التاريخ</th>
+                  <th className="p-3 border-r dark:border-gray-700">النوع</th>
+                  <th className="p-3 border-r dark:border-gray-700">الحساب</th>
+                  <th className="p-3 border-r dark:border-gray-700">المتبقي</th>
+                  <th className="p-3">المرجع</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                {debits.map((d) => (
+                  <tr
+                    key={d.id}
+                    draggable
+                    onDragStart={onDragStart(d.id)}
+                    onClick={() => setSelectedDebit(d.id)}
+                    className={`cursor-pointer ${selectedDebit === d.id ? 'bg-primary-50 dark:bg-primary-900/20' : ''} hover:bg-gray-50 dark:hover:bg-gray-700/30`}
+                  >
+                    <td className="p-3 border-r dark:border-gray-700 font-mono" dir="ltr">{formatTime(d.occurred_at)}</td>
+                    <td className="p-3 border-r dark:border-gray-700">{d.item_type}</td>
+                    <td className="p-3 border-r dark:border-gray-700">
+                      <div className="font-mono">{d.account_code}</div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">{d.account_name}</div>
+                    </td>
+                    <td className="p-3 border-r dark:border-gray-700 font-mono" dir="ltr">
+                      {Number(d.open_base_amount || 0).toFixed(2)}
+                      <div className="text-xs text-gray-500 dark:text-gray-400">{d.currency_code}{d.open_foreign_amount != null ? ` (${Number(d.open_foreign_amount).toFixed(2)})` : ''}</div>
+                    </td>
+                    <td className="p-3 font-mono text-xs" dir="ltr">{d.source_table}:{String(d.source_id || '').slice(-8)}</td>
+                  </tr>
+                ))}
+                {debits.length === 0 ? (
+                  <tr><td className="p-6 text-center text-gray-500" colSpan={5}>لا توجد عناصر.</td></tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div
+          className="bg-white dark:bg-gray-800 rounded-xl shadow border border-gray-100 dark:border-gray-700 overflow-hidden"
+          onDrop={onDropToCredit}
+          onDragOver={(e) => e.preventDefault()}
+        >
+          <div className="p-3 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
+            <div className="font-semibold dark:text-white">عناصر دائنة (Credits)</div>
+            <div className="text-xs text-gray-500 dark:text-gray-400">{credits.length}</div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-right text-sm">
+              <thead className="bg-gray-50 dark:bg-gray-700/50">
+                <tr>
+                  <th className="p-3 border-r dark:border-gray-700">التاريخ</th>
+                  <th className="p-3 border-r dark:border-gray-700">النوع</th>
+                  <th className="p-3 border-r dark:border-gray-700">الحساب</th>
+                  <th className="p-3 border-r dark:border-gray-700">المتبقي</th>
+                  <th className="p-3">المرجع</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                {credits.map((d) => (
+                  <tr
+                    key={d.id}
+                    draggable
+                    onDragStart={onDragStart(d.id)}
+                    onClick={() => setSelectedCredit(d.id)}
+                    className={`cursor-pointer ${selectedCredit === d.id ? 'bg-primary-50 dark:bg-primary-900/20' : ''} hover:bg-gray-50 dark:hover:bg-gray-700/30`}
+                  >
+                    <td className="p-3 border-r dark:border-gray-700 font-mono" dir="ltr">{formatTime(d.occurred_at)}</td>
+                    <td className="p-3 border-r dark:border-gray-700">{d.item_type}</td>
+                    <td className="p-3 border-r dark:border-gray-700">
+                      <div className="font-mono">{d.account_code}</div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">{d.account_name}</div>
+                    </td>
+                    <td className="p-3 border-r dark:border-gray-700 font-mono" dir="ltr">
+                      {Number(d.open_base_amount || 0).toFixed(2)}
+                      <div className="text-xs text-gray-500 dark:text-gray-400">{d.currency_code}{d.open_foreign_amount != null ? ` (${Number(d.open_foreign_amount).toFixed(2)})` : ''}</div>
+                    </td>
+                    <td className="p-3 font-mono text-xs" dir="ltr">{d.source_table}:{String(d.source_id || '').slice(-8)}</td>
+                  </tr>
+                ))}
+                {credits.length === 0 ? (
+                  <tr><td className="p-6 text-center text-gray-500" colSpan={5}>لا توجد عناصر.</td></tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow border border-gray-100 dark:border-gray-700 p-4 space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <div className="font-semibold dark:text-white">تخصيص يدوي</div>
+          <button
+            disabled={!selectedDebit || !selectedCredit}
+            onClick={addAllocation}
+            className="px-3 py-2 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-sm disabled:opacity-50 flex items-center gap-2"
+          >
+            <Icons.PlusIcon className="w-4 h-4" />
+            إضافة تخصيص
+          </button>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="text-sm text-gray-700 dark:text-gray-200">
+            From (Debit): <span className="font-mono">{selectedDebit ? selectedDebit.slice(-8) : '—'}</span>
+          </div>
+          <div className="text-sm text-gray-700 dark:text-gray-200">
+            To (Credit): <span className="font-mono">{selectedCredit ? selectedCredit.slice(-8) : '—'}</span>
+          </div>
+          <div className="text-sm text-gray-700 dark:text-gray-200">
+            مقترح: <span className="font-mono">{suggestedAmount.kind === 'foreign' || suggestedAmount.kind === 'base' ? suggestedAmount.value.toFixed(2) : '—'}</span>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <input
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="ملاحظات (اختياري)"
+            className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
+          />
+          <div className="flex gap-2">
+            <button
+              disabled={running}
+              onClick={() => void createSettlement()}
+              className="flex-1 px-3 py-2 rounded-lg bg-primary-600 text-white text-sm disabled:opacity-60"
+            >
+              إنشاء Settlement
+            </button>
+            <button
+              disabled={running}
+              onClick={() => setAllocations([])}
+              className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm disabled:opacity-60"
+            >
+              مسح
+            </button>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-right text-sm">
+            <thead className="bg-gray-50 dark:bg-gray-700/50">
+              <tr>
+                <th className="p-3 border-r dark:border-gray-700">من</th>
+                <th className="p-3 border-r dark:border-gray-700">إلى</th>
+                <th className="p-3 border-r dark:border-gray-700">المبلغ</th>
+                <th className="p-3">حذف</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+              {allocations.map((a, idx) => (
+                <tr key={`${a.fromOpenItemId}-${a.toOpenItemId}-${idx}`}>
+                  <td className="p-3 border-r dark:border-gray-700 font-mono" dir="ltr">{a.fromOpenItemId.slice(-8)}</td>
+                  <td className="p-3 border-r dark:border-gray-700 font-mono" dir="ltr">{a.toOpenItemId.slice(-8)}</td>
+                  <td className="p-3 border-r dark:border-gray-700 font-mono" dir="ltr">
+                    {a.allocatedForeignAmount != null ? `F:${Number(a.allocatedForeignAmount).toFixed(2)}` : `B:${Number(a.allocatedBaseAmount || 0).toFixed(2)}`}
+                  </td>
+                  <td className="p-3">
+                    <button
+                      onClick={() => setAllocations((prev) => prev.filter((_, i) => i !== idx))}
+                      className="px-2 py-1 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-200"
+                    >
+                      <Icons.TrashIcon className="w-4 h-4" />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {allocations.length === 0 ? (
+                <tr><td colSpan={4} className="p-6 text-center text-gray-500">لا توجد تخصيصات.</td></tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow border border-gray-100 dark:border-gray-700 p-4">
+        <div className="font-semibold dark:text-white mb-3">Settlements الأخيرة</div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-right text-sm">
+            <thead className="bg-gray-50 dark:bg-gray-700/50">
+              <tr>
+                <th className="p-3 border-r dark:border-gray-700">التاريخ</th>
+                <th className="p-3 border-r dark:border-gray-700">النوع</th>
+                <th className="p-3 border-r dark:border-gray-700">العملة</th>
+                <th className="p-3 border-r dark:border-gray-700">المرجع</th>
+                <th className="p-3">عكس</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+              {recentSettlements.map((s: any) => (
+                <tr key={String(s.id)}>
+                  <td className="p-3 border-r dark:border-gray-700 font-mono" dir="ltr">{formatTime(String(s.settlement_date || s.created_at || ''))}</td>
+                  <td className="p-3 border-r dark:border-gray-700">{String(s.settlement_type || 'normal')}</td>
+                  <td className="p-3 border-r dark:border-gray-700 font-mono">{String(s.currency_code || '—')}</td>
+                  <td className="p-3 border-r dark:border-gray-700 font-mono" dir="ltr">{String(s.id).slice(-8)}</td>
+                  <td className="p-3">
+                    {String(s.settlement_type) === 'normal' ? (
+                      <button
+                        disabled={running}
+                        onClick={() => void reverseSettlement(String(s.id))}
+                        className="px-2 py-1 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-200 disabled:opacity-60"
+                        title="عكس"
+                      >
+                        <Icons.ArrowLeft className="w-4 h-4" />
+                      </button>
+                    ) : (
+                      <span className="text-xs text-gray-500">—</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+              {recentSettlements.length === 0 ? (
+                <tr><td colSpan={5} className="p-6 text-center text-gray-500">لا توجد تسويات.</td></tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}

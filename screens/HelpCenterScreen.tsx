@@ -1676,6 +1676,54 @@ const HelpCenterScreen: React.FC = () => {
           },
         ],
       },
+      '/admin/settlements': {
+        title: 'التسويات (Settlement Workspace)',
+        intro: 'ربط الذمم المفتوحة (Invoices/Bills/Receipts/Payments/Advances/Notes) بدون تعديل القيود الأصلية (Append‑Only).',
+        sections: [
+          {
+            title: 'فكرة الشاشة',
+            bullets: [
+              'تعرض عناصر الطرف المفتوحة كـ Debits وCredits.',
+              'يمكن إنشاء تخصيص يدوي (Manual Allocation) أو تشغيل Auto Match (FIFO).',
+              'الإلغاء يتم عبر Reversal Settlement وليس حذف/تعديل التسوية.',
+            ],
+          },
+          {
+            title: 'التسوية متعددة العملات',
+            bullets: [
+              'إذا كانت العناصر بعملة أجنبية وبأسعار مختلفة: يتم احتساب Realized FX.',
+              'يُنشئ النظام Journal Entry تلقائي للـ FX فقط مع source_table=settlements.',
+            ],
+          },
+          {
+            title: 'ملاحظات تشغيلية',
+            bullets: [
+              'العملة يجب أن تتطابق بين طرفي التخصيص.',
+              'Settlement يمنع التنفيذ داخل فترة محاسبية مغلقة.',
+            ],
+          },
+        ],
+      },
+      '/admin/advances': {
+        title: 'إدارة الدفعات المسبقة',
+        intro: 'إدارة وربط الدفعات المقدمة/العربون بالفواتير لاحقاً عبر Settlement رسمي.',
+        sections: [
+          {
+            title: 'سير العمل',
+            bullets: [
+              'اختر الطرف ثم اختر فاتورة مفتوحة + دفعة مقدمة مفتوحة.',
+              'طبّق الدفعة (ينشئ Settlement) ويُحدث الأرصدة المفتوحة.',
+            ],
+          },
+          {
+            title: 'سياسة التدقيق',
+            bullets: [
+              'لا تعديل على قيود GL الأصلية.',
+              'أي تراجع يتم بعكس Settlement، وليس حذف السجلات.',
+            ],
+          },
+        ],
+      },
       '/admin/approvals': {
         title: 'طلبات الموافقة',
         intro: 'إدارة طلبات الموافقة مثل خصومات POS التي تتجاوز الصلاحيات.',

@@ -25,7 +25,8 @@
     "db:seed": "supabase db seed",
     "db:reset": "supabase db reset",
     "smoke:full": "node scripts/smoke-full.mjs",
-    "smoke:party": "node scripts/smoke-full.mjs --sql supabase/smoke/smoke_party_ledger_full.sql --report SMOKE_PARTY_LEDGER_REPORT.md --ok-token PARTY_LEDGER_SMOKE_OK"
+    "smoke:party": "node scripts/smoke-full.mjs --sql supabase/smoke/smoke_party_ledger_full.sql --report SMOKE_PARTY_LEDGER_REPORT.md --ok-token PARTY_LEDGER_SMOKE_OK",
+    "smoke:settlement": "node scripts/smoke-full.mjs --sql supabase/smoke/smoke_settlement_engine.sql --report SMOKE_SETTLEMENT_ENGINE_REPORT.md --ok-token SETTLEMENT_SMOKE_OK"
   },
   "dependencies": {
     "@capacitor-community/file-opener": "^6.0.1",

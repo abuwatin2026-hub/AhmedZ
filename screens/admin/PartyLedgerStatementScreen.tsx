@@ -19,6 +19,10 @@ type StatementRow = {
   source_id: string | null;
   source_event: string | null;
   running_balance: number;
+  open_base_amount: number | null;
+  open_foreign_amount: number | null;
+  open_status: string | null;
+  allocations?: any;
 };
 
 const PartyLedgerStatementScreen: React.FC = () => {
@@ -45,7 +49,7 @@ const PartyLedgerStatementScreen: React.FC = () => {
         .maybeSingle();
       setPartyName(String((partyRow as any)?.name || '—'));
 
-      const { data, error } = await supabase.rpc('party_ledger_statement', {
+      const { data, error } = await supabase.rpc('party_ledger_statement_v2', {
         p_party_id: partyId,
         p_account_code: accountCode.trim() || null,
         p_currency: currency.trim().toUpperCase() || null,
@@ -145,13 +149,14 @@ const PartyLedgerStatementScreen: React.FC = () => {
                 <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">دائن</th>
                 <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">العملة</th>
                 <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">الرصيد</th>
+                <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">متبقي</th>
                 <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-300">المصدر</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="p-8 text-center text-gray-500 dark:text-gray-400">
+                  <td colSpan={8} className="p-8 text-center text-gray-500 dark:text-gray-400">
                     لا توجد حركات.
                   </td>
                 </tr>
@@ -177,6 +182,21 @@ const PartyLedgerStatementScreen: React.FC = () => {
                     </td>
                     <td className="p-4 text-gray-700 dark:text-gray-200 border-r dark:border-gray-700 font-mono" dir="ltr">
                       {Number(r.running_balance || 0).toFixed(2)}
+                    </td>
+                    <td className="p-4 text-gray-700 dark:text-gray-200 border-r dark:border-gray-700">
+                      <div className="font-mono" dir="ltr">
+                        {r.open_base_amount == null ? '—' : Number(r.open_base_amount || 0).toFixed(2)}
+                      </div>
+                      {r.open_status ? (
+                        <div className="text-xs text-gray-500 dark:text-gray-400">
+                          {r.open_status === 'open' ? 'مفتوح' : r.open_status === 'partially_settled' ? 'مجزأ' : 'مُسوّى'}
+                        </div>
+                      ) : null}
+                      {Array.isArray(r.allocations) && r.allocations.length > 0 ? (
+                        <div className="text-xs text-gray-500 dark:text-gray-400 font-mono" dir="ltr">
+                          settlements:{r.allocations.length}
+                        </div>
+                      ) : null}
                     </td>
                     <td className="p-4 text-gray-700 dark:text-gray-200">
                       <div className="font-mono text-xs">{r.source_table}:{r.source_event}</div>
