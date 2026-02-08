@@ -33,35 +33,48 @@ export const ImportProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const fetchShipments = useCallback(async () => {
         const canManageImports = hasPermission('procurement.manage') || hasPermission('import.close') || hasPermission('stock.manage');
         if (!supabase || !canManageImports) return;
+        setLoading(true);
         try {
-            const { data, error } = await supabase
-                .from('import_shipments')
-                .select('*')
-                .order('created_at', { ascending: false });
+            const pageSize = 1000;
+            const maxRows = 20000;
+            const mapped: ImportShipment[] = [];
+            for (let offset = 0; offset < maxRows; offset += pageSize) {
+                const { data, error } = await supabase
+                    .from('import_shipments')
+                    .select('*')
+                    .order('created_at', { ascending: false })
+                    .range(offset, offset + pageSize - 1);
 
-            if (error) throw error;
-
-            setShipments(data.map((d: any) => ({
-                id: d.id,
-                referenceNumber: d.reference_number,
-                supplierId: d.supplier_id,
-                status: d.status,
-                originCountry: d.origin_country,
-                destinationWarehouseId: d.destination_warehouse_id,
-                shippingCarrier: d.shipping_carrier,
-                trackingNumber: d.tracking_number,
-                departureDate: d.departure_date,
-                expectedArrivalDate: d.expected_arrival_date,
-                actualArrivalDate: d.actual_arrival_date,
-                totalWeightKg: d.total_weight_kg,
-                notes: d.notes,
-                createdAt: d.created_at,
-                updatedAt: d.updated_at,
-                createdBy: d.created_by
-            })));
+                if (error) throw error;
+                const rows = Array.isArray(data) ? data : [];
+                for (const d of rows) {
+                    mapped.push({
+                        id: (d as any).id,
+                        referenceNumber: (d as any).reference_number,
+                        supplierId: (d as any).supplier_id,
+                        status: (d as any).status,
+                        originCountry: (d as any).origin_country,
+                        destinationWarehouseId: (d as any).destination_warehouse_id,
+                        shippingCarrier: (d as any).shipping_carrier,
+                        trackingNumber: (d as any).tracking_number,
+                        departureDate: (d as any).departure_date,
+                        expectedArrivalDate: (d as any).expected_arrival_date,
+                        actualArrivalDate: (d as any).actual_arrival_date,
+                        totalWeightKg: (d as any).total_weight_kg,
+                        notes: (d as any).notes,
+                        createdAt: (d as any).created_at,
+                        updatedAt: (d as any).updated_at,
+                        createdBy: (d as any).created_by
+                    });
+                }
+                if (rows.length < pageSize) break;
+            }
+            setShipments(mapped);
         } catch (error: any) {
             console.error('Error fetching shipments:', error);
             showNotification(localizeSupabaseError(error) || 'تعذر تحميل الشحنات.', 'error');
+        } finally {
+            setLoading(false);
         }
     }, [hasPermission, showNotification, supabase]);
 
@@ -294,7 +307,6 @@ export const ImportProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     useEffect(() => {
         if (user && supabase) {
             fetchShipments();
-            setLoading(false);
         }
     }, [user, fetchShipments, supabase]);
 
