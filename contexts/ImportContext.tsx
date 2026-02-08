@@ -31,18 +31,23 @@ export const ImportProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const isUuid = (value: unknown) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value ?? '').trim());
 
     const fetchShipments = useCallback(async () => {
-        const canManageImports = hasPermission('procurement.manage') || hasPermission('import.close') || hasPermission('stock.manage');
-        if (!supabase || !canManageImports) return;
+        const canViewShipments = hasPermission('shipments.view') || hasPermission('procurement.manage') || hasPermission('import.close') || hasPermission('stock.manage');
+        if (!supabase || !canViewShipments) {
+            setLoading(false);
+            return;
+        }
         setLoading(true);
         try {
             const pageSize = 1000;
-            const maxRows = 20000;
+            const maxPages = 500;
             const mapped: ImportShipment[] = [];
-            for (let offset = 0; offset < maxRows; offset += pageSize) {
+            for (let page = 0; page < maxPages; page++) {
+                const offset = page * pageSize;
                 const { data, error } = await supabase
                     .from('import_shipments')
                     .select('*')
                     .order('created_at', { ascending: false })
+                    .order('id', { ascending: false })
                     .range(offset, offset + pageSize - 1);
 
                 if (error) throw error;

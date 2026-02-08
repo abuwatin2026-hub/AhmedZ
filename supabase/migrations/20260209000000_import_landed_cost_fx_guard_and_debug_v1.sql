@@ -280,4 +280,49 @@ revoke all on function public.debug_shipment_landed_cost(uuid) from public;
 revoke execute on function public.debug_shipment_landed_cost(uuid) from anon;
 grant execute on function public.debug_shipment_landed_cost(uuid) to authenticated, service_role;
 
+do $$
+begin
+  begin
+    drop policy if exists import_shipments_view on public.import_shipments;
+  exception when undefined_object then null;
+  end;
+  create policy import_shipments_view
+  on public.import_shipments
+  for select
+  using (
+    public.has_admin_permission('shipments.view')
+    or public.has_admin_permission('procurement.manage')
+    or public.has_admin_permission('import.close')
+    or public.has_admin_permission('stock.manage')
+  );
+
+  begin
+    drop policy if exists import_shipments_items_view on public.import_shipments_items;
+  exception when undefined_object then null;
+  end;
+  create policy import_shipments_items_view
+  on public.import_shipments_items
+  for select
+  using (
+    public.has_admin_permission('shipments.view')
+    or public.has_admin_permission('procurement.manage')
+    or public.has_admin_permission('import.close')
+    or public.has_admin_permission('stock.manage')
+  );
+
+  begin
+    drop policy if exists import_expenses_view on public.import_expenses;
+  exception when undefined_object then null;
+  end;
+  create policy import_expenses_view
+  on public.import_expenses
+  for select
+  using (
+    public.has_admin_permission('shipments.view')
+    or public.has_admin_permission('procurement.manage')
+    or public.has_admin_permission('import.close')
+    or public.has_admin_permission('stock.manage')
+  );
+end $$;
+
 notify pgrst, 'reload schema';
