@@ -134,18 +134,15 @@ const ImportShipmentDetailsScreen: React.FC = () => {
         if (baseCode && code === baseCode) return 1;
         const supabase = getSupabaseClient();
         if (!supabase) return null;
-        const d = new Date().toISOString().slice(0, 10);
         try {
-            const { data: rows, error } = await supabase
-                .from('fx_rates')
-                .select('rate,rate_date')
-                .eq('currency_code', code)
-                .eq('rate_type', 'operational')
-                .lte('rate_date', d)
-                .order('rate_date', { ascending: false })
-                .limit(1);
+            const d = new Date().toISOString().slice(0, 10);
+            const { data, error } = await supabase.rpc('get_fx_rate', {
+                p_currency: code,
+                p_date: d,
+                p_rate_type: 'operational',
+            });
             if (error) return null;
-            const n = Number((Array.isArray(rows) && rows.length > 0 ? (rows[0] as any)?.rate : null));
+            const n = Number(data);
             return Number.isFinite(n) && n > 0 ? n : null;
         } catch {
             return null;
@@ -219,6 +216,17 @@ const ImportShipmentDetailsScreen: React.FC = () => {
             }
 
             const itemIds = Object.keys(grouped);
+            const landedCostByItemId: Record<string, number> = {};
+            try {
+                const items = Array.isArray(shipment?.items) ? shipment.items : [];
+                for (const it of items as any[]) {
+                    const itemId = String(it?.itemId || it?.item_id || '').trim();
+                    if (!itemId) continue;
+                    const v = Number(it?.landingCostPerUnit ?? it?.landing_cost_per_unit);
+                    if (Number.isFinite(v) && v > 0) landedCostByItemId[itemId] = v;
+                }
+            } catch {
+            }
             const marginByItem: Record<string, number> = {};
             await Promise.all(itemIds.map(async (itemId) => {
                 try {
@@ -260,7 +268,9 @@ const ImportShipmentDetailsScreen: React.FC = () => {
                         minSellingPrice: Number(b?.min_selling_price || 0),
                     };
                 });
-                const avgCost = qtySum > 0 ? (costWeighted / qtySum) : 0;
+                const avgCost = (Number.isFinite(landedCostByItemId[itemId]) && (landedCostByItemId[itemId] > 0))
+                    ? landedCostByItemId[itemId]
+                    : (qtySum > 0 ? (costWeighted / qtySum) : 0);
                 const marginPct = Number.isFinite(Number(marginByItem[itemId])) ? Number(marginByItem[itemId]) : 0;
                 const suggestedPrice = moneyRound(avgCost * (1 + (marginPct / 100)));
                 return {
