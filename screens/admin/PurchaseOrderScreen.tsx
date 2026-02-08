@@ -333,6 +333,9 @@ const PurchaseOrderScreen: React.FC = () => {
     const [receiveOrder, setReceiveOrder] = useState<PurchaseOrder | null>(null);
     const [receiveRows, setReceiveRows] = useState<ReceiveRow[]>([]);
     const [receiveOccurredAt, setReceiveOccurredAt] = useState<string>(toDateTimeLocalInputValue());
+    const [receiveShipmentId, setReceiveShipmentId] = useState<string>('');
+    const [receiveShipments, setReceiveShipments] = useState<Array<{ id: string; referenceNumber: string; status: string }>>([]);
+    const [receiveShipmentsLoading, setReceiveShipmentsLoading] = useState<boolean>(false);
     const [isReceivingPartial, setIsReceivingPartial] = useState<boolean>(false);
     const [returnOrder, setReturnOrder] = useState<PurchaseOrder | null>(null);
     const [returnRows, setReturnRows] = useState<ReceiveRow[]>([]);
@@ -758,7 +761,33 @@ const PurchaseOrderScreen: React.FC = () => {
         setReceiveOrder(order);
         setReceiveRows(rows);
         setReceiveOccurredAt(toDateTimeLocalInputValue());
+        setReceiveShipmentId('');
+        setReceiveShipments([]);
         setIsReceiveModalOpen(true);
+        void (async () => {
+            const supabase = getSupabaseClient();
+            const wid = String(order.warehouseId || '').trim();
+            if (!supabase || !wid) return;
+            setReceiveShipmentsLoading(true);
+            try {
+                const { data, error } = await supabase
+                    .from('import_shipments')
+                    .select('id,reference_number,status,destination_warehouse_id')
+                    .eq('destination_warehouse_id', wid)
+                    .not('status', 'in', '("cancelled","closed")')
+                    .order('created_at', { ascending: false })
+                    .limit(50);
+                if (error) return;
+                const rows = Array.isArray(data) ? data : [];
+                setReceiveShipments(rows.map((r: any) => ({
+                    id: String(r.id),
+                    referenceNumber: String(r.reference_number || r.id),
+                    status: String(r.status || ''),
+                })).filter(x => x.id));
+            } finally {
+                setReceiveShipmentsLoading(false);
+            }
+        })();
     };
 
     const showCreateDates = useMemo(() => {
@@ -842,6 +871,7 @@ const PurchaseOrderScreen: React.FC = () => {
                     expiryDate: r.expiryDate || undefined,
                     transportCost: Number(r.transportCost || 0),
                     supplyTaxCost: Number(r.supplyTaxCost || 0),
+                    importShipmentId: receiveShipmentId ? receiveShipmentId : undefined,
                 }));
             if (items.length === 0) {
                 alert('الرجاء إدخال كمية للاستلام.');
@@ -856,6 +886,23 @@ const PurchaseOrderScreen: React.FC = () => {
                     } catch (e2) {
                         alert(getErrorMessage(e2, 'تعذر طباعة إشعار الاستلام.'));
                     }
+                }
+                if (hasPermission('accounting.manage')) {
+                    const doPost = window.confirm('هل تريد ترحيل القيود المحاسبية لهذا الاستلام الآن؟');
+                    if (doPost) {
+                        try {
+                            const supabase = getSupabaseClient();
+                            if (supabase) {
+                                const res = await supabase.rpc('post_purchase_receipt', { p_receipt_id: String(receiptId) } as any);
+                                if ((res as any)?.error) throw (res as any).error;
+                                showNotification('تم ترحيل القيود المحاسبية للاستلام.', 'success');
+                            }
+                        } catch (e3) {
+                            alert(getErrorMessage(e3, 'تعذر ترحيل القيود المحاسبية الآن. يمكنك إعادة المحاولة لاحقاً.'));
+                        }
+                    }
+                } else {
+                    showNotification('تم تسجيل الاستلام. ترحيل القيود المحاسبية قد يكون معلقاً حسب الصلاحيات.', 'info');
                 }
             }
             setIsReceiveModalOpen(false);
@@ -2256,6 +2303,22 @@ const PurchaseOrderScreen: React.FC = () => {
                                     onChange={(e) => setReceiveOccurredAt(e.target.value)}
                                     className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                                 />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-1 dark:text-gray-300">الشحنة (اختياري)</label>
+                                <select
+                                    value={receiveShipmentId}
+                                    onChange={(e) => setReceiveShipmentId(e.target.value)}
+                                    disabled={receiveShipmentsLoading || receiveShipments.length === 0}
+                                    className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                >
+                                    <option value="">بدون شحنة</option>
+                                    {receiveShipments.map((s) => (
+                                        <option key={s.id} value={s.id}>
+                                            {s.referenceNumber}{s.status ? ` — ${s.status}` : ''}
+                                        </option>
+                                    ))}
+                                </select>
                             </div>
                             <div className="border rounded-lg overflow-hidden dark:border-gray-700">
                                 <div className="overflow-x-auto">
