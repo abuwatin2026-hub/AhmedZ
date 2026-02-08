@@ -1481,12 +1481,25 @@ const SettingsScreen: React.FC = () => {
                 ) : null}
               </div>
             )}
+            {(() => {
+              const dbBase = currencyRows.find((c) => c.is_base)?.code;
+              if (!dbBase) return null;
+              const uiBase = String(formState.baseCurrency || '').toUpperCase();
+              if (!uiBase || uiBase === dbBase) return null;
+              return (
+                <div className="p-3 rounded-md bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-200">
+                  <div>تنبيه: العملة الأساسية في قاعدة البيانات هي {dbBase} وليست {uiBase}.</div>
+                  <div className="mt-1 text-xs">تغيير القائمة لا يغيّر الدفاتر إلا عبر “حفظ العملة الأساسية”.</div>
+                </div>
+              );
+            })()}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">العملة الأساسية للنظام</label>
                 <select
                   value={String(formState.baseCurrency || '').toUpperCase()}
                   onChange={(e) => handleChange({ target: { name: 'baseCurrency', value: e.target.value } } as any)}
+                  disabled={hasPostings === true}
                   className="w-full p-3 border border-gray-300 rounded-lg dark:bg-gray-700 dark:border-gray-600 focus:ring-2 focus:ring-gold-500 focus:border-gold-500 transition"
                 >
                   <option value="">—</option>
@@ -1545,10 +1558,19 @@ const SettingsScreen: React.FC = () => {
                         if (supabase) {
                           const { error } = await supabase.rpc('set_base_currency', { p_code: baseCode });
                           if (error) throw error;
+                          const { data, error: currenciesError } = await supabase.from('currencies').select('code,is_base,is_high_inflation').order('code', { ascending: true });
+                          if (!currenciesError) {
+                            const rows = (Array.isArray(data) ? data : []).map((r: any) => ({
+                              code: String(r.code || '').toUpperCase(),
+                              is_base: Boolean(r.is_base),
+                              is_high_inflation: Boolean(r.is_high_inflation),
+                            })).filter((r: any) => r.code);
+                            setCurrencyRows(rows);
+                          }
                         }
                         showNotification('تم تعيين العملة الأساسية.', 'success');
-                      } catch {
-                        showNotification('تعذر حفظ العملة الأساسية.', 'error');
+                      } catch (err) {
+                        showNotification(localizeSupabaseError(err) || 'تعذر حفظ العملة الأساسية.', 'error');
                       }
                     }}
                   >
@@ -1647,6 +1669,7 @@ const SettingsScreen: React.FC = () => {
                           <button
                             type="button"
                             className="px-3 py-1 rounded bg-gray-100 text-gray-800 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600 font-semibold"
+                            disabled={hasPostings === true}
                             onClick={() => {
                               handleChange({ target: { name: 'baseCurrency', value: c.code } } as any);
                             }}
