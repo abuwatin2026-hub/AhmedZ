@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+  <head>
+    <script type="module">import { injectIntoGlobalHook } from "/@react-refresh";
+injectIntoGlobalHook(window);
+window.$RefreshReg$ = () => {};
+window.$RefreshSig$ = () => (type) => type;</script>
+
+    <script type="module" src="/@vite/client"></script>
+
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/jpeg" href="/logo.jpg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    
+    <!-- PWA & Capacitor additions -->
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#2F2B7C" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+    <title>مؤسسة أحمد زنقاح للتجارة والتوكيلات</title>
+    <meta name="referrer" content="no-referrer">
+  
+    <link rel="stylesheet" href="/index.css">
+    
+    <!-- Leaflet Map (CDN) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="" defer></script>
+</head>
+  <body class="bg-gray-50 dark:bg-gray-950">
+    <div id="root"></div>
+    
+    <!-- Dev-only: Unregister any existing service workers and clear caches to avoid HMR issues -->
+    <script type="module" src="/index.html?html-proxy&index=0.js"></script>
+
+    <!-- Ensure HashRouter has a default hash route -->
+    <script>
+      (function() {
+        try {
+          if (!location.hash || location.hash === '#') {
+            location.hash = '/';
+          }
+        } catch {}
+      })();
+    </script>
+
+    <!-- Vite entry point -->
+    <script type="module" src="/index.tsx"></script>
+
+    <!-- PWA Service Worker Registration (production only to avoid dev caching issues) -->
+    <script type="module" src="/index.html?html-proxy&index=1.js"></script>
+  </body>
+</html>
