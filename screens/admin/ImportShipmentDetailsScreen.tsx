@@ -9,6 +9,7 @@ import { useSessionScope } from '../../contexts/SessionScopeContext';
 import { ImportShipment, ImportShipmentItem, ImportExpense } from '../../types';
 import { Plus, X, DollarSign, ArrowLeft } from '../../components/icons';
 import { getBaseCurrencyCode, getSupabaseClient } from '../../supabase';
+import { localizeSupabaseError } from '../../utils/errorUtils';
 
 const ImportShipmentDetailsScreen: React.FC = () => {
     const { id } = useParams<{ id: string }>();
@@ -32,6 +33,7 @@ const ImportShipmentDetailsScreen: React.FC = () => {
     const [receiptRows, setReceiptRows] = useState<Array<any>>([]);
     const [receiptSelection, setReceiptSelection] = useState<Record<string, boolean>>({});
     const [receiptsLoading, setReceiptsLoading] = useState(false);
+    const [receiptsSyncing, setReceiptsSyncing] = useState(false);
     const [pricingLoading, setPricingLoading] = useState(false);
 
     const isUuid = (value: unknown) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value ?? '').trim());
@@ -350,6 +352,35 @@ const ImportShipmentDetailsScreen: React.FC = () => {
         } catch {
         } finally {
             setReceiptsLoading(false);
+        }
+    };
+
+    const syncItemsFromLinkedReceipts = async () => {
+        const shipmentId = String(shipment?.id || '').trim();
+        if (!shipmentId) return;
+        if (!isUuid(shipmentId)) {
+            showNotification('معرف الشحنة غير صالح (UUID).', 'error');
+            return;
+        }
+        if (shipment?.status === 'closed') return;
+        const supabase = getSupabaseClient();
+        if (!supabase) return;
+        setReceiptsSyncing(true);
+        try {
+            const { data, error } = await supabase.rpc('sync_import_shipment_items_from_receipts', { p_shipment_id: shipmentId, p_replace: true } as any);
+            if (error) throw error;
+            const upserted = Number((data as any)?.upserted ?? 0);
+            const deleted = Number((data as any)?.deleted ?? 0);
+            if ((data as any)?.status === 'skipped') {
+                showNotification('لا توجد استلامات مرتبطة بهذه الشحنة بعد.', 'info');
+            } else {
+                showNotification(`تم تحديث أصناف الشحنة من الاستلامات (إضافة/تحديث: ${upserted}، حذف: ${deleted}).`, 'success');
+            }
+            loadShipment();
+        } catch (e: any) {
+            showNotification(localizeSupabaseError(e) || 'فشل مزامنة الأصناف من الاستلامات', 'error');
+        } finally {
+            setReceiptsSyncing(false);
         }
     };
 
@@ -1051,6 +1082,13 @@ const ImportShipmentDetailsScreen: React.FC = () => {
                                 disabled={receiptsLoading}
                             >
                                 تحديث
+                            </button>
+                            <button
+                                onClick={() => syncItemsFromLinkedReceipts()}
+                                className="bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700"
+                                disabled={receiptsLoading || receiptsSyncing || shipment.status === 'closed'}
+                            >
+                                توليد الأصناف
                             </button>
                             <button
                                 onClick={() => applyReceiptLinking('link')}

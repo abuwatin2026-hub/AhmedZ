@@ -66,6 +66,7 @@ const PurchaseOrderScreen: React.FC = () => {
     const canRepairReceipt = user?.role === 'owner' || user?.role === 'manager';
     const canViewAccounting = hasPermission('accounting.view') || hasPermission('accounting.manage');
     const canManageAccounting = hasPermission('accounting.manage');
+    const canManageImports = hasPermission('procurement.manage');
     const resolveBrandingForWarehouseId = (warehouseId?: string) => {
         const fallback = {
             name: (settings as any)?.cafeteriaName?.ar || (settings as any)?.cafeteriaName?.en || '',
@@ -160,6 +161,138 @@ const PurchaseOrderScreen: React.FC = () => {
             showNotification(`تم تنفيذ الإصلاح: ${typeof data === 'string' ? data : 'تم'}`, 'success');
         } catch (e: any) {
             alert(getErrorMessage(e, 'فشل إصلاح الاستلام.'));
+        }
+    };
+
+    const handleCreateOrUpdateShipmentFromOrder = async (order: PurchaseOrder) => {
+        if (!canManageImports) {
+            showNotification('ليس لديك صلاحية إدارة الشحنات.', 'error');
+            return;
+        }
+        const supabase = getSupabaseClient();
+        if (!supabase) {
+            showNotification('قاعدة البيانات غير متاحة.', 'error');
+            return;
+        }
+        const wid = String(order.warehouseId || '').trim();
+        if (!wid) {
+            showNotification('اختر مستودعاً لأمر الشراء أولاً.', 'error');
+            return;
+        }
+        const orderRef = String(order.poNumber || order.referenceNumber || order.id);
+        setShipmentFromPoBusyId(order.id);
+        try {
+            const { data: openShipments, error: sErr } = await supabase
+                .from('import_shipments')
+                .select('id,reference_number,status')
+                .eq('destination_warehouse_id', wid)
+                .not('status', 'in', '("cancelled","closed")')
+                .order('created_at', { ascending: false })
+                .limit(20);
+            if (sErr) throw sErr;
+            const list = Array.isArray(openShipments) ? openShipments : [];
+            const lines = list.map((s: any, idx: number) => `${idx + 1}) ${String(s.reference_number || s.id)}${s.status ? ` — ${String(s.status)}` : ''}`);
+            const hint = lines.length > 0
+                ? `اختر رقم شحنة موجودة لإضافة أصناف هذا الأمر، أو اتركه فارغاً لإنشاء شحنة جديدة:\n${lines.join('\n')}`
+                : 'لا توجد شحنات مفتوحة لهذا المستودع. اتركه فارغاً لإنشاء شحنة جديدة.';
+            const selection = window.prompt(hint, '');
+            if (selection === null) return;
+            const idx = Number(String(selection).trim());
+            let shipmentId = '';
+            let shipmentRef = '';
+            if (Number.isFinite(idx) && idx >= 1 && idx <= list.length) {
+                const s = list[idx - 1] as any;
+                shipmentId = String(s?.id || '');
+                shipmentRef = String(s?.reference_number || shipmentId);
+            } else {
+                const defRef = `SHP-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${String(order.poNumber || order.id).slice(-6).toUpperCase()}`;
+                const ref = window.prompt(`رقم الشحنة/البوليصة (مطلوب): ${orderRef}`, defRef);
+                if (ref === null) return;
+                const referenceNumber = String(ref).trim();
+                if (!referenceNumber) {
+                    showNotification('رقم الشحنة مطلوب.', 'error');
+                    return;
+                }
+                const { data: created, error: cErr } = await supabase
+                    .from('import_shipments')
+                    .insert({
+                        reference_number: referenceNumber,
+                        supplier_id: order.supplierId || null,
+                        status: 'draft',
+                        destination_warehouse_id: wid,
+                        total_weight_kg: 0,
+                        notes: `Created from PO ${orderRef}`,
+                    } as any)
+                    .select('id,reference_number')
+                    .single();
+                if (cErr) throw cErr;
+                shipmentId = String((created as any)?.id || '');
+                shipmentRef = String((created as any)?.reference_number || shipmentId);
+            }
+
+            if (!shipmentId) {
+                showNotification('تعذر تحديد الشحنة.', 'error');
+                return;
+            }
+
+            const { data: existingItems, error: eErr } = await supabase
+                .from('import_shipments_items')
+                .select('item_id,quantity,unit_price_fob,currency')
+                .eq('shipment_id', shipmentId);
+            if (eErr) throw eErr;
+            const existing = new Map<string, { quantity: number; unitPrice: number; currency: string }>();
+            for (const row of (Array.isArray(existingItems) ? existingItems : [])) {
+                const key = String((row as any)?.item_id || '');
+                if (!key) continue;
+                existing.set(key, {
+                    quantity: Number((row as any)?.quantity || 0),
+                    unitPrice: Number((row as any)?.unit_price_fob || 0),
+                    currency: String((row as any)?.currency || ''),
+                });
+            }
+
+            const currency = String(order.currency || '').toUpperCase() || (baseCode && baseCode !== '—' ? baseCode : 'USD');
+            const payload = (order.items || [])
+                .filter((it: any) => Number(it?.quantity || 0) > 0)
+                .map((it: any) => {
+                    const itemId = String(it?.itemId || '').trim();
+                    const qty = Number(it?.quantity || 0);
+                    const unitCost = Number(it?.unitCost || 0);
+                    const prev = existing.get(itemId);
+                    const nextQty = (prev?.quantity || 0) + qty;
+                    const nextUnit = (prev?.unitPrice && prev.unitPrice > 0) ? prev.unitPrice : Math.max(0, unitCost);
+                    const nextCur = (prev?.currency && String(prev.currency).trim()) ? String(prev.currency).trim().toUpperCase() : currency;
+                    return {
+                        shipment_id: shipmentId,
+                        item_id: itemId,
+                        quantity: nextQty,
+                        unit_price_fob: nextUnit,
+                        currency: nextCur,
+                        notes: prev ? (undefined as any) : `from PO ${orderRef}`,
+                    };
+                })
+                .filter((r: any) => r.item_id && Number(r.quantity || 0) > 0);
+
+            if (payload.length === 0) {
+                showNotification('لا توجد أصناف لإضافتها للشحنة.', 'info');
+                return;
+            }
+
+            const { error: uErr } = await supabase
+                .from('import_shipments_items')
+                .upsert(payload as any, { onConflict: 'shipment_id,item_id' });
+            if (uErr) throw uErr;
+
+            showNotification(`تم تحديث الشحنة: ${shipmentRef}`, 'success');
+            const open = window.confirm(`تم تحديث الشحنة: ${shipmentRef}\nهل تريد فتح الشحنة الآن؟`);
+            if (open) {
+                window.open(`/admin/import-shipments/${shipmentId}`, '_blank');
+            }
+        } catch (e: any) {
+            const msg = localizeSupabaseError(e) || 'فشل إنشاء/تحديث الشحنة من أمر الشراء.';
+            showNotification(msg, 'error');
+        } finally {
+            setShipmentFromPoBusyId('');
         }
     };
 
@@ -336,6 +469,7 @@ const PurchaseOrderScreen: React.FC = () => {
     const [receiveShipmentId, setReceiveShipmentId] = useState<string>('');
     const [receiveShipments, setReceiveShipments] = useState<Array<{ id: string; referenceNumber: string; status: string }>>([]);
     const [receiveShipmentsLoading, setReceiveShipmentsLoading] = useState<boolean>(false);
+    const [shipmentFromPoBusyId, setShipmentFromPoBusyId] = useState<string>('');
     const [isReceivingPartial, setIsReceivingPartial] = useState<boolean>(false);
     const [returnOrder, setReturnOrder] = useState<PurchaseOrder | null>(null);
     const [returnRows, setReturnRows] = useState<ReceiveRow[]>([]);
@@ -1320,6 +1454,16 @@ const PurchaseOrderScreen: React.FC = () => {
                                     >
                                         استلام
                                     </button>
+                                    {canManageImports ? (
+                                        <button
+                                            type="button"
+                                            onClick={() => { void handleCreateOrUpdateShipmentFromOrder(order); }}
+                                            disabled={shipmentFromPoBusyId === order.id || order.status === 'cancelled'}
+                                            className="px-3 py-2 rounded-lg text-sm font-semibold bg-emerald-700 text-white hover:bg-emerald-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                            شحنة
+                                        </button>
+                                    ) : null}
                                     {canRepairReceipt ? (
                                         <button
                                             type="button"
@@ -1524,6 +1668,16 @@ const PurchaseOrderScreen: React.FC = () => {
                                             >
                                                 استلام
                                             </button>
+                                            {canManageImports ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => { void handleCreateOrUpdateShipmentFromOrder(order); }}
+                                                    disabled={shipmentFromPoBusyId === order.id || order.status === 'cancelled'}
+                                                    className="px-3 py-2 rounded-lg text-sm font-semibold bg-emerald-700 text-white hover:bg-emerald-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                >
+                                                    شحنة
+                                                </button>
+                                            ) : null}
                                             <button
                                                 type="button"
                                                 onClick={() => openReturnModal(order)}
