@@ -551,7 +551,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       const trySelectWithDeliveryZoneId = async () => {
         return await supabase
           .from('orders')
-          .select('id,status,created_at,delivery_zone_id,data')
+          .select('id,status,created_at,delivery_zone_id,currency,fx_rate,base_total,data')
           .eq('id', orderId)
           .maybeSingle();
       };
@@ -562,7 +562,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       if (error && isSchemaCacheMissingColumnError(error, 'delivery_zone_id')) {
         ({ data: row, error } = await supabase
           .from('orders')
-          .select('id,status,created_at,data')
+          .select('id,status,created_at,currency,fx_rate,base_total,data')
           .eq('id', orderId)
           .maybeSingle());
       }
@@ -572,13 +572,21 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       const colStatus = (row.status as OrderStatus) || undefined;
       const dataStatus = (base as any).status as OrderStatus | undefined;
       const resolvedStatus: OrderStatus = colStatus || dataStatus || 'pending';
+      const colCurrency = typeof (row as any)?.currency === 'string' ? String((row as any).currency).toUpperCase() : '';
+      const dataCurrency = typeof (base as any)?.currency === 'string' ? String((base as any).currency).toUpperCase() : '';
+      const currency = colCurrency || dataCurrency;
+      const fxRate = typeof (row as any)?.fx_rate === 'number' ? (row as any).fx_rate : (Number((base as any)?.fxRate) || Number((base as any)?.fx_rate) || undefined);
+      const baseTotal = typeof (row as any)?.base_total === 'number' ? (row as any).base_total : (Number((base as any)?.baseTotal) || Number((base as any)?.base_total) || undefined);
       const enriched: Order = {
         ...base,
         id: String(row.id),
         status: resolvedStatus,
         createdAt: (row.created_at as string) || base.createdAt || new Date().toISOString(),
         deliveryZoneId: (row.delivery_zone_id as string) || base.deliveryZoneId,
+        ...(currency ? { currency } : {}),
       };
+      if (fxRate != null && Number.isFinite(Number(fxRate))) (enriched as any).fxRate = Number(fxRate);
+      if (baseTotal != null && Number.isFinite(Number(baseTotal))) (enriched as any).baseTotal = Number(baseTotal);
       return enriched;
     } catch {
       return undefined;
@@ -1019,7 +1027,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             const queryWithZone = () => {
               const baseQuery = supabase
                 .from('orders')
-                .select('id,status,created_at,delivery_zone_id,data')
+                .select('id,status,created_at,delivery_zone_id,currency,fx_rate,base_total,data')
                 .order('created_at', { ascending: false })
                 .limit(hardLimit);
               if (shouldLoadAll) return baseQuery;
@@ -1028,7 +1036,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             const queryWithoutZone = () => {
               const baseQuery = supabase
                 .from('orders')
-                .select('id,status,created_at,data')
+                .select('id,status,created_at,currency,fx_rate,base_total,data')
                 .order('created_at', { ascending: false })
                 .limit(hardLimit);
               if (shouldLoadAll) return baseQuery;
@@ -1063,13 +1071,21 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
               const dataStatus = (base as any).status as OrderStatus | undefined;
               const resolvedStatus: OrderStatus =
                 colStatus || dataStatus || 'pending';
+              const colCurrency = typeof r?.currency === 'string' ? String(r.currency).toUpperCase() : '';
+              const dataCurrency = typeof (base as any)?.currency === 'string' ? String((base as any).currency).toUpperCase() : '';
+              const currency = colCurrency || dataCurrency;
+              const fxRate = typeof r?.fx_rate === 'number' ? r.fx_rate : (Number((base as any)?.fxRate) || Number((base as any)?.fx_rate) || undefined);
+              const baseTotal = typeof r?.base_total === 'number' ? r.base_total : (Number((base as any)?.baseTotal) || Number((base as any)?.base_total) || undefined);
               const enriched: Order = {
                 ...base,
                 id: String(r.id),
                 status: resolvedStatus,
                 createdAt: typeof r.created_at === 'string' ? r.created_at : (base.createdAt || new Date().toISOString()),
                 deliveryZoneId: typeof r.delivery_zone_id === 'string' ? r.delivery_zone_id : base.deliveryZoneId,
+                ...(currency ? { currency } : {}),
               };
+              if (fxRate != null && Number.isFinite(Number(fxRate))) (enriched as any).fxRate = Number(fxRate);
+              if (baseTotal != null && Number.isFinite(Number(baseTotal))) (enriched as any).baseTotal = Number(baseTotal);
               return enriched;
             }).filter(Boolean);
             merged.sort((a, b) => (String(b.createdAt || '')).localeCompare(String(a.createdAt || '')));
