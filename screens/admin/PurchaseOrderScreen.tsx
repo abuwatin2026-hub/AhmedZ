@@ -2470,8 +2470,8 @@ const PurchaseOrderScreen: React.FC = () => {
 
             {isReceiveModalOpen && receiveOrder && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-                    <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden flex flex-col animate-in fade-in zoom-in duration-200">
-                        <div className="p-4 bg-gray-50 dark:bg-gray-700/50 border-b dark:border-gray-700 flex justify-between items-center">
+                    <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-3xl max-h-[min(90dvh,calc(100dvh-2rem))] overflow-hidden flex flex-col animate-in fade-in zoom-in duration-200">
+                        <div className="p-4 bg-gray-50 dark:bg-gray-700/50 border-b dark:border-gray-700 flex justify-between items-center flex-shrink-0">
                             <h2 className="text-xl font-bold dark:text-white">استلام مخزون (جزئي)</h2>
                             <button
                                 type="button"
@@ -2487,42 +2487,43 @@ const PurchaseOrderScreen: React.FC = () => {
                                 <Icons.XIcon className="w-6 h-6" />
                             </button>
                         </div>
-                        <form onSubmit={handleReceivePartial} className="p-6 space-y-4">
-                            <div className="text-sm dark:text-gray-300">
-                                {receiveOrder.supplierName} — {receiveOrder.referenceNumber || receiveOrder.id}
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium mb-1 dark:text-gray-300">وقت الاستلام</label>
-                                <input
-                                    type="datetime-local"
-                                    value={receiveOccurredAt}
-                                    onChange={(e) => setReceiveOccurredAt(e.target.value)}
-                                    className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium mb-1 dark:text-gray-300">الشحنة (اختياري)</label>
-                                <select
-                                    value={receiveShipmentId}
-                                    onChange={(e) => setReceiveShipmentId(e.target.value)}
-                                    disabled={receiveShipmentsLoading || receiveShipments.length === 0}
-                                    className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                                >
-                                    <option value="">بدون شحنة</option>
-                                    {receiveShipments.map((s) => (
-                                        <option key={s.id} value={s.id}>
-                                            {s.referenceNumber}{s.status ? ` — ${s.status}` : ''}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-                            <div className="border rounded-lg overflow-hidden dark:border-gray-700">
-                                <div className="overflow-x-auto">
-                                <table className="min-w-[1200px] w-full text-right text-sm">
-                                    <thead className="bg-gray-50 dark:bg-gray-700">
-                                        <tr>
-                                            <th className="p-2 sm:p-3">الصنف</th>
-                                            <th className="p-2 sm:p-3 w-24">المطلوب</th>
+                        <form onSubmit={handleReceivePartial} className="flex-1 flex flex-col overflow-hidden">
+                            <div className="p-6 space-y-4 overflow-y-auto flex-1">
+                                <div className="text-sm dark:text-gray-300">
+                                    {receiveOrder.supplierName} — {receiveOrder.referenceNumber || receiveOrder.id}
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-1 dark:text-gray-300">وقت الاستلام</label>
+                                    <input
+                                        type="datetime-local"
+                                        value={receiveOccurredAt}
+                                        onChange={(e) => setReceiveOccurredAt(e.target.value)}
+                                        className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-1 dark:text-gray-300">الشحنة (اختياري)</label>
+                                    <select
+                                        value={receiveShipmentId}
+                                        onChange={(e) => setReceiveShipmentId(e.target.value)}
+                                        disabled={receiveShipmentsLoading || receiveShipments.length === 0}
+                                        className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                    >
+                                        <option value="">بدون شحنة</option>
+                                        {receiveShipments.map((s) => (
+                                            <option key={s.id} value={s.id}>
+                                                {s.referenceNumber}{s.status ? ` — ${s.status}` : ''}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="border rounded-lg overflow-hidden dark:border-gray-700">
+                                    <div className="overflow-x-auto">
+                                        <table className="min-w-[1200px] w-full text-right text-sm">
+                                            <thead className="bg-gray-50 dark:bg-gray-700">
+                                                <tr>
+                                                    <th className="p-2 sm:p-3">الصنف</th>
+                                                    <th className="p-2 sm:p-3 w-24">المطلوب</th>
                                                     <th className="p-2 sm:p-3 w-24">المستلم</th>
                                                     <th className="p-2 sm:p-3 w-24">المتبقي</th>
                                                     <th className="p-2 sm:p-3 w-32">استلام الآن</th>
@@ -2581,33 +2582,34 @@ const PurchaseOrderScreen: React.FC = () => {
                                                                 </>
                                                             )
                                                         ) : null}
-                                                            <td className="p-2 sm:p-2">
-                                                                <input
-                                                                    type="number"
-                                                                    min={0}
-                                                                    step="0.01"
-                                                                    value={Number(r.transportCost || 0)}
-                                                                    onChange={(e) => updateReceiveTransport(idx, parseFloat(e.target.value))}
-                                                                    className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white text-center font-mono"
-                                                                />
-                                                            </td>
-                                                            <td className="p-2 sm:p-2">
-                                                                <input
-                                                                    type="number"
-                                                                    min={0}
-                                                                    step="0.01"
-                                                                    value={Number(r.supplyTaxCost || 0)}
-                                                                    onChange={(e) => updateReceiveSupplyTax(idx, parseFloat(e.target.value))}
-                                                                    className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white text-center font-mono"
-                                                                />
-                                                            </td>
+                                                        <td className="p-2 sm:p-2">
+                                                            <input
+                                                                type="number"
+                                                                min={0}
+                                                                step="0.01"
+                                                                value={Number(r.transportCost || 0)}
+                                                                onChange={(e) => updateReceiveTransport(idx, parseFloat(e.target.value))}
+                                                                className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white text-center font-mono"
+                                                            />
+                                                        </td>
+                                                        <td className="p-2 sm:p-2">
+                                                            <input
+                                                                type="number"
+                                                                min={0}
+                                                                step="0.01"
+                                                                value={Number(r.supplyTaxCost || 0)}
+                                                                onChange={(e) => updateReceiveSupplyTax(idx, parseFloat(e.target.value))}
+                                                                className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white text-center font-mono"
+                                                            />
+                                                        </td>
                                                     </tr>
                                                 ))}
                                             </tbody>
-                                </table>
+                                        </table>
+                                    </div>
                                 </div>
                             </div>
-                            <div className="flex justify-end gap-2 pt-2">
+                            <div className="p-6 pt-3 border-t dark:border-gray-700 bg-white dark:bg-gray-800 flex justify-end gap-2 flex-shrink-0">
                                 <button
                                     type="button"
                                     onClick={() => {
