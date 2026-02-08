@@ -522,35 +522,31 @@ const PurchaseOrderScreen: React.FC = () => {
             try {
                 const onDate = normalizeIsoDateOnly(purchaseDate) || toDateInputValue();
                 let rate = Number.NaN;
-                try {
-                    const { data: rows, error: fxErr } = await supabase
-                        .from('fx_rates')
-                        .select('rate,rate_date')
-                        .eq('currency_code', code)
-                        .eq('rate_type', 'accounting')
-                        .lte('rate_date', onDate)
-                        .order('rate_date', { ascending: false })
-                        .limit(1);
-                    if (!fxErr && Array.isArray(rows) && rows.length > 0) {
-                        const r = Number((rows[0] as any)?.rate);
-                        if (Number.isFinite(r) && r > 0) rate = r;
-                    }
-                } catch {
-                }
-
                 if (cancelled) return;
                 if (!Number.isFinite(rate) || rate <= 0) {
                     try {
-                        const { data: rows2, error: fxErr2 } = await supabase
-                            .from('fx_rates')
-                            .select('rate,rate_date')
-                            .eq('currency_code', code)
-                            .eq('rate_type', 'operational')
-                            .lte('rate_date', onDate)
-                            .order('rate_date', { ascending: false })
-                            .limit(1);
-                        if (!fxErr2 && Array.isArray(rows2) && rows2.length > 0) {
-                            const r2 = Number((rows2[0] as any)?.rate);
+                        const { data: v, error: fxErr } = await supabase.rpc('get_fx_rate', {
+                            p_currency: code,
+                            p_date: onDate,
+                            p_rate_type: 'accounting',
+                        });
+                        if (!fxErr) {
+                            const r = Number(v);
+                            if (Number.isFinite(r) && r > 0) rate = r;
+                        }
+                    } catch {
+                    }
+                }
+                if (cancelled) return;
+                if (!Number.isFinite(rate) || rate <= 0) {
+                    try {
+                        const { data: v2, error: fxErr2 } = await supabase.rpc('get_fx_rate', {
+                            p_currency: code,
+                            p_date: onDate,
+                            p_rate_type: 'operational',
+                        });
+                        if (!fxErr2) {
+                            const r2 = Number(v2);
                             if (Number.isFinite(r2) && r2 > 0) rate = r2;
                         }
                     } catch {

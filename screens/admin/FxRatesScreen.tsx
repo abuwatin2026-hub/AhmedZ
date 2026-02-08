@@ -121,7 +121,7 @@ const FxRatesScreen: React.FC = () => {
     const code = formCurrency.trim().toUpperCase();
     const date = formDate.trim();
     const rt = formType;
-    const rate = Number(formRate);
+    const inputRate = Number(formRate);
     if (!code) {
       showNotification('اختر عملة.', 'error');
       return;
@@ -130,9 +130,15 @@ const FxRatesScreen: React.FC = () => {
       showNotification('اختر تاريخ السعر.', 'error');
       return;
     }
-    if (!Number.isFinite(rate) || rate <= 0) {
+    if (!Number.isFinite(inputRate) || inputRate <= 0) {
       showNotification('سعر الصرف غير صالح.', 'error');
       return;
+    }
+    const row = currencies.find((c) => String(c.code || '').toUpperCase() === code);
+    const isHighInflation = Boolean(row?.is_high_inflation);
+    let rate = inputRate;
+    if (baseCurrency && code !== baseCurrency && isHighInflation && rate > 10) {
+      rate = 1 / rate;
     }
     setSaving(true);
     try {
@@ -223,7 +229,9 @@ const FxRatesScreen: React.FC = () => {
             />
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-700 dark:text-gray-200 mb-1">سعر الصرف</label>
+            <label className="block text-xs font-semibold text-gray-700 dark:text-gray-200 mb-1">
+              سعر الصرف {baseCurrency && formCurrency ? `(${baseCurrency} لكل 1 ${String(formCurrency || '').toUpperCase()})` : ''}
+            </label>
             <input
               type="number"
               min="0"
@@ -232,6 +240,23 @@ const FxRatesScreen: React.FC = () => {
               onChange={(e) => setFormRate(String(e.target.value || ''))}
               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
             />
+            {(() => {
+              const code = String(formCurrency || '').trim().toUpperCase();
+              if (!code) return null;
+              const row = currencies.find((c) => String(c.code || '').toUpperCase() === code);
+              if (!row?.is_high_inflation) return null;
+              if (!baseCurrency || baseCurrency === code) return null;
+              const n = Number(formRate);
+              if (!Number.isFinite(n) || !(n > 0)) return null;
+              if (n <= 10) return null;
+              const normalized = 1 / n;
+              if (!Number.isFinite(normalized) || !(normalized > 0)) return null;
+              return (
+                <div className="mt-1 text-[11px] text-gray-600 dark:text-gray-300">
+                  سيتم التطبيع إلى {normalized.toFixed(8)} ({baseCurrency} لكل 1 {code})
+                </div>
+              );
+            })()}
           </div>
         </div>
         <div className="flex justify-end">
