@@ -1,2 +1,0 @@
-[{"id":"11111111-1111-4111-8111-111111111111","name":"في المحل","is_active":true,"delivery_fee":0,"data":{"id": "11111111-1111-4111-8111-111111111111", "name": {"ar": "في المحل", "en": "In Store"}, "isActive": true, "deliveryFee": 0, "estimatedTime": 0}}, 
- {"id":"80332407-ddc7-46ab-9168-2f965f735735","name":"منطقة دخان 803324","is_active":true,"delivery_fee":0,"data":{"coordinates": {"lat": 15.3694, "lng": 44.191, "radius": 1000000}}}]
