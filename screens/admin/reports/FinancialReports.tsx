@@ -776,7 +776,7 @@ const FinancialReports: React.FC = () => {
     if (!supabase) return;
     setLoadingKey('statements', true);
     try {
-      const [{ data: tbData, error: tbError }, { data: isData, error: isError }, { data: bsData, error: bsError }] = await Promise.all([
+      const [{ data: tbData, error: tbError }, { data: isData, error: isError }, { data: bsData, error: bsError }, { data: tbEnt, error: tbEntErr }] = await Promise.all([
         supabase.rpc('trial_balance', periodRangeParams),
         supabase.rpc('income_statement', periodRangeParams),
         supabase.rpc('balance_sheet', { 
@@ -784,11 +784,23 @@ const FinancialReports: React.FC = () => {
           p_cost_center_id: appliedFilters.costCenterId ? appliedFilters.costCenterId : null,
           p_journal_id: appliedFilters.journalId ? appliedFilters.journalId : null,
         }),
+        supabase.rpc('enterprise_trial_balance', {
+          p_start: appliedFilters.startDate || null,
+          p_end: appliedFilters.endDate || appliedFilters.asOfDate || null,
+          p_company_id: null,
+          p_branch_id: null,
+          p_cost_center_id: appliedFilters.costCenterId ? appliedFilters.costCenterId : null,
+          p_dept_id: null,
+          p_project_id: null,
+          p_currency_view: 'base',
+          p_rollup: 'account',
+        }),
       ]);
 
       if (tbError) throw tbError;
       if (isError) throw isError;
       if (bsError) throw bsError;
+      if (tbEntErr) throw tbEntErr;
 
       setTrialBalance(((tbData as any[]) || []).map((r) => ({
         account_code: String(r.account_code),
@@ -805,6 +817,10 @@ const FinancialReports: React.FC = () => {
 
       const bsRow = ((bsData as any[]) || [])[0];
       setBalanceSheet(bsRow ? { assets: Number(bsRow.assets) || 0, liabilities: Number(bsRow.liabilities) || 0, equity: Number(bsRow.equity) || 0 } : null);
+      const entFirst = ((tbEnt as any[]) || [])[0];
+      if (entFirst && typeof entFirst.currency_code === 'string' && entFirst.currency_code.trim()) {
+        setBaseCode(String(entFirst.currency_code).toUpperCase());
+      }
       setLastUpdated((prev) => ({ ...prev, statements: new Date().toISOString() }));
     } catch (err: any) {
       showNotification(err?.message || 'تعذر تحميل القوائم المالية', 'error');
@@ -974,7 +990,13 @@ const FinancialReports: React.FC = () => {
     if (!supabase) return;
     setLoadingKey('cashFlow', true);
     try {
-      const { data: cfData, error: cfError } = await supabase.rpc('cash_flow_statement', periodRangeParams);
+      const { data: cfData, error: cfError } = await supabase.rpc('enterprise_cash_flow_direct', {
+        p_start: appliedFilters.startDate || null,
+        p_end: appliedFilters.endDate || null,
+        p_company_id: null,
+        p_branch_id: null,
+        p_cost_center_id: appliedFilters.costCenterId ? appliedFilters.costCenterId : null,
+      });
       if (cfError) throw cfError;
 
       const cfRow = ((cfData as any[]) || [])[0];
@@ -1000,11 +1022,12 @@ const FinancialReports: React.FC = () => {
     try {
       const now = new Date(appliedFilters.startDate || toYmdLocal(new Date()));
       const { start, end } = getPreviousMonthRange(now);
-      const { data: cfData, error: cfError } = await supabase.rpc('cash_flow_statement', {
+      const { data: cfData, error: cfError } = await supabase.rpc('enterprise_cash_flow_direct', {
         p_start: start || null,
         p_end: end || null,
+        p_company_id: null,
+        p_branch_id: null,
         p_cost_center_id: appliedFilters.costCenterId ? appliedFilters.costCenterId : null,
-        p_journal_id: appliedFilters.journalId ? appliedFilters.journalId : null,
       });
       if (cfError) throw cfError;
       const cfRow = ((cfData as any[]) || [])[0];
