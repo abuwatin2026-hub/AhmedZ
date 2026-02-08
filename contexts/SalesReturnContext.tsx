@@ -124,16 +124,45 @@ export const SalesReturnProvider: React.FC<{ children: React.ReactNode }> = ({ c
         created_by: user?.id
       };
 
-      const { data, error } = await supabase!
-        .from('sales_returns')
-        .insert([returnData])
-        .select()
-        .single();
+      const recentDraft = await (async () => {
+        if (!supabase || !user?.id) return null;
+        try {
+          const { data, error } = await supabase
+            .from('sales_returns')
+            .select('*')
+            .eq('order_id', order.id)
+            .eq('status', 'draft')
+            .eq('created_by', user.id)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (error) return null;
+          return data || null;
+        } catch {
+          return null;
+        }
+      })();
+
+      const { data, error } = recentDraft?.id
+        ? await supabase!
+          .from('sales_returns')
+          .update({ ...returnData, updated_at: new Date().toISOString() } as any)
+          .eq('id', recentDraft.id)
+          .select()
+          .single()
+        : await supabase!
+          .from('sales_returns')
+          .insert([returnData])
+          .select()
+          .single();
 
       if (error) throw error;
       
       const mapped = mapRowToSalesReturn(data);
-      setReturns(prev => [mapped, ...prev]);
+      setReturns(prev => {
+        const next = prev.filter(r => r.id !== mapped.id);
+        return [mapped, ...next];
+      });
       return mapped;
     } catch (error) {
       console.error('Error creating sales return:', error);

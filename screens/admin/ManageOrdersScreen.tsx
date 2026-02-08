@@ -93,6 +93,7 @@ const ManageOrdersScreen: React.FC = () => {
     const [returnsOrderId, setReturnsOrderId] = useState<string | null>(null);
     const [returnsByOrderId, setReturnsByOrderId] = useState<Record<string, any[]>>({});
     const [returnsLoading, setReturnsLoading] = useState(false);
+    const [returnsActionBusy, setReturnsActionBusy] = useState<{ id: string; action: 'process' | 'cancel' | '' }>({ id: '', action: '' });
     const returnsOrder = useMemo(() => {
         if (!returnsOrderId) return null;
         return orders.find(o => o.id === returnsOrderId) || null;
@@ -713,6 +714,56 @@ const ManageOrdersScreen: React.FC = () => {
             setReturnsLoading(false);
         }
     }, [getReturnsByOrder, returnsByOrderId, showNotification]);
+
+    const refreshReturnsForOrder = useCallback(async (orderId: string) => {
+        try {
+            setReturnsLoading(true);
+            const list = await getReturnsByOrder(orderId);
+            setReturnsByOrderId(prev => ({ ...prev, [orderId]: list as any[] }));
+        } catch (error) {
+            showNotification(localizeSupabaseError(error), 'error');
+        } finally {
+            setReturnsLoading(false);
+        }
+    }, [getReturnsByOrder, showNotification]);
+
+    const retryProcessDraftReturn = useCallback(async (orderId: string, returnId: string) => {
+        if (!orderId || !returnId) return;
+        if (returnsActionBusy.id) return;
+        setReturnsActionBusy({ id: returnId, action: 'process' });
+        try {
+            await processReturn(returnId);
+            showNotification('تم إكمال المرتجع بنجاح.', 'success');
+            await refreshReturnsForOrder(orderId);
+        } catch (error) {
+            const msg = error instanceof Error ? error.message : '';
+            showNotification(msg || 'فشل إكمال المرتجع.', 'error');
+        } finally {
+            setReturnsActionBusy({ id: '', action: '' });
+        }
+    }, [processReturn, refreshReturnsForOrder, returnsActionBusy.id, showNotification]);
+
+    const cancelDraftReturn = useCallback(async (orderId: string, returnId: string) => {
+        if (!orderId || !returnId) return;
+        if (returnsActionBusy.id) return;
+        const supabase = getSupabaseClient();
+        if (!supabase) return;
+        setReturnsActionBusy({ id: returnId, action: 'cancel' });
+        try {
+            const { error } = await supabase
+                .from('sales_returns')
+                .update({ status: 'cancelled', updated_at: new Date().toISOString() } as any)
+                .eq('id', returnId)
+                .eq('status', 'draft');
+            if (error) throw error;
+            showNotification('تم إلغاء مسودة المرتجع.', 'success');
+            await refreshReturnsForOrder(orderId);
+        } catch (error) {
+            showNotification(localizeSupabaseError(error) || 'فشل إلغاء المسودة.', 'error');
+        } finally {
+            setReturnsActionBusy({ id: '', action: '' });
+        }
+    }, [refreshReturnsForOrder, returnsActionBusy.id, showNotification]);
 
     useEffect(() => {
         const state = location.state as any;
@@ -3852,6 +3903,32 @@ const ManageOrdersScreen: React.FC = () => {
                                                     {r.status === 'completed' ? 'مكتمل' : (r.status === 'draft' ? 'مسودة' : 'ملغي')}
                                                 </div>
                                             </div>
+                                            {r.status === 'draft' && (
+                                                <div className="mt-2 flex items-center gap-2">
+                                                    <button
+                                                        type="button"
+                                                        disabled={Boolean(returnsActionBusy.id)}
+                                                        onClick={() => {
+                                                            if (!returnsOrderId) return;
+                                                            void retryProcessDraftReturn(returnsOrderId, String(r.id));
+                                                        }}
+                                                        className="px-3 py-2 rounded-md bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 disabled:opacity-60"
+                                                    >
+                                                        {returnsActionBusy.id === String(r.id) && returnsActionBusy.action === 'process' ? 'جاري الإكمال...' : 'إكمال المرتجع'}
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        disabled={Boolean(returnsActionBusy.id)}
+                                                        onClick={() => {
+                                                            if (!returnsOrderId) return;
+                                                            void cancelDraftReturn(returnsOrderId, String(r.id));
+                                                        }}
+                                                        className="px-3 py-2 rounded-md bg-gray-200 text-gray-800 text-xs font-semibold hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600 disabled:opacity-60"
+                                                    >
+                                                        {returnsActionBusy.id === String(r.id) && returnsActionBusy.action === 'cancel' ? 'جاري الإلغاء...' : 'إلغاء المسودة'}
+                                                    </button>
+                                                </div>
+                                            )}
                                             <div className="mt-1 text-xs text-gray-600 dark:text-gray-300">
                                                 التاريخ: {String(r.returnDate || r.return_date || '').slice(0, 19).replace('T', ' ')}
                                             </div>
