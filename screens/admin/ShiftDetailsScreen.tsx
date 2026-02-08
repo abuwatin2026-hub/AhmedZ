@@ -10,6 +10,7 @@ import { buildPdfBrandOptions, buildXlsxBrandOptions } from '../../utils/brandin
 import { getInvoiceOrderView } from '../../utils/orderUtils';
 import type { Order } from '../../types';
 import { useSettings } from '../../contexts/SettingsContext';
+import CurrencyDualAmount from '../../components/common/CurrencyDualAmount';
 
 type ShiftRow = {
   id: string;
@@ -33,12 +34,27 @@ type PaymentRow = {
   direction: 'in' | 'out' | string;
   method: string;
   amount: number;
+  base_amount: number | null;
+  fx_rate: number | null;
   currency: string;
   reference_table: string | null;
   reference_id: string | null;
   occurred_at: string;
   created_by: string | null;
   data: Record<string, unknown>;
+};
+
+type RecognizedOrderRow = {
+  id: string;
+  status: string;
+  paidAt?: string | null;
+  currency: string;
+  total: number;
+  fx_rate: number | null;
+  base_total: number | null;
+  discountAmount: number;
+  totalBase: number | null;
+  discountBase: number | null;
 };
 
 const methodLabel = (method: string) => {
@@ -105,7 +121,7 @@ const ShiftDetailsScreen: React.FC = () => {
   const [shift, setShift] = useState<ShiftRow | null>(null);
   const [cashierLabel, setCashierLabel] = useState<string>('');
   const [payments, setPayments] = useState<PaymentRow[]>([]);
-  const [recognizedOrders, setRecognizedOrders] = useState<Order[]>([]);
+  const [recognizedOrders, setRecognizedOrders] = useState<RecognizedOrderRow[]>([]);
   const [expectedCash, setExpectedCash] = useState<number | null>(null);
   const [error, setError] = useState<string>('');
   const [resolvedShiftId, setResolvedShiftId] = useState<string | null>(shiftId || null);
@@ -208,7 +224,7 @@ const ShiftDetailsScreen: React.FC = () => {
           }
         }
 
-        const paymentsSelect = 'id,direction,method,amount,currency,reference_table,reference_id,occurred_at,created_by,data';
+        const paymentsSelect = 'id,direction,method,amount,base_amount,fx_rate,currency,reference_table,reference_id,occurred_at,created_by,data';
         const { data: shiftLinked, error: shiftLinkedError } = await supabase
           .from('payments')
           .select(paymentsSelect)
@@ -222,6 +238,8 @@ const ShiftDetailsScreen: React.FC = () => {
           direction: p.direction,
           method: String(p.method || ''),
           amount: Number(p.amount) || 0,
+          base_amount: p.base_amount === null || p.base_amount === undefined ? null : Number(p.base_amount),
+          fx_rate: p.fx_rate === null || p.fx_rate === undefined ? null : Number(p.fx_rate),
           currency: String(p.currency || ''),
           reference_table: p.reference_table ? String(p.reference_table) : null,
           reference_id: p.reference_id ? String(p.reference_id) : null,
@@ -241,26 +259,43 @@ const ShiftDetailsScreen: React.FC = () => {
         );
         if (orderIds.length) {
           const chunkSize = 200;
-          const nextOrders: Order[] = [];
+          const nextOrders: RecognizedOrderRow[] = [];
           for (let i = 0; i < orderIds.length; i += chunkSize) {
             const chunk = orderIds.slice(i, i + chunkSize);
             const { data: orderRows, error: orderError } = await supabase
               .from('orders')
-              .select('id,status,data')
+              .select('id,status,data,fx_rate,base_total,currency,total')
               .in('id', chunk);
             if (orderError) throw orderError;
             for (const row of orderRows || []) {
               const base = (row as any)?.data;
               if (!base || typeof base !== 'object') continue;
               const view = getInvoiceOrderView(base as Order);
+              const currency = String((row as any)?.currency || (view as any)?.currency || '').trim().toUpperCase();
+              const fx = (row as any)?.fx_rate === null || (row as any)?.fx_rate === undefined ? null : Number((row as any).fx_rate);
+              const baseTotal = (row as any)?.base_total === null || (row as any)?.base_total === undefined ? null : Number((row as any).base_total);
+              const totalForeign = Number((row as any)?.total) || Number((view as any)?.total) || 0;
+              const discountForeign = Number((view as any)?.discountAmount) || 0;
+
+              const isBase = currency && String(baseCode || '').trim().toUpperCase() === currency;
+              const computedTotalBase = Number.isFinite(baseTotal as any) ? (baseTotal as number) : (isBase ? totalForeign : (Number.isFinite(fx as any) ? totalForeign * (fx as number) : null));
+              const computedDiscountBase = isBase ? discountForeign : (Number.isFinite(fx as any) ? discountForeign * (fx as number) : null);
+
               nextOrders.push({
-                ...view,
-                id: String((row as any).id || (view as any).id || ''),
-                status: String((row as any).status || view.status || '') as any,
+                id: String((row as any).id || ''),
+                status: String((row as any).status || view.status || ''),
+                paidAt: (view as any).paidAt ? String((view as any).paidAt) : null,
+                currency: currency || String(baseCode || '').trim().toUpperCase() || '—',
+                total: totalForeign,
+                fx_rate: Number.isFinite(fx as any) ? (fx as number) : null,
+                base_total: Number.isFinite(baseTotal as any) ? (baseTotal as number) : null,
+                discountAmount: discountForeign,
+                totalBase: Number.isFinite(computedTotalBase as any) ? (computedTotalBase as number) : null,
+                discountBase: Number.isFinite(computedDiscountBase as any) ? (computedDiscountBase as number) : null,
               });
             }
           }
-          const effective = nextOrders.filter(o => o.status === 'delivered' && Boolean(o.paidAt));
+          const effective = nextOrders.filter(o => String(o.status || '') === 'delivered' && Boolean(o.paidAt));
           setRecognizedOrders(effective);
         } else {
           setRecognizedOrders([]);
@@ -315,7 +350,7 @@ const ShiftDetailsScreen: React.FC = () => {
       });
       if (error) throw error;
 
-      const paymentsSelect = 'id,direction,method,amount,currency,reference_table,reference_id,occurred_at,created_by,data';
+      const paymentsSelect = 'id,direction,method,amount,base_amount,fx_rate,currency,reference_table,reference_id,occurred_at,created_by,data';
       const { data: shiftLinked, error: shiftLinkedError } = await supabase
         .from('payments')
         .select(paymentsSelect)
@@ -329,6 +364,8 @@ const ShiftDetailsScreen: React.FC = () => {
           direction: p.direction,
           method: String(p.method || ''),
           amount: Number(p.amount) || 0,
+          base_amount: p.base_amount === null || p.base_amount === undefined ? null : Number(p.base_amount),
+          fx_rate: p.fx_rate === null || p.fx_rate === undefined ? null : Number(p.fx_rate),
           currency: String(p.currency || ''),
           reference_table: p.reference_table ? String(p.reference_table) : null,
           reference_id: p.reference_id ? String(p.reference_id) : null,
@@ -350,21 +387,42 @@ const ShiftDetailsScreen: React.FC = () => {
   };
 
   const computed = useMemo(() => {
+    const base = String(baseCode || '').trim().toUpperCase();
     const totalsByMethod: Record<string, { in: number; out: number }> = {};
+    let missingPaymentBase = 0;
     for (const p of payments) {
       const key = p.method || '-';
       if (!totalsByMethod[key]) totalsByMethod[key] = { in: 0, out: 0 };
-      if (p.direction === 'in') totalsByMethod[key].in += Number(p.amount) || 0;
-      if (p.direction === 'out') totalsByMethod[key].out += Number(p.amount) || 0;
+      const cur = String(p.currency || '').trim().toUpperCase();
+      const hasBase = p.base_amount !== null && p.base_amount !== undefined && Number.isFinite(Number(p.base_amount));
+      const amtBase = hasBase ? Number(p.base_amount) : (cur && base && cur === base ? (Number(p.amount) || 0) : null);
+      if (amtBase === null) {
+        if (cur && base && cur !== base) missingPaymentBase += 1;
+        continue;
+      }
+      if (p.direction === 'in') totalsByMethod[key].in += amtBase;
+      if (p.direction === 'out') totalsByMethod[key].out += amtBase;
     }
     const cash = totalsByMethod['cash'] || { in: 0, out: 0 };
     const refundsTotal = payments
       .filter(p => p.direction === 'out' && p.reference_table === 'sales_returns')
-      .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
-    const salesTotal = recognizedOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
-    const discountsTotal = recognizedOrders.reduce((sum, o) => sum + (Number(o.discountAmount) || 0), 0);
-    return { totalsByMethod, cash, refundsTotal, salesTotal, discountsTotal };
-  }, [payments, recognizedOrders]);
+      .reduce((sum, p) => {
+        const cur = String(p.currency || '').trim().toUpperCase();
+        const hasBase = p.base_amount !== null && p.base_amount !== undefined && Number.isFinite(Number(p.base_amount));
+        const amtBase = hasBase ? Number(p.base_amount) : (cur && base && cur === base ? (Number(p.amount) || 0) : 0);
+        return sum + amtBase;
+      }, 0);
+    const salesTotal = recognizedOrders.reduce((sum, o) => sum + (Number(o.totalBase) || 0), 0);
+    const discountsTotal = recognizedOrders.reduce((sum, o) => sum + (Number(o.discountBase) || 0), 0);
+
+    const salesByCurrency: Record<string, number> = {};
+    for (const o of recognizedOrders) {
+      const c = String(o.currency || '').trim().toUpperCase() || '—';
+      salesByCurrency[c] = (salesByCurrency[c] || 0) + (Number(o.total) || 0);
+    }
+
+    return { totalsByMethod, cash, refundsTotal, salesTotal, discountsTotal, salesByCurrency, missingPaymentBase };
+  }, [payments, recognizedOrders, baseCode]);
 
   if (loading) return <div className="p-8 text-center">جاري تحميل التفاصيل...</div>;
 
@@ -643,6 +701,9 @@ const ShiftDetailsScreen: React.FC = () => {
           <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50">
             <div className="text-xs text-gray-500 dark:text-gray-300">المبيعات</div>
             <div className="mt-1 text-lg font-bold font-mono dark:text-white">{computed.salesTotal.toFixed(2)} {baseCode || '—'}</div>
+            <div className="mt-1 text-[11px] text-gray-500 dark:text-gray-300" dir="ltr">
+              {Object.entries(computed.salesByCurrency).map(([c, v]) => `${Number(v || 0).toFixed(2)} ${c}`).join(' • ') || '—'}
+            </div>
           </div>
           <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50">
             <div className="text-xs text-gray-500 dark:text-gray-300">المرتجعات</div>
@@ -787,7 +848,15 @@ const ShiftDetailsScreen: React.FC = () => {
                       </span>
                     </td>
                     <td className="p-4 text-sm dark:text-gray-300">{p.method}</td>
-                    <td className="p-4 text-sm font-mono dark:text-gray-300">{formatNumber(p.amount)}</td>
+                    <td className="p-4 text-sm font-mono dark:text-gray-300">
+                      <CurrencyDualAmount
+                        amount={Number(p.amount) || 0}
+                        currencyCode={String(p.currency || '').toUpperCase()}
+                        baseAmount={p.base_amount === null || p.base_amount === undefined ? undefined : Number(p.base_amount)}
+                        fxRate={p.fx_rate === null || p.fx_rate === undefined ? undefined : Number(p.fx_rate)}
+                        compact
+                      />
+                    </td>
                     <td className="p-4 text-sm text-gray-700 dark:text-gray-200">{paymentDetails(p)}</td>
                     <td className="p-4 text-sm text-gray-500 dark:text-gray-300">
                       {p.reference_table ? `${p.reference_table}${p.reference_id ? `:${String(p.reference_id).slice(-6).toUpperCase()}` : ''}` : '-'}

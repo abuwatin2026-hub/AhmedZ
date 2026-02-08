@@ -205,18 +205,23 @@ const ShiftReportsScreen: React.FC = () => {
             }
             const { data, error } = await supabase
                 .from('payments')
-                .select('method,direction,amount')
+                .select('method,direction,amount,base_amount,currency')
                 .eq('shift_id', closeShiftId)
                 .limit(5000);
             if (error) {
                 setCloseTotalsByMethod({});
                 return;
             }
+            const base = String(baseCode || '').trim().toUpperCase();
             const totals: Record<string, { in: number; out: number }> = {};
             for (const row of Array.isArray(data) ? data : []) {
                 const method = String((row as any)?.method || '').trim() || '-';
                 const dir = String((row as any)?.direction || '').toLowerCase();
-                const amt = Number((row as any)?.amount) || 0;
+                const cur = String((row as any)?.currency || '').trim().toUpperCase();
+                const rawBase = (row as any)?.base_amount;
+                const amt = (rawBase !== null && rawBase !== undefined && Number.isFinite(Number(rawBase)))
+                    ? Number(rawBase)
+                    : (cur && base && cur === base ? (Number((row as any)?.amount) || 0) : 0);
                 if (!totals[method]) totals[method] = { in: 0, out: 0 };
                 if (dir === 'in') totals[method].in += amt;
                 else if (dir === 'out') totals[method].out += amt;
@@ -234,7 +239,7 @@ const ShiftReportsScreen: React.FC = () => {
             });
         };
         loadCloseMethodTotals();
-    }, [supabase, closeShiftId]);
+    }, [supabase, closeShiftId, baseCode]);
 
     useEffect(() => {
         const loadReport = async () => {
@@ -293,7 +298,10 @@ const ShiftReportsScreen: React.FC = () => {
                         if (!base || typeof base !== 'object') continue;
                         const view = getInvoiceOrderView(base as Order);
                         const fx = Number((row as any)?.fx_rate) || 1;
-                        const totalBase = Number(view.total || 0) * fx || Number((row as any)?.base_total || 0);
+                        const rowBaseTotal = (row as any)?.base_total;
+                        const totalBase = (rowBaseTotal !== null && rowBaseTotal !== undefined && Number.isFinite(Number(rowBaseTotal)))
+                            ? Number(rowBaseTotal)
+                            : (Number(view.total || 0) * fx || 0);
                         const discountBase = Number(view.discountAmount || 0) * fx;
                         nextOrders.push({
                             ...view,
@@ -302,6 +310,7 @@ const ShiftReportsScreen: React.FC = () => {
                         } as any);
                         (nextOrders as any)[(nextOrders as any).length - 1].totalBase = totalBase;
                         (nextOrders as any)[(nextOrders as any).length - 1].discountBase = discountBase;
+                        (nextOrders as any)[(nextOrders as any).length - 1].currencyCode = String((row as any)?.currency || '').trim().toUpperCase();
                     }
                 }
                 setReportOrders(nextOrders.filter(o => o.status === 'delivered' && Boolean(o.paidAt)));
@@ -484,20 +493,43 @@ const ShiftReportsScreen: React.FC = () => {
     };
 
     const reportComputed = useMemo(() => {
+        const base = String(baseCode || '').trim().toUpperCase();
         const totalsByMethod: Record<string, { in: number; out: number }> = {};
+        let missingPaymentBase = 0;
         for (const p of reportPayments) {
             const key = String((p as any)?.method || '-');
             if (!totalsByMethod[key]) totalsByMethod[key] = { in: 0, out: 0 };
             const dir = String((p as any)?.direction || '').toLowerCase();
-            const amt = Number((p as any)?.base_amount ?? (p as any)?.amount) || 0;
+            const cur = String((p as any)?.currency || '').trim().toUpperCase();
+            const rawBase = (p as any)?.base_amount;
+            const amt = (rawBase !== null && rawBase !== undefined && Number.isFinite(Number(rawBase)))
+                ? Number(rawBase)
+                : (cur && base && cur === base ? (Number((p as any)?.amount) || 0) : null);
+            if (amt === null) {
+                if (cur && base && cur !== base) missingPaymentBase += 1;
+                continue;
+            }
             if (dir === 'in') totalsByMethod[key].in += amt;
             if (dir === 'out') totalsByMethod[key].out += amt;
         }
         const refunds = reportPayments.filter((p: any) => String(p?.direction || '') === 'out' && String(p?.reference_table || '') === 'sales_returns');
         const refundIds = new Set(refunds.map((p: any) => String(p?.reference_id || '')).filter(Boolean));
-        const refundsTotal = refunds.reduce((sum: number, p: any) => sum + (Number(p?.base_amount ?? p?.amount) || 0), 0);
+        const refundsTotal = refunds.reduce((sum: number, p: any) => {
+            const cur = String(p?.currency || '').trim().toUpperCase();
+            const rawBase = p?.base_amount;
+            const amt = (rawBase !== null && rawBase !== undefined && Number.isFinite(Number(rawBase)))
+                ? Number(rawBase)
+                : (cur && base && cur === base ? (Number(p?.amount) || 0) : 0);
+            return sum + amt;
+        }, 0);
         const salesTotal = reportOrders.reduce((sum, o: any) => sum + (Number((o as any)?.totalBase || 0)), 0);
         const discountsTotal = reportOrders.reduce((sum, o: any) => sum + (Number((o as any)?.discountBase || 0)), 0);
+
+        const salesByCurrency: Record<string, number> = {};
+        for (const o of reportOrders as any[]) {
+            const c = String((o as any)?.currencyCode || '').trim().toUpperCase() || String(base || '—');
+            salesByCurrency[c] = (salesByCurrency[c] || 0) + (Number((o as any)?.total) || 0);
+        }
         return {
             totalsByMethod,
             refundsTotal,
@@ -507,8 +539,10 @@ const ShiftReportsScreen: React.FC = () => {
             netTotal: salesTotal - refundsTotal,
             paymentsCount: reportPayments.length,
             ordersCount: reportOrders.length,
+            salesByCurrency,
+            missingPaymentBase,
         };
-    }, [reportPayments, reportOrders]);
+    }, [reportPayments, reportOrders, baseCode]);
 
     const reportCashExpected = useMemo(() => {
         const startAmount = Number((reportShift as any)?.start_amount) || 0;
@@ -608,6 +642,9 @@ const ShiftReportsScreen: React.FC = () => {
                         <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50">
                             <div className="text-xs text-gray-500 dark:text-gray-300">المبيعات</div>
                             <div className="mt-1 text-lg font-bold font-mono dark:text-white">{reportComputed.salesTotal.toFixed(2)} {baseCode || '—'}</div>
+                            <div className="mt-1 text-[11px] text-gray-500 dark:text-gray-300" dir="ltr">
+                                {Object.entries(reportComputed.salesByCurrency || {}).map(([c, v]) => `${Number(v || 0).toFixed(2)} ${c}`).join(' • ') || '—'}
+                            </div>
                         </div>
                         <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50">
                             <div className="text-xs text-gray-500 dark:text-gray-300">المرتجعات</div>
@@ -626,6 +663,11 @@ const ShiftReportsScreen: React.FC = () => {
                     {reportMissingRefunds > 0.01 && (
                         <div className="mt-3 p-3 rounded-lg bg-amber-50 text-amber-900 text-sm">
                             مرتجعات غير مرتبطة بعمليات دفع داخل الوردية: {reportMissingRefunds.toFixed(2)} {baseCode || '—'}
+                        </div>
+                    )}
+                    {reportComputed.missingPaymentBase > 0 && (
+                        <div className="mt-3 p-3 rounded-lg bg-amber-50 text-amber-900 text-sm">
+                            توجد {reportComputed.missingPaymentBase} عملية بعملة أجنبية بدون مبلغ محوّل للأساسية. أدخل أسعار الصرف ثم أعد احتساب FX.
                         </div>
                     )}
                 </div>

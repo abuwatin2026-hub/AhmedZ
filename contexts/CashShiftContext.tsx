@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { disableRealtime, getSupabaseClient, isRealtimeEnabled } from '../supabase';
+import { disableRealtime, getBaseCurrencyCode, getSupabaseClient, isRealtimeEnabled } from '../supabase';
 import { useAuth } from './AuthContext';
 import { CashShift } from '../types';
 import { isAbortLikeError, localizeSupabaseError } from '../utils/errorUtils';
@@ -47,17 +47,25 @@ export const CashShiftProvider = ({ children }: { children: ReactNode }) => {
 
         const { data: paymentsByShift, error: paymentsByShiftError } = await supabase
             .from('payments')
-            .select('amount,direction')
+            .select('amount,base_amount,currency,direction')
             .eq('method', 'cash')
             .eq('shift_id', shift.id);
 
         if (!paymentsByShiftError) {
+            const baseCode = String((await getBaseCurrencyCode()) || '').trim().toUpperCase();
+            const toBase = (p: any) => {
+                const base = Number(p?.base_amount);
+                if (Number.isFinite(base)) return base;
+                const cur = String(p?.currency || '').trim().toUpperCase();
+                if (baseCode && cur === baseCode) return Number(p?.amount) || 0;
+                return 0;
+            };
             const cashIn = paymentsByShift
                 ?.filter((p: any) => p.direction === 'in')
-                .reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0) || 0;
+                .reduce((sum: number, p: any) => sum + toBase(p), 0) || 0;
             const cashOut = paymentsByShift
                 ?.filter((p: any) => p.direction === 'out')
-                .reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0) || 0;
+                .reduce((sum: number, p: any) => sum + toBase(p), 0) || 0;
             return shift.startAmount + cashIn - cashOut;
         }
         return shift.startAmount;
