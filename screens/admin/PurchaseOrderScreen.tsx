@@ -188,7 +188,7 @@ const PurchaseOrderScreen: React.FC = () => {
                 .from('import_shipments')
                 .select('id,reference_number,status')
                 .eq('destination_warehouse_id', wid)
-                .not('status', 'in', '("cancelled","closed")')
+                .neq('status', 'cancelled')
                 .order('created_at', { ascending: false })
                 .limit(20);
             if (sErr) throw sErr;
@@ -202,10 +202,12 @@ const PurchaseOrderScreen: React.FC = () => {
             const idx = Number(String(selection).trim());
             let shipmentId = '';
             let shipmentRef = '';
+            let shipmentStatus = '';
             if (Number.isFinite(idx) && idx >= 1 && idx <= list.length) {
                 const s = list[idx - 1] as any;
                 shipmentId = String(s?.id || '');
                 shipmentRef = String(s?.reference_number || shipmentId);
+                shipmentStatus = String(s?.status || '');
             } else {
                 const defRef = `SHP-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${String(order.poNumber || order.id).slice(-6).toUpperCase()}`;
                 const ref = window.prompt(`رقم الشحنة/البوليصة (مطلوب): ${orderRef}`, defRef);
@@ -234,6 +236,15 @@ const PurchaseOrderScreen: React.FC = () => {
 
             if (!shipmentId) {
                 showNotification('تعذر تحديد الشحنة.', 'error');
+                return;
+            }
+
+            if (shipmentStatus === 'closed') {
+                showNotification('هذه الشحنة مغلقة وسيتم فتحها للعرض فقط.', 'info');
+                const open = window.confirm(`هذه الشحنة مغلقة: ${shipmentRef}\nهل تريد فتح الشحنة الآن؟`);
+                if (open) {
+                    window.open(`/admin/import-shipments/${shipmentId}`, '_blank');
+                }
                 return;
             }
 

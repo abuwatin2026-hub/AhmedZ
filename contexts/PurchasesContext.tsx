@@ -1040,7 +1040,15 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     const receivePurchaseOrderPartial = async (
         purchaseOrderId: string,
-        items: Array<{ itemId: string; quantity: number; productionDate?: string; expiryDate?: string }>,
+        items: Array<{
+          itemId: string;
+          quantity: number;
+          productionDate?: string;
+          expiryDate?: string;
+          transportCost?: number;
+          supplyTaxCost?: number;
+          importShipmentId?: string;
+        }>,
         occurredAt?: string
     ): Promise<string> => {
         if (!supabase || !user) throw new Error('قاعدة البيانات غير متاحة.');
@@ -1053,6 +1061,10 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           const normalizedItems = (items || []).map((i) => {
             const itemId = String((i as any)?.itemId || '').trim();
             const qty = Number((i as any)?.quantity || 0);
+            const importShipmentIdRaw = String(
+              (i as any)?.importShipmentId || (i as any)?.shipmentId || (i as any)?.import_shipment_id || ''
+            ).trim();
+            const importShipmentId = importShipmentIdRaw && isUuid(importShipmentIdRaw) ? importShipmentIdRaw : '';
             if (!itemId) throw new Error('معرّف الصنف غير صالح.');
             if (!Number.isFinite(qty) || qty <= 0) throw new Error('كمية الاستلام غير صالحة.');
             return {
@@ -1062,6 +1074,7 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               expiryDate: toIsoDateOnlyOrNull((i as any)?.expiryDate),
               transportCost: (i as any).transportCost,
               supplyTaxCost: (i as any).supplyTaxCost,
+              importShipmentId: importShipmentId || undefined,
             };
           });
           const mergedByItemId = new Map<string, any>();
@@ -1076,6 +1089,7 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             prev.quantity = Number(prev.quantity || 0) + Number(row.quantity || 0);
             if (!prev.harvestDate && row.harvestDate) prev.harvestDate = row.harvestDate;
             if (!prev.expiryDate && row.expiryDate) prev.expiryDate = row.expiryDate;
+            if (!prev.importShipmentId && row.importShipmentId) prev.importShipmentId = row.importShipmentId;
             const prevTransport = Number(prev.transportCost || 0);
             const rowTransport = Number(row.transportCost || 0);
             if (prevTransport === 0 && rowTransport !== 0) prev.transportCost = row.transportCost;
@@ -1094,6 +1108,7 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                 String(x.expiryDate || ''),
                 String(Number(x.transportCost || 0)),
                 String(Number(x.supplyTaxCost || 0)),
+                String(x.importShipmentId || ''),
               ].join(':'))
               .sort()
               .join('|');
