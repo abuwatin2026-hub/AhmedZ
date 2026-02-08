@@ -823,6 +823,18 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                       .limit(1)
                       .maybeSingle();
                     if (!existingErr && existing?.id) {
+                      try {
+                        const repairRes = await supabase.rpc('repair_purchase_receipt_stock', { p_receipt_id: existing.id } as any);
+                        const repairMsg = String((repairRes as any)?.error?.message || '');
+                        if (/schema cache|could not find the function|PGRST202/i.test(repairMsg)) {
+                          await reloadPostgrestSchema();
+                        }
+                      } catch {
+                      }
+                      try {
+                        await supabase.rpc('reconcile_purchase_order_receipt_status', { p_order_id: orderId } as any);
+                      } catch {
+                      }
                       await updateMenuItemDates(items);
                       await fetchPurchaseOrders({ silent: false });
                       return;
@@ -1128,6 +1140,18 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                   .limit(1)
                   .maybeSingle();
                 if (!existingErr && existing?.id) {
+                  try {
+                    const repairRes = await supabase.rpc('repair_purchase_receipt_stock', { p_receipt_id: existing.id } as any);
+                    const repairMsg = String((repairRes as any)?.error?.message || '');
+                    if (/schema cache|could not find the function|PGRST202/i.test(repairMsg)) {
+                      await reloadPostgrestSchema();
+                    }
+                  } catch {
+                  }
+                  try {
+                    await supabase.rpc('reconcile_purchase_order_receipt_status', { p_order_id: orderId } as any);
+                  } catch {
+                  }
                   await updateMenuItemDates(items);
                   await fetchPurchaseOrders();
                   return String(existing.id || '');
