@@ -33,6 +33,8 @@ const ImportShipmentDetailsScreen: React.FC = () => {
     const [receiptSelection, setReceiptSelection] = useState<Record<string, boolean>>({});
     const [receiptsLoading, setReceiptsLoading] = useState(false);
     const [pricingLoading, setPricingLoading] = useState(false);
+
+    const isUuid = (value: unknown) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value ?? '').trim());
     const [pricingRows, setPricingRows] = useState<Array<any>>([]);
     const [pricingTierType, setPricingTierType] = useState<'retail' | 'wholesale' | 'distributor' | 'vip'>('wholesale');
 
@@ -176,7 +178,12 @@ const ImportShipmentDetailsScreen: React.FC = () => {
     };
 
     const loadPricing = async () => {
-        if (!id) return;
+        const shipmentId = String(shipment?.id || '').trim();
+        if (!shipmentId) return;
+        if (!isUuid(shipmentId)) {
+            showNotification('تعذر تحميل بيانات الشحنة بسبب معرف غير صالح (UUID). حدّث قاعدة البيانات في الإنتاج ثم أعد المحاولة.', 'error');
+            return;
+        }
         if (!shipment?.destinationWarehouseId) return;
         const supabase = getSupabaseClient();
         if (!supabase) return;
@@ -185,7 +192,7 @@ const ImportShipmentDetailsScreen: React.FC = () => {
             const { data: receiptIdsRows, error: receiptIdsError } = await supabase
                 .from('purchase_receipts')
                 .select('id')
-                .eq('import_shipment_id', id)
+                .eq('import_shipment_id', shipmentId)
                 .eq('warehouse_id', shipment.destinationWarehouseId);
             if (receiptIdsError) throw receiptIdsError;
             const receiptIds = (receiptIdsRows || []).map((r: any) => String(r?.id || '')).filter(Boolean);
@@ -277,7 +284,9 @@ const ImportShipmentDetailsScreen: React.FC = () => {
     };
 
     const loadReceipts = async (opts?: { silent?: boolean }) => {
-        if (!id) return;
+        const shipmentId = String(shipment?.id || '').trim();
+        if (!shipmentId) return;
+        if (!isUuid(shipmentId)) return;
         if (!shipment?.destinationWarehouseId) return;
         const supabase = getSupabaseClient();
         if (!supabase) return;
@@ -287,7 +296,7 @@ const ImportShipmentDetailsScreen: React.FC = () => {
                 .from('purchase_receipts')
                 .select('id, received_at, purchase_order_id, import_shipment_id, purchase_order:purchase_orders(reference_number, supplier:suppliers(name))')
                 .eq('warehouse_id', shipment.destinationWarehouseId)
-                .or(`import_shipment_id.is.null,import_shipment_id.eq.${id}`)
+                .or(`import_shipment_id.is.null,import_shipment_id.eq.${shipmentId}`)
                 .order('received_at', { ascending: false })
                 .limit(100);
             if (error) throw error;
@@ -297,7 +306,7 @@ const ImportShipmentDetailsScreen: React.FC = () => {
             for (const r of rows) {
                 const rid = String((r as any)?.id || '');
                 if (!rid) continue;
-                const linked = String((r as any)?.import_shipment_id || '') === id;
+                const linked = String((r as any)?.import_shipment_id || '') === shipmentId;
                 nextSel[rid] = linked;
             }
             setReceiptSelection(nextSel);
@@ -313,13 +322,18 @@ const ImportShipmentDetailsScreen: React.FC = () => {
     }, [shipment?.id, shipment?.destinationWarehouseId, isCreateMode]);
 
     const applyReceiptLinking = async (mode: 'link' | 'unlink') => {
-        if (!id || !shipment?.destinationWarehouseId) return;
+        const shipmentId = String(shipment?.id || '').trim();
+        if (!shipmentId || !shipment?.destinationWarehouseId) return;
+        if (!isUuid(shipmentId)) {
+            showNotification('تعذر ربط الاستلامات بهذه الشحنة بسبب معرف غير صالح (UUID). حدّث قاعدة البيانات في الإنتاج ثم أعد المحاولة.', 'error');
+            return;
+        }
         if (shipment.status === 'closed') return;
         const supabase = getSupabaseClient();
         if (!supabase) return;
         const selectedIds = Object.entries(receiptSelection).filter(([, v]) => Boolean(v)).map(([k]) => k);
         const linkedIds = receiptRows
-            .filter((r: any) => String(r?.import_shipment_id || '') === id)
+            .filter((r: any) => String(r?.import_shipment_id || '') === shipmentId)
             .map((r: any) => String(r?.id || ''))
             .filter(Boolean);
 
@@ -329,7 +343,7 @@ const ImportShipmentDetailsScreen: React.FC = () => {
         try {
             const { error } = await supabase
                 .from('purchase_receipts')
-                .update({ import_shipment_id: mode === 'link' ? id : null })
+                .update({ import_shipment_id: mode === 'link' ? shipmentId : null })
                 .in('id', targetIds);
             if (error) throw error;
             await loadReceipts({ silent: true });
@@ -363,7 +377,7 @@ const ImportShipmentDetailsScreen: React.FC = () => {
     };
 
     const handleAddItem = async () => {
-        if (!id || !newItem.itemId || newItem.quantity <= 0) return;
+        if (!shipment?.id || !newItem.itemId || newItem.quantity <= 0) return;
         const currency = String(newItem.currency || '').trim().toUpperCase();
         if (!currency) {
             showNotification('اختر عملة للصنف.', 'error');
@@ -375,7 +389,7 @@ const ImportShipmentDetailsScreen: React.FC = () => {
         }
 
         await addShipmentItem({
-            shipmentId: id,
+            shipmentId: shipment.id,
             itemId: newItem.itemId,
             quantity: newItem.quantity,
             unitPriceFob: newItem.unitPriceFob,
@@ -397,7 +411,7 @@ const ImportShipmentDetailsScreen: React.FC = () => {
     };
 
     const handleAddExpense = async () => {
-        if (!id || newExpense.amount <= 0) return;
+        if (!shipment?.id || newExpense.amount <= 0) return;
         const currency = String(newExpense.currency || '').trim().toUpperCase();
         if (!currency) {
             showNotification('اختر عملة للمصروف.', 'error');
@@ -419,7 +433,7 @@ const ImportShipmentDetailsScreen: React.FC = () => {
         }
 
         await addExpense({
-            shipmentId: id,
+            shipmentId: shipment.id,
             expenseType: newExpense.expenseType,
             amount: newExpense.amount,
             currency,
@@ -452,14 +466,14 @@ const ImportShipmentDetailsScreen: React.FC = () => {
     };
 
     const handleCalculateCost = async () => {
-        if (!id) return;
-        await calculateLandedCost(id);
+        if (!shipment?.id) return;
+        await calculateLandedCost(shipment.id);
         loadShipment();
     };
 
     const handleUpdateStatus = async (status: ImportShipment['status']) => {
-        if (!id) return;
-        await updateShipment(id, { status });
+        if (!shipment?.id) return;
+        await updateShipment(shipment.id, { status });
         loadShipment();
     };
 

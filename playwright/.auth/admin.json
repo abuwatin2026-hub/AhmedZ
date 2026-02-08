@@ -5,12 +5,16 @@
       "origin": "http://127.0.0.1:5174",
       "localStorage": [
         {
-          "name": "notifications_cache_v1_d41db932-f869-43b4-967b-7520920e5045",
-          "value": "[]"
+          "name": "app_encryption_key",
+          "value": "AjcqYsYncu2asI6MB2VNXRZqQP3fMJ43eUPZuWPhkzw="
         },
         {
           "name": "sb-127-auth-token",
-          "value": "{\"access_token\":\"eyJhbGciOiJFUzI1NiIsImtpZCI6ImI4MTI2OWYxLTIxZDgtNGYyZS1iNzE5LWMyMjQwYTg0MGQ5MCIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwOi8vMTI3LjAuMC4xOjU0MzIxL2F1dGgvdjEiLCJzdWIiOiJkNDFkYjkzMi1mODY5LTQzYjQtOTY3Yi03NTIwOTIwZTUwNDUiLCJhdWQiOiJhdXRoZW50aWNhdGVkIiwiZXhwIjoxNzcwMzQ4NzE0LCJpYXQiOjE3NzAzNDUxMTQsImVtYWlsIjoib3duZXJAYXp0YS5jb20iLCJwaG9uZSI6IiIsImFwcF9tZXRhZGF0YSI6eyJwcm92aWRlciI6ImVtYWlsIiwicHJvdmlkZXJzIjpbImVtYWlsIl19LCJ1c2VyX21ldGFkYXRhIjp7ImZ1bGxfbmFtZSI6Ik93bmVyIFVzZXIifSwicm9sZSI6ImF1dGhlbnRpY2F0ZWQiLCJhYWwiOiJhYWwxIiwiYW1yIjpbeyJtZXRob2QiOiJwYXNzd29yZCIsInRpbWVzdGFtcCI6MTc3MDM0NTExNH1dLCJzZXNzaW9uX2lkIjoiMDAwMDI2N2UtZWM4ZS00ZWI1LTgzNzktNTBmM2M2ODM2MmY1IiwiaXNfYW5vbnltb3VzIjpmYWxzZX0.EDngBqs_6SWBZnUlj449qvt10a3k7l0PEKXmnN9c_5ETnPvLTVZBQv2e79mN3JOmMH5ZKzSNMYBGNavbKXu1wg\",\"token_type\":\"bearer\",\"expires_in\":3600,\"expires_at\":1770348714,\"refresh_token\":\"kagumcuk24ej\",\"user\":{\"id\":\"d41db932-f869-43b4-967b-7520920e5045\",\"aud\":\"authenticated\",\"role\":\"authenticated\",\"email\":\"owner@azta.com\",\"email_confirmed_at\":\"2026-02-06T02:04:11.537345Z\",\"phone\":\"\",\"confirmed_at\":\"2026-02-06T02:04:11.537345Z\",\"last_sign_in_at\":\"2026-02-06T02:31:54.179486883Z\",\"app_metadata\":{\"provider\":\"email\",\"providers\":[\"email\"]},\"user_metadata\":{\"full_name\":\"Owner User\"},\"identities\":[],\"created_at\":\"2026-02-06T02:04:11.537345Z\",\"updated_at\":\"2026-02-06T02:31:54.186885Z\",\"is_anonymous\":false},\"weak_password\":null}"
+          "value": "{\"access_token\":\"eyJhbGciOiJFUzI1NiIsImtpZCI6ImI4MTI2OWYxLTIxZDgtNGYyZS1iNzE5LWMyMjQwYTg0MGQ5MCIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwOi8vMTI3LjAuMC4xOjU0MzIxL2F1dGgvdjEiLCJzdWIiOiJkZmU0ZDgwMS03OWViLTQ4NjYtYjc5NC1hZGM1Y2JkNmUwMTgiLCJhdWQiOiJhdXRoZW50aWNhdGVkIiwiZXhwIjoxNzcwNTEzODQ2LCJpYXQiOjE3NzA1MTAyNDYsImVtYWlsIjoib3duZXJAYXp0YS5jb20iLCJwaG9uZSI6IiIsImFwcF9tZXRhZGF0YSI6eyJwcm92aWRlciI6ImVtYWlsIiwicHJvdmlkZXJzIjpbImVtYWlsIl19LCJ1c2VyX21ldGFkYXRhIjp7ImZ1bGxfbmFtZSI6Ik93bmVyIFVzZXIifSwicm9sZSI6ImF1dGhlbnRpY2F0ZWQiLCJhYWwiOiJhYWwxIiwiYW1yIjpbeyJtZXRob2QiOiJwYXNzd29yZCIsInRpbWVzdGFtcCI6MTc3MDUxMDI0Nn1dLCJzZXNzaW9uX2lkIjoiODQ4Yzk5ZTEtZjI0Ni00MjVmLWFmZWItOWEwMjcxZWQ1N2ExIiwiaXNfYW5vbnltb3VzIjpmYWxzZX0.1Zjz5tFFrxYEX1T94K6h3UHJmgOFSLjSgHagJ2b2RcwKUiJ-dcFG61iNevDA_bq7O4aMV5NO0M8jkc8gu06mVQ\",\"token_type\":\"bearer\",\"expires_in\":3600,\"expires_at\":1770513846,\"refresh_token\":\"gpyc3m3oibpy\",\"user\":{\"id\":\"dfe4d801-79eb-4866-b794-adc5cbd6e018\",\"aud\":\"authenticated\",\"role\":\"authenticated\",\"email\":\"owner@azta.com\",\"email_confirmed_at\":\"2026-02-07T21:03:56.650278Z\",\"phone\":\"\",\"confirmed_at\":\"2026-02-07T21:03:56.650278Z\",\"last_sign_in_at\":\"2026-02-08T00:24:06.509369335Z\",\"app_metadata\":{\"provider\":\"email\",\"providers\":[\"email\"]},\"user_metadata\":{\"full_name\":\"Owner User\"},\"identities\":[],\"created_at\":\"2026-02-07T21:03:56.650278Z\",\"updated_at\":\"2026-02-08T00:24:06.517986Z\",\"is_anonymous\":false},\"weak_password\":null}"
+        },
+        {
+          "name": "notifications_cache_v1_dfe4d801-79eb-4866-b794-adc5cbd6e018",
+          "value": "[{\"id\":\"f77fb445-0695-43f3-9d82-aeed3f2917af\",\"userId\":\"dfe4d801-79eb-4866-b794-adc5cbd6e018\",\"title\":\"طلب جديد وصل 🧾\",\"message\":\"طلب جديد #3efb9a\",\"type\":\"order_update\",\"link\":\"/order/3efb9aa8-a6e7-4429-a998-86e0ee0e94d0\",\"isRead\":false,\"createdAt\":\"2026-02-07T23:48:50.982981+00:00\"}]"
         },
         {
           "name": "notification_settings_v1",

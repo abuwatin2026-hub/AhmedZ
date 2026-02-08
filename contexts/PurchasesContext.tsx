@@ -792,6 +792,22 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                     await fetchPurchaseOrders({ silent: false });
                     return;
                   }
+                  try {
+                    const { data: existing, error: existingErr } = await supabase
+                      .from('purchase_receipts')
+                      .select('id')
+                      .eq('purchase_order_id', orderId)
+                      .eq('idempotency_key', idempotencyKey)
+                      .order('created_at', { ascending: false })
+                      .limit(1)
+                      .maybeSingle();
+                    if (!existingErr && existing?.id) {
+                      await updateMenuItemDates(items);
+                      await fetchPurchaseOrders({ silent: false });
+                      return;
+                    }
+                  } catch {
+                  }
                   errAny = retry.error as any;
                 }
                 if (/RECEIPT_APPROVAL_REQUIRED/i.test(msg)) {
@@ -1080,6 +1096,22 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                 await updateMenuItemDates(items);
                 await fetchPurchaseOrders();
                 return String(retry.data || '');
+              }
+              try {
+                const { data: existing, error: existingErr } = await supabase
+                  .from('purchase_receipts')
+                  .select('id')
+                  .eq('purchase_order_id', orderId)
+                  .eq('idempotency_key', idempotencyKey)
+                  .order('created_at', { ascending: false })
+                  .limit(1)
+                  .maybeSingle();
+                if (!existingErr && existing?.id) {
+                  await updateMenuItemDates(items);
+                  await fetchPurchaseOrders();
+                  return String(existing.id || '');
+                }
+              } catch {
               }
               error = retry.error as any;
             }

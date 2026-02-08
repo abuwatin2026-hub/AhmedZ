@@ -3,6 +3,7 @@ import { getSupabaseClient } from '../supabase';
 import { ImportShipment, ImportShipmentItem, ImportExpense } from '../types';
 import { useToast } from './ToastContext';
 import { useAuth } from './AuthContext';
+import { localizeSupabaseError } from '../utils/errorUtils';
 
 interface ImportContextType {
     shipments: ImportShipment[];
@@ -27,6 +28,7 @@ export const ImportProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const { showNotification } = useToast();
     const { hasPermission, user } = useAuth();
     const supabase = getSupabaseClient();
+    const isUuid = (value: unknown) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value ?? '').trim());
 
     const fetchShipments = useCallback(async () => {
         if (!supabase || !hasPermission('stock.manage')) return;
@@ -58,23 +60,25 @@ export const ImportProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             })));
         } catch (error: any) {
             console.error('Error fetching shipments:', error);
-            showNotification('Error fetching shipments', 'error');
+            showNotification(localizeSupabaseError(error) || 'تعذر تحميل الشحنات.', 'error');
         }
     }, [hasPermission, showNotification, supabase]);
 
     const getShipmentDetails = async (id: string) => {
         if (!supabase) return null;
         try {
-            const { data, error } = await supabase
+            const key = String(id || '').trim();
+            if (!key) throw new Error('معرف الشحنة غير صالح.');
+            const query = supabase
                 .from('import_shipments')
-                .select('*')
-                .eq('id', id)
-                .single();
+                .select('*');
+            const { data, error } = await (isUuid(key) ? query.eq('id', key) : query.eq('reference_number', key)).single();
 
             if (error) throw error;
 
-            const { data: items } = await supabase.from('import_shipments_items').select('*').eq('shipment_id', id);
-            const { data: expenses } = await supabase.from('import_expenses').select('*').eq('shipment_id', id);
+            const shipmentId = String((data as any)?.id || '');
+            const { data: items } = await supabase.from('import_shipments_items').select('*').eq('shipment_id', shipmentId);
+            const { data: expenses } = await supabase.from('import_expenses').select('*').eq('shipment_id', shipmentId);
 
             const shipment: ImportShipment = {
                 id: data.id,
@@ -127,7 +131,7 @@ export const ImportProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         } catch (error: any) {
             console.error('Error fetching shipment details:', error);
-            showNotification('Error fetching details', 'error');
+            showNotification(localizeSupabaseError(error) || 'تعذر تحميل تفاصيل الشحنة.', 'error');
             return null;
         }
     };
@@ -163,7 +167,7 @@ export const ImportProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         } catch (error: any) {
             console.error('Error adding shipment:', error);
-            showNotification(error.message, 'error');
+            showNotification(localizeSupabaseError(error), 'error');
             return null;
         }
     };
@@ -189,7 +193,7 @@ export const ImportProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             fetchShipments();
         } catch (error: any) {
             console.error('Error updating shipment:', error);
-            showNotification(error.message, 'error');
+            showNotification(localizeSupabaseError(error), 'error');
         }
     };
 
@@ -201,7 +205,7 @@ export const ImportProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             showNotification('Shipment deleted', 'success');
             fetchShipments();
         } catch (error: any) {
-            showNotification(error.message, 'error');
+            showNotification(localizeSupabaseError(error), 'error');
         }
     };
 
@@ -220,7 +224,7 @@ export const ImportProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             if (error) throw error;
             showNotification('Item added', 'success');
         } catch (error: any) {
-            showNotification(error.message, 'error');
+            showNotification(localizeSupabaseError(error), 'error');
         }
     };
 
@@ -231,7 +235,7 @@ export const ImportProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             if (error) throw error;
             showNotification('Item removed', 'success');
         } catch (error: any) {
-            showNotification(error.message, 'error');
+            showNotification(localizeSupabaseError(error), 'error');
         }
     };
 
@@ -275,12 +279,14 @@ export const ImportProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const calculateLandedCost = async (shipmentId: string) => {
         if (!supabase) return;
         try {
+            const sid = String(shipmentId || '').trim();
+            if (!isUuid(sid)) throw new Error('معرف الشحنة غير صالح (UUID). حدّث قاعدة البيانات في الإنتاج ثم أعد المحاولة.');
             const { error } = await supabase.rpc('calculate_shipment_landed_cost', { p_shipment_id: shipmentId });
             if (error) throw error;
             showNotification('Landed cost calculated successfully', 'success');
         } catch (error: any) {
             console.error('Error calculating landed cost:', error);
-            showNotification(error.message, 'error');
+            showNotification(localizeSupabaseError(error), 'error');
         }
     };
 

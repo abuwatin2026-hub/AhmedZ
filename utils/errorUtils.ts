@@ -53,6 +53,9 @@ export const localizeError = (message: string): string => {
   }
   if (raw === 'unknown' || raw === 'unknown error' || raw === 'an unknown error has occurred') return 'حدث خطأ غير متوقع.';
   if (raw.includes('timeout') || raw.includes('timed out') || raw.includes('request timed out')) return 'انتهت مهلة الاتصال بالخادم. تحقق من الإنترنت ثم أعد المحاولة.';
+  if (raw.includes('invalid input syntax for type uuid')) {
+    return 'تعذر تنفيذ العملية بسبب معرف غير صالح (UUID). غالباً يوجد عدم تطابق في نسخة قاعدة البيانات (الهجرات) في الإنتاج. حدّث قاعدة البيانات ثم أعد المحاولة.';
+  }
   if (raw.includes('there is no unique or exclusion constraint matching the on conflict specification')) {
     return 'حدث خطأ داخلي أثناء تسجيل العملية المالية. يرجى تحديث إعدادات قاعدة البيانات (المايجريشن) ثم إعادة المحاولة.';
   }
