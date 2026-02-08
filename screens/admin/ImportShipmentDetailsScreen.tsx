@@ -268,9 +268,9 @@ const ImportShipmentDetailsScreen: React.FC = () => {
                         minSellingPrice: Number(b?.min_selling_price || 0),
                     };
                 });
-                const avgCost = (Number.isFinite(landedCostByItemId[itemId]) && (landedCostByItemId[itemId] > 0))
-                    ? landedCostByItemId[itemId]
-                    : (qtySum > 0 ? (costWeighted / qtySum) : 0);
+                const landedCost = Number(landedCostByItemId[itemId]);
+                const hasLandedCost = Number.isFinite(landedCost) && landedCost > 0;
+                const avgCost = hasLandedCost ? landedCost : (qtySum > 0 ? (costWeighted / qtySum) : 0);
                 const marginPct = Number.isFinite(Number(marginByItem[itemId])) ? Number(marginByItem[itemId]) : 0;
                 const suggestedPrice = moneyRound(avgCost * (1 + (marginPct / 100)));
                 return {
@@ -279,6 +279,7 @@ const ImportShipmentDetailsScreen: React.FC = () => {
                     unitType,
                     currentPrice,
                     avgCost: moneyRound(avgCost),
+                    costSource: hasLandedCost ? 'shipment' : 'receipts',
                     marginPct: moneyRound(marginPct),
                     suggestedPrice,
                     batches: normalizedBatches,
@@ -1185,6 +1186,24 @@ const ImportShipmentDetailsScreen: React.FC = () => {
                         </div>
                     </div>
 
+                    {pricingRows.some((r: any) => String(r?.costSource) === 'receipts') && (
+                        <div className="mb-4 p-3 rounded-lg border bg-yellow-50 border-yellow-200 text-yellow-900">
+                            <div>تنبيه: بعض الأصناف لا تحتوي “تكلفة شحنة محسوبة” بعد، وسيتم عرض تكلفة الاستلامات.</div>
+                            <div className="mt-2">
+                                <button
+                                    onClick={async () => {
+                                        await handleCalculateCost();
+                                        await loadPricing();
+                                    }}
+                                    className="bg-gray-900 text-white px-4 py-2 rounded-lg hover:bg-black"
+                                    disabled={pricingLoading}
+                                >
+                                    احتساب التكلفة للشحنة
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
                     <div className="space-y-4">
                         {pricingRows.map((row: any) => (
                             <div key={row.itemId} className="bg-white border rounded-lg p-4">
@@ -1193,7 +1212,8 @@ const ImportShipmentDetailsScreen: React.FC = () => {
                                         <div className="font-semibold">{row.name}</div>
                                         <div className="text-sm text-gray-600">
                                             {row.unitType} {` | `}
-                                            التكلفة/وحدة: {row.avgCost} {` | `}
+                                            التكلفة/وحدة: {row.avgCost} {baseCode ? ` ${baseCode}` : ''}{` | `}
+                                            {row.costSource === 'shipment' ? 'من الشحنة' : 'من الاستلام'} {` | `}
                                             السعر الحالي: {row.currentPrice}
                                         </div>
                                     </div>
@@ -1323,7 +1343,7 @@ const ImportShipmentDetailsScreen: React.FC = () => {
                                                 <th className="p-2">مستلم</th>
                                                 <th className="p-2">مستهلك</th>
                                                 <th className="p-2">متبقي</th>
-                                                <th className="p-2">تكلفة/وحدة</th>
+                                                <th className="p-2">تكلفة/وحدة{baseCode ? ` (${baseCode})` : ''}</th>
                                                 <th className="p-2">حد أدنى</th>
                                                 <th className="p-2">إجراء</th>
                                             </tr>
