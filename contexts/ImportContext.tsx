@@ -31,7 +31,8 @@ export const ImportProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const isUuid = (value: unknown) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value ?? '').trim());
 
     const fetchShipments = useCallback(async () => {
-        if (!supabase || !hasPermission('stock.manage')) return;
+        const canManageImports = hasPermission('procurement.manage') || hasPermission('import.close') || hasPermission('stock.manage');
+        if (!supabase || !canManageImports) return;
         try {
             const { data, error } = await supabase
                 .from('import_shipments')
