@@ -572,12 +572,12 @@ const InvoiceScreen: React.FC = () => {
                 ) : (
                     <div className="bg-white p-4 rounded border border-gray-200">
                         <div className="text-xs text-gray-500 mb-3">هذه معاينة A4 ضمن الواجهة. عند الطباعة قد تُطبّق قواعد @media print.</div>
-                        <Invoice ref={invoiceRef} order={order} settings={settings as any} audit={invoiceAudit} branding={resolveBranding()} />
+                        <Invoice ref={invoiceRef} order={order} settings={settings as any} branding={resolveBranding()} />
                     </div>
                 )}
             </ConfirmationModal>
 
-            <Invoice ref={invoiceRef} order={order} settings={settings as any} audit={invoiceAudit} branding={resolveBranding()} />
+            <Invoice ref={invoiceRef} order={order} settings={settings as any} branding={resolveBranding()} />
         </div>
     );
 };
