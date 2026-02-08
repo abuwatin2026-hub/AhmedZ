@@ -41,6 +41,7 @@ const PromotionDetailsScreen = lazy(() => import('./screens/PromotionDetailsScre
 const AdminLoginScreen = lazy(() => import('./screens/admin/AdminLoginScreen'));
 const AdminLayout = lazy(() => import('./screens/admin/AdminLayout'));
 const AdminDashboardScreen = lazy(() => import('./screens/admin/AdminDashboardScreen'));
+const AdminWorkspaceScreen = lazy(() => import('./screens/admin/AdminWorkspaceScreen'));
 const ManageOrdersScreen = lazy(() => import('./screens/admin/ManageOrdersScreen'));
 const ManageItemsScreen = lazy(() => import('./screens/admin/ManageItemsScreen'));
 const ManageAddonsScreen = lazy(() => import('./screens/admin/ManageAddonsScreen'));
@@ -312,6 +313,7 @@ const App: React.FC = () => {
               <Route path="/admin/login" element={<AdminLoginScreen />} />
               <Route path="/admin" element={<AdminProtectedRoute><AdminLayout /></AdminProtectedRoute>}>
                 <Route index element={<AdminIndexRedirect />} />
+                <Route path="workspace" element={<AdminProtectedRoute permissions={['dashboard.view', 'orders.view', 'stock.manage', 'shipments.view']} requireAllPermissions={false}><AdminWorkspaceScreen /></AdminProtectedRoute>} />
                 <Route path="dashboard" element={<AdminProtectedRoute permissions={['dashboard.view']}><AdminDashboardScreen /></AdminProtectedRoute>} />
                 <Route path="orders" element={<AdminProtectedRoute permissions={['orders.view']}><ManageOrdersScreen /></AdminProtectedRoute>} />
                 <Route path="invoice/:orderId" element={<AdminProtectedRoute permissions={['orders.view']}><InvoiceScreen /></AdminProtectedRoute>} />

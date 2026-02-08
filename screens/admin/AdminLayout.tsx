@@ -11,6 +11,7 @@ import type { AdminRole } from '../../types';
 import { useSettings } from '../../contexts/SettingsContext';
 import ShiftManagementModal from '../../components/admin/ShiftManagementModal';
 import { useCashShift } from '../../contexts/CashShiftContext';
+import AdminCommandPalette from './AdminCommandPalette';
 
 const AdminNotificationMenu: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -104,6 +105,7 @@ const AdminNotificationMenu: React.FC = () => {
 };
 
 const navLinks: Array<{ to: string; label: string; icon: React.ReactNode; permission: AdminPermission }> = [
+  { to: 'workspace', label: 'مركز العمل', icon: <Icons.Search />, permission: 'dashboard.view' },
   { to: 'dashboard', label: 'لوحة التحكم', icon: <Icons.DashboardIcon />, permission: 'dashboard.view' },
   { to: 'stock', label: 'إدارة المخزون', icon: <Icons.ListIcon />, permission: 'inventory.view' },
   { to: 'wastage', label: 'تسجيل هدر', icon: <Icons.ReportIcon />, permission: 'stock.manage' },
@@ -158,6 +160,7 @@ const navLinks: Array<{ to: string; label: string; icon: React.ReactNode; permis
 ];
 
 const routePermissions: Record<string, AdminPermission> = {
+  'workspace': 'dashboard.view',
   'dashboard': 'dashboard.view',
   'stock': 'inventory.view',
   'wastage': 'stock.manage',
@@ -217,6 +220,7 @@ const AdminLayout: React.FC = () => {
   const { showNotification } = useToast();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isShiftModalOpen, setIsShiftModalOpen] = useState(false);
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const { currentShift } = useCashShift();
   const { settings } = useSettings();
 
@@ -244,6 +248,25 @@ const AdminLayout: React.FC = () => {
 
   const currentPage = navLinks.find(link => location.pathname.startsWith(`/admin/${link.to}`));
   const isSubPageRoute = location.pathname.split('/').filter(Boolean).length > 2;
+
+  useEffect(() => {
+    const onRequestOpen = () => setIsCommandPaletteOpen(true);
+    window.addEventListener('admin:commandPaletteOpen', onRequestOpen as any);
+    return () => window.removeEventListener('admin:commandPaletteOpen', onRequestOpen as any);
+  }, []);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const key = String(e.key || '').toLowerCase();
+      const isK = key === 'k';
+      if (!isK) return;
+      if (!(e.ctrlKey || e.metaKey)) return;
+      e.preventDefault();
+      setIsCommandPaletteOpen(true);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   // Route Protection Logic
   useEffect(() => {
@@ -405,6 +428,16 @@ const AdminLayout: React.FC = () => {
           >
             {settings.maintenanceEnabled ? 'الصيانة: مفعّلة' : 'الصيانة: موقفة'}
           </Link>
+          <button
+            type="button"
+            onClick={() => setIsCommandPaletteOpen(true)}
+            className="hidden sm:inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+            title="بحث موحّد (Ctrl+K)"
+          >
+            <Icons.Search className="h-5 w-5" />
+            <span className="font-semibold">بحث</span>
+            <span className="text-xs text-gray-500 dark:text-gray-400" dir="ltr">Ctrl+K</span>
+          </button>
           <AdminNotificationMenu />
           {hasPermission('profile.view') && (
             <button
@@ -441,6 +474,7 @@ const AdminLayout: React.FC = () => {
       </div>
 
       <ShiftManagementModal isOpen={isShiftModalOpen} onClose={() => setIsShiftModalOpen(false)} />
+      <AdminCommandPalette isOpen={isCommandPaletteOpen} onClose={() => setIsCommandPaletteOpen(false)} />
     </div>
   );
 };
