@@ -206,6 +206,9 @@ export interface PurchaseOrder {
   supplierId: string;
   supplierName?: string; // For display
   status: 'draft' | 'partial' | 'completed' | 'cancelled';
+  approvalStatus?: string;
+  requiresApproval?: boolean;
+  approvalRequestId?: string;
   poNumber?: string;
   referenceNumber?: string;
   currency?: string;

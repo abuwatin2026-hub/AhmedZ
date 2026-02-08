@@ -873,6 +873,13 @@ const PurchaseOrderScreen: React.FC = () => {
     };
 
     const openReceiveModal = (order: PurchaseOrder) => {
+        const eps = 0.000000001;
+        const fullyReceived = (order.items || []).length > 0
+            && (order.items || []).every((it: any) => (Number(it?.receivedQuantity || 0) + eps) >= Number(it?.quantity || 0));
+        if (fullyReceived) {
+            showNotification('هذا الأمر مستلم بالكامل ولا توجد كميات متبقية للاستلام.', 'info');
+            return;
+        }
         const rows: ReceiveRow[] = (order.items || []).map((it: any) => {
             const ordered = Number(it.quantity || 0);
             const received = Number(it.receivedQuantity || 0);
@@ -1599,15 +1606,18 @@ const PurchaseOrderScreen: React.FC = () => {
                         ) : (
                             purchaseOrders.map((order) => (
                                 (() => {
+                                    const eps = 0.000000001;
+                                    const items = Array.isArray(order.items) ? order.items : [];
                                     const total = Number(order.totalAmount || 0);
                                     const paid = Number(order.paidAmount || 0);
                                     const remainingRaw = total - paid;
                                     const remaining = Math.max(0, remainingRaw);
                                     const credit = Math.max(0, -remainingRaw);
                                     const currencyCode = String(order.currency || '').toUpperCase() || '—';
-                                    const totalQty = (order.items || []).reduce((sum: number, it: any) => sum + Number(it?.quantity || 0), 0);
+                                    const totalQty = items.reduce((sum: number, it: any) => sum + Number(it?.quantity || 0), 0);
                                     const canPay = order.status !== 'cancelled' && remainingRaw > 0;
-                                    const hasReceived = (order.items || []).some((it: any) => Number(it?.receivedQuantity || 0) > 0);
+                                    const hasReceived = items.some((it: any) => Number(it?.receivedQuantity || 0) > 0);
+                                    const fullyReceived = items.length > 0 && items.every((it: any) => (Number(it?.receivedQuantity || 0) + eps) >= Number(it?.quantity || 0));
                                     const canPurge = canDelete && order.status === 'draft' && paid <= 0 && !hasReceived;
                                     const canCancelOrder = canCancel && order.status === 'draft' && paid <= 0 && !hasReceived;
                                     const paymentBadge = (() => {
@@ -1665,19 +1675,26 @@ const PurchaseOrderScreen: React.FC = () => {
                                         <div className="flex flex-col items-start gap-1">
                                             <span className={[
                                                 'px-2 py-1 rounded-full text-xs font-bold',
-                                                order.status === 'completed' ? 'bg-green-100 text-green-700'
-                                                    : order.status === 'partial' ? 'bg-yellow-100 text-yellow-700'
-                                                        : order.status === 'cancelled' ? 'bg-red-100 text-red-700'
+                                                order.status === 'cancelled' ? 'bg-red-100 text-red-700'
+                                                    : fullyReceived ? 'bg-green-100 text-green-700'
+                                                        : (order.status === 'partial' || hasReceived) ? 'bg-yellow-100 text-yellow-700'
                                                             : 'bg-gray-100 text-gray-700'
                                             ].join(' ')}>
-                                                {order.status === 'completed'
-                                                    ? 'الاستلام: مستلم بالكامل'
-                                                    : order.status === 'partial'
-                                                        ? 'الاستلام: مستلم جزئيًا'
-                                                        : order.status === 'draft'
-                                                            ? 'الاستلام: مسودة'
-                                                            : 'الاستلام: ملغي'}
+                                                {order.status === 'cancelled'
+                                                    ? 'الاستلام: ملغي'
+                                                    : order.status === 'draft'
+                                                        ? 'الاستلام: مسودة'
+                                                        : fullyReceived
+                                                            ? 'الاستلام: مستلم بالكامل'
+                                                            : hasReceived
+                                                                ? 'الاستلام: مستلم جزئيًا'
+                                                                : 'الاستلام: غير مستلم'}
                                             </span>
+                                            {fullyReceived && order.requiresApproval && String(order.approvalStatus || '').toLowerCase() !== 'approved' ? (
+                                                <span className="px-2 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-900">
+                                                    اعتماد PO: معلق
+                                                </span>
+                                            ) : null}
                                             <span className={['px-2 py-1 rounded-full text-xs font-bold', paymentBadge.className].join(' ')}>
                                                 {`الدفع: ${paymentBadge.label}`}
                                             </span>
@@ -1701,7 +1718,7 @@ const PurchaseOrderScreen: React.FC = () => {
                                             <button
                                                 type="button"
                                                 onClick={() => openReceiveModal(order)}
-                                                disabled={order.status === 'cancelled' || order.status === 'completed'}
+                                                disabled={order.status === 'cancelled' || order.status === 'completed' || fullyReceived}
                                                 className="px-3 py-2 rounded-lg text-sm font-semibold bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
                                             >
                                                 استلام
