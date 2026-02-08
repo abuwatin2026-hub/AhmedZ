@@ -260,7 +260,7 @@ const ShiftReportsScreen: React.FC = () => {
                 if (shiftError) throw shiftError;
                 setReportShift(shiftRow || null);
 
-                const paymentsSelect = 'id,direction,method,amount,currency,reference_table,reference_id,occurred_at,created_by,data';
+                const paymentsSelect = 'id,direction,method,amount,base_amount,fx_rate,currency,reference_table,reference_id,occurred_at,created_by,data';
                 const { data: payRows, error: payError } = await supabase
                     .from('payments')
                     .select(paymentsSelect)
@@ -285,18 +285,23 @@ const ShiftReportsScreen: React.FC = () => {
                     const chunk = orderIds.slice(i, i + chunkSize);
                     const { data: orderRows, error: orderError } = await supabase
                         .from('orders')
-                        .select('id,status,data')
+                        .select('id,status,data,fx_rate,base_total,currency')
                         .in('id', chunk);
                     if (orderError) throw orderError;
                     for (const row of orderRows || []) {
                         const base = (row as any)?.data;
                         if (!base || typeof base !== 'object') continue;
                         const view = getInvoiceOrderView(base as Order);
+                        const fx = Number((row as any)?.fx_rate) || 1;
+                        const totalBase = Number(view.total || 0) * fx || Number((row as any)?.base_total || 0);
+                        const discountBase = Number(view.discountAmount || 0) * fx;
                         nextOrders.push({
                             ...view,
                             id: String((row as any).id || (view as any).id || ''),
                             status: String((row as any).status || view.status || '') as any,
-                        });
+                        } as any);
+                        (nextOrders as any)[(nextOrders as any).length - 1].totalBase = totalBase;
+                        (nextOrders as any)[(nextOrders as any).length - 1].discountBase = discountBase;
                     }
                 }
                 setReportOrders(nextOrders.filter(o => o.status === 'delivered' && Boolean(o.paidAt)));
@@ -484,15 +489,15 @@ const ShiftReportsScreen: React.FC = () => {
             const key = String((p as any)?.method || '-');
             if (!totalsByMethod[key]) totalsByMethod[key] = { in: 0, out: 0 };
             const dir = String((p as any)?.direction || '').toLowerCase();
-            const amt = Number((p as any)?.amount) || 0;
+            const amt = Number((p as any)?.base_amount ?? (p as any)?.amount) || 0;
             if (dir === 'in') totalsByMethod[key].in += amt;
             if (dir === 'out') totalsByMethod[key].out += amt;
         }
         const refunds = reportPayments.filter((p: any) => String(p?.direction || '') === 'out' && String(p?.reference_table || '') === 'sales_returns');
         const refundIds = new Set(refunds.map((p: any) => String(p?.reference_id || '')).filter(Boolean));
-        const refundsTotal = refunds.reduce((sum: number, p: any) => sum + (Number(p?.amount) || 0), 0);
-        const salesTotal = reportOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
-        const discountsTotal = reportOrders.reduce((sum, o) => sum + (Number(o.discountAmount) || 0), 0);
+        const refundsTotal = refunds.reduce((sum: number, p: any) => sum + (Number(p?.base_amount ?? p?.amount) || 0), 0);
+        const salesTotal = reportOrders.reduce((sum, o: any) => sum + (Number((o as any)?.totalBase || 0)), 0);
+        const discountsTotal = reportOrders.reduce((sum, o: any) => sum + (Number((o as any)?.discountBase || 0)), 0);
         return {
             totalsByMethod,
             refundsTotal,
