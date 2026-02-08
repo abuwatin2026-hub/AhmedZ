@@ -63,6 +63,7 @@ const PurchaseOrderScreen: React.FC = () => {
     const { scope } = useSessionScope();
     const canDelete = user?.role === 'owner';
     const canCancel = user?.role === 'owner' || user?.role === 'manager';
+    const canRepairReceipt = user?.role === 'owner' || user?.role === 'manager';
     const canViewAccounting = hasPermission('accounting.view') || hasPermission('accounting.manage');
     const canManageAccounting = hasPermission('accounting.manage');
     const resolveBrandingForWarehouseId = (warehouseId?: string) => {
@@ -139,6 +140,26 @@ const PurchaseOrderScreen: React.FC = () => {
                 } as any);
             } catch {
             }
+        }
+    };
+
+    const handleRepairPurchaseOrder = async (order: PurchaseOrder) => {
+        if (!canRepairReceipt) return;
+        const supabase = getSupabaseClient();
+        if (!supabase) {
+            alert('Supabase غير مهيأ.');
+            return;
+        }
+        const ref = order.poNumber || order.referenceNumber || order.id;
+        const ok = window.confirm(`سيتم محاولة إصلاح الاستلام وإدخال المخزون (إن كان هناك سند استلام مكرر/عالق).\nأمر الشراء: ${ref}\nهل تريد المتابعة؟`);
+        if (!ok) return;
+        try {
+            const { data, error } = await supabase.rpc('repair_purchase_order', { p_order_id: order.id } as any);
+            if (error) throw error;
+            await fetchPurchaseOrders();
+            showNotification(`تم تنفيذ الإصلاح: ${typeof data === 'string' ? data : 'تم'}`, 'success');
+        } catch (e: any) {
+            alert(getErrorMessage(e, 'فشل إصلاح الاستلام.'));
         }
     };
 
@@ -1252,6 +1273,16 @@ const PurchaseOrderScreen: React.FC = () => {
                                     >
                                         استلام
                                     </button>
+                                    {canRepairReceipt ? (
+                                        <button
+                                            type="button"
+                                            onClick={() => handleRepairPurchaseOrder(order)}
+                                            disabled={order.status === 'cancelled'}
+                                            className="px-3 py-2 rounded-lg text-sm font-semibold bg-gray-800 text-white hover:bg-gray-900 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                            إصلاح الاستلام
+                                        </button>
+                                    ) : null}
                                     <button
                                         type="button"
                                         onClick={() => openReturnModal(order)}
