@@ -250,6 +250,35 @@ const AdminLayout: React.FC = () => {
   const isSubPageRoute = location.pathname.split('/').filter(Boolean).length > 2;
 
   useEffect(() => {
+    try {
+      const path = String(location.pathname || '');
+      if (!path) return;
+      if (path.startsWith('/admin/login')) return;
+      const label = (() => {
+        if (path.startsWith('/pos')) return 'نقطة البيع (POS)';
+        if (currentPage?.label) return currentPage.label;
+        if (path.startsWith('/admin')) return 'لوحة التحكم';
+        return path;
+      })();
+      const entry = { path, label, at: new Date().toISOString() };
+      const key = 'admin_recent_routes';
+      const raw = localStorage.getItem(key);
+      const prev = (() => {
+        try {
+          const arr = JSON.parse(raw || '[]');
+          return Array.isArray(arr) ? arr : [];
+        } catch {
+          return [];
+        }
+      })();
+      const next = [entry, ...prev.filter((x: any) => x && x.path !== path)].slice(0, 12);
+      localStorage.setItem(key, JSON.stringify(next));
+      window.dispatchEvent(new CustomEvent('admin:recentRoutesUpdated'));
+    } catch {
+    }
+  }, [location.pathname, currentPage?.label]);
+
+  useEffect(() => {
     const onRequestOpen = () => setIsCommandPaletteOpen(true);
     window.addEventListener('admin:commandPaletteOpen', onRequestOpen as any);
     return () => window.removeEventListener('admin:commandPaletteOpen', onRequestOpen as any);

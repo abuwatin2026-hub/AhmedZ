@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { usePurchases } from '../../contexts/PurchasesContext';
 import { useMenu } from '../../contexts/MenuContext';
 import { useStock } from '../../contexts/StockContext';
@@ -45,6 +46,7 @@ interface ReceiveRow {
 }
 
 const PurchaseOrderScreen: React.FC = () => {
+    const location = useLocation();
     const { purchaseOrders, suppliers, createPurchaseOrder, deletePurchaseOrder, cancelPurchaseOrder, recordPurchaseOrderPayment, receivePurchaseOrderPartial, createPurchaseReturn, updatePurchaseOrderInvoiceNumber, getPurchaseReturnSummary, loading, error: purchasesError, fetchPurchaseOrders } = usePurchases();
     const { menuItems } = useMenu();
     const { stockItems } = useStock();
@@ -471,6 +473,8 @@ const PurchaseOrderScreen: React.FC = () => {
     const [receiveShipmentsLoading, setReceiveShipmentsLoading] = useState<boolean>(false);
     const [shipmentFromPoBusyId, setShipmentFromPoBusyId] = useState<string>('');
     const [isReceivingPartial, setIsReceivingPartial] = useState<boolean>(false);
+    const [focusedPoId, setFocusedPoId] = useState<string>('');
+    const focusedPoScrolledRef = useRef<string>('');
     const [returnOrder, setReturnOrder] = useState<PurchaseOrder | null>(null);
     const [returnRows, setReturnRows] = useState<ReceiveRow[]>([]);
     const [returnOccurredAt, setReturnOccurredAt] = useState<string>(toDateTimeLocalInputValue());
@@ -924,6 +928,30 @@ const PurchaseOrderScreen: React.FC = () => {
         })();
     };
 
+    useEffect(() => {
+        const params = new URLSearchParams(String(location.search || ''));
+        const focusPoId = String(params.get('focusPoId') || '').trim();
+        if (!focusPoId) {
+            setFocusedPoId('');
+            focusedPoScrolledRef.current = '';
+            return;
+        }
+        setFocusedPoId(focusPoId);
+    }, [location.search]);
+
+    useEffect(() => {
+        const id = String(focusedPoId || '').trim();
+        if (!id) return;
+        if (focusedPoScrolledRef.current === id) return;
+        const exists = (purchaseOrders || []).some((o: any) => String(o?.id || '') === id);
+        if (!exists) return;
+        focusedPoScrolledRef.current = id;
+        const el = document.getElementById(`po-${id}`);
+        if (el && typeof (el as any).scrollIntoView === 'function') {
+            (el as any).scrollIntoView({ block: 'center', behavior: 'smooth' });
+        }
+    }, [focusedPoId, purchaseOrders]);
+
     const showCreateDates = useMemo(() => {
         if (!receiveOnCreate) return false;
         return orderItems.some((r) => r.itemId && isFoodItem(r.itemId));
@@ -1376,7 +1404,14 @@ const PurchaseOrderScreen: React.FC = () => {
                         const dueLabel = order.dueDate ? formatPurchaseDate(order.dueDate) : '-';
 
                         return (
-                            <div key={order.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700 p-4">
+                            <div
+                                key={order.id}
+                                id={`po-${order.id}`}
+                                className={[
+                                    'bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700 p-4',
+                                    focusedPoId === order.id ? 'ring-2 ring-indigo-400 border-indigo-200' : ''
+                                ].join(' ')}
+                            >
                                 <div className="flex items-start justify-between gap-3">
                                     <div className="min-w-0">
                                         <div className="text-sm text-gray-500 dark:text-gray-400">رقم أمر الشراء</div>
@@ -1589,7 +1624,14 @@ const PurchaseOrderScreen: React.FC = () => {
                                     const termsLabel = inferredTerms === 'credit' ? 'أجل' : 'نقد';
                                     const dueLabel = order.dueDate ? formatPurchaseDate(order.dueDate) : '-';
                                     return (
-                                <tr key={order.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30">
+                                <tr
+                                    key={order.id}
+                                    id={`po-${order.id}`}
+                                    className={[
+                                        'hover:bg-gray-50 dark:hover:bg-gray-700/30',
+                                        focusedPoId === order.id ? 'bg-indigo-50/60 dark:bg-indigo-900/10' : ''
+                                    ].join(' ')}
+                                >
                                     <td className="p-4 font-mono text-sm dark:text-gray-300">{order.poNumber || `PO-${order.id.slice(-6).toUpperCase()}`}</td>
                                     <td className="p-4 font-mono text-sm dark:text-gray-300">{order.referenceNumber || '-'}</td>
                                     <td className="p-4 font-medium dark:text-white">{order.supplierName}</td>

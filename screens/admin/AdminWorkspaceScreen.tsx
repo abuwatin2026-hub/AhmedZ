@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useOrders } from '../../contexts/OrderContext';
 import { usePurchases } from '../../contexts/PurchasesContext';
@@ -6,12 +6,43 @@ import { useImport } from '../../contexts/ImportContext';
 import { useAuth } from '../../contexts/AuthContext';
 import * as Icons from '../../components/icons';
 
+type RecentRoute = { path: string; label: string; at?: string };
+
 const AdminWorkspaceScreen: React.FC = () => {
     const navigate = useNavigate();
     const { orders } = useOrders();
     const { purchaseOrders } = usePurchases();
     const { shipments } = useImport();
     const { hasPermission } = useAuth();
+    const [recentRoutes, setRecentRoutes] = useState<RecentRoute[]>([]);
+
+    useEffect(() => {
+        const read = () => {
+            try {
+                const raw = localStorage.getItem('admin_recent_routes');
+                const arr = JSON.parse(raw || '[]');
+                const list = Array.isArray(arr) ? arr : [];
+                const normalized = list
+                    .map((x: any) => ({ path: String(x?.path || ''), label: String(x?.label || ''), at: typeof x?.at === 'string' ? x.at : undefined }))
+                    .filter((x: RecentRoute) => x.path && x.label)
+                    .slice(0, 6);
+                setRecentRoutes(normalized);
+            } catch {
+                setRecentRoutes([]);
+            }
+        };
+        read();
+        const onStorage = (e: StorageEvent) => {
+            if (e.key === 'admin_recent_routes') read();
+        };
+        const onCustom = () => read();
+        window.addEventListener('storage', onStorage);
+        window.addEventListener('admin:recentRoutesUpdated', onCustom as any);
+        return () => {
+            window.removeEventListener('storage', onStorage);
+            window.removeEventListener('admin:recentRoutesUpdated', onCustom as any);
+        };
+    }, []);
 
     const quickStats = useMemo(() => {
         const list = Array.isArray(orders) ? orders : [];
@@ -128,6 +159,39 @@ const AdminWorkspaceScreen: React.FC = () => {
                     </button>
                 </div>
             </div>
+
+            {recentRoutes.length > 0 ? (
+                <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+                    <div className="flex items-center justify-between">
+                        <div className="font-bold text-gray-900 dark:text-white">آخر الصفحات</div>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                try {
+                                    localStorage.removeItem('admin_recent_routes');
+                                    window.dispatchEvent(new CustomEvent('admin:recentRoutesUpdated'));
+                                } catch {
+                                }
+                            }}
+                            className="text-xs text-gray-600 dark:text-gray-300 hover:underline"
+                        >
+                            مسح
+                        </button>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                        {recentRoutes.map((r) => (
+                            <button
+                                key={r.path}
+                                type="button"
+                                onClick={() => navigate(r.path)}
+                                className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/40 text-sm font-semibold text-gray-800 dark:text-gray-200"
+                            >
+                                {r.label}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            ) : null}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {cards.filter(c => c.visible).map((c) => (

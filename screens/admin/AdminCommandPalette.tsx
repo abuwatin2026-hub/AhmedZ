@@ -8,7 +8,8 @@ import { localizeSupabaseError } from '../../utils/errorUtils';
 
 type PaletteAction =
     | { kind: 'nav'; id: string; label: string; to: string; keywords?: string[]; enabled?: boolean }
-    | { kind: 'searchShipment'; id: string; label: string; keywords?: string[]; enabled?: boolean };
+    | { kind: 'searchShipment'; id: string; label: string; keywords?: string[]; enabled?: boolean }
+    | { kind: 'searchPurchaseOrder'; id: string; label: string; keywords?: string[]; enabled?: boolean };
 
 const isUuid = (value: unknown) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value ?? '').trim());
 
@@ -58,6 +59,7 @@ const AdminCommandPalette: React.FC<{ isOpen: boolean; onClose: () => void }> = 
             { kind: 'nav', id: 'nav-reports', label: 'التقارير', to: '/admin/reports', enabled: canReports, keywords: ['reports', 'تقارير'] },
             { kind: 'nav', id: 'nav-help', label: 'دليل الاستخدام', to: '/help', keywords: ['help', 'guide', 'مساعدة', 'دليل'] },
             { kind: 'searchShipment', id: 'search-shipment', label: 'بحث عن شحنة بالمرجع', enabled: canShipments, keywords: ['shipment', 'search', 'شحنة', 'مرجع'] },
+            { kind: 'searchPurchaseOrder', id: 'search-po', label: 'بحث عن أمر شراء (PO) بالرقم/الفاتورة', enabled: canPurchases, keywords: ['po', 'purchase', 'order', 'مشتريات', 'أمر شراء', 'فاتورة المورد'] },
         ];
     }, [hasPermission]);
 
@@ -66,10 +68,16 @@ const AdminCommandPalette: React.FC<{ isOpen: boolean; onClose: () => void }> = 
         if (!q) return [];
         const list: PaletteAction[] = [];
         if (isUuid(q) && hasPermission('orders.view')) {
+            list.push({ kind: 'nav', id: 'nav-order-focus', label: `فتح الطلب: ${q.slice(-8)}`, to: `/admin/orders?orderId=${q}`, keywords: ['order', 'طلب'] });
+        }
+        if (isUuid(q) && hasPermission('orders.view')) {
             list.push({ kind: 'nav', id: 'nav-invoice', label: `فتح فاتورة الطلب: ${q.slice(-8)}`, to: `/admin/invoice/${q}`, keywords: ['invoice', 'فاتورة'] });
         }
         if (isUuid(q) && (hasPermission('shipments.view') || hasPermission('stock.manage'))) {
             list.push({ kind: 'nav', id: 'nav-shipment-id', label: `فتح الشحنة بالمعرف: ${q.slice(-8)}`, to: `/admin/import-shipments/${q}`, keywords: ['shipment', 'شحنة'] });
+        }
+        if (isUuid(q) && hasPermission('stock.manage')) {
+            list.push({ kind: 'nav', id: 'nav-po-focus', label: `فتح أمر الشراء: ${q.slice(-8)}`, to: `/admin/purchases?focusPoId=${q}`, keywords: ['po', 'purchase', 'أمر شراء'] });
         }
         return list;
     }, [query, hasPermission]);
@@ -130,6 +138,37 @@ const AdminCommandPalette: React.FC<{ isOpen: boolean; onClose: () => void }> = 
                 onClose();
             } catch (e: any) {
                 showNotification(localizeSupabaseError(e) || 'فشل البحث عن الشحنة.', 'error');
+            } finally {
+                setBusy(false);
+            }
+        }
+        if (action.kind === 'searchPurchaseOrder') {
+            const q = query.trim();
+            if (!q) {
+                showNotification('اكتب رقم أمر الشراء/فاتورة المورد ثم أعد المحاولة.', 'info');
+                return;
+            }
+            const supabase = getSupabaseClient();
+            if (!supabase) return;
+            setBusy(true);
+            try {
+                const { data, error } = await supabase
+                    .from('purchase_orders')
+                    .select('id,reference_number,po_number')
+                    .or(`reference_number.ilike.%${q}%,po_number.ilike.%${q}%`)
+                    .order('created_at', { ascending: false })
+                    .limit(1);
+                if (error) throw error;
+                const row = Array.isArray(data) ? data[0] : null;
+                const poId = String((row as any)?.id || '').trim();
+                if (!poId) {
+                    showNotification('لم يتم العثور على أمر شراء بهذا الرقم.', 'info');
+                    return;
+                }
+                navigate(`/admin/purchases?focusPoId=${poId}`);
+                onClose();
+            } catch (e: any) {
+                showNotification(localizeSupabaseError(e) || 'فشل البحث عن أمر الشراء.', 'error');
             } finally {
                 setBusy(false);
             }
