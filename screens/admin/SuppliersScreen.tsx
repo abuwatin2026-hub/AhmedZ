@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { usePurchases } from '../../contexts/PurchasesContext';
 import * as Icons from '../../components/icons';
 import { Supplier } from '../../types';
@@ -7,10 +8,12 @@ import CurrencyDualAmount from '../../components/common/CurrencyDualAmount';
 import { getBaseCurrencyCode, getSupabaseClient } from '../../supabase';
 
 const SuppliersScreen: React.FC = () => {
+    const location = useLocation();
     const { suppliers, loading, addSupplier, updateSupplier, deleteSupplier, purchaseOrders } = usePurchases();
     const { user } = useAuth();
     const [baseCode, setBaseCode] = useState('—');
     const canManage = user?.role === 'owner' || user?.role === 'manager';
+    const focusedSupplierScrolledRef = useRef<string>('');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
     const [formData, setFormData] = useState<Partial<Supplier>>({});
@@ -22,6 +25,23 @@ const SuppliersScreen: React.FC = () => {
             setBaseCode(c);
         });
     }, []);
+
+    useEffect(() => {
+        const params = new URLSearchParams(String(location.search || ''));
+        const focusSupplierId = String(params.get('focusSupplierId') || '').trim();
+        if (!focusSupplierId) {
+            focusedSupplierScrolledRef.current = '';
+            return;
+        }
+        if (focusedSupplierScrolledRef.current === focusSupplierId) return;
+        const exists = (suppliers || []).some((s) => String((s as any)?.id || '') === focusSupplierId);
+        if (!exists) return;
+        focusedSupplierScrolledRef.current = focusSupplierId;
+        const el = document.getElementById(`supplier-${focusSupplierId}`);
+        if (el && typeof (el as any).scrollIntoView === 'function') {
+            (el as any).scrollIntoView({ block: 'center', behavior: 'smooth' });
+        }
+    }, [location.search, suppliers]);
 
     useEffect(() => {
         let active = true;
@@ -158,7 +178,16 @@ const SuppliersScreen: React.FC = () => {
                                 </tr>
                             ) : (
                                 suppliers.map((supplier) => (
-                                    <tr key={supplier.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors">
+                                    <tr
+                                        key={supplier.id}
+                                        id={`supplier-${supplier.id}`}
+                                        className={[
+                                            'hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors',
+                                            String(new URLSearchParams(String(location.search || '')).get('focusSupplierId') || '') === String(supplier.id)
+                                                ? 'bg-indigo-50/60 dark:bg-indigo-900/10'
+                                                : ''
+                                        ].join(' ')}
+                                    >
                                         <td className="p-4 font-medium dark:text-white border-r dark:border-gray-700">{supplier.name}</td>
                                         <td className="p-4 text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">{supplier.contactPerson || '-'}</td>
                                         <td className="p-4 text-gray-600 dark:text-gray-300 border-r dark:border-gray-700" dir="ltr">{supplier.phone || '-'}</td>

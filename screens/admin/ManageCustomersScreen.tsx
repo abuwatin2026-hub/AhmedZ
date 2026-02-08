@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useUserAuth } from '../../contexts/UserAuthContext';
 import { useOrders } from '../../contexts/OrderContext';
 import { useAuth } from '../../contexts/AuthContext';
@@ -14,6 +14,7 @@ import CurrencyDualAmount from '../../components/common/CurrencyDualAmount';
 
 const ManageCustomersScreen: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { customers, loading, fetchCustomers, deleteCustomer } = useUserAuth();
   const { updateOrderStatus, markOrderPaid } = useOrders();
   const { hasPermission, listAdminUsers } = useAuth();
@@ -76,6 +77,7 @@ const ManageCustomersScreen: React.FC = () => {
   const canViewInvoice = canMarkPaid || canUpdateAllStatuses;
   const canDeleteCustomer = hasPermission('customers.manage');
   const canManageCustomers = hasPermission('customers.manage');
+  const focusedCustomerScrolledRef = useRef<string>('');
 
   const handleOpenPointsModal = (customer: Customer) => {
     setEditingCustomer(customer);
@@ -99,6 +101,24 @@ const ManageCustomersScreen: React.FC = () => {
     });
     setDetailsTab('overview');
   };
+
+  useEffect(() => {
+    const params = new URLSearchParams(String(location.search || ''));
+    const focusCustomerId = String(params.get('focusCustomerId') || '').trim();
+    if (!focusCustomerId) {
+      focusedCustomerScrolledRef.current = '';
+      return;
+    }
+    if (focusedCustomerScrolledRef.current === focusCustomerId) return;
+    const match = customers.find(c => String((c as any)?.id || '') === focusCustomerId) || null;
+    if (!match) return;
+    focusedCustomerScrolledRef.current = focusCustomerId;
+    openCustomerDetails(match);
+    const el = document.getElementById(`customer-${focusCustomerId}`);
+    if (el && typeof (el as any).scrollIntoView === 'function') {
+      (el as any).scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }
+  }, [customers, location.search]);
 
   useEffect(() => {
     let active = true;
@@ -467,7 +487,17 @@ const ManageCustomersScreen: React.FC = () => {
                   </tr>
                 ) : visibleCustomers.length > 0 ? (
                   visibleCustomers.map((customer: Customer) => (
-                    <tr key={customer.id} className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/40" onClick={() => openCustomerDetails(customer)}>
+                    <tr
+                      key={customer.id}
+                      id={`customer-${customer.id}`}
+                      className={[
+                        'cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/40',
+                        String(new URLSearchParams(String(location.search || '')).get('focusCustomerId') || '') === String(customer.id)
+                          ? 'bg-indigo-50/60 dark:bg-indigo-900/10'
+                          : '',
+                      ].join(' ')}
+                      onClick={() => openCustomerDetails(customer)}
+                    >
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center">
                           <div className="flex-shrink-0 h-10 w-10">

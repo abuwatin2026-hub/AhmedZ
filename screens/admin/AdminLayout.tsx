@@ -457,6 +457,14 @@ const AdminLayout: React.FC = () => {
           >
             {settings.maintenanceEnabled ? 'الصيانة: مفعّلة' : 'الصيانة: موقفة'}
           </Link>
+          <Link
+            to="/admin/workspace"
+            className="hidden sm:inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+            title="العودة إلى مركز العمل"
+          >
+            <Icons.DashboardIcon className="h-5 w-5" />
+            <span className="font-semibold">مركز العمل</span>
+          </Link>
           <button
             type="button"
             onClick={() => setIsCommandPaletteOpen(true)}
