@@ -60,6 +60,7 @@ declare
   v_bal numeric;
   v_failed boolean := false;
   v_cnt int;
+  v_post_ts timestamptz := (clock_timestamp() + interval '30 days');
 begin
   t0 := clock_timestamp();
 
@@ -74,7 +75,7 @@ begin
   end if;
 
   v_entry := public.create_manual_journal_entry(
-    clock_timestamp(),
+    v_post_ts,
     'Smoke employee advance',
     jsonb_build_array(
       jsonb_build_object('accountCode','1350','debit',100,'credit',0,'memo','advance','partyId',v_emp_party::text),
@@ -85,7 +86,7 @@ begin
   perform public.approve_journal_entry(v_entry);
 
   v_entry := public.create_manual_journal_entry(
-    clock_timestamp() + interval '1 second',
+    v_post_ts + interval '1 second',
     'Smoke employee repayment',
     jsonb_build_array(
       jsonb_build_object('accountCode','1010','debit',40,'credit',0,'memo','cash in'),
@@ -128,6 +129,7 @@ declare
   v_party uuid;
   v_entry uuid;
   v_bal numeric;
+  v_post_ts timestamptz := (clock_timestamp() + interval '30 days');
 begin
   t0 := clock_timestamp();
 
@@ -139,7 +141,7 @@ begin
   values (v_party, 'staff_custodian', 'staff_custodians', gen_random_uuid()::text, auth.uid());
 
   v_entry := public.create_manual_journal_entry(
-    clock_timestamp(),
+    v_post_ts,
     'Smoke custodian fund',
     jsonb_build_array(
       jsonb_build_object('accountCode','1035','debit',200,'credit',0,'memo','fund','partyId',v_party::text),
@@ -150,7 +152,7 @@ begin
   perform public.approve_journal_entry(v_entry);
 
   v_entry := public.create_manual_journal_entry(
-    clock_timestamp() + interval '1 second',
+    v_post_ts + interval '1 second',
     'Smoke custodian settlement',
     jsonb_build_array(
       jsonb_build_object('accountCode','6100','debit',50,'credit',0,'memo','expense'),
@@ -183,7 +185,7 @@ declare
   v_supplier uuid;
   v_party uuid;
   v_entry uuid;
-  v_as_of date := current_date;
+  v_as_of date := current_date + 30;
   v_rev uuid;
 begin
   t0 := clock_timestamp();
@@ -229,6 +231,7 @@ declare
   v_party uuid;
   v_entry uuid;
   v_stmt_count int;
+  v_post_ts timestamptz := (clock_timestamp() + interval '30 days');
 begin
   t0 := clock_timestamp();
 
@@ -242,7 +245,7 @@ begin
     (v_party, 'supplier', 'dual', gen_random_uuid()::text, auth.uid());
 
   v_entry := public.create_manual_journal_entry(
-    now(),
+    v_post_ts,
     'Smoke dual party receivable',
     jsonb_build_array(
       jsonb_build_object('accountCode','1210','debit',300,'credit',0,'memo','other ar','partyId',v_party::text),
@@ -253,7 +256,7 @@ begin
   perform public.approve_journal_entry(v_entry);
 
   v_entry := public.create_manual_journal_entry(
-    now(),
+    v_post_ts + interval '1 second',
     'Smoke dual party payable',
     jsonb_build_array(
       jsonb_build_object('accountCode','6100','debit',200,'credit',0,'memo','expense'),
@@ -282,6 +285,7 @@ declare
   v_doc uuid;
   v_entry uuid;
   v_cnt int;
+  v_post_ts timestamptz := (clock_timestamp() + interval '30 days');
 begin
   t0 := clock_timestamp();
 
@@ -294,7 +298,7 @@ begin
 
   select public.create_party_document(
     'ar_invoice',
-    clock_timestamp(),
+    v_post_ts,
     v_party,
     'Smoke AR invoice doc',
     jsonb_build_array(

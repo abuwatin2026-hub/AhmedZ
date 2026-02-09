@@ -15,6 +15,14 @@ end $$;
 
 do $$
 declare
+  v_anchor date;
+begin
+  v_anchor := current_date + 3650 + (extract(epoch from clock_timestamp())::int % 300);
+  perform set_config('app.smoke_anchor_date', v_anchor::text, false);
+end $$;
+
+do $$
+declare
   t0 timestamptz;
   ms int;
   v_owner_id text;
@@ -50,8 +58,12 @@ declare
   v_doc2 uuid;
   v_set uuid;
   v_cnt int;
+  v_anchor date;
+  v_ts timestamptz;
 begin
   t0 := clock_timestamp();
+  v_anchor := nullif(current_setting('app.smoke_anchor_date', true), '')::date;
+  v_ts := (v_anchor::timestamptz + interval '12 hours');
 
   insert into public.financial_parties(name, party_type, is_active, created_by, updated_by)
   values ('Smoke Settle Party', 'customer', true, auth.uid(), auth.uid())
@@ -62,7 +74,7 @@ begin
 
   select public.create_party_document(
     'ar_invoice',
-    clock_timestamp(),
+    v_ts,
     v_party,
     'SE01 invoice',
     jsonb_build_array(
@@ -75,7 +87,7 @@ begin
 
   select public.create_party_document(
     'ar_receipt',
-    clock_timestamp(),
+    v_ts + interval '1 second',
     v_party,
     'SE01 receipt',
     jsonb_build_array(
@@ -88,7 +100,7 @@ begin
 
   select public.create_settlement(
     v_party,
-    clock_timestamp(),
+    v_ts + interval '2 seconds',
     jsonb_build_array(
       jsonb_build_object('fromOpenItemId', (select id::text from public.party_open_items where party_id = v_party and item_type='invoice' and direction='debit' order by created_at asc limit 1),
                          'toOpenItemId', (select id::text from public.party_open_items where party_id = v_party and item_type='receipt' and direction='credit' order by created_at asc limit 1),
@@ -119,8 +131,12 @@ declare
   v_doc2 uuid;
   v_set uuid;
   v_inv_open numeric;
+  v_anchor date;
+  v_ts timestamptz;
 begin
   t0 := clock_timestamp();
+  v_anchor := nullif(current_setting('app.smoke_anchor_date', true), '')::date;
+  v_ts := (v_anchor::timestamptz + interval '12 hours');
 
   insert into public.financial_parties(name, party_type, is_active, created_by, updated_by)
   values ('Smoke Partial Party', 'customer', true, auth.uid(), auth.uid())
@@ -131,7 +147,7 @@ begin
 
   select public.create_party_document(
     'ar_invoice',
-    clock_timestamp(),
+    v_ts,
     v_party,
     'SE02 invoice',
     jsonb_build_array(
@@ -144,7 +160,7 @@ begin
 
   select public.create_party_document(
     'ar_receipt',
-    clock_timestamp(),
+    v_ts + interval '1 second',
     v_party,
     'SE02 receipt',
     jsonb_build_array(
@@ -157,7 +173,7 @@ begin
 
   select public.create_settlement(
     v_party,
-    clock_timestamp(),
+    v_ts + interval '2 seconds',
     jsonb_build_array(
       jsonb_build_object('fromOpenItemId', (select id::text from public.party_open_items where party_id = v_party and item_type='invoice' and direction='debit' order by created_at asc limit 1),
                          'toOpenItemId', (select id::text from public.party_open_items where party_id = v_party and item_type='receipt' and direction='credit' order by created_at asc limit 1),
@@ -190,8 +206,12 @@ declare
   v_set uuid;
   v_fx_cnt int;
   v_fx_open int;
+  v_anchor date;
+  v_ts timestamptz;
 begin
   t0 := clock_timestamp();
+  v_anchor := nullif(current_setting('app.smoke_anchor_date', true), '')::date;
+  v_ts := (v_anchor::timestamptz + interval '12 hours');
 
   insert into public.financial_parties(name, party_type, is_active, created_by, updated_by)
   values ('Smoke FX Party', 'customer', true, auth.uid(), auth.uid())
@@ -202,11 +222,11 @@ begin
 
   select public.create_party_document(
     'ar_invoice',
-    clock_timestamp(),
+    v_ts,
     v_party,
     'SE03 invoice USD',
     jsonb_build_array(
-      jsonb_build_object('accountCode','1210','debit',200,'credit',0,'memo','ar usd','partyId',v_party::text,'currencyCode','USD','fxRate',2,'foreignAmount',100),
+      jsonb_build_object('accountCode','1200','debit',200,'credit',0,'memo','ar usd','partyId',v_party::text,'currencyCode','USD','fxRate',2,'foreignAmount',100),
       jsonb_build_object('accountCode','4010','debit',0,'credit',200,'memo','rev')
     ),
     null
@@ -215,12 +235,12 @@ begin
 
   select public.create_party_document(
     'ar_receipt',
-    clock_timestamp(),
+    v_ts + interval '1 second',
     v_party,
     'SE03 receipt USD',
     jsonb_build_array(
       jsonb_build_object('accountCode','1010','debit',250,'credit',0,'memo','cash'),
-      jsonb_build_object('accountCode','1210','debit',0,'credit',250,'memo','ar usd','partyId',v_party::text,'currencyCode','USD','fxRate',2.5,'foreignAmount',100)
+      jsonb_build_object('accountCode','1200','debit',0,'credit',250,'memo','ar usd','partyId',v_party::text,'currencyCode','USD','fxRate',2.5,'foreignAmount',100)
     ),
     null
   ) into v_doc2;
@@ -228,10 +248,10 @@ begin
 
   select public.create_settlement(
     v_party,
-    clock_timestamp(),
+    v_ts + interval '2 seconds',
     jsonb_build_array(
-      jsonb_build_object('fromOpenItemId', (select id::text from public.party_open_items where party_id = v_party and item_type='invoice' and direction='debit' and currency_code='USD' order by created_at asc limit 1),
-                         'toOpenItemId', (select id::text from public.party_open_items where party_id = v_party and item_type='receipt' and direction='credit' and currency_code='USD' order by created_at asc limit 1),
+      jsonb_build_object('fromOpenItemId', (select id::text from public.party_open_items where party_id = v_party and item_role='ar' and item_type='invoice' and direction='debit' and currency_code='USD' order by created_at asc limit 1),
+                         'toOpenItemId', (select id::text from public.party_open_items where party_id = v_party and item_role='ar' and item_type='receipt' and direction='credit' and currency_code='USD' order by created_at asc limit 1),
                          'allocatedForeignAmount', 100)
     ),
     'SE03 fx settlement'
@@ -269,8 +289,12 @@ declare
   v_inv uuid;
   v_set uuid;
   v_cnt int;
+  v_anchor date;
+  v_ts timestamptz;
 begin
   t0 := clock_timestamp();
+  v_anchor := nullif(current_setting('app.smoke_anchor_date', true), '')::date;
+  v_ts := (v_anchor::timestamptz + interval '12 hours');
 
   insert into public.financial_parties(name, party_type, is_active, created_by, updated_by)
   values ('Smoke Advance Party', 'customer', true, auth.uid(), auth.uid())
@@ -281,7 +305,7 @@ begin
 
   select public.create_party_document(
     'advance',
-    clock_timestamp(),
+    v_ts,
     v_party,
     'SE04 advance',
     jsonb_build_array(
@@ -294,7 +318,7 @@ begin
 
   select public.create_party_document(
     'ar_invoice',
-    clock_timestamp(),
+    v_ts + interval '1 second',
     v_party,
     'SE04 invoice',
     jsonb_build_array(
@@ -307,7 +331,7 @@ begin
 
   select public.create_settlement(
     v_party,
-    clock_timestamp(),
+    v_ts + interval '2 seconds',
     jsonb_build_array(
       jsonb_build_object('fromOpenItemId', (select id::text from public.party_open_items where party_id = v_party and item_type='invoice' and direction='debit' order by created_at asc limit 1),
                          'toOpenItemId', (select id::text from public.party_open_items where party_id = v_party and item_type='advance' and direction='credit' order by created_at asc limit 1),
@@ -337,8 +361,12 @@ declare
   v_set uuid;
   v_rev uuid;
   v_open numeric;
+  v_anchor date;
+  v_ts timestamptz;
 begin
   t0 := clock_timestamp();
+  v_anchor := nullif(current_setting('app.smoke_anchor_date', true), '')::date;
+  v_ts := (v_anchor::timestamptz + interval '12 hours');
 
   insert into public.financial_parties(name, party_type, is_active, created_by, updated_by)
   values ('Smoke Reverse Party', 'customer', true, auth.uid(), auth.uid())
@@ -349,7 +377,7 @@ begin
 
   select public.create_party_document(
     'ar_invoice',
-    clock_timestamp(),
+    v_ts,
     v_party,
     'SE05 invoice',
     jsonb_build_array(
@@ -362,7 +390,7 @@ begin
 
   select public.create_party_document(
     'ar_receipt',
-    clock_timestamp(),
+    v_ts + interval '1 second',
     v_party,
     'SE05 receipt',
     jsonb_build_array(
@@ -375,7 +403,7 @@ begin
 
   select public.create_settlement(
     v_party,
-    clock_timestamp(),
+    v_ts + interval '2 seconds',
     jsonb_build_array(
       jsonb_build_object('fromOpenItemId', (select id::text from public.party_open_items where party_id = v_party and item_type='invoice' and direction='debit' order by created_at asc limit 1),
                          'toOpenItemId', (select id::text from public.party_open_items where party_id = v_party and item_type='receipt' and direction='credit' order by created_at asc limit 1),
@@ -409,8 +437,12 @@ declare
   v_doc2 uuid;
   v_set uuid;
   v_open_cnt int;
+  v_anchor date;
+  v_ts timestamptz;
 begin
   t0 := clock_timestamp();
+  v_anchor := nullif(current_setting('app.smoke_anchor_date', true), '')::date;
+  v_ts := (v_anchor::timestamptz + interval '12 hours');
 
   insert into public.financial_parties(name, party_type, is_active, created_by, updated_by)
   values ('Smoke Auto Party', 'customer', true, auth.uid(), auth.uid())
@@ -421,7 +453,7 @@ begin
 
   select public.create_party_document(
     'ar_invoice',
-    clock_timestamp(),
+    v_ts,
     v_party,
     'SE06 invoice',
     jsonb_build_array(
@@ -434,7 +466,7 @@ begin
 
   select public.create_party_document(
     'ar_receipt',
-    clock_timestamp(),
+    v_ts + interval '1 second',
     v_party,
     'SE06 receipt',
     jsonb_build_array(
@@ -470,8 +502,12 @@ declare
   v_doc2 uuid;
   v_set uuid;
   v_ar record;
+  v_anchor date;
+  v_ts timestamptz;
 begin
   t0 := clock_timestamp();
+  v_anchor := nullif(current_setting('app.smoke_anchor_date', true), '')::date;
+  v_ts := (v_anchor::timestamptz + interval '12 hours');
 
   insert into public.financial_parties(name, party_type, is_active, created_by, updated_by)
   values ('Smoke Aging Party', 'customer', true, auth.uid(), auth.uid())
@@ -482,11 +518,11 @@ begin
 
   select public.create_party_document(
     'ar_invoice',
-    clock_timestamp(),
+    v_ts,
     v_party,
     'SE07 invoice',
     jsonb_build_array(
-      jsonb_build_object('accountCode','1210','debit',1000,'credit',0,'memo','ar','partyId',v_party::text),
+      jsonb_build_object('accountCode','1200','debit',1000,'credit',0,'memo','ar','partyId',v_party::text),
       jsonb_build_object('accountCode','4010','debit',0,'credit',1000,'memo','rev')
     ),
     null
@@ -495,12 +531,12 @@ begin
 
   select public.create_party_document(
     'ar_receipt',
-    clock_timestamp(),
+    v_ts + interval '1 second',
     v_party,
     'SE07 receipt',
     jsonb_build_array(
       jsonb_build_object('accountCode','1010','debit',400,'credit',0,'memo','cash'),
-      jsonb_build_object('accountCode','1210','debit',0,'credit',400,'memo','ar','partyId',v_party::text)
+      jsonb_build_object('accountCode','1200','debit',0,'credit',400,'memo','ar','partyId',v_party::text)
     ),
     null
   ) into v_doc2;
@@ -508,10 +544,10 @@ begin
 
   select public.create_settlement(
     v_party,
-    clock_timestamp(),
+    v_ts + interval '2 seconds',
     jsonb_build_array(
-      jsonb_build_object('fromOpenItemId', (select id::text from public.party_open_items where party_id = v_party and item_type='invoice' and direction='debit' order by created_at asc limit 1),
-                         'toOpenItemId', (select id::text from public.party_open_items where party_id = v_party and item_type='receipt' and direction='credit' order by created_at asc limit 1),
+      jsonb_build_object('fromOpenItemId', (select id::text from public.party_open_items where party_id = v_party and item_role='ar' and item_type='invoice' and direction='debit' order by created_at asc limit 1),
+                         'toOpenItemId', (select id::text from public.party_open_items where party_id = v_party and item_role='ar' and item_type='receipt' and direction='credit' order by created_at asc limit 1),
                          'allocatedBaseAmount', 400)
     ),
     'SE07 partial'
@@ -533,11 +569,15 @@ set role postgres;
 do $$
 declare
   v_period uuid;
-  v_start date := current_date - 1;
-  v_end date := current_date + 1;
+  v_anchor date;
+  v_start date;
+  v_end date;
 begin
+  v_anchor := nullif(current_setting('app.smoke_anchor_date', true), '')::date;
+  v_start := v_anchor - 1;
+  v_end := v_anchor + 1;
   insert into public.accounting_periods(name, start_date, end_date, status)
-  values (concat('Smoke Period ', to_char(current_date,'YYYY-MM-DD')), v_start, v_end, 'open')
+  values (concat('Smoke Period ', to_char(v_anchor,'YYYY-MM-DD')), v_start, v_end, 'open')
   returning id into v_period;
   perform set_config('app.smoke_period_id', v_period::text, false);
 end $$;
@@ -552,8 +592,12 @@ declare
   v_doc2 uuid;
   v_period uuid;
   v_ok boolean := false;
+  v_anchor date;
+  v_ts timestamptz;
 begin
   t0 := clock_timestamp();
+  v_anchor := nullif(current_setting('app.smoke_anchor_date', true), '')::date;
+  v_ts := (v_anchor::timestamptz + interval '12 hours');
 
   v_period := nullif(current_setting('app.smoke_period_id', true), '')::uuid;
   if v_period is null then
@@ -569,7 +613,7 @@ begin
 
   select public.create_party_document(
     'ar_invoice',
-    clock_timestamp(),
+    v_ts,
     v_party,
     'SE08 invoice',
     jsonb_build_array(
@@ -582,7 +626,7 @@ begin
 
   select public.create_party_document(
     'ar_receipt',
-    clock_timestamp(),
+    v_ts + interval '1 second',
     v_party,
     'SE08 receipt',
     jsonb_build_array(
@@ -598,7 +642,7 @@ begin
   begin
     perform public.create_settlement(
       v_party,
-      clock_timestamp(),
+      v_ts + interval '2 seconds',
       jsonb_build_array(
         jsonb_build_object('fromOpenItemId', (select id::text from public.party_open_items where party_id = v_party and item_type='invoice' and direction='debit' order by created_at asc limit 1),
                            'toOpenItemId', (select id::text from public.party_open_items where party_id = v_party and item_type='receipt' and direction='credit' order by created_at asc limit 1),
