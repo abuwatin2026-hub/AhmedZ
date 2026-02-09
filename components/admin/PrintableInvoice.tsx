@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import { Order } from '../../types';
-import { formatDateForPrint } from '../../utils/printUtils';
 import { computeCartItemPricing } from '../../utils/orderUtils';
 import { AZTA_IDENTITY } from '../../config/identity';
 
@@ -74,11 +73,8 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
     logoUrl,
     vatNumber,
     deliveryZoneName,
-    thermal = false,
     thermalPaperWidth = '58mm',
     isCopy = false,
-    copyNumber,
-    audit,
     qrCodeDataUrl,
 }) => {
     const invoiceSnapshot = order.invoiceSnapshot;
@@ -116,23 +112,15 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
     const resolvedVatNumber = vatNumber || '';
     const resolvedThermalPaperWidth: '58mm' | '80mm' = thermalPaperWidth === '80mm' ? '80mm' : '58mm';
     const systemName = language === 'ar' ? AZTA_IDENTITY.tradeNameAr : AZTA_IDENTITY.tradeNameEn;
-    const systemKey = AZTA_IDENTITY.merchantKey;
     const branchName = resolvedCafeteriaName.trim();
     const showBranchName = Boolean(branchName) && branchName !== systemName.trim();
-
-    const numericCellStyle: React.CSSProperties = {
-        textAlign: 'right',
-        direction: 'ltr',
-        fontVariantNumeric: 'tabular-nums',
-        fontFeatureSettings: '"tnum"',
-    };
 
     const currencyCode = String((invoiceOrder as any).currency || '').toUpperCase();
     const currencyLabel = currencyCode || '—';
     const formatAmount = (value: number) => {
         const n = Number(value) || 0;
         try {
-            return n.toLocaleString(language === 'ar' ? 'ar-EG-u-nu-latn' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         } catch {
             return n.toFixed(2);
         }
@@ -162,268 +150,183 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
     };
 
     const invoiceTerms: 'cash' | 'credit' = (invoiceOrder as any).invoiceTerms === 'credit' || invoiceOrder.paymentMethod === 'ar' ? 'credit' : 'cash';
-    const invoiceTermsLabel = invoiceTerms === 'credit' ? 'أجل' : 'نقد';
     const invoiceDueDate = typeof (invoiceOrder as any).dueDate === 'string' ? String((invoiceOrder as any).dueDate) : '';
 
     return (
-        <div style={{ maxWidth: thermal ? resolvedThermalPaperWidth : '800px', width: thermal ? resolvedThermalPaperWidth : 'auto', margin: '0 auto', color: '#000', fontFamily: thermal ? 'Tahoma, Arial, sans-serif' : 'inherit', fontSize: thermal ? '12px' : '14px', lineHeight: thermal ? 1.35 : 1.5 }}>
+        <div className="thermal-invoice" dir="rtl">
+            <style>{`
+                .thermal-invoice {
+                    font-family: 'Tahoma', 'Arial', sans-serif;
+                    font-size: 12px;
+                    line-height: 1.4;
+                    color: #000;
+                    width: ${resolvedThermalPaperWidth};
+                    max-width: ${resolvedThermalPaperWidth};
+                    margin: 0 auto;
+                    padding: 0 2px;
+                }
+                .text-center { text-align: center; }
+                .text-right { text-align: right; }
+                .text-left { text-align: left; }
+                .font-bold { font-weight: bold; }
+                .text-xs { font-size: 10px; }
+                .text-sm { font-size: 11px; }
+                .text-lg { font-size: 14px; }
+                .text-xl { font-size: 16px; }
+                .mb-1 { margin-bottom: 4px; }
+                .mb-2 { margin-bottom: 8px; }
+                .mt-1 { margin-top: 4px; }
+                .mt-2 { margin-top: 8px; }
+                .py-1 { padding-top: 4px; padding-bottom: 4px; }
+                .border-b { border-bottom: 1px dashed #000; }
+                .border-t { border-top: 1px dashed #000; }
+                .border-y { border-top: 1px dashed #000; border-bottom: 1px dashed #000; }
+                .flex { display: flex; justify-content: space-between; align-items: baseline; }
+                .tabular { font-variant-numeric: tabular-nums; font-family: 'Courier New', monospace; letter-spacing: -0.5px; }
+                .logo-img { height: 40px; margin-bottom: 5px; display: block; margin-left: auto; margin-right: auto; }
+                table { width: 100%; border-collapse: collapse; }
+                th { text-align: right; font-size: 10px; border-bottom: 1px dashed #000; padding-bottom: 4px; }
+                td { padding: 4px 0; vertical-align: top; }
+                .item-name { font-weight: bold; margin-bottom: 2px; }
+                .item-meta { font-size: 10px; color: #444; }
+                .total-box { border: 2px solid #000; padding: 8px; margin-top: 10px; border-radius: 4px; }
+                .watermark { 
+                    position: fixed; top: 30%; left: 50%; transform: translate(-50%, -50%) rotate(-45deg);
+                    font-size: 40px; font-weight: bold; color: rgba(0,0,0,0.1); pointer-events: none; z-index: 0; border: 4px solid rgba(0,0,0,0.1); padding: 10px 40px;
+                }
+            `}</style>
+
             {isCopy && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                    <div style={{ fontWeight: 700, color: '#b91c1c' }}>
-                        {language === 'ar' ? 'نسخة' : 'Copy'} {typeof copyNumber === 'number' ? `#${copyNumber}` : ''}
-                    </div>
-                    <div style={{ fontSize: '12px', color: '#6b7280' }}>
-                        {invoiceOrder.invoiceLastPrintedAt ? `${language === 'ar' ? 'آخر طباعة' : 'Last printed'}: ${formatDateForPrint(invoiceOrder.invoiceLastPrintedAt)}` : ''}
-                    </div>
-                </div>
+                <div className="watermark">نسخة</div>
             )}
-            <div style={{ textAlign: 'center', marginBottom: thermal ? '6px' : '10px' }}>
-                {resolvedLogoUrl ? (
-                    <img src={resolvedLogoUrl} alt={systemName || systemKey} style={{ height: thermal ? '28px' : '40px', display: 'inline-block' }} />
-                ) : null}
-                <div style={{ fontWeight: 900, fontSize: thermal ? '12px' : '14px', marginTop: '6px', letterSpacing: '2px' }} dir="ltr">{systemKey}</div>
-                <div style={{ fontWeight: 800, fontSize: thermal ? '14px' : '18px', marginTop: '4px' }}>{systemName}</div>
-                {showBranchName ? (
-                    <div style={{ fontSize: thermal ? '11px' : '13px', marginTop: '2px' }}>
-                        {language === 'ar' ? 'المخزن: ' : 'Branch: '}
-                        {branchName}
-                    </div>
-                ) : null}
-                {resolvedCafeteriaAddress ? <div style={{ fontSize: thermal ? '11px' : '13px' }}>{resolvedCafeteriaAddress}</div> : null}
-                {resolvedCafeteriaPhone ? <div style={{ fontSize: thermal ? '11px' : '13px' }}>هاتف: {resolvedCafeteriaPhone}</div> : null}
-                {resolvedVatNumber ? <div style={{ fontSize: thermal ? '11px' : '13px', marginTop: '2px' }}>الرقم الضريبي: {resolvedVatNumber}</div> : null}
+
+            <div className="text-center mb-2">
+                {resolvedLogoUrl && <img src={resolvedLogoUrl} alt="Logo" className="logo-img" />}
+                <div className="font-bold text-lg mb-1">{systemName}</div>
+                {showBranchName && <div className="text-sm mb-1">{branchName}</div>}
+                <div className="text-xs">{resolvedCafeteriaAddress}</div>
+                {resolvedCafeteriaPhone && <div className="text-xs" dir="ltr">{resolvedCafeteriaPhone}</div>}
+                {resolvedVatNumber && <div className="text-xs mt-1 font-bold">الرقم الضريبي: <span dir="ltr" className="tabular">{resolvedVatNumber}</span></div>}
             </div>
 
-            <div style={{ borderTop: '1px dashed #000', margin: thermal ? '6px 0' : '10px 0' }}></div>
-
-            <div style={{ textAlign: 'center', fontWeight: 700, marginBottom: thermal ? '6px' : '10px', fontSize: thermal ? '14px' : '20px' }}>
-                {language === 'ar' ? 'فاتورة' : 'Invoice'}
+            <div className="text-center border-y py-1 mb-2">
+                <div className="font-bold text-lg">فاتورة ضريبية</div>
+                <div className="text-xs uppercase tracking-wider">Tax Invoice</div>
             </div>
 
-            <div style={{ marginBottom: thermal ? '6px' : '12px', display: 'grid', gridTemplateColumns: thermal ? '1fr' : '1fr 1fr', gap: thermal ? '6px' : '20px' }}>
-                <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span style={{ fontWeight: 700 }}>{language === 'ar' ? 'رقم:' : 'No.:'}</span>
-                        <span>{invoiceOrder.invoiceNumber || `#${invoiceOrder.id.slice(-8).toUpperCase()}`}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span style={{ fontWeight: 700 }}>{language === 'ar' ? 'التاريخ:' : 'Date:'}</span>
-                        <span>{formatDateForPrint(invoiceOrder.invoiceIssuedAt || invoiceOrder.createdAt)}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span style={{ fontWeight: 700 }}>{language === 'ar' ? 'نوع الفاتورة:' : 'Terms:'}</span>
-                        <span>{invoiceTermsLabel}</span>
-                    </div>
-                    {invoiceTerms === 'credit' && invoiceDueDate ? (
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                            <span style={{ fontWeight: 700 }}>{language === 'ar' ? 'الاستحقاق:' : 'Due:'}</span>
-                            <span>{formatDateForPrint(invoiceDueDate)}</span>
-                        </div>
-                    ) : null}
+            <div className="mb-2 text-sm">
+                <div className="flex">
+                    <span>رقم الفاتورة:</span>
+                    <span className="font-bold tabular" dir="ltr">{invoiceOrder.invoiceNumber || invoiceOrder.id.slice(-8).toUpperCase()}</span>
                 </div>
-                <div>
-                    <div style={{ fontWeight: 700, marginBottom: '4px' }}>{language === 'ar' ? 'إلى:' : 'To:'}</div>
-                    <div>{invoiceOrder.customerName}</div>
-                    {invoiceOrder.phoneNumber ? <div>{invoiceOrder.phoneNumber}</div> : null}
-                    {invoiceOrder.address ? <div style={{ fontSize: thermal ? '11px' : '12px', color: '#444' }}>{invoiceOrder.address}</div> : null}
-                    {invoiceOrder.deliveryZoneId && (
-                        <div style={{ fontSize: thermal ? '11px' : '12px', color: '#444' }}>
-                            {language === 'ar' ? 'منطقة:' : 'Zone:'}{' '}
-                            {deliveryZoneName
-                                ? deliveryZoneName
-                                : (invoiceOrder.orderSource === 'in_store'
-                                    ? (language === 'ar' ? 'داخل المحل' : 'In-store')
-                                    : invoiceOrder.deliveryZoneId.slice(-6).toUpperCase())}
-                        </div>
-                    )}
+                <div className="flex">
+                    <span>التاريخ:</span>
+                    <span className="tabular" dir="ltr">{new Date(invoiceOrder.invoiceIssuedAt || invoiceOrder.createdAt).toLocaleDateString('en-GB')} {new Date(invoiceOrder.invoiceIssuedAt || invoiceOrder.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}</span>
                 </div>
+                <div className="flex">
+                    <span>العميل:</span>
+                    <span className="font-bold">{invoiceOrder.customerName}</span>
+                </div>
+                {invoiceOrder.deliveryZoneId && (
+                    <div className="flex">
+                        <span>المنطقة:</span>
+                        <span>{deliveryZoneName || invoiceOrder.deliveryZoneId}</span>
+                    </div>
+                )}
             </div>
 
-            <table className="mb-4" style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <table className="mb-2">
                 <thead>
                     <tr>
-                        <th style={{ width: thermal ? '24px' : '50px', borderBottom: '1px dashed #000', textAlign: 'center' }}>#</th>
-                        <th style={{ borderBottom: '1px dashed #000', textAlign: 'right' }}>الصنف</th>
-                        <th style={{ width: thermal ? '60px' : '80px', borderBottom: '1px dashed #000', ...numericCellStyle }}>الكمية</th>
-                        <th style={{ width: thermal ? '70px' : '100px', borderBottom: '1px dashed #000', ...numericCellStyle }}>السعر</th>
-                        <th style={{ width: thermal ? '80px' : '100px', borderBottom: '1px dashed #000', ...numericCellStyle }}>المجموع</th>
+                        <th style={{ width: '45%' }}>الصنف</th>
+                        <th style={{ width: '15%', textAlign: 'center' }}>الكمية</th>
+                        <th style={{ width: '20%', textAlign: 'center' }}>السعر</th>
+                        <th style={{ width: '20%', textAlign: 'left' }}>المجموع</th>
                     </tr>
                 </thead>
                 <tbody>
                     {invoiceOrder.items.map((item, index) => {
                         const pricing = computeCartItemPricing(item);
                         const displayQty = pricing.isWeightBased
-                            ? `${pricing.quantity} ${pricing.unitType === 'gram' ? (language === 'ar' ? 'جم' : 'g') : (language === 'ar' ? 'كجم' : 'kg')}`
+                            ? `${pricing.quantity} ${pricing.unitType === 'gram' ? 'جم' : 'كجم'}`
                             : String(item.quantity);
 
                         return (
-                            <React.Fragment key={item.cartItemId || index}>
-                                <tr>
-                                    <td style={{ textAlign: 'center' }}>{index + 1}</td>
-                                    <td style={{ textAlign: 'right' }}>
-                                        <div style={{ fontWeight: 700 }}>{item.name?.[language] || item.name?.ar || item.name?.en || item.id}</div>
-                                        {Object.values(item.selectedAddons).length > 0 ? (
-                                            <div style={{ fontSize: thermal ? '10px' : '12px', color: '#666', marginTop: '2px' }}>
-                                                {Object.values(item.selectedAddons).map(({ addon, quantity }, i) => (
-                                                    <div key={i}>
-                                                        + {quantity > 1 && `${quantity}x `}{addon.name[language]} ({formatAmount(Number(addon.price || 0) * Number(quantity || 0))} {currencyLabel})
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        ) : null}
-                                    </td>
-                                    <td style={numericCellStyle}>{displayQty}</td>
-                                    <td style={numericCellStyle}>{formatAmount(pricing.unitPrice)} {currencyLabel}</td>
-                                    <td style={{ ...numericCellStyle, fontWeight: 700 }}>{formatAmount(pricing.lineTotal)} {currencyLabel}</td>
-                                </tr>
-                            </React.Fragment>
+                            <tr key={item.cartItemId || index}>
+                                <td>
+                                    <div className="item-name">{item.name?.[language] || item.name?.ar || item.name?.en}</div>
+                                    {Object.values(item.selectedAddons).length > 0 && (
+                                        <div className="item-meta">
+                                            {Object.values(item.selectedAddons).map(({ addon, quantity }, i) => (
+                                                <span key={i}>+ {addon.name[language]} {quantity > 1 ? `(${quantity})` : ''} </span>
+                                            ))}
+                                        </div>
+                                    )}
+                                </td>
+                                <td className="text-center tabular">{displayQty}</td>
+                                <td className="text-center tabular">{formatAmount(pricing.unitPrice)}</td>
+                                <td className="text-left font-bold tabular">{formatAmount(pricing.lineTotal)}</td>
+                            </tr>
                         );
                     })}
                 </tbody>
             </table>
 
-            <div style={{ marginLeft: 'auto', width: thermal ? '100%' : '300px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span>{language === 'ar' ? 'المجموع الفرعي:' : 'Subtotal:'}</span>
-                    <span style={numericCellStyle}>{formatAmount(invoiceOrder.subtotal)} {currencyLabel}</span>
+            <div className="border-t pt-2 mb-2">
+                <div className="flex mb-1">
+                    <span>المجموع الفرعي:</span>
+                    <span className="tabular">{formatAmount(invoiceOrder.subtotal)}</span>
                 </div>
-
-                {invoiceOrder.discountAmount && invoiceOrder.discountAmount > 0 && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#16a34a' }}>
-                        <span>{language === 'ar' ? 'الخصم:' : 'Discount:'}</span>
-                        <span style={numericCellStyle}>- {formatAmount(invoiceOrder.discountAmount)} {currencyLabel}</span>
+                {(invoiceOrder.discountAmount || 0) > 0 && (
+                    <div className="flex mb-1">
+                        <span>الخصم:</span>
+                        <span className="tabular">- {formatAmount(invoiceOrder.discountAmount || 0)}</span>
                     </div>
                 )}
-
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span>{language === 'ar' ? 'رسوم التوصيل:' : 'Delivery fee:'}</span>
-                    <span style={numericCellStyle}>{formatAmount(Number(invoiceOrder.deliveryFee) || 0)} {currencyLabel}</span>
+                <div className="flex mb-1">
+                    <span>الضريبة (15%):</span>
+                    <span className="tabular">{formatAmount(invoiceOrder.taxAmount || 0)}</span>
                 </div>
-
-                {invoiceOrder.taxAmount && invoiceOrder.taxAmount > 0 && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span>{language === 'ar' ? `الضريبة (${invoiceOrder.taxRate || 0}%):` : `Tax (${invoiceOrder.taxRate || 0}%):`}</span>
-                        <span style={numericCellStyle}>{formatAmount(invoiceOrder.taxAmount)} {currencyLabel}</span>
+                {Number(invoiceOrder.deliveryFee) > 0 && (
+                    <div className="flex mb-1">
+                        <span>التوصيل:</span>
+                        <span className="tabular">{formatAmount(Number(invoiceOrder.deliveryFee))}</span>
                     </div>
                 )}
-
-                <div style={{ borderTop: '1px dashed #000', margin: thermal ? '6px 0' : '10px 0' }}></div>
-
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: thermal ? '14px' : '18px', padding: thermal ? '6px' : '10px' }}>
-                    <span>{language === 'ar' ? 'الإجمالي:' : 'Total:'}</span>
-                    <span style={{ ...numericCellStyle, color: '#000' }}>{formatAmount(invoiceOrder.total)} {currencyLabel}</span>
-                </div>
             </div>
 
-            <div className="mt-4 mb-4">
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span className="font-bold">{language === 'ar' ? 'طريقة الدفع:' : 'Payment method:'}</span>
+            <div className="total-box text-center mb-4">
+                <div className="text-sm font-bold mb-1">الإجمالي النهائي</div>
+                <div className="text-xl font-bold tabular" dir="ltr">{formatAmount(invoiceOrder.total)} {currencyLabel}</div>
+            </div>
+
+            <div className="mb-4 text-sm border-b pb-2">
+                <div className="flex">
+                    <span className="font-bold">طريقة الدفع:</span>
                     <span>{getPaymentMethodText(invoiceOrder.paymentMethod)}</span>
                 </div>
-                {Array.isArray((invoiceOrder as any).paymentBreakdown) && (invoiceOrder as any).paymentBreakdown.length > 0 && (
-                    <div style={{ marginTop: '6px', fontSize: thermal ? '11px' : '12px' }}>
-                        {(invoiceOrder as any).paymentBreakdown.map((p: any, idx: number) => {
-                            const amount = Number(p?.amount) || 0;
-                            const method = typeof p?.method === 'string' ? p.method : '';
-                            const ref = typeof p?.referenceNumber === 'string' ? p.referenceNumber : '';
-                            const cashReceived = Number(p?.cashReceived) || 0;
-                            const cashChange = Number(p?.cashChange) || 0;
-                            const left = [
-                                getPaymentMethodText(method),
-                                ref ? ref : '',
-                                method === 'cash' && cashReceived > 0 ? `${language === 'ar' ? 'مستلم' : 'Received'}: ${cashReceived.toFixed(2)} ${currencyLabel}` : '',
-                                method === 'cash' && cashReceived > 0 ? `${language === 'ar' ? 'باقي' : 'Change'}: ${cashChange.toFixed(2)} ${currencyLabel}` : '',
-                            ].filter(Boolean).join(' • ');
-                            return (
-                                <div key={`${method}-${idx}`} style={{ display: 'flex', justifyContent: 'space-between', gap: '10px' }}>
-                                    <span>{left}</span>
-                                    <span style={{ fontWeight: 700 }}>{formatAmount(amount)} {currencyLabel}</span>
-                                </div>
-                            );
-                        })}
-                    </div>
-                )}
-                {invoiceOrder.orderSource && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span className="font-bold">{language === 'ar' ? 'مصدر الطلب:' : 'Source:'}</span>
-                        <span>{invoiceOrder.orderSource === 'in_store' ? (language === 'ar' ? 'حضوري' : 'In-store') : (language === 'ar' ? 'أونلاين' : 'Online')}</span>
-                    </div>
-                )}
-                {invoiceOrder.appliedCouponCode && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span className="font-bold">{language === 'ar' ? 'كوبون الخصم:' : 'Coupon:'}</span>
-                        <span>{invoiceOrder.appliedCouponCode}</span>
-                    </div>
-                )}
-                {audit && (audit.discountType || audit.journalEntryId || (Array.isArray(audit.promotions) && audit.promotions.length > 0)) && (
-                    <div style={{ marginTop: '8px', borderTop: '1px dashed #000', paddingTop: '6px', fontSize: thermal ? '10px' : '12px' }}>
-                        <div style={{ fontWeight: 700, marginBottom: '4px' }}>{language === 'ar' ? 'تفاصيل التدقيق' : 'Audit Details'}</div>
-                        {audit.discountType && (
-                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px' }}>
-                                <span>{language === 'ar' ? 'نوع الخصم' : 'Discount Type'}</span>
-                                <span style={{ fontWeight: 700 }} dir="ltr">{String(audit.discountType)}</span>
-                            </div>
-                        )}
-                        {Array.isArray(audit.promotions) && audit.promotions.length > 0 && (
-                            <div style={{ marginTop: '4px' }}>
-                                <div style={{ fontWeight: 700 }}>{language === 'ar' ? 'العروض' : 'Promotions'}</div>
-                                {audit.promotions.map((p: any, idx: number) => {
-                                    const promoName = String(p?.promotionName || '—');
-                                    const promoId = String(p?.promotionId || '');
-                                    const approvalId = String(p?.approvalRequestId || '');
-                                    return (
-                                        <div key={`${promoId || idx}`} style={{ display: 'flex', justifyContent: 'space-between', gap: '10px' }}>
-                                            <span>{promoName}</span>
-                                            <span style={{ fontFamily: 'monospace' }} dir="ltr">
-                                                {promoId ? promoId.slice(-8) : '—'}
-                                                {approvalId ? ` • APR-${approvalId.slice(-8)}` : ''}
-                                            </span>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        )}
-                        {audit.discountType === 'Manual Discount' && audit.manualDiscountApprovalRequestId && (
-                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', marginTop: '4px' }}>
-                                <span>{language === 'ar' ? 'موافقة الخصم' : 'Discount Approval'}</span>
-                                <span style={{ fontFamily: 'monospace' }} dir="ltr">
-                                    APR-{String(audit.manualDiscountApprovalRequestId).slice(-8)}
-                                    {audit.manualDiscountApprovalStatus ? ` • ${String(audit.manualDiscountApprovalStatus)}` : ''}
-                                </span>
-                            </div>
-                        )}
-                        {audit.journalEntryId && (
-                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', marginTop: '4px' }}>
-                                <span>{language === 'ar' ? 'قيد اليومية' : 'Journal Entry'}</span>
-                                <span style={{ fontFamily: 'monospace', fontWeight: 700 }} dir="ltr">JE-{String(audit.journalEntryId).slice(-8)}</span>
-                            </div>
-                        )}
+                {invoiceTerms === 'credit' && (
+                    <div className="flex mt-1">
+                        <span>تاريخ الاستحقاق:</span>
+                        <span className="tabular" dir="ltr">{invoiceDueDate ? new Date(invoiceDueDate).toLocaleDateString('en-GB') : '-'}</span>
                     </div>
                 )}
             </div>
 
-            <div className="mt-4 text-center" style={{ borderTop: '1px dashed #000', paddingTop: thermal ? '8px' : '15px', fontSize: thermal ? '12px' : '14px' }}>
-                <p className="font-bold mb-2">
-                    {language === 'ar' ? `شكراً لطلبك من ${resolvedCafeteriaName}!` : `Thank you for your order from ${resolvedCafeteriaName}!`}
-                </p>
-                <p style={{ color: '#666', fontSize: thermal ? '10px' : '12px' }}>
-                    {language === 'ar' ? 'نتمنى لك يوماً سعيداً' : 'We wish you a great day'}
-                </p>
+            <div className="text-center mb-4">
+                <div style={{ display: 'inline-block', padding: '5px', background: 'white' }}>
+                    {qrCodeDataUrl ? (
+                        <img src={qrCodeDataUrl} alt="QR" style={{ width: thermalPaperWidth === '80mm' ? 120 : 100, height: thermalPaperWidth === '80mm' ? 120 : 100 }} />
+                    ) : (
+                        <QRImage value={qrData} size={thermalPaperWidth === '80mm' ? 120 : 100} />
+                    )}
+                </div>
+                <div className="text-xs mt-1">امسح للتحقق (ZATCA)</div>
             </div>
 
-            <div className="mt-4 text-center" style={{ fontSize: thermal ? '9px' : '10px', color: '#999' }}>
-                <p>{language === 'ar' ? 'تم الطباعة' : 'Printed'}: {new Date().toLocaleString(language === 'ar' ? 'ar-EG-u-nu-latn' : 'en-US')}</p>
-                {isCopy ? (
-                    <p style={{ marginTop: '4px', fontWeight: 700, color: '#b91c1c' }}>{language === 'ar' ? 'نسخة' : 'Copy'}</p>
-                ) : null}
-            </div>
-            
-            <div style={{ textAlign: 'center', marginTop: '10px', display: 'flex', justifyContent: 'center' }}>
-                {qrCodeDataUrl ? (
-                    <img src={qrCodeDataUrl} alt="QR" style={{ width: thermal ? 100 : 128, height: thermal ? 100 : 128 }} />
-                ) : (
-                    <QRImage value={qrData} size={thermal ? 100 : 128} />
-                )}
+            <div className="text-center text-xs mt-2">
+                <div className="font-bold">شكراً لزيارتكم!</div>
+                <div className="mt-1 tabular" dir="ltr">{new Date().toLocaleString('en-GB')}</div>
             </div>
         </div>
     );
