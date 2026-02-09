@@ -1793,8 +1793,8 @@ const FinancialReports: React.FC = () => {
     <div className="animate-fade-in space-y-8">
       {entryModalId && (
         <div className="fixed inset-0 z-50">
-          <div className="absolute inset-0 bg-black/50" onClick={closeEntryModal} />
-          <div className="absolute inset-0 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50 z-40" onClick={closeEntryModal} />
+          <div className="absolute inset-0 flex items-center justify-center p-4 z-50" onClick={(e) => e.stopPropagation()}>
             <div className="w-full max-w-3xl bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
               <div className="flex items-center justify-between gap-3 p-4 border-b border-gray-100 dark:border-gray-700">
                 <div className="min-w-0">
