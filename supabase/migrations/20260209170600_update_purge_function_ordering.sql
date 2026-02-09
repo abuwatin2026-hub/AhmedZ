@@ -45,9 +45,15 @@ begin
 
   -- Banking/Workflow/Approvals
   execute 'truncate table public.cash_shifts restart identity cascade';
-  execute 'truncate table public.bank_statement_batches restart identity cascade';
-  execute 'truncate table public.bank_statement_lines restart identity cascade';
-  execute 'truncate table public.bank_reconciliation_batches restart identity cascade';
+  if to_regclass('public.bank_statement_batches') is not null then
+    execute 'truncate table public.bank_statement_batches restart identity cascade';
+  end if;
+  if to_regclass('public.bank_statement_lines') is not null then
+    execute 'truncate table public.bank_statement_lines restart identity cascade';
+  end if;
+  if to_regclass('public.bank_reconciliation_batches') is not null then
+    execute 'truncate table public.bank_reconciliation_batches restart identity cascade';
+  end if;
 
   execute 'truncate table public.workflow_instances restart identity cascade';
   execute 'truncate table public.workflow_approvals restart identity cascade';
@@ -60,7 +66,9 @@ begin
   execute 'truncate table public.import_shipments_items restart identity cascade';
   execute 'truncate table public.import_expenses restart identity cascade';
 
-  execute 'truncate table public.audit_logs restart identity cascade';
+  if to_regclass('public.audit_logs') is not null then
+    execute 'truncate table public.audit_logs restart identity cascade';
+  end if;
 
   if not p_keep_items then
     execute 'truncate table public.menu_items restart identity cascade';

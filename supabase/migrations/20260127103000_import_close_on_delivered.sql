@@ -55,10 +55,6 @@ begin
     if new.actual_arrival_date is not null and v_im.occurred_at < new.actual_arrival_date then
       raise exception 'Receipt movement for batch % predates shipment arrival (item % warehouse %)', v_sm.last_batch_id, v_item.item_id_text, new.destination_warehouse_id;
     end if;
-    update public.inventory_movements
-    set unit_cost = v_item.landed_unit,
-        total_cost = (coalesce(v_im.quantity, 0) * v_item.landed_unit)
-    where id = v_im.id;
     update public.batches b
     set unit_cost = v_item.landed_unit,
         updated_at = now()

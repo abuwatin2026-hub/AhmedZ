@@ -1215,6 +1215,22 @@ const FinancialReports: React.FC = () => {
     }
   }, [canApproveAccounting, loadCashFlow, loadDraftManualEntries, loadStatements, showNotification, supabase, user?.id]);
 
+  const cancelDraftEntry = useCallback(async (entryId: string) => {
+    if (!supabase) return;
+    if (!canManageAccounting) {
+      showNotification('ليس لديك صلاحية إدارة القيود المحاسبية.', 'error');
+      return;
+    }
+    try {
+      const reason = 'إلغاء مسودة قيد يدوي';
+      const { error } = await supabase.rpc('cancel_manual_journal_draft', { p_entry_id: entryId, p_reason: reason });
+      if (error) throw error;
+      showNotification('تم إلغاء المسودة بنجاح.', 'success');
+      await loadDraftManualEntries();
+    } catch (err: any) {
+      showNotification(localizeSupabaseError(err) || 'تعذر إلغاء المسودة.', 'error');
+    }
+  }, [canManageAccounting, loadDraftManualEntries, showNotification, supabase]);
   const voidEntry = useCallback(async (entryId: string) => {
     if (!supabase) return;
     if (!canVoidAccounting) {
@@ -3820,6 +3836,15 @@ const FinancialReports: React.FC = () => {
                         >
                           عرض
                         </button>
+                        {canManageAccounting && (
+                          <button
+                            type="button"
+                            onClick={() => void cancelDraftEntry(d.id)}
+                            className="px-2.5 py-1 rounded-lg bg-gray-300 dark:bg-gray-600 text-gray-900 dark:text-white text-xs font-semibold"
+                          >
+                            إلغاء المسودة
+                          </button>
+                        )}
                         {canApproveAccounting && Math.abs(diff) <= 1e-6 && d.debit > 0 && (
                           <button
                             type="button"

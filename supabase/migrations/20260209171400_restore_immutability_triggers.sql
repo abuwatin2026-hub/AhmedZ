@@ -6,14 +6,14 @@ begin
   language plpgsql
   security definer
   set search_path = public
-  as $$
+  as $je$
   begin
     if coalesce(old.source_table, '') <> '' and old.source_table <> 'manual' then
       raise exception 'GL is append-only: system journal entries are immutable';
     end if;
     return coalesce(new, old);
   end;
-  $$;
+  $je$;
 
   drop trigger if exists trg_journal_entries_block_system_mutation on public.journal_entries;
   create trigger trg_journal_entries_block_system_mutation
@@ -26,7 +26,7 @@ begin
   language plpgsql
   security definer
   set search_path = public
-  as $$
+  as $jl$
   declare
     v_source_table text;
   begin
@@ -47,7 +47,7 @@ begin
     end if;
     return new;
   end;
-  $$;
+  $jl$;
 
   drop trigger if exists trg_journal_lines_block_system_mutation on public.journal_lines;
   create trigger trg_journal_lines_block_system_mutation
@@ -82,4 +82,3 @@ begin
 end $$;
 
 notify pgrst, 'reload schema';
-

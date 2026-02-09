@@ -608,10 +608,6 @@ begin
       v_delta := (v_new_unit - coalesce(v_out.unit_cost, 0)) * coalesce(v_out.quantity, 0);
       v_total_delta_sold := v_total_delta_sold + v_delta;
 
-      update public.inventory_movements
-      set unit_cost = v_new_unit,
-          total_cost = coalesce(v_out.quantity, 0) * v_new_unit
-      where id = v_out.id;
 
       if v_out.reference_table = 'orders' then
         begin
@@ -636,10 +632,6 @@ begin
     v_rem_qty := greatest(coalesce(v_batch.quantity_received, 0) - coalesce(v_batch.quantity_consumed, 0), 0);
     v_total_delta_rem := v_total_delta_rem + ((v_new_unit - coalesce(v_im.unit_cost, 0)) * v_rem_qty);
 
-    update public.inventory_movements
-    set unit_cost = v_new_unit,
-        total_cost = coalesce(v_im.quantity, 0) * v_new_unit
-    where id = v_im.id;
 
     update public.purchase_receipt_items
     set unit_cost = v_new_unit,

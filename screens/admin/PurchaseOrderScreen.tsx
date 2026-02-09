@@ -803,7 +803,7 @@ const PurchaseOrderScreen: React.FC = () => {
             if (!normalizedPoCurrency) errors.push('عملة أمر الشراء مطلوبة');
             if (!Number.isFinite(Number(poFxRate)) || Number(poFxRate) <= 0) errors.push('سعر الصرف مطلوب ويجب أن يكون أكبر من صفر');
             if (normalizedPoCurrency && normalizedBase && normalizedBase !== '—' && normalizedPoCurrency !== normalizedBase && poFxSource === 'unknown') {
-                errors.push('لا يوجد سعر صرف لهذه العملة. أدخل السعر يدويًا أو أضف سعر الصرف من شاشة أسعار الصرف.');
+                errors.push('لا يوجد سعر صرف لهذه العملة في النظام لهذا التاريخ. الرجاء إضافة السعر من شاشة أسعار الصرف، فالإدخال اليدوي غير مسموح.');
             }
             if (paymentTerms === 'credit' && !dueDate) errors.push('تاريخ الاستحقاق مطلوب للفواتير الآجلة');
             if (orderItems.length === 0) errors.push('أضف صنف واحد على الأقل');
@@ -1989,10 +1989,8 @@ const PurchaseOrderScreen: React.FC = () => {
                                             step="0.000001"
                                             className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono"
                                             value={Number(poFxRate) || 0}
-                                            onChange={(e) => {
-                                                setPoFxRate(Number(e.target.value) || 0);
-                                                setPoFxSource('manual');
-                                            }}
+                                            readOnly
+                                            disabled
                                         />
                                     </div>
                                     <div className="md:col-span-2 flex items-end">
