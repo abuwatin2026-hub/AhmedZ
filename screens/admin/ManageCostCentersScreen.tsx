@@ -186,7 +186,7 @@ const ManageCostCentersScreen: React.FC = () => {
                                     value={formData.name}
                                     onChange={e => setFormData({ ...formData, name: e.target.value })}
                                     className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                                    placeholder="مثال: الفرع الرئيسي، المطبخ"
+                                    placeholder="مثال: الفرع الرئيسي، المستودع"
                                 />
                             </div>
                             <div>

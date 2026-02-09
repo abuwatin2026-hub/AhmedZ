@@ -1,4 +1,3 @@
-import { formatDateOnly } from '../../../utils/printUtils';
 
 type Brand = {
   name?: string;
@@ -25,89 +24,190 @@ export default function PrintableWarehouseTransfer(props: { data: PrintableWareh
   const { data, brand, language = 'ar' } = props;
 
   return (
-    <div>
-      <div className="header">
-        {brand?.logoUrl ? <img src={brand.logoUrl} alt={brand?.name || ''} style={{ height: '40px', display: 'inline-block', marginBottom: '8px' }} /> : null}
-        <h1>{(brand?.name || '').trim()}</h1>
-        <p>{language === 'en' ? 'Warehouse Transfer' : 'تحويل مخزني'}</p>
-        {brand?.branchName ? <p style={{ fontSize: '12px' }}>{brand.branchName}{brand?.branchCode ? ` • ${brand.branchCode}` : ''}</p> : null}
-        {brand?.address ? <p style={{ fontSize: '12px' }}>{brand.address}</p> : null}
-        {brand?.contactNumber ? <p style={{ fontSize: '12px' }}>{language === 'en' ? 'Phone:' : 'هاتف:'} {brand.contactNumber}</p> : null}
+    <div className="transfer-container" dir={language === 'ar' ? 'rtl' : 'ltr'}>
+        <style>{`
+            @media print {
+                @page { size: A4; margin: 0; }
+                body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            }
+            .transfer-container {
+                font-family: 'Tajawal', 'Cairo', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                max-width: 210mm;
+                margin: 0 auto;
+                background: white;
+                color: #1e293b;
+                line-height: 1.5;
+                padding: 40px;
+            }
+            .header-section {
+                display: flex;
+                justify-content: space-between;
+                align-items: flex-start;
+                margin-bottom: 30px;
+                border-bottom: 2px solid #1e293b;
+                padding-bottom: 20px;
+            }
+            .company-info h1 { font-size: 24px; font-weight: 800; margin: 0 0 5px 0; color: #1e293b; }
+            .company-info p { margin: 2px 0; font-size: 13px; color: #64748b; }
+            .doc-title {
+                text-align: ${language === 'ar' ? 'left' : 'right'};
+            }
+            .doc-title h2 {
+                font-size: 28px;
+                font-weight: 900;
+                color: #1e293b;
+                margin: 0;
+                text-transform: uppercase;
+            }
+            .doc-title .ref-number {
+                font-size: 16px;
+                color: #64748b;
+                margin-top: 5px;
+                font-family: 'Courier New', monospace;
+            }
+            
+            .info-grid {
+                display: grid;
+                grid-template-columns: repeat(2, 1fr);
+                gap: 20px;
+                margin-bottom: 30px;
+                background: #f8fafc;
+                padding: 20px;
+                border-radius: 8px;
+                border: 1px solid #e2e8f0;
+            }
+            .info-item { display: flex; flex-direction: column; }
+            .info-label { font-size: 11px; color: #64748b; font-weight: bold; margin-bottom: 4px; }
+            .info-value { font-size: 13px; font-weight: 600; color: #0f172a; }
+            .tabular { font-variant-numeric: tabular-nums; font-family: 'Courier New', monospace; }
+            
+            .lines-table { width: 100%; border-collapse: collapse; margin-bottom: 30px; font-size: 12px; }
+            .lines-table th {
+                background: #1e293b;
+                color: white;
+                font-weight: 700;
+                text-align: ${language === 'ar' ? 'right' : 'left'};
+                padding: 10px;
+            }
+            .lines-table td {
+                padding: 10px;
+                border-bottom: 1px solid #e2e8f0;
+                vertical-align: top;
+            }
+            .lines-table tr:nth-child(even) { background-color: #f8fafc; }
+            
+            .signatures-section {
+                display: grid;
+                grid-template-columns: repeat(2, 1fr);
+                gap: 50px;
+                margin-top: 60px;
+            }
+            .signature-box {
+                border-top: 1px solid #cbd5e1;
+                padding-top: 10px;
+                text-align: center;
+            }
+            .signature-label { font-size: 12px; font-weight: bold; color: #64748b; margin-bottom: 40px; }
+            
+            .footer-meta {
+                margin-top: 40px;
+                border-top: 1px dashed #cbd5e1;
+                padding-top: 10px;
+                display: flex;
+                justify-content: space-between;
+                font-size: 10px;
+                color: #94a3b8;
+            }
+        `}</style>
+
+      <div className="header-section">
+        <div className="company-info">
+            {brand?.logoUrl && <img src={brand.logoUrl} alt="Logo" style={{ height: 50, marginBottom: 10 }} />}
+            <h1>{(brand?.name || '').trim()}</h1>
+            {brand?.branchName && <p>{brand.branchName}</p>}
+            {brand?.address && <p>{brand.address}</p>}
+            {brand?.contactNumber && <p dir="ltr">{brand.contactNumber}</p>}
+        </div>
+        <div className="doc-title">
+            <h2>{language === 'en' ? 'Warehouse Transfer' : 'تحويل مخزني'}</h2>
+            <div className="ref-number tabular" dir="ltr">#{data.transferNumber}</div>
+            <div style={{ marginTop: 10 }}>
+                <span style={{ fontSize: 12, fontWeight: 'bold', background: data.documentStatus === 'posted' ? '#dcfce7' : '#f1f5f9', color: data.documentStatus === 'posted' ? '#166534' : '#64748b', padding: '4px 12px', borderRadius: 20 }}>
+                    {data.documentStatus || 'DRAFT'}
+                </span>
+            </div>
+        </div>
       </div>
 
-      <div className="border-b mb-4">
-        <div className="info-row">
-          <span className="font-bold">{language === 'en' ? 'Transfer No:' : 'رقم التحويل:'}</span>
-          <span dir="ltr">{data.transferNumber}</span>
+      <div className="info-grid">
+        <div className="info-item">
+            <span className="info-label">{language === 'en' ? 'Date' : 'التاريخ'}</span>
+            <span className="info-value tabular" dir="ltr">{new Date(data.transferDate).toLocaleDateString('en-GB')}</span>
         </div>
-        {data.documentStatus ? (
-          <div className="info-row">
-            <span className="font-bold">{language === 'en' ? 'Status:' : 'الحالة:'}</span>
-            <span>{data.documentStatus}</span>
-          </div>
-        ) : null}
-        {data.referenceId ? (
-          <div className="info-row">
-            <span className="font-bold">{language === 'en' ? 'Reference ID:' : 'المعرف المرجعي:'}</span>
-            <span dir="ltr">{data.referenceId}</span>
-          </div>
-        ) : null}
-        <div className="info-row">
-          <span className="font-bold">{language === 'en' ? 'Date:' : 'التاريخ:'}</span>
-          <span>{formatDateOnly(data.transferDate)}</span>
+        <div className="info-item">
+            <span className="info-label">{language === 'en' ? 'Reference' : 'المرجع'}</span>
+            <span className="info-value tabular" dir="ltr">{data.referenceId || '—'}</span>
         </div>
-        <div className="info-row">
-          <span className="font-bold">{language === 'en' ? 'From:' : 'من:'}</span>
-          <span>{data.fromWarehouseName}</span>
+        <div className="info-item">
+            <span className="info-label">{language === 'en' ? 'From Warehouse' : 'من المستودع'}</span>
+            <span className="info-value">{data.fromWarehouseName}</span>
         </div>
-        <div className="info-row">
-          <span className="font-bold">{language === 'en' ? 'To:' : 'إلى:'}</span>
-          <span>{data.toWarehouseName}</span>
+        <div className="info-item">
+            <span className="info-label">{language === 'en' ? 'To Warehouse' : 'إلى المستودع'}</span>
+            <span className="info-value">{data.toWarehouseName}</span>
         </div>
-        <div className="info-row">
-          <span className="font-bold">{language === 'en' ? 'Status:' : 'الحالة:'}</span>
-          <span>{data.status}</span>
+        <div className="info-item">
+             <span className="info-label">{language === 'en' ? 'Status' : 'حالة النقل'}</span>
+             <span className="info-value">{data.status}</span>
         </div>
       </div>
 
-      <div className="mb-4">
-        <h3 className="font-bold mb-2">{language === 'en' ? 'Items' : 'الأصناف'}</h3>
-        <table>
+      <table className="lines-table">
           <thead>
             <tr>
-              <th style={{ width: '60px' }}>{language === 'en' ? 'Qty' : 'الكمية'}</th>
-              <th>{language === 'en' ? 'Item' : 'الصنف'}</th>
-              <th>{language === 'en' ? 'Notes' : 'ملاحظات'}</th>
+              <th style={{ width: '50%' }}>{language === 'en' ? 'Item' : 'الصنف'}</th>
+              <th style={{ width: '15%', textAlign: 'center' }}>{language === 'en' ? 'Qty' : 'الكمية'}</th>
+              <th style={{ width: '35%' }}>{language === 'en' ? 'Notes' : 'ملاحظات'}</th>
             </tr>
           </thead>
           <tbody>
             {data.items.length === 0 ? (
-              <tr><td colSpan={3} className="text-center" style={{ color: '#6b7280' }}>{language === 'en' ? 'No items' : 'لا توجد أصناف'}</td></tr>
+              <tr><td colSpan={3} className="text-center" style={{ padding: 30, color: '#94a3b8' }}>{language === 'en' ? 'No items' : 'لا توجد أصناف'}</td></tr>
             ) : data.items.map((it, idx) => (
               <tr key={`${it.itemId}-${idx}`}>
-                <td className="text-center font-bold" dir="ltr">{Number(it.quantity || 0)}</td>
-                <td className="font-bold">{it.itemName || it.itemId}</td>
-                <td>{it.notes || '—'}</td>
+                <td>
+                    <div style={{ fontWeight: 600 }}>{it.itemName || it.itemId}</div>
+                </td>
+                <td className="text-center tabular font-bold" dir="ltr">{Number(it.quantity || 0)}</td>
+                <td style={{ color: '#64748b', fontSize: 11 }}>{it.notes || '—'}</td>
               </tr>
             ))}
           </tbody>
-        </table>
-      </div>
+      </table>
 
-      {data.notes ? (
-        <div className="mb-4" style={{ padding: '10px', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '6px' }}>
-          <div className="font-bold mb-2">{language === 'en' ? 'Notes' : 'ملاحظات'}</div>
-          <div>{data.notes}</div>
+      {data.notes && (
+        <div style={{ padding: 15, background: '#fefce8', border: '1px solid #fef08a', borderRadius: 6, marginBottom: 30 }}>
+          <div style={{ fontWeight: 'bold', fontSize: 12, color: '#854d0e', marginBottom: 5 }}>{language === 'en' ? 'Notes' : 'ملاحظات'}</div>
+          <div style={{ fontSize: 13, color: '#713f12' }}>{data.notes}</div>
         </div>
-      ) : null}
+      )}
 
-      <div className="mt-4" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-        <div style={{ borderTop: '1px solid #111', paddingTop: '8px', textAlign: 'center' }}>{language === 'en' ? 'Sender' : 'المُرسل'}</div>
-        <div style={{ borderTop: '1px solid #111', paddingTop: '8px', textAlign: 'center' }}>{language === 'en' ? 'Receiver' : 'المُستلم'}</div>
+      <div className="signatures-section">
+        <div className="signature-box">
+            <div className="signature-label">{language === 'en' ? 'Sender' : 'المُرسل'}</div>
+        </div>
+        <div className="signature-box">
+            <div className="signature-label">{language === 'en' ? 'Receiver' : 'المُستلم'}</div>
+        </div>
       </div>
 
-      <div className="mt-4 text-center" style={{ borderTop: '2px dashed #000', paddingTop: '10px', fontSize: '12px', color: '#666' }}>
-        <p>{language === 'en' ? 'Printed at' : 'تم الطباعة'}: {new Date().toLocaleString('ar-EG-u-nu-latn')}</p>
+      <div className="footer-meta">
+        <div>
+            {language === 'en' ? 'Printed at' : 'تم الطباعة'}: <span dir="ltr" className="tabular">{new Date().toLocaleString('en-GB')}</span>
+        </div>
+        <div>
+            Generated by {brand?.name || 'AZTA ERP'}
+        </div>
       </div>
     </div>
   );

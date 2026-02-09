@@ -111,7 +111,6 @@ const arTranslations = {
     kuraimiInfoTitle: 'معلومات الدفع',
     kuraimiAccountName: 'اسم الحساب',
     kuraimiAccountNumber: 'رقم الحساب',
-    kuraimiCafeteriaName: '{storeName}',
     kuraimiPaymentProof: 'إثبات الدفع',
     kuraimiProofInstruction: 'بعد التحويل، يرجى إرفاق صورة الإشعار أو إدخال رقم العملية.',
     uploadScreenshot: 'رفع صورة الإشعار',
