@@ -38,29 +38,37 @@ export default function PrintableWarehouseTransfer(props: { data: PrintableWareh
                 color: #1e293b;
                 line-height: 1.5;
                 padding: 40px;
+                border-top: 5px solid #1e293b;
             }
             .header-section {
                 display: flex;
                 justify-content: space-between;
                 align-items: flex-start;
-                margin-bottom: 30px;
-                border-bottom: 2px solid #1e293b;
+                margin-bottom: 40px;
+                border-bottom: 2px solid #e2e8f0;
                 padding-bottom: 20px;
             }
-            .company-info h1 { font-size: 24px; font-weight: 800; margin: 0 0 5px 0; color: #1e293b; }
-            .company-info p { margin: 2px 0; font-size: 13px; color: #64748b; }
+            .company-info { text-align: ${language === 'ar' ? 'right' : 'left'}; }
+            .company-info h1 { font-size: 24px; font-weight: 800; margin: 0 0 5px 0; color: #0f172a; }
+            .company-info p { margin: 2px 0; font-size: 13px; color: #475569; }
+            
             .doc-title {
                 text-align: ${language === 'ar' ? 'left' : 'right'};
+                background: #f8fafc;
+                padding: 15px 25px;
+                border-radius: 8px;
+                border: 1px solid #e2e8f0;
             }
             .doc-title h2 {
-                font-size: 28px;
+                font-size: 24px;
                 font-weight: 900;
-                color: #1e293b;
+                color: #0f172a;
                 margin: 0;
                 text-transform: uppercase;
+                letter-spacing: 0.5px;
             }
             .doc-title .ref-number {
-                font-size: 16px;
+                font-size: 14px;
                 color: #64748b;
                 margin-top: 5px;
                 font-family: 'Courier New', monospace;
@@ -68,7 +76,7 @@ export default function PrintableWarehouseTransfer(props: { data: PrintableWareh
             
             .info-grid {
                 display: grid;
-                grid-template-columns: repeat(2, 1fr);
+                grid-template-columns: repeat(4, 1fr);
                 gap: 20px;
                 margin-bottom: 30px;
                 background: #f8fafc;
@@ -78,22 +86,26 @@ export default function PrintableWarehouseTransfer(props: { data: PrintableWareh
             }
             .info-item { display: flex; flex-direction: column; }
             .info-label { font-size: 11px; color: #64748b; font-weight: bold; margin-bottom: 4px; }
-            .info-value { font-size: 13px; font-weight: 600; color: #0f172a; }
+            .info-value { font-size: 14px; font-weight: 600; color: #0f172a; }
             .tabular { font-variant-numeric: tabular-nums; font-family: 'Courier New', monospace; }
             
-            .lines-table { width: 100%; border-collapse: collapse; margin-bottom: 30px; font-size: 12px; }
+            .lines-table { width: 100%; border-collapse: separate; border-spacing: 0; margin-bottom: 30px; font-size: 12px; border-radius: 8px; overflow: hidden; border: 1px solid #e2e8f0; }
             .lines-table th {
                 background: #1e293b;
                 color: white;
                 font-weight: 700;
-                text-align: ${language === 'ar' ? 'right' : 'left'};
-                padding: 10px;
+                text-align: center;
+                padding: 12px;
+                border-bottom: 2px solid #0f172a;
             }
+            .lines-table th:first-child { text-align: ${language === 'ar' ? 'right' : 'left'}; }
             .lines-table td {
-                padding: 10px;
+                padding: 12px;
                 border-bottom: 1px solid #e2e8f0;
                 vertical-align: top;
+                color: #334155;
             }
+            .lines-table tr:last-child td { border-bottom: none; }
             .lines-table tr:nth-child(even) { background-color: #f8fafc; }
             
             .signatures-section {
@@ -122,7 +134,7 @@ export default function PrintableWarehouseTransfer(props: { data: PrintableWareh
 
       <div className="header-section">
         <div className="company-info">
-            {brand?.logoUrl && <img src={brand.logoUrl} alt="Logo" style={{ height: 50, marginBottom: 10 }} />}
+            {brand?.logoUrl && <img src={brand.logoUrl} alt="Logo" style={{ height: 60, marginBottom: 10 }} />}
             <h1>{(brand?.name || '').trim()}</h1>
             {brand?.branchName && <p>{brand.branchName}</p>}
             {brand?.address && <p>{brand.address}</p>}
@@ -166,7 +178,7 @@ export default function PrintableWarehouseTransfer(props: { data: PrintableWareh
           <thead>
             <tr>
               <th style={{ width: '50%' }}>{language === 'en' ? 'Item' : 'الصنف'}</th>
-              <th style={{ width: '15%', textAlign: 'center' }}>{language === 'en' ? 'Qty' : 'الكمية'}</th>
+              <th style={{ width: '15%' }}>{language === 'en' ? 'Qty' : 'الكمية'}</th>
               <th style={{ width: '35%' }}>{language === 'en' ? 'Notes' : 'ملاحظات'}</th>
             </tr>
           </thead>

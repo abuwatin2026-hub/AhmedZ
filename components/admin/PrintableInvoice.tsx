@@ -50,9 +50,9 @@ export const generateZatcaTLV = (sellerName: string, vatRegistrationNumber: stri
 interface PrintableInvoiceProps {
     order: Order;
     language?: 'ar' | 'en';
-    cafeteriaName?: string;
-    cafeteriaPhone?: string;
-    cafeteriaAddress?: string;
+    companyName?: string;
+    companyPhone?: string;
+    companyAddress?: string;
     logoUrl?: string;
     vatNumber?: string; // Added VAT Number
     deliveryZoneName?: string;
@@ -67,9 +67,9 @@ interface PrintableInvoiceProps {
 const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
     order,
     language = 'ar',
-    cafeteriaName,
-    cafeteriaPhone,
-    cafeteriaAddress,
+    companyName,
+    companyPhone,
+    companyAddress,
     logoUrl,
     vatNumber,
     deliveryZoneName,
@@ -105,14 +105,14 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
         }
         : order;
 
-    const resolvedCafeteriaName = cafeteriaName || '';
-    const resolvedCafeteriaPhone = cafeteriaPhone || '';
-    const resolvedCafeteriaAddress = cafeteriaAddress || '';
+    const resolvedCompanyName = companyName || '';
+    const resolvedCompanyPhone = companyPhone || '';
+    const resolvedCompanyAddress = companyAddress || '';
     const resolvedLogoUrl = logoUrl || '';
     const resolvedVatNumber = vatNumber || '';
     const resolvedThermalPaperWidth: '58mm' | '80mm' = thermalPaperWidth === '80mm' ? '80mm' : '58mm';
     const systemName = language === 'ar' ? AZTA_IDENTITY.tradeNameAr : AZTA_IDENTITY.tradeNameEn;
-    const branchName = resolvedCafeteriaName.trim();
+    const branchName = resolvedCompanyName.trim();
     const showBranchName = Boolean(branchName) && branchName !== systemName.trim();
 
     const currencyCode = String((invoiceOrder as any).currency || '').toUpperCase();
@@ -204,8 +204,8 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
                 {resolvedLogoUrl && <img src={resolvedLogoUrl} alt="Logo" className="logo-img" />}
                 <div className="font-bold text-lg mb-1">{systemName}</div>
                 {showBranchName && <div className="text-sm mb-1">{branchName}</div>}
-                <div className="text-xs">{resolvedCafeteriaAddress}</div>
-                {resolvedCafeteriaPhone && <div className="text-xs" dir="ltr">{resolvedCafeteriaPhone}</div>}
+                <div className="text-xs">{resolvedCompanyAddress}</div>
+                {resolvedCompanyPhone && <div className="text-xs" dir="ltr">{resolvedCompanyPhone}</div>}
                 {resolvedVatNumber && <div className="text-xs mt-1 font-bold">الرقم الضريبي: <span dir="ltr" className="tabular">{resolvedVatNumber}</span></div>}
             </div>
 

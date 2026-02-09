@@ -121,7 +121,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
     };
 
     return (
-        <div ref={ref} className="bg-white text-gray-900 w-full min-h-[297mm] p-8 md:p-12 relative print:p-0 print:m-0 print:w-full print:h-auto" id="print-area" dir="rtl" style={{ fontFamily: 'Tajawal, Cairo, sans-serif' }}>
+        <div ref={ref} className="bg-white text-gray-900 w-full min-h-[297mm] p-8 md:p-12 relative print:p-0 print:m-0 print:w-full print:h-auto border-t-[5px] border-t-slate-800" id="print-area" dir="rtl" style={{ fontFamily: 'Tajawal, Cairo, sans-serif' }}>
             {/* Watermark for Copy */}
             {isCopy && (
                 <div className="pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden z-0">
@@ -130,7 +130,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
             )}
 
             {/* Header Section */}
-            <div className="relative z-10 border-b-4 border-slate-800 pb-6 mb-8">
+            <div className="relative z-10 border-b-2 border-slate-200 pb-6 mb-8">
                 <div className="flex items-start justify-between gap-8">
                     {/* Brand Info */}
                     <div className="flex-1">
@@ -181,7 +181,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                         <div className="text-slate-400 text-sm font-bold tracking-[0.4em] mt-1 uppercase">Tax Invoice</div>
                         
                         <div className="mt-8 flex flex-col gap-3 items-end">
-                            <div className="inline-flex flex-col items-end border-r-4 border-blue-600 pr-4">
+                            <div className="inline-flex flex-col items-end border-r-4 border-slate-800 pr-4">
                                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">رقم الفاتورة / Invoice No</span>
                                 <span className="text-2xl font-black font-mono text-slate-800" dir="ltr">{invoiceOrder.invoiceNumber || invoiceOrder.id.slice(-8).toUpperCase()}</span>
                             </div>
@@ -197,8 +197,8 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
             {/* Info Grid */}
             <div className="grid grid-cols-2 gap-12 mb-10 relative z-10">
                 {/* Bill To */}
-                <div className="bg-slate-50 rounded-xl p-6 border border-slate-100 shadow-sm relative overflow-hidden group">
-                    <div className="absolute top-0 right-0 w-1 h-full bg-blue-600"></div>
+                <div className="bg-slate-50 rounded-xl p-6 border border-slate-200 shadow-sm relative overflow-hidden group">
+                    <div className="absolute top-0 right-0 w-1 h-full bg-slate-800"></div>
                     <div className="flex items-center gap-2 mb-4 border-b border-slate-200 pb-2">
                         <span className="text-sm font-black text-slate-800 uppercase tracking-wider">العميل (Bill To)</span>
                     </div>
@@ -236,7 +236,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                         {invoiceTerms === 'credit' && invoiceDueDate && (
                             <div>
                                 <span className="block text-[10px] text-slate-400 font-bold uppercase mb-1">تاريخ الاستحقاق</span>
-                                <span className="font-bold text-red-600 font-mono bg-red-50 px-2 py-1 rounded text-xs" dir="ltr">{new Date(invoiceDueDate).toLocaleDateString('en-GB')}</span>
+                                <span className="font-bold text-slate-600 font-mono bg-slate-100 px-2 py-1 rounded text-xs" dir="ltr">{new Date(invoiceDueDate).toLocaleDateString('en-GB')}</span>
                             </div>
                         )}
                         {invoiceOrder.orderSource && (
@@ -281,7 +281,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                                             {pricing.addonsArray.length > 0 && (
                                                 <div className="flex flex-wrap gap-1">
                                                     {pricing.addonsArray.map(({ addon, quantity }) => (
-                                                        <span key={addon.id} className="bg-blue-50 px-1.5 py-0.5 rounded text-blue-700 border border-blue-100">
+                                                        <span key={addon.id} className="bg-slate-50 px-1.5 py-0.5 rounded text-slate-700 border border-slate-200">
                                                             + {addon.name?.[lang] || addon.name?.ar} {quantity > 1 ? `(${quantity})` : ''}
                                                         </span>
                                                     ))}
@@ -342,10 +342,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                 {/* Right: Totals */}
                 <div className="w-full md:w-[420px]">
                     <div className="bg-slate-900 text-white rounded-2xl p-8 shadow-lg space-y-4 relative overflow-hidden">
-                        {/* Decor */}
-                        <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500 opacity-10 rounded-full -mr-10 -mt-10 blur-2xl"></div>
-                        <div className="absolute bottom-0 left-0 w-24 h-24 bg-purple-500 opacity-10 rounded-full -ml-8 -mb-8 blur-xl"></div>
-
+                        
                         <div className="flex justify-between items-center text-slate-300 relative z-10">
                             <span className="font-medium text-sm">المجموع الفرعي (Subtotal)</span>
                             <span className="font-mono font-bold text-white" dir="ltr">
@@ -397,7 +394,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                         </div>
                     </div>
                     <div className="space-y-2 pt-6 flex flex-col items-center justify-center">
-                        <div className="w-8 h-1 bg-blue-600 rounded-full mb-2"></div>
+                        <div className="w-8 h-1 bg-slate-800 rounded-full mb-2"></div>
                         <div className="font-black text-slate-900 text-lg">{systemName}</div>
                         <div className="text-[10px] font-medium tracking-wide text-slate-400">شكراً لتعاملكم معنا | Thank you for your business</div>
                     </div>

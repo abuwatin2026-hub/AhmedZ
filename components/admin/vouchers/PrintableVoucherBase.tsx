@@ -1,4 +1,6 @@
 
+
+
 type Brand = {
   name?: string;
   address?: string;
@@ -45,6 +47,7 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
   
   // Format date safely to avoid RTL scrambling
   const formattedDate = new Date(data.date).toLocaleDateString('en-GB');
+  const currency = data.currency?.toUpperCase() || '—';
 
   return (
     <div className="voucher-container" dir="rtl">
@@ -61,7 +64,6 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
                 color: #1e293b;
                 line-height: 1.5;
                 padding: 40px;
-                position: relative;
                 border-top: 5px solid #1e293b; /* Luxury top border */
             }
             .header-section {
@@ -69,21 +71,21 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
                 justify-content: space-between;
                 align-items: flex-start;
                 margin-bottom: 40px;
-                border-bottom: 2px solid #e2e8f0; /* Softer border */
+                border-bottom: 2px solid #e2e8f0;
                 padding-bottom: 20px;
             }
             .company-info { text-align: right; }
             .company-info h1 { font-size: 24px; font-weight: 800; margin: 0 0 5px 0; color: #0f172a; }
             .company-info p { margin: 2px 0; font-size: 13px; color: #475569; }
             
-            .document-title {
+            .doc-title {
                 text-align: left;
                 background: #f8fafc;
                 padding: 15px 25px;
                 border-radius: 8px;
                 border: 1px solid #e2e8f0;
             }
-            .document-title h2 {
+            .doc-title h2 {
                 font-size: 24px;
                 font-weight: 900;
                 color: #0f172a;
@@ -91,7 +93,7 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
                 text-transform: uppercase;
                 letter-spacing: 0.5px;
             }
-            .document-title .ref-number {
+            .doc-title .ref-number {
                 font-size: 14px;
                 color: #64748b;
                 margin-top: 5px;
@@ -100,7 +102,7 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
             
             .info-grid {
                 display: grid;
-                grid-template-columns: repeat(2, 1fr);
+                grid-template-columns: repeat(4, 1fr);
                 gap: 20px;
                 margin-bottom: 30px;
                 background: #f8fafc;
@@ -114,7 +116,7 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
             .tabular { font-variant-numeric: tabular-nums; font-family: 'Courier New', monospace; }
             
             .amount-box {
-                grid-column: span 2;
+                grid-column: span 4;
                 background: #1e293b;
                 color: white;
                 padding: 15px;
@@ -122,6 +124,7 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
+                margin-bottom: 30px;
             }
             .amount-box .label { font-size: 14px; font-weight: bold; }
             .amount-box .value { font-size: 20px; font-weight: 800; font-family: 'Courier New', monospace; }
@@ -131,10 +134,11 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
                 background: #1e293b;
                 color: white;
                 font-weight: 700;
-                text-align: right;
+                text-align: center;
                 padding: 12px;
                 border-bottom: 2px solid #0f172a;
             }
+            .lines-table th:first-child { text-align: right; }
             .lines-table td {
                 padding: 12px;
                 border-bottom: 1px solid #e2e8f0;
@@ -148,6 +152,7 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
                 font-weight: 800;
                 border-top: 2px solid #cbd5e1;
                 font-size: 14px;
+                color: #0f172a;
             }
             
             .signatures-section {
@@ -182,7 +187,7 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
             {brand?.address && <p>{brand.address}</p>}
             {brand?.contactNumber && <p dir="ltr">{brand.contactNumber}</p>}
         </div>
-        <div className="document-title">
+        <div className="doc-title">
             <h2>{data.title}</h2>
             <div className="ref-number tabular" dir="ltr">#{data.voucherNumber}</div>
             <div style={{ marginTop: 10 }}>
@@ -202,25 +207,23 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
             <span className="info-label">المعرف المرجعي</span>
             <span className="info-value tabular" dir="ltr">{data.referenceId || '—'}</span>
         </div>
-        {data.memo && (
-            <div className="info-item" style={{ gridColumn: 'span 2' }}>
-                <span className="info-label">البيان / الوصف</span>
-                <span className="info-value">{data.memo}</span>
-            </div>
-        )}
-        
-        {typeof data.amount === 'number' && (
-            <div className="amount-box">
-                <div>
-                    <div className="label">المبلغ الإجمالي</div>
-                    {data.amountWords && <div style={{ fontSize: 11, fontWeight: 'normal', opacity: 0.8, marginTop: 4 }}>{data.amountWords}</div>}
-                </div>
-                <div className="value" dir="ltr">
-                    {fmt(data.amount)} <span style={{ fontSize: 12 }}>{data.currency?.toUpperCase()}</span>
-                </div>
-            </div>
-        )}
+        <div className="info-item" style={{ gridColumn: 'span 2' }}>
+            <span className="info-label">الوصف / البيان</span>
+            <span className="info-value">{data.memo || '—'}</span>
+        </div>
       </div>
+
+      {typeof data.amount === 'number' && (
+        <div className="amount-box">
+            <div>
+                <div className="label">المبلغ الإجمالي</div>
+                {data.amountWords && <div style={{ fontSize: 11, fontWeight: 'normal', opacity: 0.8, marginTop: 4 }}>{data.amountWords}</div>}
+            </div>
+            <div className="value" dir="ltr">
+                {fmt(data.amount)} <span style={{ fontSize: 12 }}>{currency}</span>
+            </div>
+        </div>
+      )}
 
       <div className="table-container">
         <table className="lines-table">
@@ -229,8 +232,8 @@ export default function PrintableVoucherBase(props: { data: VoucherData; brand?:
               <th style={{ width: '15%' }}>رمز الحساب</th>
               <th style={{ width: '35%' }}>اسم الحساب</th>
               <th style={{ width: '25%' }}>البيان</th>
-              <th style={{ width: '12%', textAlign: 'center' }}>مدين</th>
-              <th style={{ width: '12%', textAlign: 'center' }}>دائن</th>
+              <th style={{ width: '12%' }}>مدين</th>
+              <th style={{ width: '12%' }}>دائن</th>
             </tr>
           </thead>
           <tbody>
