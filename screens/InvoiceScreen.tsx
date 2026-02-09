@@ -144,9 +144,9 @@ const InvoiceScreen: React.FC = () => {
                     order={order}
                     audit={invoiceAudit}
                     language="ar"
-                    cafeteriaName={storeName}
-                    cafeteriaPhone={settings.contactNumber || ''}
-                    cafeteriaAddress={settings.address || ''}
+                    companyName={storeName}
+                    companyPhone={settings.contactNumber || ''}
+                    companyAddress={settings.address || ''}
                     logoUrl={settings.logoUrl || ''}
                     vatNumber={settings.taxSettings?.taxNumber}
                     deliveryZoneName={resolveDeliveryZoneName(order)}
@@ -230,9 +230,9 @@ const InvoiceScreen: React.FC = () => {
                 order={order}
                 audit={invoiceAudit}
                 language="ar"
-                cafeteriaName={brand.name}
-                cafeteriaPhone={brand.contactNumber}
-                cafeteriaAddress={brand.address}
+                companyName={brand.name}
+                companyPhone={brand.contactNumber}
+                companyAddress={brand.address}
                 logoUrl={brand.logoUrl}
                 vatNumber={vatNumber}
                 deliveryZoneName={resolveDeliveryZoneName(order)}
@@ -319,9 +319,9 @@ const InvoiceScreen: React.FC = () => {
             <PrintableOrder
                 order={order}
                 language="ar"
-                cafeteriaName={brand.name}
-                cafeteriaAddress={brand.address}
-                cafeteriaPhone={brand.contactNumber}
+                companyName={brand.name}
+                companyAddress={brand.address}
+                companyPhone={brand.contactNumber}
                 logoUrl={brand.logoUrl}
             />
         );
@@ -366,9 +366,9 @@ const InvoiceScreen: React.FC = () => {
                     order={order}
                     audit={invoiceAudit}
                     language="ar"
-                    cafeteriaName={brand.name}
-                    cafeteriaPhone={brand.contactNumber}
-                    cafeteriaAddress={brand.address}
+                    companyName={brand.name}
+                    companyPhone={brand.contactNumber}
+                    companyAddress={brand.address}
                     logoUrl={brand.logoUrl}
                     vatNumber={vatNumber}
                     deliveryZoneName={resolveDeliveryZoneName(order)}

@@ -288,9 +288,9 @@ export default function DocumentTemplatesScreen() {
           <PrintableInvoice
             order={mockOrder}
             language="ar"
-            cafeteriaName={brand.name}
-            cafeteriaAddress={brand.address}
-            cafeteriaPhone={brand.contactNumber}
+            companyName={brand.name}
+            companyAddress={brand.address}
+            companyPhone={brand.contactNumber}
             logoUrl={brand.logoUrl}
             vatNumber={brand.vatNumber}
             thermal
@@ -307,9 +307,9 @@ export default function DocumentTemplatesScreen() {
           <PrintableOrder
             order={mockOrder}
             language="ar"
-            cafeteriaName={brand.name}
-            cafeteriaAddress={brand.address}
-            cafeteriaPhone={brand.contactNumber}
+            companyName={brand.name}
+            companyAddress={brand.address}
+            companyPhone={brand.contactNumber}
             logoUrl={brand.logoUrl}
           />
         );
@@ -514,9 +514,9 @@ export default function DocumentTemplatesScreen() {
                   <PrintableInvoice
                     order={mockOrder}
                     language="ar"
-                    cafeteriaName={brand.name}
-                    cafeteriaAddress={brand.address}
-                    cafeteriaPhone={brand.contactNumber}
+                    companyName={brand.name}
+                    companyAddress={brand.address}
+                    companyPhone={brand.contactNumber}
                     logoUrl={brand.logoUrl}
                     vatNumber={brand.vatNumber}
                     thermal
@@ -537,9 +537,9 @@ export default function DocumentTemplatesScreen() {
                   <PrintableOrder
                     order={mockOrder}
                     language="ar"
-                    cafeteriaName={brand.name}
-                    cafeteriaAddress={brand.address}
-                    cafeteriaPhone={brand.contactNumber}
+                    companyName={brand.name}
+                    companyAddress={brand.address}
+                    companyPhone={brand.contactNumber}
                     logoUrl={brand.logoUrl}
                   />
                 </div>
