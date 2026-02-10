@@ -1,7 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useLocation, useParams } from 'react-router-dom';
+import { renderToString } from 'react-dom/server';
 import { getSupabaseClient } from '../../supabase';
 import * as Icons from '../../components/icons';
+import { useSettings } from '../../contexts/SettingsContext';
+import { useToast } from '../../contexts/ToastContext';
+import { printContent } from '../../utils/printUtils';
+import PrintablePartyLedgerStatement from '../../components/admin/documents/PrintablePartyLedgerStatement';
 
 type StatementRow = {
   occurred_at: string;
@@ -27,6 +32,9 @@ type StatementRow = {
 
 const PartyLedgerStatementScreen: React.FC = () => {
   const { partyId } = useParams();
+  const location = useLocation();
+  const { settings } = useSettings();
+  const { showNotification } = useToast();
   const [loading, setLoading] = useState(true);
   const [partyName, setPartyName] = useState<string>('—');
   const [rows, setRows] = useState<StatementRow[]>([]);
@@ -34,6 +42,8 @@ const PartyLedgerStatementScreen: React.FC = () => {
   const [currency, setCurrency] = useState<string>('');
   const [start, setStart] = useState<string>('');
   const [end, setEnd] = useState<string>('');
+  const [printing, setPrinting] = useState(false);
+  const [didAutoPrint, setDidAutoPrint] = useState(false);
 
   const load = async () => {
     if (!partyId) return;
@@ -74,6 +84,74 @@ const PartyLedgerStatementScreen: React.FC = () => {
     return { debit, credit, last };
   }, [rows]);
 
+  const handlePrint = async () => {
+    if (!partyId) return;
+    if (rows.length === 0) {
+      showNotification('لا توجد حركات لطباعة كشف الحساب حسب المرشحات الحالية.', 'info');
+      return;
+    }
+    setPrinting(true);
+    try {
+      const brand = {
+        name: (settings as any)?.cafeteriaName?.ar || (settings as any)?.cafeteriaName?.en || '',
+        address: String(settings?.address || ''),
+        contactNumber: String(settings?.contactNumber || ''),
+        logoUrl: String(settings?.logoUrl || ''),
+      };
+      const content = renderToString(
+        <PrintablePartyLedgerStatement
+          brand={brand}
+          partyId={partyId}
+          partyName={partyName}
+          accountCode={accountCode.trim() || null}
+          currency={currency.trim() || null}
+          start={start.trim() || null}
+          end={end.trim() || null}
+          rows={rows}
+        />
+      );
+      printContent(content, `كشف حساب طرف • ${partyName || partyId.slice(-8).toUpperCase()}`, { page: 'A4' });
+      const supabase = getSupabaseClient();
+      if (supabase) {
+        try {
+          await supabase.from('system_audit_logs').insert({
+            action: 'print',
+            module: 'documents',
+            details: `Printed Party Statement ${partyName || partyId}`,
+            metadata: {
+              docType: 'party_statement',
+              docNumber: partyName || null,
+              status: null,
+              sourceTable: 'financial_parties',
+              sourceId: partyId,
+              template: 'PrintablePartyLedgerStatement',
+              accountCode: accountCode.trim() || null,
+              currency: currency.trim().toUpperCase() || null,
+              start: start.trim() || null,
+              end: end.trim() || null,
+            }
+          } as any);
+        } catch {
+        }
+      }
+    } catch (e: any) {
+      showNotification(String(e?.message || 'تعذر فتح نافذة الطباعة'), 'error');
+    } finally {
+      setPrinting(false);
+    }
+  };
+
+  useEffect(() => {
+    const qs = new URLSearchParams(location.search);
+    const auto = qs.get('print') === '1';
+    if (!auto) return;
+    if (didAutoPrint) return;
+    if (loading) return;
+    if (rows.length === 0) return;
+    setDidAutoPrint(true);
+    void handlePrint();
+  }, [didAutoPrint, loading, location.search, rows.length]);
+
   if (loading) return <div className="p-8 text-center text-gray-500">جاري التحميل...</div>;
 
   return (
@@ -89,13 +167,25 @@ const PartyLedgerStatementScreen: React.FC = () => {
             <span className="font-semibold">{partyName}</span>
           </div>
         </div>
-        <Link
-          to="/admin/financial-parties"
-          className="bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-gray-700 shadow-lg border border-gray-100 dark:border-gray-700"
-        >
-          <Icons.ListIcon className="w-5 h-5" />
-          <span>عودة</span>
-        </Link>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void handlePrint()}
+            className="bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-gray-700 shadow-lg border border-gray-100 dark:border-gray-700 disabled:opacity-60"
+            disabled={printing || rows.length === 0}
+            title="طباعة كشف الحساب"
+          >
+            <Icons.PrinterIcon className="w-5 h-5" />
+            <span>طباعة</span>
+          </button>
+          <Link
+            to="/admin/financial-parties"
+            className="bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-gray-700 shadow-lg border border-gray-100 dark:border-gray-700"
+          >
+            <Icons.ListIcon className="w-5 h-5" />
+            <span>عودة</span>
+          </Link>
+        </div>
       </div>
 
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700 p-4 mb-4 grid grid-cols-1 md:grid-cols-5 gap-3">

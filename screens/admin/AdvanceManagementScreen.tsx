@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { getSupabaseClient } from '../../supabase';
 import * as Icons from '../../components/icons';
 
-type PartyRow = { id: string; name: string };
+type PartyRow = { id: string; name: string; currency_preference?: string | null };
 
 type OpenItemRow = {
   id: string;
@@ -27,11 +28,13 @@ const formatTime = (iso: string) => {
 };
 
 export default function AdvanceManagementScreen() {
+  const location = useLocation();
   const [loading, setLoading] = useState(true);
   const [parties, setParties] = useState<PartyRow[]>([]);
   const [partyId, setPartyId] = useState('');
   const [currency, setCurrency] = useState('');
   const [items, setItems] = useState<OpenItemRow[]>([]);
+  const [currencyHint, setCurrencyHint] = useState<string>('');
   const [selectedInvoice, setSelectedInvoice] = useState('');
   const [selectedAdvance, setSelectedAdvance] = useState('');
   const [running, setRunning] = useState(false);
@@ -41,13 +44,22 @@ export default function AdvanceManagementScreen() {
     if (!supabase) return;
     const { data, error } = await supabase
       .from('financial_parties')
-      .select('id,name')
+      .select('id,name,currency_preference')
       .eq('is_active', true)
       .order('created_at', { ascending: false })
       .limit(500);
     if (error) throw error;
-    const rows = (Array.isArray(data) ? data : []).map((r: any) => ({ id: String(r.id), name: String(r.name || '—') }));
+    const rows = (Array.isArray(data) ? data : []).map((r: any) => ({
+      id: String(r.id),
+      name: String(r.name || '—'),
+      currency_preference: r.currency_preference ? String(r.currency_preference) : null,
+    }));
     setParties(rows);
+    const requestedPartyId = String(new URLSearchParams(location.search).get('partyId') || '').trim();
+    if (requestedPartyId && rows.some((p: any) => String(p.id) === requestedPartyId)) {
+      setPartyId(requestedPartyId);
+      return;
+    }
     if (!partyId && rows.length > 0) setPartyId(rows[0].id);
   };
 
@@ -57,13 +69,30 @@ export default function AdvanceManagementScreen() {
     if (!supabase) return;
     setLoading(true);
     try {
+      setCurrencyHint('');
       const { data, error } = await supabase.rpc('list_party_open_items', {
         p_party_id: partyId,
-        p_currency: currency.trim().toUpperCase() || null,
+        p_currency: null,
         p_status: 'open_active',
       } as any);
       if (error) throw error;
-      setItems((Array.isArray(data) ? data : []) as any);
+      const rows = (Array.isArray(data) ? data : []) as any[];
+      setItems(rows as any);
+      const currencies = Array.from(new Set(rows.map((x: any) => String(x?.currency_code || '').trim().toUpperCase()).filter(Boolean)));
+      const current = currency.trim().toUpperCase();
+      const pref = String(parties.find((p) => p.id === partyId)?.currency_preference || '').trim().toUpperCase();
+
+      if (current && currencies.length > 0 && !currencies.includes(current)) {
+        setCurrencyHint(`لا توجد عناصر بالعملة ${current}. العملات المتاحة: ${currencies.join('، ')}`);
+      }
+
+      if (!current) {
+        if (pref && currencies.includes(pref)) {
+          setCurrency(pref);
+        } else if (currencies.length === 1) {
+          setCurrency(currencies[0]);
+        }
+      }
     } finally {
       setLoading(false);
     }
@@ -84,20 +113,35 @@ export default function AdvanceManagementScreen() {
     void loadOpenItems();
   }, [partyId]);
 
+  const currencyFilter = useMemo(() => String(currency || '').trim().toUpperCase(), [currency]);
+  const filteredItems = useMemo(() => {
+    if (!currencyFilter) return items;
+    return items.filter((x) => String(x.currency_code || '').toUpperCase() === currencyFilter);
+  }, [items, currencyFilter]);
+
+  const currencyOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const it of items) {
+      const c = String(it.currency_code || '').trim().toUpperCase();
+      if (c) set.add(c);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [items]);
+
   const invoices = useMemo(
     () =>
-      items
+      filteredItems
         .filter((x) => x.direction === 'debit' && x.item_type === 'invoice')
         .sort((a, b) => String(a.occurred_at).localeCompare(String(b.occurred_at))),
-    [items],
+    [filteredItems],
   );
 
   const advances = useMemo(
     () =>
-      items
+      filteredItems
         .filter((x) => x.direction === 'credit' && x.item_type === 'advance')
         .sort((a, b) => String(a.occurred_at).localeCompare(String(b.occurred_at))),
-    [items],
+    [filteredItems],
   );
 
   const invoiceById = useMemo(() => {
@@ -190,12 +234,16 @@ export default function AdvanceManagementScreen() {
         </div>
         <div>
           <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">العملة (اختياري)</div>
-          <input
-            value={currency}
+          <select
+            value={currencyFilter}
             onChange={(e) => setCurrency(e.target.value)}
-            placeholder="USD"
             className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-mono"
-          />
+          >
+            <option value="">كل العملات</option>
+            {currencyOptions.map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
         </div>
         <div className="flex items-end">
           <button
@@ -208,6 +256,12 @@ export default function AdvanceManagementScreen() {
           </button>
         </div>
       </div>
+
+      {currencyHint ? (
+        <div className="bg-amber-50 dark:bg-amber-900/20 text-amber-900 dark:text-amber-200 border border-amber-200 dark:border-amber-800 rounded-lg p-3 text-sm">
+          {currencyHint}
+        </div>
+      ) : null}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow border border-gray-100 dark:border-gray-700 overflow-hidden">

@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { getSupabaseClient } from '../../supabase';
 import * as Icons from '../../components/icons';
 
-type PartyRow = { id: string; name: string };
+type PartyRow = { id: string; name: string; currency_preference?: string | null };
 
 type OpenItemRow = {
   id: string;
@@ -43,11 +44,13 @@ const formatTime = (iso: string) => {
 };
 
 export default function SettlementWorkspaceScreen() {
+  const location = useLocation();
   const [loading, setLoading] = useState(true);
   const [parties, setParties] = useState<PartyRow[]>([]);
   const [partyId, setPartyId] = useState('');
   const [currency, setCurrency] = useState('');
   const [items, setItems] = useState<OpenItemRow[]>([]);
+  const [currencyHint, setCurrencyHint] = useState<string>('');
   const [selectedDebit, setSelectedDebit] = useState<string>('');
   const [selectedCredit, setSelectedCredit] = useState<string>('');
   const [allocations, setAllocations] = useState<AllocationDraft[]>([]);
@@ -60,13 +63,22 @@ export default function SettlementWorkspaceScreen() {
     if (!supabase) return;
     const { data, error } = await supabase
       .from('financial_parties')
-      .select('id,name')
+      .select('id,name,currency_preference')
       .eq('is_active', true)
       .order('created_at', { ascending: false })
       .limit(500);
     if (error) throw error;
-    const rows = (Array.isArray(data) ? data : []).map((r: any) => ({ id: String(r.id), name: String(r.name || '—') }));
+    const rows = (Array.isArray(data) ? data : []).map((r: any) => ({
+      id: String(r.id),
+      name: String(r.name || '—'),
+      currency_preference: r.currency_preference ? String(r.currency_preference) : null,
+    }));
     setParties(rows);
+    const requestedPartyId = String(new URLSearchParams(location.search).get('partyId') || '').trim();
+    if (requestedPartyId && rows.some((p: any) => String(p.id) === requestedPartyId)) {
+      setPartyId(requestedPartyId);
+      return;
+    }
     if (!partyId && rows.length > 0) setPartyId(rows[0].id);
   };
 
@@ -76,13 +88,30 @@ export default function SettlementWorkspaceScreen() {
     if (!supabase) return;
     setLoading(true);
     try {
+      setCurrencyHint('');
       const { data, error } = await supabase.rpc('list_party_open_items', {
         p_party_id: partyId,
-        p_currency: currency.trim().toUpperCase() || null,
+        p_currency: null,
         p_status: 'open_active',
       } as any);
       if (error) throw error;
-      setItems((Array.isArray(data) ? data : []) as any);
+      const rows = (Array.isArray(data) ? data : []) as any[];
+      setItems(rows as any);
+      const currencies = Array.from(new Set(rows.map((x: any) => String(x?.currency_code || '').trim().toUpperCase()).filter(Boolean)));
+      const current = currency.trim().toUpperCase();
+      const pref = String(parties.find((p) => p.id === partyId)?.currency_preference || '').trim().toUpperCase();
+
+      if (current && currencies.length > 0 && !currencies.includes(current)) {
+        setCurrencyHint(`لا توجد عناصر بالعملة ${current}. العملات المتاحة: ${currencies.join('، ')}`);
+      }
+
+      if (!current) {
+        if (pref && currencies.includes(pref)) {
+          setCurrency(pref);
+        } else if (currencies.length === 1) {
+          setCurrency(currencies[0]);
+        }
+      }
     } finally {
       setLoading(false);
     }
@@ -117,8 +146,23 @@ export default function SettlementWorkspaceScreen() {
     void loadRecentSettlements();
   }, [partyId]);
 
-  const debits = useMemo(() => items.filter((x) => x.direction === 'debit').sort((a, b) => String(a.due_date || a.occurred_at).localeCompare(String(b.due_date || b.occurred_at))), [items]);
-  const credits = useMemo(() => items.filter((x) => x.direction === 'credit').sort((a, b) => String(a.due_date || a.occurred_at).localeCompare(String(b.due_date || b.occurred_at))), [items]);
+  const currencyFilter = useMemo(() => String(currency || '').trim().toUpperCase(), [currency]);
+  const filteredItems = useMemo(() => {
+    if (!currencyFilter) return items;
+    return items.filter((x) => String(x.currency_code || '').toUpperCase() === currencyFilter);
+  }, [items, currencyFilter]);
+
+  const currencyOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const it of items) {
+      const c = String(it.currency_code || '').trim().toUpperCase();
+      if (c) set.add(c);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [items]);
+
+  const debits = useMemo(() => filteredItems.filter((x) => x.direction === 'debit').sort((a, b) => String(a.due_date || a.occurred_at).localeCompare(String(b.due_date || b.occurred_at))), [filteredItems]);
+  const credits = useMemo(() => filteredItems.filter((x) => x.direction === 'credit').sort((a, b) => String(a.due_date || a.occurred_at).localeCompare(String(b.due_date || b.occurred_at))), [filteredItems]);
 
   const debitById = useMemo(() => {
     const map: Record<string, OpenItemRow> = {};
@@ -284,12 +328,16 @@ export default function SettlementWorkspaceScreen() {
         </div>
         <div>
           <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">العملة (اختياري)</div>
-          <input
-            value={currency}
+          <select
+            value={currencyFilter}
             onChange={(e) => setCurrency(e.target.value)}
-            placeholder="USD"
             className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-mono"
-          />
+          >
+            <option value="">كل العملات</option>
+            {currencyOptions.map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
         </div>
         <div className="flex items-end gap-2">
           <button
@@ -301,6 +349,12 @@ export default function SettlementWorkspaceScreen() {
           </button>
         </div>
       </div>
+
+      {currencyHint ? (
+        <div className="bg-amber-50 dark:bg-amber-900/20 text-amber-900 dark:text-amber-200 border border-amber-200 dark:border-amber-800 rounded-lg p-3 text-sm">
+          {currencyHint}
+        </div>
+      ) : null}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div

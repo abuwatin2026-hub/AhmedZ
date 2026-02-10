@@ -6,12 +6,17 @@ import * as Icons from '../../components/icons';
 import { getSupabaseClient } from '../../supabase';
 import { printPaymentVoucherByPaymentId, printReceiptVoucherByPaymentId } from '../../utils/vouchers';
 import { localizeSupabaseError } from '../../utils/errorUtils';
+import { useSettings } from '../../contexts/SettingsContext';
+import PrintablePartyLedgerStatement from '../../components/admin/documents/PrintablePartyLedgerStatement';
+import { renderToString } from 'react-dom/server';
+import { printContent } from '../../utils/printUtils';
 
 type PaletteAction =
     | { kind: 'nav'; id: string; label: string; to: string; keywords?: string[]; enabled?: boolean; tag?: string; description?: string }
     | { kind: 'searchShipment'; id: string; label: string; keywords?: string[]; enabled?: boolean }
     | { kind: 'searchPurchaseOrder'; id: string; label: string; keywords?: string[]; enabled?: boolean }
-    | { kind: 'printPayment'; id: string; label: string; paymentId: string; direction: 'in' | 'out'; enabled?: boolean; tag?: string; description?: string };
+    | { kind: 'printPayment'; id: string; label: string; paymentId: string; direction: 'in' | 'out'; enabled?: boolean; tag?: string; description?: string }
+    | { kind: 'printPartyLedger'; id: string; label: string; partyId: string; enabled?: boolean; tag?: string; description?: string };
 
 const isUuid = (value: unknown) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value ?? '').trim());
 
@@ -20,6 +25,7 @@ const AdminCommandPalette: React.FC<{ isOpen: boolean; onClose: () => void }> = 
     const location = useLocation();
     const { hasPermission } = useAuth();
     const { showNotification } = useToast();
+    const { settings } = useSettings();
     const [query, setQuery] = useState('');
     const [busy, setBusy] = useState(false);
     const [remoteResults, setRemoteResults] = useState<PaletteAction[]>([]);
@@ -275,6 +281,38 @@ const AdminCommandPalette: React.FC<{ isOpen: boolean; onClose: () => void }> = 
                     }
                 }
 
+                if (canAccounting) {
+                    const { data, error } = await supabase
+                        .from('financial_parties')
+                        .select('id,name,party_type')
+                        .or(`name.ilike.%${q}%,id.ilike.%${q}%`)
+                        .order('created_at', { ascending: false })
+                        .limit(6);
+                    if (error) throw error;
+                    for (const row of (Array.isArray(data) ? data : [])) {
+                        const id = String((row as any)?.id || '').trim();
+                        const name = String((row as any)?.name || '').trim();
+                        const ptype = String((row as any)?.party_type || '').trim();
+                        if (!id) continue;
+                        next.push({
+                            kind: 'nav',
+                            id: `party-${id}`,
+                            label: name ? `طرف: ${name}` : `طرف: ${id.slice(-8)}`,
+                            description: ptype || undefined,
+                            to: `/admin/financial-parties/${id}`,
+                            tag: 'طرف',
+                        });
+                        next.push({
+                            kind: 'printPartyLedger',
+                            id: `party-print-${id}`,
+                            partyId: id,
+                            label: name ? `طباعة كشف حساب: ${name}` : `طباعة كشف حساب: ${id.slice(-8)}`,
+                            description: ptype || undefined,
+                            tag: 'طرف',
+                        });
+                    }
+                }
+
                 const deduped = Array.from(new Map(next.map((x) => [x.id, x])).values());
                 if (!cancelled) setRemoteResults(deduped);
             } catch (e: any) {
@@ -336,6 +374,71 @@ const AdminCommandPalette: React.FC<{ isOpen: boolean; onClose: () => void }> = 
                 onClose();
             } catch (e: any) {
                 showNotification(localizeSupabaseError(e) || 'فشل طباعة السند.', 'error');
+            } finally {
+                setBusy(false);
+            }
+            return;
+        }
+        if (action.kind === 'printPartyLedger') {
+            const partyId = String(action.partyId || '').trim();
+            if (!partyId) return;
+            setBusy(true);
+            try {
+                const supabase = getSupabaseClient();
+                if (!supabase) throw new Error('قاعدة البيانات غير متاحة.');
+                const { data: partyRow, error: pErr } = await supabase
+                    .from('financial_parties')
+                    .select('name')
+                    .eq('id', partyId)
+                    .maybeSingle();
+                if (pErr) throw pErr;
+                const partyName = String((partyRow as any)?.name || '') || partyId.slice(-8).toUpperCase();
+                const { data: rows, error: sErr } = await supabase.rpc('party_ledger_statement_v2', {
+                    p_party_id: partyId,
+                    p_account_code: null,
+                    p_currency: null,
+                    p_start: null,
+                    p_end: null,
+                } as any);
+                if (sErr) throw sErr;
+                const brand = {
+                    name: (settings as any)?.cafeteriaName?.ar || (settings as any)?.cafeteriaName?.en || '',
+                    address: String(settings?.address || ''),
+                    contactNumber: String(settings?.contactNumber || ''),
+                    logoUrl: String(settings?.logoUrl || ''),
+                };
+                const content = renderToString(
+                    <PrintablePartyLedgerStatement
+                        brand={brand}
+                        partyId={partyId}
+                        partyName={partyName}
+                        accountCode={null}
+                        currency={null}
+                        start={null}
+                        end={null}
+                        rows={(Array.isArray(rows) ? rows : []) as any}
+                    />
+                );
+                printContent(content, `كشف حساب طرف • ${partyName}`, { page: 'A4' });
+                try {
+                    await supabase.from('system_audit_logs').insert({
+                        action: 'print',
+                        module: 'documents',
+                        details: `Printed Party Statement ${partyName}`,
+                        metadata: {
+                            docType: 'party_statement',
+                            docNumber: partyName || null,
+                            status: null,
+                            sourceTable: 'financial_parties',
+                            sourceId: partyId,
+                            template: 'PrintablePartyLedgerStatement',
+                        }
+                    } as any);
+                } catch {
+                }
+                onClose();
+            } catch (e: any) {
+                showNotification(localizeSupabaseError(e) || 'تعذر طباعة كشف الحساب للطرف.', 'error');
             } finally {
                 setBusy(false);
             }

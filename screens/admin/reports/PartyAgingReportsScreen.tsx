@@ -126,12 +126,36 @@ const PartyAgingReportsScreen: React.FC = () => {
                     <td className="p-4 font-medium dark:text-white border-r dark:border-gray-700">
                       <div className="flex items-center justify-between gap-2">
                         <span>{partyNames[r.party_id] || '—'}</span>
-                        <Link
-                          to={`/admin/financial-parties/${r.party_id}`}
-                          className="text-primary-700 dark:text-primary-300 hover:underline text-xs"
-                        >
-                          كشف الحساب
-                        </Link>
+                        <div className="flex items-center gap-3">
+                          <Link
+                            to={`/admin/financial-parties/${r.party_id}?print=1`}
+                            className="text-primary-700 dark:text-primary-300 hover:underline text-xs"
+                            title="طباعة كشف الحساب"
+                          >
+                            طباعة
+                          </Link>
+                          <Link
+                            to={`/admin/financial-parties/${r.party_id}`}
+                            className="text-primary-700 dark:text-primary-300 hover:underline text-xs"
+                            title="عرض كشف الحساب"
+                          >
+                            كشف الحساب
+                          </Link>
+                          <Link
+                            to={`/admin/settlements?partyId=${encodeURIComponent(r.party_id)}`}
+                            className="text-primary-700 dark:text-primary-300 hover:underline text-xs"
+                            title="فتح التسويات للطرف"
+                          >
+                            تسوية
+                          </Link>
+                          <Link
+                            to={`/admin/advances?partyId=${encodeURIComponent(r.party_id)}`}
+                            className="text-primary-700 dark:text-primary-300 hover:underline text-xs"
+                            title="فتح الدفعات المسبقة للطرف"
+                          >
+                            دفعات
+                          </Link>
+                        </div>
                       </div>
                       <div className="text-xs text-gray-500 dark:text-gray-400 font-mono" dir="ltr">{r.party_id}</div>
                     </td>
