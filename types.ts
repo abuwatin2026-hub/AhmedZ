@@ -340,6 +340,8 @@ export interface CartItem extends MenuItem {
   // New fields for weight-based products
   weight?: number; // Weight in kg or grams (if unitType is weight-based)
   unit?: UnitType; // Unit type for this cart item
+  uomCode?: string;
+  uomQtyInBase?: number;
 }
 
 export type OrderStatus = 'pending' | 'preparing' | 'out_for_delivery' | 'delivered' | 'scheduled' | 'cancelled';

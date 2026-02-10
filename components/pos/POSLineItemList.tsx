@@ -6,12 +6,13 @@ import { useStock } from '../../contexts/StockContext';
 interface Props {
   items: CartItem[];
   currencyCode?: string;
-  onUpdate: (cartItemId: string, next: { quantity?: number; weight?: number }) => void;
+  onUpdate: (cartItemId: string, next: { quantity?: number; weight?: number; uomCode?: string; uomQtyInBase?: number }) => void;
   onRemove: (cartItemId: string) => void;
   onEditAddons?: (cartItemId: string) => void;
   selectedCartItemId?: string | null;
   onSelect?: (cartItemId: string) => void;
   touchMode?: boolean;
+  uomOptionsByItemId?: Record<string, Array<{ code: string; name?: string; qtyInBase: number }>>;
 }
 
 const fmt = (n: number) => {
@@ -23,7 +24,7 @@ const fmt = (n: number) => {
   }
 };
 
-const POSLineItemList: React.FC<Props> = ({ items, currencyCode, onUpdate, onRemove, onEditAddons, selectedCartItemId, onSelect, touchMode }) => {
+const POSLineItemList: React.FC<Props> = ({ items, currencyCode, onUpdate, onRemove, onEditAddons, selectedCartItemId, onSelect, touchMode, uomOptionsByItemId }) => {
   const [keypadOpen, setKeypadOpen] = useState(false);
   const [keypadTitle, setKeypadTitle] = useState('');
   const [keypadInitial, setKeypadInitial] = useState(0);
@@ -79,6 +80,9 @@ const POSLineItemList: React.FC<Props> = ({ items, currencyCode, onUpdate, onRem
         let effectiveQty = qty;
         if (item.unitType === 'gram' && item.pricePerUnit) {
           unitPrice = (Number(item.pricePerUnit) || 0) / 1000;
+        } else {
+          const factor = Number((item as any).uomQtyInBase || 1) || 1;
+          effectiveQty = (Number(qty) || 0) * factor;
         }
         const lineTotal = (unitPrice + addonsPrice) * (Number(effectiveQty) || 0);
         const unitLabel = isPromotionLine ? 'باقة' : (item.unitType === 'kg' ? 'كغ' : item.unitType === 'gram' ? 'غ' : 'قطعة');
@@ -191,6 +195,35 @@ const POSLineItemList: React.FC<Props> = ({ items, currencyCode, onUpdate, onRem
                   >
                     لوحة
                   </button>
+                  <select
+                    className={`rounded-xl border dark:border-gray-600 ${touchMode ? 'px-5 py-4' : 'px-4 py-3'}`}
+                    disabled={isPromotionLine}
+                    value={String((item as any).uomCode || '').trim() || (item.unitType || 'piece')}
+                    onChange={(e) => {
+                      const code = String(e.target.value || '').trim();
+                      const options = (typeof ((uomOptionsByItemId || {})[String((item as any)?.id || (item as any)?.itemId || '')]) !== 'undefined'
+                        ? (uomOptionsByItemId || {})[String((item as any)?.id || (item as any)?.itemId || '')]
+                        : (Array.isArray((item as any)?.uomUnits) ? (item as any).uomUnits : [])) || [];
+                      const baseLabel = (item.unitType || 'piece');
+                      const found = options.find((o: any) => String(o?.code || '') === code);
+                      const qtyBase = Number(found?.qtyInBase || (code === baseLabel ? 1 : 0)) || (code === baseLabel ? 1 : 0);
+                      onUpdate(item.cartItemId, { uomCode: code, uomQtyInBase: qtyBase });
+                    }}
+                  >
+                    {(() => {
+                      const opts = (typeof ((uomOptionsByItemId || {})[String((item as any)?.id || (item as any)?.itemId || '')]) !== 'undefined'
+                        ? (uomOptionsByItemId || {})[String((item as any)?.id || (item as any)?.itemId || '')]
+                        : (Array.isArray((item as any)?.uomUnits) ? (item as any).uomUnits : [])) || [];
+                      const baseLabel = (item.unitType || 'piece');
+                      const baseOpt = [{ code: baseLabel, name: baseLabel, qtyInBase: 1 }];
+                      const merged = [...baseOpt, ...opts.filter((o: any) => String(o?.code || '') !== baseLabel)];
+                      return merged.map((o: any) => (
+                        <option key={o.code} value={o.code}>
+                          {o.code}{Number(o.qtyInBase) > 1 ? ` (${Number(o.qtyInBase)} ${baseLabel})` : ''}
+                        </option>
+                      ));
+                    })()}
+                  </select>
                 </div>
               )}
               <button

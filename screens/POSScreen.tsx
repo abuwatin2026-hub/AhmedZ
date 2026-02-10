@@ -91,6 +91,9 @@ const POSScreen: React.FC = () => {
     }
   });
 
+  const [itemUomRowsByItemId, setItemUomRowsByItemId] = useState<Record<string, Array<{ code: string; name?: string; qtyInBase: number }>>>({});
+  const itemUomLoadingRef = useRef<Set<string>>(new Set());
+
   useEffect(() => {
     void getBaseCurrencyCode().then((c) => {
       if (!c) return;
@@ -119,6 +122,38 @@ const POSScreen: React.FC = () => {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+    const ids = Array.from(new Set(items.map((r) => String((r as any)?.id || (r as any)?.itemId || '').trim()).filter(Boolean)));
+    if (!ids.length) return;
+    for (const id of ids) {
+      if (itemUomRowsByItemId[id]) continue;
+      if (itemUomLoadingRef.current.has(id)) continue;
+      itemUomLoadingRef.current.add(id);
+      (async () => {
+        try {
+          const { data, error } = await supabase.rpc('list_item_uom_units', { p_item_id: id } as any);
+          if (error) throw error;
+          const rows = Array.isArray(data) ? data : [];
+          const normalized: Array<{ code: string; name?: string; qtyInBase: number }> = rows
+            .filter((r: any) => Boolean(r?.is_active))
+            .map((r: any) => ({
+              code: String(r?.uom_code || '').trim(),
+              name: String(r?.uom_name || '').trim() || undefined,
+              qtyInBase: Number(r?.qty_in_base || 0) || 0,
+            }))
+            .filter((r) => r.code && r.qtyInBase > 0);
+          setItemUomRowsByItemId((prev) => ({ ...prev, [id]: normalized }));
+        } catch {
+          setItemUomRowsByItemId((prev) => ({ ...prev, [id]: [] }));
+        } finally {
+          itemUomLoadingRef.current.delete(id);
+        }
+      })();
+    }
+  }, [items]);
 
   const operationalCurrencies = useMemo(() => {
     const fromSettings = Array.isArray(settings.operationalCurrencies) && settings.operationalCurrencies.length
@@ -673,6 +708,8 @@ const POSScreen: React.FC = () => {
       unit: item.unitType || 'piece',
       lineType: 'menu',
       price: convertBaseToTxn(basePrice, fx),
+      uomCode: String(item.unitType || 'piece'),
+      uomQtyInBase: 1,
     };
     (cartItem as any)._basePrice = basePrice;
     if (String(item.unitType || '') === 'gram') {
@@ -685,7 +722,7 @@ const POSScreen: React.FC = () => {
     setSelectedCartItemId(cartItem.cartItemId);
   };
 
-  const updateLine = (cartItemId: string, next: { quantity?: number; weight?: number }) => {
+  const updateLine = (cartItemId: string, next: { quantity?: number; weight?: number; uomCode?: string; uomQtyInBase?: number }) => {
     if (pendingOrderId) return;
     setItems(prev => {
       const updated = prev.map(i => {
@@ -698,6 +735,8 @@ const POSScreen: React.FC = () => {
           ...i,
           quantity: isWeight ? 1 : nextQty,
           weight: isWeight ? nextWeight : undefined,
+          uomCode: next.uomCode != null ? next.uomCode : i.uomCode,
+          uomQtyInBase: next.uomQtyInBase != null ? next.uomQtyInBase : i.uomQtyInBase,
         };
       });
 
@@ -1457,6 +1496,7 @@ const POSScreen: React.FC = () => {
               selectedCartItemId={selectedCartItemId}
               onSelect={setSelectedCartItemId}
               touchMode={touchMode}
+              uomOptionsByItemId={itemUomRowsByItemId}
             />
           </div>
         </div>

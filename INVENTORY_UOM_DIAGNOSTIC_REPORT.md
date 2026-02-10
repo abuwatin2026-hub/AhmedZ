@@ -105,10 +105,13 @@ order by base_unit_variants desc, cnt desc;
 - ✔️ جدول UOM موجود: `public.uom`
 - ✔️ جدول تحويل موجود: `public.uom_conversions` بنموذج numerator/denominator
 - ✔️ ربط صنف ↔ Base UOM موجود: `public.item_uom` (base_uom_id)
-- ⚠️ لا يوجد “تاريخ صلاحية للتحويلات” (Effective Dating) داخل `uom_conversions`.  
-  في Best Practices عادة التحويلات قد تتغير (تعبئة جديدة، وزن صافي، إلخ) ويجب حفظها تاريخيًا.
-- ⚠️ لا يوجد “Item↔UOM Conversion” على مستوى الصنف (مثل: هذا الصنف pack=12 قطعة، carton=24 pack).  
-  التحويلات الحالية عالمية بين وحدات (UOM↔UOM) وليست “خاصّة بالصنف”؛ وهذا غير كافٍ لوحده لمشكلة pack/carton لأن “pack” تختلف من صنف لآخر.
+- ✔️ تمت إضافة جدول “تحويلات خاصة بالصنف” `public.item_uom_units` مع `qty_in_base` لدعم pack/carton على مستوى الصنف، إضافة إلى دوال:
+  - `public.item_qty_to_base(item_id, qty, uom_id)` لتحويل كمية الإدخال إلى Base UOM للصنف
+  - `public.item_unit_cost_to_base(item_id, unit_cost, uom_id)` لتحويل تكلفة الوحدة إلى Base UOM للصنف
+  - المراجع: [multi_uom_packaging_foundation.sql](file:///d:/AhmedZ/supabase/migrations/20260210201000_multi_uom_packaging_foundation.sql#L1-L140)، [multi_uom_use_item_qty_to_base.sql](file:///d:/AhmedZ/supabase/migrations/20260210202000_multi_uom_use_item_qty_to_base.sql#L1-L87)
+- ⚠️ لا يوجد “تاريخ صلاحية للتحويلات” (Effective Dating) داخل `uom_conversions` أو `item_uom_units`.  
+  في Best Practices عادةً قد تتغير عوامل التحويل (تعبئة جديدة، وزن صافي، إلخ) ويجب حفظها تاريخيًا.
+- ⚠️ رغم توفر التحويلات الخاصة بالصنف الآن، فإن المسارات التشغيلية الأساسية لا تزال تستخدم `quantity` مباشرة في بعض الوظائف (مثل `receive_purchase_order`) بدلاً من `qty_base`، بينما تم تقديم مسار جزئي حديثًا (`receive_purchase_order_partial`) يعتمد تحويل الكمية إلى Base UOM.
 
 ### منطق Hard‑Coded
 
@@ -268,7 +271,7 @@ where sm.unit is not null
 ### High
 
 - عدم استخدام `qty_base` في تحديث on‑hand و avg_cost → خلط وحدات يؤدي لأخطاء مخزون وتكلفة وربحية.
-- عدم وجود تحويلات “Item‑specific” للعبوات (pack/carton) → لا يمكن تمثيلها صحيًا عبر uom_conversions العامة وحدها.
+- التحويلات “Item‑specific” للعبوات (pack/carton) أصبحت متوفرة عبر `item_uom_units`، لكنها غير مُطبّقة بالكامل داخل المسارات الأساسية (الشراء الكامل/البيع/التقارير) → يستمر خطر خلط الوحدات إذا لم يُستخدم `qty_base`.
 
 ### Medium
 
@@ -351,6 +354,9 @@ where sm.unit is not null
 - inventory_movements schema الأصلي: [inventory_movements_cogs.sql](file:///d:/AhmedZ/supabase/migrations/20260107040000_inventory_movements_cogs.sql#L2-L23)
 - receive_purchase_order (استخدام quantity مباشرة في on‑hand): [prod_deploy_bundle.sql](file:///d:/AhmedZ/supabase/migrations/20260210173500_prod_deploy_bundle.sql#L116-L221)
 - post_inventory_movement (GL يعتمد total_cost فقط): [prod_deploy_bundle.sql](file:///d:/AhmedZ/supabase/migrations/20260210173500_prod_deploy_bundle.sql#L1-L111)
+- تحويلات خاصة بالصنف pack/carton + دوال تحويل: [multi_uom_packaging_foundation.sql](file:///d:/AhmedZ/supabase/migrations/20260210201000_multi_uom_packaging_foundation.sql#L1-L140)
+- تحديث Triggers لاستخدام `item_qty_to_base`: [multi_uom_use_item_qty_to_base.sql](file:///d:/AhmedZ/supabase/migrations/20260210202000_multi_uom_use_item_qty_to_base.sql#L1-L87)
+- مسار الاستلام الجزئي يعتمد Base UOM: [receive_po_partial_multi_uom.sql](file:///d:/AhmedZ/supabase/migrations/20260210203000_receive_po_partial_multi_uom.sql#L240-L476)
 
 ## Appendix — Local Schema Verification (Read‑Only)
 

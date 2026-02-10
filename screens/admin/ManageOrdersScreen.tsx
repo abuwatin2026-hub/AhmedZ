@@ -161,7 +161,7 @@ const ManageOrdersScreen: React.FC = () => {
     const [inStoreSelectedItemId, setInStoreSelectedItemId] = useState<string>('');
     const [inStoreItemSearch, setInStoreItemSearch] = useState('');
     const [inStoreSelectedAddons, setInStoreSelectedAddons] = useState<Record<string, number>>({});
-    const [inStoreLines, setInStoreLines] = useState<Array<{ menuItemId: string; quantity?: number; weight?: number; selectedAddons?: Record<string, number> }>>([]);
+    const [inStoreLines, setInStoreLines] = useState<Array<{ menuItemId: string; quantity?: number; weight?: number; selectedAddons?: Record<string, number>; uomCode?: string; uomQtyInBase?: number }>>([]);
     const [inStoreCustomerMode, setInStoreCustomerMode] = useState<'walk_in' | 'existing'>('walk_in');
     const [inStoreCustomerPhoneSearch, setInStoreCustomerPhoneSearch] = useState('');
     const [inStoreCustomerMatches, setInStoreCustomerMatches] = useState<Array<{ id: string; fullName?: string; phoneNumber?: string }>>([]);
@@ -172,6 +172,8 @@ const ManageOrdersScreen: React.FC = () => {
     const [inStorePricingBusy, setInStorePricingBusy] = useState(false);
     const [inStorePricingMap, setInStorePricingMap] = useState<Record<string, { unitPrice: number; unitPricePerKg?: number }>>({});
     const [currencyOptions, setCurrencyOptions] = useState<string[]>([]);
+    const [itemUomRowsByItemId, setItemUomRowsByItemId] = useState<Record<string, Array<{ code: string; name?: string; qtyInBase: number }>>>({});
+    const itemUomLoadingRef = useRef<Set<string>>(new Set());
 
     useEffect(() => {
         let active = true;
@@ -197,6 +199,38 @@ const ManageOrdersScreen: React.FC = () => {
             active = false;
         };
     }, []);
+    useEffect(() => {
+        if (!isInStoreSaleOpen) return;
+        const supabase = getSupabaseClient();
+        if (!supabase) return;
+        const ids = Array.from(new Set(inStoreLines.map((r) => String(r.menuItemId || '').trim()).filter(Boolean)));
+        if (!ids.length) return;
+        for (const id of ids) {
+            if (itemUomRowsByItemId[id]) continue;
+            if (itemUomLoadingRef.current.has(id)) continue;
+            itemUomLoadingRef.current.add(id);
+            (async () => {
+                try {
+                    const { data, error } = await supabase.rpc('list_item_uom_units', { p_item_id: id } as any);
+                    if (error) throw error;
+                    const rows = Array.isArray(data) ? data : [];
+                    const normalized: Array<{ code: string; name?: string; qtyInBase: number }> = rows
+                        .filter((r: any) => Boolean(r?.is_active))
+                        .map((r: any) => ({
+                            code: String(r?.uom_code || '').trim(),
+                            name: String(r?.uom_name || '').trim() || undefined,
+                            qtyInBase: Number(r?.qty_in_base || 0) || 0,
+                        }))
+                        .filter((r) => r.code && r.qtyInBase > 0);
+                    setItemUomRowsByItemId((prev) => ({ ...prev, [id]: normalized }));
+                } catch {
+                    setItemUomRowsByItemId((prev) => ({ ...prev, [id]: [] }));
+                } finally {
+                    itemUomLoadingRef.current.delete(id);
+                }
+            })();
+        }
+    }, [getSupabaseClient, inStoreLines, isInStoreSaleOpen]);
     const operationalCurrencies = useMemo(() => {
         const fromSettings = Array.isArray(settings.operationalCurrencies) && settings.operationalCurrencies.length
             ? settings.operationalCurrencies
@@ -1034,7 +1068,7 @@ const ManageOrdersScreen: React.FC = () => {
                 ...prev,
                 isWeightBased
                     ? { menuItemId: id, weight: menuItem.minWeight || 1, selectedAddons: addonsToAdd }
-                    : { menuItemId: id, quantity: 1, selectedAddons: addonsToAdd },
+                    : { menuItemId: id, quantity: 1, selectedAddons: addonsToAdd, uomCode: String(menuItem.unitType || 'piece'), uomQtyInBase: 1 },
             ];
         });
         setInStoreSelectedItemId('');
@@ -1050,7 +1084,7 @@ const ManageOrdersScreen: React.FC = () => {
         });
     }, [inStoreItemSearch, language, menuItems]);
 
-    const updateInStoreLine = (index: number, patch: { quantity?: number; weight?: number }) => {
+    const updateInStoreLine = (index: number, patch: { quantity?: number; weight?: number; uomCode?: string; uomQtyInBase?: number }) => {
         setInStoreLines(prev => prev.map((l, i) => (i === index ? { ...l, ...patch } : l)));
     };
 
@@ -1067,7 +1101,9 @@ const ManageOrdersScreen: React.FC = () => {
             const isWeightBased = isWeightBasedUnit(unitType as any);
             const quantity = !isWeightBased ? (line.quantity || 0) : 1;
             const weight = isWeightBased ? (line.weight || 0) : 0;
-            const pricingQty = isWeightBased ? (Number(weight) || Number(quantity) || 0) : (Number(quantity) || 0);
+            const pricingQty = isWeightBased
+                ? (Number(weight) || Number(quantity) || 0)
+                : ((Number(quantity) || 0) * (Number(line.uomQtyInBase || 1) || 1));
             const pricingKey = `${line.menuItemId}:${unitType || 'piece'}:${pricingQty}:${inStoreSelectedCustomerId || ''}`;
             const priced = inStorePricingMap[pricingKey];
             const fallbackUnitPrice = unitType === 'gram' && menuItem.pricePerUnit ? menuItem.pricePerUnit / 1000 : menuItem.price;
@@ -1088,7 +1124,7 @@ const ManageOrdersScreen: React.FC = () => {
 
             const lineTotal = isWeightBased
                 ? (unitPrice * weight) + (addonsCost * 1)
-                : (unitPrice + addonsCost) * quantity;
+                : (unitPrice + addonsCost) * quantity * (Number(line.uomQtyInBase || 1) || 1);
 
             return sum + lineTotal;
         }, 0);
@@ -3323,7 +3359,7 @@ const ManageOrdersScreen: React.FC = () => {
                                     if (!mi) return null;
                                     const name = mi.name?.[language] || mi.name?.ar || mi.name?.en || mi.id;
                                     const isWeightBased = mi.unitType === 'kg' || mi.unitType === 'gram';
-                                    const pricingQty = isWeightBased ? (Number(line.weight ?? 0) || 0) : (Number(line.quantity ?? 0) || 0);
+                                    const pricingQty = isWeightBased ? (Number(line.weight ?? 0) || 0) : ((Number(line.quantity ?? 0) || 0) * (Number(line.uomQtyInBase || 1) || 1));
                                     const pricingKey = `${line.menuItemId}:${mi.unitType || 'piece'}:${pricingQty}:${inStoreSelectedCustomerId || ''}`;
                                     const priced = inStorePricingMap[pricingKey];
                                     const fallbackUnitPrice = mi.unitType === 'gram' && mi.pricePerUnit ? mi.pricePerUnit / 1000 : mi.price;
@@ -3342,7 +3378,7 @@ const ManageOrdersScreen: React.FC = () => {
                                     }
                                     const baseLineTotal = isWeightBased
                                         ? (baseUnitPrice * (line.weight ?? 0)) + (baseAddonsCost * 1)
-                                        : (baseUnitPrice + baseAddonsCost) * (line.quantity ?? 0);
+                                        : (baseUnitPrice + baseAddonsCost) * (line.quantity ?? 0) * (Number(line.uomQtyInBase || 1) || 1);
                                     const unitPrice = convertBaseToInStoreTxn(baseUnitPrice, Number(inStoreTransactionFxRate) || 1);
                                     const lineTotal = convertBaseToInStoreTxn(baseLineTotal, Number(inStoreTransactionFxRate) || 1);
                                     const currentValue = isWeightBased ? (line.weight ?? 0) : (line.quantity ?? 0);
@@ -3399,6 +3435,38 @@ const ManageOrdersScreen: React.FC = () => {
                                                         </div>
                                                     )}
                                                 </div>
+                                                {!isWeightBased && (
+                                                    <div className="w-40">
+                                                        <select
+                                                            value={String(line.uomCode || mi.unitType || 'piece')}
+                                                            onChange={(e) => {
+                                                                const code = String(e.target.value || '').trim();
+                                                                const options = (itemUomRowsByItemId[mi.id] && itemUomRowsByItemId[mi.id].length > 0)
+                                                                    ? itemUomRowsByItemId[mi.id]
+                                                                    : (Array.isArray((mi as any)?.uomUnits) ? ((mi as any).uomUnits as Array<{ code: string; name?: string; qtyInBase: number }>) : []);
+                                                                const baseLabel = (mi.unitType || 'piece');
+                                                                const found = options.find((o: any) => String(o?.code || '') === code);
+                                                                const qtyBase = Number(found?.qtyInBase || (code === baseLabel ? 1 : 0)) || (code === baseLabel ? 1 : 0);
+                                                                updateInStoreLine(index, { uomCode: code, uomQtyInBase: qtyBase });
+                                                            }}
+                                                            className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
+                                                        >
+                                                            {(() => {
+                                                                const options = (itemUomRowsByItemId[mi.id] && itemUomRowsByItemId[mi.id].length > 0)
+                                                                    ? itemUomRowsByItemId[mi.id]
+                                                                    : (Array.isArray((mi as any)?.uomUnits) ? ((mi as any).uomUnits as Array<{ code: string; name?: string; qtyInBase: number }>) : []);
+                                                                const baseLabel = (mi.unitType || 'piece');
+                                                                const baseOpt = [{ code: baseLabel, name: baseLabel, qtyInBase: 1 }];
+                                                                const merged = [...baseOpt, ...options.filter((o: any) => String(o?.code || '') !== baseLabel)];
+                                                                return merged.map((o: any) => (
+                                                                    <option key={o.code} value={o.code}>
+                                                                        {o.code}{Number(o.qtyInBase) > 1 ? ` (${Number(o.qtyInBase)} ${baseLabel})` : ''}
+                                                                    </option>
+                                                                ));
+                                                            })()}
+                                                        </select>
+                                                    </div>
+                                                )}
                                                 <button
                                                     type="button"
                                                     onClick={() => removeInStoreLine(index)}

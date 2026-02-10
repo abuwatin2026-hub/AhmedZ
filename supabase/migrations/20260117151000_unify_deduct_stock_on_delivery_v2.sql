@@ -9,6 +9,8 @@ declare
   v_item_id_text text;
   v_item_id_uuid uuid;
   v_requested numeric;
+  v_uom_id uuid;
+  v_uom_code text;
   v_available numeric;
   v_reserved numeric;
   v_avg_cost numeric;
@@ -72,6 +74,19 @@ begin
   loop
     v_item_id_text := coalesce(v_item->>'itemId', v_item->>'id');
     v_requested := coalesce(nullif(v_item->>'quantity', '')::numeric, 0);
+    v_uom_id := null;
+    begin
+      v_uom_id := nullif(coalesce(v_item->>'uomId', v_item->>'uom_id'), '')::uuid;
+    exception when others then
+      v_uom_id := null;
+    end;
+    v_uom_code := nullif(btrim(coalesce(v_item->>'uomCode', v_item->>'uom_code', v_item->>'uom', v_item->>'unit', v_item->>'unitType')), '');
+    if v_uom_id is null and v_uom_code is not null then
+      v_uom_id := public.ensure_uom_code(v_uom_code, null);
+    end if;
+    if v_uom_id is not null then
+      v_requested := public.item_qty_to_base(v_item_id_text, v_requested, v_uom_id);
+    end if;
     v_item_batch_text := nullif(v_item->>'batchId', '');
 
     if v_item_id_text is null or v_item_id_text = '' then
@@ -194,7 +209,7 @@ begin
       )
       values (
         v_item_id_text, 'sale_out', v_requested, v_unit_cost, v_total_cost,
-        'orders', p_order_id::text, now(), auth.uid(), jsonb_build_object('orderId', p_order_id, 'batchId', v_batch_id), v_batch_id
+        'orders', p_order_id::text, now(), auth.uid(), jsonb_build_object('orderId', p_order_id, 'batchId', v_batch_id, 'trxQty', coalesce(nullif(v_item->>'quantity','')::numeric, null), 'trxUomId', case when v_uom_id is null then null else v_uom_id::text end), v_batch_id
       )
       returning id into v_movement_id;
 
@@ -388,7 +403,7 @@ begin
           values (
             v_item_id_text, 'sale_out', v_alloc, v_unit_cost, v_total_cost,
             'orders', p_order_id::text, now(), auth.uid(),
-            jsonb_build_object('orderId', p_order_id, 'batchId', v_batch_id, 'expiryDate', v_batch.expiry_date),
+            jsonb_build_object('orderId', p_order_id, 'batchId', v_batch_id, 'expiryDate', v_batch.expiry_date, 'trxQty', coalesce(nullif(v_item->>'quantity','')::numeric, null), 'trxUomId', case when v_uom_id is null then null else v_uom_id::text end),
             v_batch_id
           )
           returning id into v_movement_id;
@@ -483,7 +498,7 @@ begin
           values (
             v_item_id_text, 'sale_out', v_alloc, v_unit_cost, v_total_cost,
             'orders', p_order_id::text, now(), auth.uid(),
-            jsonb_build_object('orderId', p_order_id, 'batchId', v_batch_id, 'expiryDate', v_batch.expiry_date),
+            jsonb_build_object('orderId', p_order_id, 'batchId', v_batch_id, 'expiryDate', v_batch.expiry_date, 'trxQty', coalesce(nullif(v_item->>'quantity','')::numeric, null), 'trxUomId', case when v_uom_id is null then null else v_uom_id::text end),
             v_batch_id
           )
           returning id into v_movement_id;

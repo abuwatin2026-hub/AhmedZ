@@ -747,6 +747,14 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
     return item.quantity;
   };
+  const getRequestedBaseQuantity = (item: CartItem) => {
+    const unitType = item.unitType || item.unit || 'piece';
+    if (unitType === 'kg' || unitType === 'gram') {
+      return typeof item.weight === 'number' ? item.weight : item.quantity;
+    }
+    const factor = Number((item as any).uomQtyInBase || 1) || 1;
+    return (Number(item.quantity) || 0) * factor;
+  };
 
   const addOrderEvent = useCallback(
     async (input: {
@@ -907,7 +915,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const ensureSufficientStockForOrderItems = async (items: CartItem[], warehouseId: string) => {
     for (const item of items) {
-      const requested = getRequestedItemQuantity(item);
+      const requested = getRequestedBaseQuantity(item);
       if (!(requested > 0)) continue;
       const unit = (item.unitType || item.unit || 'piece') as StockManagement['unit'];
       const current = await loadStockRecord(item.id, item.availableStock || 0, unit, warehouseId);
@@ -1321,6 +1329,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         itemId: item.id,
         quantity: item.quantity,
         weight: item.weight,
+        uomCode: typeof item.uomCode === 'string' ? item.uomCode.trim() : undefined,
         selectedAddons: addonsSimple,
       };
     });
@@ -2048,6 +2057,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       .map((item) => ({
         itemId: String((item as any)?.itemId || item.id || ''),
         quantity: getRequestedItemQuantity(item),
+        uomCode: String((item as any)?.uomCode || '').trim() || undefined,
       }))
       .filter((entry) => Number(entry.quantity) > 0);
     if (shouldAttemptImmediatePayment && payloadItems.length === 0 && !hasPromoLines) {
@@ -2141,9 +2151,9 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         }
 
         const merged = new Map<string, number>();
-        for (const entry of payloadItems) {
-          const itemId = String((entry as any)?.itemId || '');
-          const quantity = Number((entry as any)?.quantity) || 0;
+        for (const item of (newOrder.items || []).filter((it: any) => !(it?.lineType === 'promotion' || it?.promotionId))) {
+          const itemId = String((item as any)?.itemId || (item as any)?.id || '');
+          const quantity = Number(getRequestedBaseQuantity(item)) || 0;
           if (!itemId || !(quantity > 0)) continue;
           merged.set(itemId, (merged.get(itemId) || 0) + quantity);
         }
@@ -2742,7 +2752,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const baseItems = (existing.items || []).filter((it: any) => !(it?.lineType === 'promotion' || it?.promotionId || it?.category === 'promotion'));
     for (const item of baseItems) {
       const itemId = String((item as any)?.itemId || (item as any)?.id || '');
-      const quantity = Number(getRequestedItemQuantity(item)) || 0;
+      const quantity = Number(getRequestedBaseQuantity(item)) || 0;
       if (!itemId || !(quantity > 0)) continue;
       merged.set(itemId, (merged.get(itemId) || 0) + quantity);
     }
@@ -2773,6 +2783,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       .map((item) => ({
         itemId: String((item as any)?.itemId || (item as any)?.id || ''),
         quantity: getRequestedItemQuantity(item),
+        uomCode: String((item as any)?.uomCode || '').trim() || undefined,
       }))
       .filter((entry) => isUuid(entry.itemId) && Number(entry.quantity) > 0);
     if (payloadItems.length === 0 && promoLines.length === 0) {
@@ -3050,7 +3061,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       const merged = new Map<string, number>();
       for (const item of baseItems) {
         const itemId = String((item as any)?.itemId || (item as any)?.id || '');
-        const quantity = Number(getRequestedItemQuantity(item)) || 0;
+        const quantity = Number(getRequestedBaseQuantity(item)) || 0;
         if (!itemId || !(quantity > 0)) continue;
         merged.set(itemId, (merged.get(itemId) || 0) + quantity);
       }
@@ -3071,6 +3082,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         .map((item) => ({
           itemId: String((item as any)?.itemId || (item as any)?.id || ''),
           quantity: getRequestedItemQuantity(item),
+          uomCode: String((item as any)?.uomCode || '').trim() || undefined,
         }))
         .filter((entry) => isUuid(entry.itemId) && Number(entry.quantity) > 0);
       if (payloadItems.length === 0) {

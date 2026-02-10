@@ -41,6 +41,9 @@ export const computeCartItemPricing = (item: CartItem) => {
         if (unitType === 'gram' && item.pricePerUnit) {
             itemPrice = item.pricePerUnit / 1000;
         }
+    } else {
+        const factor = Number(item.uomQtyInBase || 1) || 1;
+        itemQuantity = (Number(item.quantity) || 0) * factor;
     }
 
     const unitPrice = itemPrice + addonsPrice;
