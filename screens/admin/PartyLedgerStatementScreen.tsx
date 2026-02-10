@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import { renderToString } from 'react-dom/server';
 import { getSupabaseClient } from '../../supabase';
+import { useAuth } from '../../contexts/AuthContext';
 import * as Icons from '../../components/icons';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useToast } from '../../contexts/ToastContext';
@@ -35,6 +36,7 @@ const PartyLedgerStatementScreen: React.FC = () => {
   const location = useLocation();
   const { settings } = useSettings();
   const { showNotification } = useToast();
+  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [partyName, setPartyName] = useState<string>('—');
   const [rows, setRows] = useState<StatementRow[]>([]);
@@ -44,6 +46,12 @@ const PartyLedgerStatementScreen: React.FC = () => {
   const [end, setEnd] = useState<string>('');
   const [printing, setPrinting] = useState(false);
   const [didAutoPrint, setDidAutoPrint] = useState(false);
+  const [currencyOptions, setCurrencyOptions] = useState<string[]>([]);
+  const [accountOptions, setAccountOptions] = useState<string[]>([]);
+  const [applying, setApplying] = useState(false);
+  const [backfilling, setBackfilling] = useState(false);
+  const [lastBackfillCount, setLastBackfillCount] = useState<number | null>(null);
+  const canManage = user?.role === 'owner' || user?.role === 'manager';
 
   const load = async () => {
     if (!partyId) return;
@@ -68,6 +76,8 @@ const PartyLedgerStatementScreen: React.FC = () => {
       } as any);
       if (error) throw error;
       setRows((Array.isArray(data) ? data : []) as any);
+    } catch (err: any) {
+      showNotification(String(err?.message || 'تعذر تحميل كشف الحساب'), 'error');
     } finally {
       setLoading(false);
     }
@@ -77,6 +87,54 @@ const PartyLedgerStatementScreen: React.FC = () => {
     void load();
   }, [partyId]);
 
+  useEffect(() => {
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+    let cancelled = false;
+    const runCurrencies = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('currencies')
+          .select('code')
+          .order('code', { ascending: true });
+        if (error) throw error;
+        const codes = (Array.isArray(data) ? data : [])
+          .map((r: any) => String(r?.code || '').trim().toUpperCase())
+          .filter(Boolean);
+        const uniq = Array.from(new Set(codes));
+        if (!cancelled) setCurrencyOptions(uniq);
+      } catch {
+        if (!cancelled) setCurrencyOptions([]);
+      }
+    };
+    const runAccounts = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('party_subledger_accounts')
+          .select('account_id')
+          .eq('is_active', true);
+        if (error) throw error;
+        const ids = (Array.isArray(data) ? data : []).map((r: any) => String(r?.account_id || '')).filter(Boolean);
+        if (ids.length === 0) {
+          setAccountOptions([]);
+          return;
+        }
+        const { data: coaRows, error: coaErr } = await supabase
+          .from('chart_of_accounts')
+          .select('code')
+          .in('id', ids);
+        if (coaErr) throw coaErr;
+        const codes = (Array.isArray(coaRows) ? coaRows : []).map((r: any) => String(r?.code || '').trim()).filter(Boolean);
+        const uniq = Array.from(new Set(codes));
+        setAccountOptions(uniq);
+      } catch {
+        setAccountOptions([]);
+      }
+    };
+    void runCurrencies();
+    void runAccounts();
+    return () => { cancelled = true; };
+  }, []);
   const totals = useMemo(() => {
     const debit = rows.reduce((s, r) => s + (r.direction === 'debit' ? Number(r.base_amount || 0) : 0), 0);
     const credit = rows.reduce((s, r) => s + (r.direction === 'credit' ? Number(r.base_amount || 0) : 0), 0);
@@ -141,6 +199,30 @@ const PartyLedgerStatementScreen: React.FC = () => {
     }
   };
 
+  const handleBackfill = async () => {
+    if (!partyId) return;
+    const ok = window.confirm('سيتم تحديث دفتر الطرف لهذا الطرف اعتمادًا على القيود المرحّلة. المتابعة؟');
+    if (!ok) return;
+    setBackfilling(true);
+    try {
+      const supabase = getSupabaseClient();
+      if (!supabase) throw new Error('supabase not available');
+      const { data, error } = await supabase.rpc('backfill_party_ledger_for_existing_entries', {
+        p_batch: 5000,
+        p_only_party_id: partyId,
+      } as any);
+      if (error) throw error;
+      const count = Number(data) || 0;
+      setLastBackfillCount(count);
+      showNotification(`تم تحديث دفتر الطرف (${count} سطر/أسطر).`, 'success');
+      await load();
+    } catch (e: any) {
+      showNotification(String(e?.message || 'تعذر تحديث دفتر الطرف'), 'error');
+    } finally {
+      setBackfilling(false);
+    }
+  };
+
   useEffect(() => {
     const qs = new URLSearchParams(location.search);
     const auto = qs.get('print') === '1';
@@ -178,6 +260,22 @@ const PartyLedgerStatementScreen: React.FC = () => {
             <Icons.PrinterIcon className="w-5 h-5" />
             <span>طباعة</span>
           </button>
+          {canManage && (
+            <button
+              type="button"
+              onClick={() => void handleBackfill()}
+              className="bg-primary-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-primary-700 shadow-lg border border-primary-700 disabled:opacity-60"
+              disabled={backfilling}
+              title="تحديث دفتر الطرف لهذا الطرف"
+            >
+              <span>{backfilling ? 'جاري التحديث...' : 'تحديث دفتر الطرف'}</span>
+            </button>
+          )}
+          {canManage && lastBackfillCount != null && (
+            <span className="text-xs text-gray-600 dark:text-gray-300 px-2 py-1 border rounded-md bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
+              تم تحديث: {Number(lastBackfillCount || 0)}
+            </span>
+          )}
           <Link
             to="/admin/financial-parties"
             className="bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-gray-700 shadow-lg border border-gray-100 dark:border-gray-700"
@@ -188,38 +286,82 @@ const PartyLedgerStatementScreen: React.FC = () => {
         </div>
       </div>
 
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700 p-4 mb-4 grid grid-cols-1 md:grid-cols-5 gap-3">
-        <input
-          value={accountCode}
-          onChange={(e) => setAccountCode(e.target.value)}
-          placeholder="كود الحساب (اختياري)"
-          className="border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 font-mono"
-        />
-        <input
-          value={currency}
-          onChange={(e) => setCurrency(e.target.value)}
-          placeholder="العملة (اختياري)"
-          className="border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 font-mono"
-        />
-        <input
-          value={start}
-          onChange={(e) => setStart(e.target.value)}
-          placeholder="من (YYYY-MM-DD)"
-          className="border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 font-mono"
-        />
-        <input
-          value={end}
-          onChange={(e) => setEnd(e.target.value)}
-          placeholder="إلى (YYYY-MM-DD)"
-          className="border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 font-mono"
-        />
-        <button
-          onClick={() => void load()}
-          className="bg-primary-600 text-white px-4 py-2 rounded-lg flex items-center justify-center gap-2 hover:bg-primary-700"
-        >
-          <Icons.Search className="w-5 h-5" />
-          <span>تطبيق</span>
-        </button>
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700 p-4 mb-4 grid grid-cols-1 md:grid-cols-6 gap-3">
+        <div className="md:col-span-2">
+          <label className="block text-xs text-gray-600 dark:text-gray-300 mb-1">كود الحساب (اختياري)</label>
+          <input
+            list="account-codes"
+            value={accountCode}
+            onChange={(e) => setAccountCode(e.target.value)}
+            placeholder="مثل 1200/2010"
+            className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 font-mono"
+            onKeyDown={(e) => { if (e.key === 'Enter') void load(); }}
+          />
+          <datalist id="account-codes">
+            {accountOptions.map((c) => <option key={c} value={c} />)}
+          </datalist>
+        </div>
+        <div>
+          <label className="block text-xs text-gray-600 dark:text-gray-300 mb-1">العملة (اختياري)</label>
+          <input
+            list="currency-codes"
+            value={currency}
+            onChange={(e) => setCurrency(e.target.value.toUpperCase())}
+            placeholder="مثل YER/USD"
+            className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 font-mono"
+            onKeyDown={(e) => { if (e.key === 'Enter') void load(); }}
+          />
+          <datalist id="currency-codes">
+            {currencyOptions.map((c) => <option key={c} value={c} />)}
+          </datalist>
+        </div>
+        <div>
+          <label className="block text-xs text-gray-600 dark:text-gray-300 mb-1">من</label>
+          <input
+            type="date"
+            value={start}
+            onChange={(e) => setStart(e.target.value)}
+            className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 font-mono"
+            onKeyDown={(e) => { if (e.key === 'Enter') void load(); }}
+          />
+        </div>
+        <div>
+          <label className="block text-xs text-gray-600 dark:text-gray-300 mb-1">إلى</label>
+          <input
+            type="date"
+            value={end}
+            onChange={(e) => setEnd(e.target.value)}
+            className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 font-mono"
+            onKeyDown={(e) => { if (e.key === 'Enter') void load(); }}
+          />
+        </div>
+        <div className="flex items-end gap-2">
+          <button
+            onClick={async () => { setApplying(true); await load(); setApplying(false); }}
+            className="bg-primary-600 text-white px-4 py-2 rounded-lg flex items-center justify-center gap-2 hover:bg-primary-700 disabled:opacity-60"
+            disabled={applying}
+            title="تطبيق المرشحات"
+          >
+            {applying ? 'جاري التطبيق...' : (
+              <>
+                <Icons.Search className="w-5 h-5" />
+                <span>عرض</span>
+              </>
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              const s = new Date(); s.setDate(s.getDate() - 90);
+              setStart(s.toISOString().slice(0, 10));
+              setEnd(new Date().toISOString().slice(0, 10));
+            }}
+            className="bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 px-3 py-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 text-xs"
+            title="آخر 90 يومًا"
+          >
+            آخر 90 يومًا
+          </button>
+        </div>
       </div>
 
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700 p-4 mb-4 grid grid-cols-1 md:grid-cols-3 gap-2 text-sm">
@@ -247,7 +389,7 @@ const PartyLedgerStatementScreen: React.FC = () => {
               {rows.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="p-8 text-center text-gray-500 dark:text-gray-400">
-                    لا توجد حركات.
+                    لا توجد حركات. جرّب تعديل المرشحات (الفترة/العملة/الحساب) ثم اضغط "عرض".
                   </td>
                 </tr>
               ) : (

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { useToast } from '../../contexts/ToastContext';
 import { getSupabaseClient } from '../../supabase';
 import * as Icons from '../../components/icons';
 
@@ -17,6 +18,7 @@ type FinancialPartyRow = {
 
 const FinancialPartiesScreen: React.FC = () => {
   const { user } = useAuth();
+  const { showNotification } = useToast();
   const canManage = user?.role === 'owner' || user?.role === 'manager';
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<FinancialPartyRow[]>([]);
@@ -27,6 +29,7 @@ const FinancialPartiesScreen: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingRow, setEditingRow] = useState<FinancialPartyRow | null>(null);
   const [form, setForm] = useState<Partial<FinancialPartyRow>>({});
+  const [backfillBusyId, setBackfillBusyId] = useState<string>('');
 
   const load = async () => {
     setLoading(true);
@@ -139,6 +142,31 @@ const FinancialPartiesScreen: React.FC = () => {
     await load();
   };
 
+  const handleBackfillParty = async (partyId: string) => {
+    if (!canManage) {
+      showNotification('ليس لديك صلاحية تنفيذ هذا الإجراء.', 'error');
+      return;
+    }
+    const ok = window.confirm('سيتم تحديث دفتر الطرف لهذا الطرف اعتمادًا على القيود المرحّلة. المتابعة؟');
+    if (!ok) return;
+    setBackfillBusyId(partyId);
+    try {
+      const supabase = getSupabaseClient();
+      if (!supabase) throw new Error('supabase not available');
+      const { data, error } = await supabase.rpc('backfill_party_ledger_for_existing_entries', {
+        p_batch: 5000,
+        p_only_party_id: partyId,
+      } as any);
+      if (error) throw error;
+      const count = Number(data) || 0;
+      showNotification(`تم تحديث دفتر الطرف (${count} سطر/أسطر).`, 'success');
+    } catch (e: any) {
+      showNotification(String(e?.message || 'تعذر تحديث دفتر الطرف'), 'error');
+    } finally {
+      setBackfillBusyId('');
+    }
+  };
+
   if (loading) return <div className="p-8 text-center text-gray-500">جاري التحميل...</div>;
 
   return (
@@ -242,6 +270,16 @@ const FinancialPartiesScreen: React.FC = () => {
                       </Link>
                       {canManage && (
                         <button
+                          onClick={() => void handleBackfillParty(r.id)}
+                          className="p-2 text-emerald-700 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors disabled:opacity-60"
+                          title="تحديث دفتر الطرف"
+                          disabled={backfillBusyId === r.id}
+                        >
+                          {backfillBusyId === r.id ? <Icons.SettingsIcon className="w-4 h-4 animate-spin" /> : <Icons.SettingsIcon className="w-4 h-4" />}
+                        </button>
+                      )}
+                      {canManage && (
+                        <button
                           onClick={() => openModal(r)}
                           className="p-2 text-blue-600 bg-blue-50 dark:bg-blue-900/20 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors"
                           title="تعديل"
@@ -327,4 +365,3 @@ const FinancialPartiesScreen: React.FC = () => {
 };
 
 export default FinancialPartiesScreen;
-

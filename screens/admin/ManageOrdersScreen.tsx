@@ -158,6 +158,9 @@ const ManageOrdersScreen: React.FC = () => {
         amountConfirmed?: boolean;
         cashReceived?: number;
     }>>([]);
+    const [editOrderId, setEditOrderId] = useState<string | null>(null);
+    const [editChangesByCartItemId, setEditChangesByCartItemId] = useState<Record<string, { quantity?: number; uomCode?: string; uomQtyInBase?: number }>>({});
+    const [editReservationResult, setEditReservationResult] = useState<Array<{ itemId: string; released: number; reserved: number; name?: string }>>([]);
     const [inStoreSelectedItemId, setInStoreSelectedItemId] = useState<string>('');
     const [inStoreItemSearch, setInStoreItemSearch] = useState('');
     const [inStoreSelectedAddons, setInStoreSelectedAddons] = useState<Record<string, number>>({});
@@ -2577,6 +2580,18 @@ const ManageOrdersScreen: React.FC = () => {
                                                     )}
                                                 </div>
                                             )}
+                                            {!isInStoreOrder(order) && order.status !== 'delivered' && order.status !== 'cancelled' && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setEditOrderId(order.id);
+                                                        setEditChangesByCartItemId({});
+                                                    }}
+                                                    className="mt-2 w-full px-3 py-2 bg-teal-600 text-white rounded-md hover:bg-teal-700 transition text-sm font-semibold"
+                                                >
+                                                    تعديل الأصناف
+                                                </button>
+                                            )}
                                         </td>
                                     </tr>
                                 ))
@@ -3566,6 +3581,196 @@ const ManageOrdersScreen: React.FC = () => {
                         placeholder={language === 'ar' ? 'رمز التسليم' : 'Delivery PIN'}
                     />
                 </div>
+            </ConfirmationModal>
+            <ConfirmationModal
+                isOpen={Boolean(editOrderId)}
+                onClose={() => {
+                    setEditOrderId(null);
+                    setEditChangesByCartItemId({});
+                    setEditReservationResult([]);
+                }}
+                onConfirm={async () => {
+                    if (!editOrderId) return;
+                    const supabase = getSupabaseClient();
+                    if (!supabase) return;
+                    const order = orders.find(o => o.id === editOrderId);
+                    if (!order) return;
+                    const status = String(order.status || '').trim();
+                    const warehouseId = (order as any)?.warehouseId || sessionScope.scope?.warehouseId || '';
+                    const baseItems = (order.items || []).map((it: any) => ({ ...it }));
+                    const updatedItems = baseItems.map((it: any) => {
+                        const patch = editChangesByCartItemId[it.cartItemId || it.id || ''] || {};
+                        if (patch.quantity != null && !(it.unitType === 'kg' || it.unitType === 'gram')) {
+                            it.quantity = Number(patch.quantity) || 0;
+                        }
+                        if (patch.uomCode != null && !(it.unitType === 'kg' || it.unitType === 'gram')) {
+                            (it as any).uomCode = String(patch.uomCode || '').trim();
+                            (it as any).uomQtyInBase = Number(patch.uomQtyInBase || 1) || 1;
+                        }
+                        return it;
+                    });
+                    const isWeightBasedUnit = (u: string | undefined) => (u === 'kg' || u === 'gram');
+                    const getBaseQty = (it: any) => {
+                        const unit = String(it?.unitType || it?.unit || 'piece');
+                        if (isWeightBasedUnit(unit)) {
+                            return Number(it?.weight) || Number(it?.quantity) || 0;
+                        }
+                        const factor = Number((it as any)?.uomQtyInBase || 1) || 1;
+                        return (Number(it?.quantity) || 0) * factor;
+                    };
+                    const mergeByItemId = (list: any[]) => {
+                        const merged = new Map<string, number>();
+                        for (const it of list) {
+                            const isPromo = Boolean((it as any)?.lineType === 'promotion' || (it as any)?.promotionId);
+                            if (isPromo) continue;
+                            const itemId = String((it as any)?.itemId || (it as any)?.id || '').trim();
+                            const qty = Number(getBaseQty(it)) || 0;
+                            if (!itemId || !(qty > 0)) continue;
+                            merged.set(itemId, (merged.get(itemId) || 0) + qty);
+                        }
+                        return Array.from(merged.entries()).map(([itemId, quantity]) => ({ itemId, quantity }));
+                    };
+                    const releaseItems = mergeByItemId(baseItems);
+                    const reserveItems = mergeByItemId(updatedItems);
+                    const nextData = { ...(order as any) };
+                    nextData.items = updatedItems;
+                    try {
+                        if (warehouseId && (status === 'pending' || status === 'preparing')) {
+                            if (releaseItems.length > 0) {
+                                const { error: relErr } = await supabase.rpc('release_reserved_stock_for_order', {
+                                    p_items: releaseItems,
+                                    p_order_id: order.id,
+                                    p_warehouse_id: warehouseId,
+                                });
+                                if (relErr) throw relErr;
+                            }
+                            if (reserveItems.length > 0) {
+                                const { error: resErr } = await supabase.rpc('reserve_stock_for_order', {
+                                    p_items: reserveItems,
+                                    p_order_id: order.id,
+                                    p_warehouse_id: warehouseId,
+                                });
+                                if (resErr) throw resErr;
+                            }
+                        }
+                        const { error } = await supabase
+                            .from('orders')
+                            .update({ data: nextData, items: updatedItems })
+                            .eq('id', editOrderId);
+                        if (error) throw error;
+                        const names = new Map<string, string>();
+                        for (const it of baseItems) {
+                            const itemId = String((it as any)?.itemId || (it as any)?.id || '').trim();
+                            const name = String((it as any)?.name?.ar || (it as any)?.name?.en || (it as any)?.name || (it as any)?.itemName || itemId);
+                            if (itemId) names.set(itemId, name);
+                        }
+                        for (const it of updatedItems) {
+                            const itemId = String((it as any)?.itemId || (it as any)?.id || '').trim();
+                            const name = String((it as any)?.name?.ar || (it as any)?.name?.en || (it as any)?.name || (it as any)?.itemName || itemId);
+                            if (itemId && !names.has(itemId)) names.set(itemId, name);
+                        }
+                        const releasedMap = new Map<string, number>(releaseItems.map(r => [r.itemId, Number(r.quantity) || 0]));
+                        const reservedMap = new Map<string, number>(reserveItems.map(r => [r.itemId, Number(r.quantity) || 0]));
+                        const allIds = Array.from(new Set<string>([...releasedMap.keys(), ...reservedMap.keys()]));
+                        const result = allIds.map(id => ({
+                            itemId: id,
+                            released: Number(releasedMap.get(id) || 0),
+                            reserved: Number(reservedMap.get(id) || 0),
+                            name: names.get(id),
+                        })).filter(r => (r.released > 0 || r.reserved > 0));
+                        setEditReservationResult(result);
+                        showNotification('تم حفظ تعديلات الأصناف للطلب بنجاح.', 'success');
+                    } catch (err) {
+                        showNotification(localizeSupabaseError(err) || 'تعذر حفظ التعديلات.', 'error');
+                    } finally {
+                    }
+                }}
+                title="تعديل أصناف الطلب"
+                message=""
+                isConfirming={false}
+                confirmText="حفظ التعديلات"
+                confirmingText="جارٍ الحفظ..."
+                cancelText="إلغاء"
+                maxWidthClassName="max-w-3xl"
+                hideConfirmButton={editReservationResult.length > 0}
+            >
+                {editOrderId && (() => {
+                    const order = orders.find(o => o.id === editOrderId);
+                    if (!order) return null;
+                    const items = (order.items || []) as CartItem[];
+                    return (
+                        <div className="space-y-3">
+                            {editReservationResult.length > 0 && (
+                                <div className="p-3 rounded-md border border-emerald-200 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-900/20">
+                                    <div className="text-sm font-semibold text-emerald-800 dark:text-emerald-200">تم تحديث الحجز</div>
+                                    <div className="mt-2 space-y-1">
+                                        {editReservationResult.map((r) => (
+                                            <div key={r.itemId} className="text-xs text-gray-700 dark:text-gray-200 flex items-center justify-between gap-2">
+                                                <div className="truncate">{r.name || r.itemId}</div>
+                                                <div className="flex items-center gap-3 font-mono">
+                                                    <span className="px-2 py-0.5 rounded bg-gray-100 border border-gray-200 dark:bg-gray-800 dark:border-gray-700">حرر: {Number(r.released || 0)}</span>
+                                                    <span className="px-2 py-0.5 rounded bg-gray-100 border border-gray-200 dark:bg-gray-800 dark:border-gray-700">حجز: {Number(r.reserved || 0)}</span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                            {items.map((it: CartItem) => {
+                                const isWeight = (it as any).unitType === 'kg' || (it as any).unitType === 'gram';
+                                const cartId = it.cartItemId || (it as any).id || '';
+                                const name = (it as any).name?.[language] || (it as any).name?.ar || (it as any).name?.en || (it as any).name || (it as any).itemName || '';
+                                const uoms = itemUomRowsByItemId[(it as any).id || (it as any).itemId || ''] || (Array.isArray((it as any)?.uomUnits) ? (it as any).uomUnits : []);
+                                const baseLabel = (it as any).unitType || 'piece';
+                                return (
+                                    <div key={cartId} className="flex items-center justify-between gap-2 p-2 border rounded-md dark:border-gray-700">
+                                        <div className="min-w-0">
+                                            <div className="font-semibold text-sm dark:text-white truncate">{name}</div>
+                                            <div className="text-xs text-gray-500 dark:text-gray-400">{isWeight ? 'وزني' : 'غير وزني'}</div>
+                                        </div>
+                                        {!isWeight ? (
+                                            <div className="flex items-center gap-2">
+                                                <NumberInput
+                                                    id={`edit-qty-${cartId}`}
+                                                    name={`edit-qty-${cartId}`}
+                                                    value={Number((editChangesByCartItemId[cartId]?.quantity ?? it.quantity) || 0)}
+                                                    onChange={(e) => {
+                                                        const val = parseFloat(e.target.value) || 0;
+                                                        setEditChangesByCartItemId(prev => ({ ...prev, [cartId]: { ...(prev[cartId] || {}), quantity: val } }));
+                                                    }}
+                                                    min={0}
+                                                    step={1}
+                                                />
+                                                <select
+                                                    value={String((editChangesByCartItemId[cartId]?.uomCode ?? (it as any).uomCode ?? baseLabel) || baseLabel)}
+                                                    onChange={(e) => {
+                                                        const code = String(e.target.value || '').trim();
+                                                        const found = (uoms || []).find((o: any) => String(o?.code || '') === code);
+                                                        const qtyBase = Number(found?.qtyInBase || (code === baseLabel ? 1 : 0)) || (code === baseLabel ? 1 : 0);
+                                                        setEditChangesByCartItemId(prev => ({ ...prev, [cartId]: { ...(prev[cartId] || {}), uomCode: code, uomQtyInBase: qtyBase } }));
+                                                    }}
+                                                    className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
+                                                >
+                                                    {(() => {
+                                                        const baseOpt = [{ code: baseLabel, name: baseLabel, qtyInBase: 1 }];
+                                                        const merged = [...baseOpt, ...(uoms || []).filter((o: any) => String(o?.code || '') !== baseLabel)];
+                                                        return merged.map((o: any) => (
+                                                            <option key={o.code} value={o.code}>
+                                                                {o.code}{Number(o.qtyInBase) > 1 ? ` (${Number(o.qtyInBase)} ${baseLabel})` : ''}
+                                                            </option>
+                                                        ));
+                                                    })()}
+                                                </select>
+                                            </div>
+                                        ) : (
+                                            <div className="text-xs text-gray-500 dark:text-gray-400">الوزن: {Number((it as any).weight || 0)}</div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    );
+                })()}
             </ConfirmationModal>
 
             <ConfirmationModal
