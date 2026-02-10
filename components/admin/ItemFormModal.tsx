@@ -58,6 +58,8 @@ const ItemFormModal: React.FC<ItemFormModalProps> = ({ isOpen, onClose, onSave, 
     buyingPrice: 0,
     transportCost: 0,
     supplyTaxCost: 0,
+    packSize: 0,
+    cartonSize: 0,
     group: '',
   });
 
@@ -88,6 +90,8 @@ const ItemFormModal: React.FC<ItemFormModalProps> = ({ isOpen, onClose, onSave, 
         buyingPrice: itemToEdit.buyingPrice || 0,
         transportCost: itemToEdit.transportCost || 0,
         supplyTaxCost: itemToEdit.supplyTaxCost || 0,
+        packSize: Number((itemToEdit as any).packSize ?? (itemToEdit.data?.packSize ?? 0)) || 0,
+        cartonSize: Number((itemToEdit as any).cartonSize ?? (itemToEdit.data?.cartonSize ?? 0)) || 0,
       });
     } else {
       setItem(getInitialFormState());
@@ -141,6 +145,8 @@ const ItemFormModal: React.FC<ItemFormModalProps> = ({ isOpen, onClose, onSave, 
     const minWeight = Number(item.minWeight ?? 0);
     const category = String(item.category || '').trim();
     const unitType = String(item.unitType || '').trim();
+    const packSize = Number((item as any).packSize ?? 0);
+    const cartonSize = Number((item as any).cartonSize ?? 0);
 
     if (nameAr.length < 2) {
       setFormError(language === 'ar' ? 'اسم الصنف مطلوب (حرفين على الأقل)' : 'Item name is required');
@@ -172,6 +178,27 @@ const ItemFormModal: React.FC<ItemFormModalProps> = ({ isOpen, onClose, onSave, 
     }
     if (!(unitType === 'kg' || unitType === 'gram') && !Number.isInteger(minWeight)) {
       setFormError(language === 'ar' ? 'أقل كمية للطلب يجب أن تكون رقم صحيح للوحدات غير الوزنية' : 'Minimum order must be an integer for non-weight units');
+      return;
+    }
+
+    if ((unitType === 'kg' || unitType === 'gram') && (packSize > 0 || cartonSize > 0)) {
+      setFormError(language === 'ar' ? 'وحدات الباكت/الكرتون غير متاحة للوحدات الوزنية' : 'Pack/Carton is not available for weight-based units');
+      return;
+    }
+    if (packSize < 0 || cartonSize < 0) {
+      setFormError(language === 'ar' ? 'قيم الباكت/الكرتون غير صالحة' : 'Invalid pack/carton values');
+      return;
+    }
+    if (packSize > 0 && (!Number.isFinite(packSize) || !Number.isInteger(packSize) || packSize < 2)) {
+      setFormError(language === 'ar' ? 'حجم الباكت يجب أن يكون رقم صحيح (2+) ' : 'Pack size must be an integer (2+)');
+      return;
+    }
+    if (cartonSize > 0 && (!Number.isFinite(cartonSize) || !Number.isInteger(cartonSize) || cartonSize < 2)) {
+      setFormError(language === 'ar' ? 'حجم الكرتون يجب أن يكون رقم صحيح (2+) ' : 'Carton size must be an integer (2+)');
+      return;
+    }
+    if (packSize > 0 && cartonSize > 0 && cartonSize < packSize) {
+      setFormError(language === 'ar' ? 'حجم الكرتون يجب أن يكون أكبر أو يساوي حجم الباكت' : 'Carton size must be >= pack size');
       return;
     }
 
@@ -464,6 +491,36 @@ const ItemFormModal: React.FC<ItemFormModalProps> = ({ isOpen, onClose, onSave, 
                       min={0}
                       step={0.1}
                     />
+                  </div>
+                </div>
+
+                <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-100 dark:border-gray-700">
+                  <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-3">وحدات العبوة</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">حجم الباكت (Pack)</label>
+                      <NumberInput
+                        id="packSize"
+                        name="packSize"
+                        value={(item as any).packSize || 0}
+                        onChange={handleNumberChange}
+                        min={0}
+                        step={1}
+                        disabled={item.unitType === 'kg' || item.unitType === 'gram'}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">حجم الكرتون (Carton)</label>
+                      <NumberInput
+                        id="cartonSize"
+                        name="cartonSize"
+                        value={(item as any).cartonSize || 0}
+                        onChange={handleNumberChange}
+                        min={0}
+                        step={1}
+                        disabled={item.unitType === 'kg' || item.unitType === 'gram'}
+                      />
+                    </div>
                   </div>
                 </div>
 

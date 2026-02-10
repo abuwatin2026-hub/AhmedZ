@@ -411,8 +411,11 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                     itemId: item.item_id ?? item.itemId,
                     itemName: item.item?.data?.name?.ar || item.item?.data?.name?.en || item.item_name || item.itemName || 'Unknown Item',
                     quantity: Number(item.quantity ?? 0),
+                    qtyBase: Number(item.qty_base ?? item.qtyBase ?? item.quantity ?? 0),
                     receivedQuantity: Number(item.received_quantity ?? item.receivedQuantity ?? 0),
+                    uomId: item.uom_id ?? item.uomId ?? null,
                     unitCost: Number(item.unit_cost ?? item.unitCost ?? 0),
+                    unitCostBase: Number(item.unit_cost_base ?? item.unitCostBase ?? 0),
                     totalCost: Number(item.total_cost ?? item.totalCost ?? (Number(item.quantity ?? 0) * Number(item.unit_cost ?? 0)))
                 }))
             }));
@@ -603,7 +606,7 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         purchaseDate: string,
         currency: string,
         fxRate: number,
-        items: Array<{ itemId: string; quantity: number; unitCost: number; productionDate?: string; expiryDate?: string }>,
+        items: Array<{ itemId: string; quantity: number; unitCost: number; uomCode?: string; uomQtyInBase?: number; productionDate?: string; expiryDate?: string }>,
         receiveNow: boolean = true,
         referenceNumber?: string,
         warehouseId?: string,
@@ -719,13 +722,21 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           if (!orderData) throw lastInsertError ?? new Error('فشل إنشاء أمر الشراء.');
           const orderId = orderData.id;
 
-          const purchaseItems = items.map(item => ({
+          const purchaseItems = await Promise.all(items.map(async (item) => {
+            const qtyInBase = Math.max(1, Number(item.uomQtyInBase || 1));
+            const unitCost = Number(item.unitCost || 0);
+            const uomCode = String(item.uomCode || '').trim().toLowerCase();
+            const uomId = uomCode ? await ensureUomId(uomCode) : null;
+            return {
               purchase_order_id: orderId,
               item_id: item.itemId,
-              quantity: item.quantity,
-              unit_cost: item.unitCost,
-              unit_cost_foreign: item.unitCost,
-              total_cost: item.quantity * item.unitCost
+              quantity: Number(item.quantity || 0),
+              uom_id: uomId,
+              unit_cost: unitCost,
+              unit_cost_foreign: unitCost,
+              unit_cost_base: qtyInBase > 0 ? (unitCost / qtyInBase) : unitCost,
+              total_cost: Number(item.quantity || 0) * unitCost,
+            };
           }));
 
           try {
@@ -752,30 +763,32 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             const rawReceiveItems = items.map(i => ({
               itemId: String(i.itemId || '').trim(),
               quantity: Number(i.quantity || 0),
+              uomCode: String((i as any).uomCode || '').trim().toLowerCase() || null,
               harvestDate: toIsoDateOnlyOrNull(i.productionDate),
               expiryDate: toIsoDateOnlyOrNull(i.expiryDate),
             })).filter(x => x.itemId && Number(x.quantity || 0) > 0);
 
-            const mergedByItemId = new Map<string, any>();
+            const mergedByKey = new Map<string, any>();
             for (const row of rawReceiveItems) {
-              const key = String(row.itemId || '').trim();
+              const key = `${String(row.itemId || '').trim()}::${String(row.uomCode || '')}`;
               if (!key) continue;
-              const prev = mergedByItemId.get(key);
+              const prev = mergedByKey.get(key);
               if (!prev) {
-                mergedByItemId.set(key, { ...row });
+                mergedByKey.set(key, { ...row });
                 continue;
               }
               prev.quantity = Number(prev.quantity || 0) + Number(row.quantity || 0);
               if (!prev.harvestDate && row.harvestDate) prev.harvestDate = row.harvestDate;
               if (!prev.expiryDate && row.expiryDate) prev.expiryDate = row.expiryDate;
             }
-            const receiveItems = Array.from(mergedByItemId.values()).filter((r: any) => Number(r?.quantity || 0) > 0);
+            const receiveItems = Array.from(mergedByKey.values()).filter((r: any) => Number(r?.quantity || 0) > 0);
 
             const computeIdempotencyKey = async () => {
               const parts = receiveItems
                 .map((x: any) => [
                   String(x.itemId || ''),
                   String(Number(x.quantity || 0)),
+                  String(x.uomCode || ''),
                   String(x.harvestDate || ''),
                   String(x.expiryDate || ''),
                 ].join(':'))

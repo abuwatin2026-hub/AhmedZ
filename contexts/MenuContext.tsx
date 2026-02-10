@@ -273,6 +273,16 @@ export const MenuProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           data: newItem,
         });
         if (error) throw error;
+        const packSize = Number((newItem as any).packSize || 0);
+        const cartonSize = Number((newItem as any).cartonSize || 0);
+        if (packSize > 0 || cartonSize > 0) {
+          const { error: uomErr } = await supabase.rpc('upsert_item_packaging_uom', {
+            p_item_id: newItem.id,
+            p_pack_size: packSize > 0 ? packSize : null,
+            p_carton_size: cartonSize > 0 ? cartonSize : null,
+          } as any);
+          if (uomErr) throw uomErr;
+        }
       } catch (err) {
         throw new Error(localizeSupabaseError(err));
       }
@@ -329,6 +339,14 @@ export const MenuProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           { onConflict: 'id' }
         );
         if (error) throw error;
+        const packSize = Number((normalizedItem as any).packSize || 0);
+        const cartonSize = Number((normalizedItem as any).cartonSize || 0);
+        const { error: uomErr } = await supabase.rpc('upsert_item_packaging_uom', {
+          p_item_id: normalizedItem.id,
+          p_pack_size: packSize > 0 ? packSize : null,
+          p_carton_size: cartonSize > 0 ? cartonSize : null,
+        } as any);
+        if (uomErr) throw uomErr;
       } catch (err) {
         throw new Error(localizeSupabaseError(err));
       }

@@ -274,6 +274,8 @@ export interface MenuItem {
   buyingPrice?: number; // Base purchase price
   transportCost?: number; // Cost of transport
   supplyTaxCost?: number; // Input Tax / Supply Tax
+  packSize?: number;
+  cartonSize?: number;
 }
 
 export interface StockWastage {
