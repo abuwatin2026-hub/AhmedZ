@@ -1056,6 +1056,7 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         items: Array<{
           itemId: string;
           quantity: number;
+          uomCode?: string;
           productionDate?: string;
           expiryDate?: string;
           transportCost?: number;
@@ -1074,6 +1075,7 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           const normalizedItems = (items || []).map((i) => {
             const itemId = String((i as any)?.itemId || '').trim();
             const qty = Number((i as any)?.quantity || 0);
+            const uomCode = String((i as any)?.uomCode || '').trim().toLowerCase();
             const importShipmentIdRaw = String(
               (i as any)?.importShipmentId || (i as any)?.shipmentId || (i as any)?.import_shipment_id || ''
             ).trim();
@@ -1083,6 +1085,7 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             return {
               itemId,
               quantity: qty,
+              uomCode: uomCode || null,
               harvestDate: toIsoDateOnlyOrNull((i as any)?.productionDate),
               expiryDate: toIsoDateOnlyOrNull((i as any)?.expiryDate),
               transportCost: (i as any).transportCost,
@@ -1090,13 +1093,13 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               importShipmentId: importShipmentId || undefined,
             };
           });
-          const mergedByItemId = new Map<string, any>();
+          const mergedByKey = new Map<string, any>();
           for (const row of normalizedItems) {
-            const key = String(row.itemId || '').trim();
+            const key = `${String(row.itemId || '').trim()}::${String(row.uomCode || '')}`;
             if (!key) continue;
-            const prev = mergedByItemId.get(key);
+            const prev = mergedByKey.get(key);
             if (!prev) {
-              mergedByItemId.set(key, { ...row });
+              mergedByKey.set(key, { ...row });
               continue;
             }
             prev.quantity = Number(prev.quantity || 0) + Number(row.quantity || 0);
@@ -1110,13 +1113,14 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             const rowTax = Number(row.supplyTaxCost || 0);
             if (prevTax === 0 && rowTax !== 0) prev.supplyTaxCost = row.supplyTaxCost;
           }
-          const mergedItems = Array.from(mergedByItemId.values()).filter((r: any) => Number(r?.quantity || 0) > 0);
+          const mergedItems = Array.from(mergedByKey.values()).filter((r: any) => Number(r?.quantity || 0) > 0);
           if (mergedItems.length === 0) throw new Error('كمية الاستلام غير صالحة.');
           const buildIdempotencyPayload = () => {
             const parts = mergedItems
               .map((x: any) => [
                 String(x.itemId || ''),
                 String(Number(x.quantity || 0)),
+                String(x.uomCode || ''),
                 String(x.harvestDate || ''),
                 String(x.expiryDate || ''),
                 String(Number(x.transportCost || 0)),

@@ -276,6 +276,7 @@ export interface MenuItem {
   supplyTaxCost?: number; // Input Tax / Supply Tax
   packSize?: number;
   cartonSize?: number;
+  data?: any;
 }
 
 export interface StockWastage {

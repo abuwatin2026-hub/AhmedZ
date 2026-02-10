@@ -90,8 +90,8 @@ const ItemFormModal: React.FC<ItemFormModalProps> = ({ isOpen, onClose, onSave, 
         buyingPrice: itemToEdit.buyingPrice || 0,
         transportCost: itemToEdit.transportCost || 0,
         supplyTaxCost: itemToEdit.supplyTaxCost || 0,
-        packSize: Number((itemToEdit as any).packSize ?? (itemToEdit.data?.packSize ?? 0)) || 0,
-        cartonSize: Number((itemToEdit as any).cartonSize ?? (itemToEdit.data?.cartonSize ?? 0)) || 0,
+        packSize: Number((itemToEdit as any).packSize ?? 0) || 0,
+        cartonSize: Number((itemToEdit as any).cartonSize ?? 0) || 0,
       });
     } else {
       setItem(getInitialFormState());

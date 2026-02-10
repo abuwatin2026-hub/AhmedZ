@@ -26,6 +26,8 @@ interface OrderItemRow {
     itemId: string;
     quantity: number | string;
     unitCost: number | string;
+    uomCode?: string;
+    uomQtyInBase?: number;
     productionDate?: string;
     expiryDate?: string;
 }
@@ -37,6 +39,7 @@ interface ReceiveRow {
     received: number;
     remaining: number;
     receiveNow: number | string;
+    uomCode?: string;
     productionDate?: string;
     expiryDate?: string;
     previousReturned?: number;
@@ -51,8 +54,8 @@ const PurchaseOrderScreen: React.FC = () => {
     const { menuItems } = useMenu();
     const { stockItems } = useStock();
     const { user, hasPermission } = useAuth();
-    const { settings } = useSettings();
-    const { groups: itemGroups } = useItemMeta();
+    const { settings, language } = useSettings();
+    const { groups: itemGroups, getUnitLabel } = useItemMeta();
     const [baseCode, setBaseCode] = useState('—');
     const [poCurrency, setPoCurrency] = useState<string>('');
     const [poFxRate, setPoFxRate] = useState<number>(1);
@@ -585,13 +588,20 @@ const PurchaseOrderScreen: React.FC = () => {
 
     // Helper to add a new row
     const addRow = () => {
-        setOrderItems([...orderItems, { itemId: '', quantity: 1, unitCost: 0, productionDate: '', expiryDate: '' }]);
+        setOrderItems([...orderItems, { itemId: '', quantity: 1, unitCost: 0, uomCode: '', uomQtyInBase: 1, productionDate: '', expiryDate: '' }]);
     };
 
     // Helper to update a row
     const updateRow = (index: number, field: keyof OrderItemRow, value: any) => {
         const newRows = [...orderItems];
-        newRows[index] = { ...newRows[index], [field]: value };
+        const next = { ...newRows[index], [field]: value } as any;
+        if (field === 'itemId') {
+            const it = String(value || '').trim() ? getItemById(String(value || '').trim()) : undefined;
+            const baseCode = String(it?.unitType || 'piece');
+            next.uomCode = baseCode;
+            next.uomQtyInBase = 1;
+        }
+        newRows[index] = next;
         setOrderItems(newRows);
     };
 
@@ -658,10 +668,12 @@ const PurchaseOrderScreen: React.FC = () => {
         const step = getQuantityStep(itemId);
         const q = Math.max(step, Number(quantity) || 0);
         const c = Math.max(0, Number(unitCost) || 0);
+        const it = getItemById(itemId);
+        const baseUom = String(it?.unitType || 'piece');
         setOrderItems((prev) => {
             const idx = prev.findIndex((r) => r.itemId === itemId && Number(r.unitCost || 0) === c);
             if (idx === -1) {
-                return [...prev, { itemId, quantity: q, unitCost: c, productionDate: '', expiryDate: '' }];
+                return [...prev, { itemId, quantity: q, unitCost: c, uomCode: baseUom, uomQtyInBase: 1, productionDate: '', expiryDate: '' }];
             }
             const next = [...prev];
             const row = next[idx];
@@ -787,7 +799,9 @@ const PurchaseOrderScreen: React.FC = () => {
     const addRowForItem = (itemId: string, qty: number) => {
         const step = getQuantityStep(itemId);
         const quantity = Math.max(step, qty || step);
-        setOrderItems(prev => [...prev, { itemId, quantity, unitCost: 0, productionDate: '', expiryDate: '' }]);
+        const it = getItemById(itemId);
+        const baseUom = String(it?.unitType || 'piece');
+        setOrderItems(prev => [...prev, { itemId, quantity, unitCost: 0, uomCode: baseUom, uomQtyInBase: 1, productionDate: '', expiryDate: '' }]);
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -836,7 +850,9 @@ const PurchaseOrderScreen: React.FC = () => {
             const validItems = normalizedItems.filter(i => i.itemId && Number(i.quantity) > 0).map(i => ({
                 ...i,
                 quantity: Number(i.quantity),
-                unitCost: Number(i.unitCost)
+                unitCost: Number(i.unitCost),
+                uomCode: String((i as any).uomCode || '').trim(),
+                uomQtyInBase: Number((i as any).uomQtyInBase || 1) || 1,
             }));
             await createPurchaseOrder(
                 supplierId,
@@ -890,13 +906,13 @@ const PurchaseOrderScreen: React.FC = () => {
     const openReceiveModal = (order: PurchaseOrder) => {
         const eps = 0.000000001;
         const fullyReceived = (order.items || []).length > 0
-            && (order.items || []).every((it: any) => (Number(it?.receivedQuantity || 0) + eps) >= Number(it?.quantity || 0));
+            && (order.items || []).every((it: any) => (Number(it?.receivedQuantity || 0) + eps) >= Number(it?.qtyBase ?? it?.quantity ?? 0));
         if (fullyReceived) {
             showNotification('هذا الأمر مستلم بالكامل ولا توجد كميات متبقية للاستلام.', 'info');
             return;
         }
         const rows: ReceiveRow[] = (order.items || []).map((it: any) => {
-            const ordered = Number(it.quantity || 0);
+            const ordered = Number(it.qtyBase ?? it.quantity ?? 0);
             const received = Number(it.receivedQuantity || 0);
             const remaining = Math.max(0, ordered - received);
             const base = getItemById(it.itemId);
@@ -908,6 +924,7 @@ const PurchaseOrderScreen: React.FC = () => {
                 received,
                 remaining,
                 receiveNow: remaining,
+                uomCode: String(base?.unitType || 'piece'),
                 productionDate: isFood ? (base?.productionDate || (base as any)?.harvestDate || '') : '',
                 expiryDate: isFood ? (base?.expiryDate || '') : '',
                 transportCost: Number(base?.transportCost || 0),
@@ -1052,6 +1069,7 @@ const PurchaseOrderScreen: React.FC = () => {
                 .map(r => ({
                     itemId: r.itemId,
                     quantity: Number(r.receiveNow),
+                    uomCode: String((r as any).uomCode || '').trim().toLowerCase() || undefined,
                     productionDate: r.productionDate || undefined,
                     expiryDate: r.expiryDate || undefined,
                     transportCost: Number(r.transportCost || 0),
@@ -1642,7 +1660,7 @@ const PurchaseOrderScreen: React.FC = () => {
                                     const totalQty = items.reduce((sum: number, it: any) => sum + Number(it?.quantity || 0), 0);
                                     const canPay = order.status !== 'cancelled' && remainingRaw > 0;
                                     const hasReceived = items.some((it: any) => Number(it?.receivedQuantity || 0) > 0);
-                                    const fullyReceived = items.length > 0 && items.every((it: any) => (Number(it?.receivedQuantity || 0) + eps) >= Number(it?.quantity || 0));
+                                    const fullyReceived = items.length > 0 && items.every((it: any) => (Number(it?.receivedQuantity || 0) + eps) >= Number(it?.qtyBase ?? it?.quantity ?? 0));
                                     const canPurge = canDelete && order.status === 'draft' && paid <= 0 && !hasReceived;
                                     const canCancelOrder = canCancel && order.status === 'draft' && paid <= 0 && !hasReceived;
                                     const paymentBadge = (() => {
@@ -2156,6 +2174,7 @@ const PurchaseOrderScreen: React.FC = () => {
                                                 <tr>
                                                     <th className="p-2 sm:p-3 w-1/2">الصنف</th>
                                                     <th className="p-2 sm:p-3 w-24">الكمية</th>
+                                                    <th className="p-2 sm:p-3 w-40">الوحدة</th>
                                                     <th className="p-2 sm:p-3 w-32">{`سعر الشراء (للوحدة)${poCurrency ? ` (${poCurrency})` : ''}`}</th>
                                                     <th className="p-2 sm:p-3 w-32">الإجمالي</th>
                                                     {showCreateDates ? (
@@ -2193,6 +2212,46 @@ const PurchaseOrderScreen: React.FC = () => {
                                                                 value={row.quantity}
                                                                 onChange={(e) => updateRow(index, 'quantity', e.target.value)}
                                                             />
+                                                        </td>
+                                                        <td className="p-2 sm:p-2">
+                                                            {(() => {
+                                                                const it = row.itemId ? getItemById(row.itemId) : undefined;
+                                                                const baseUom = String(it?.unitType || 'piece');
+                                                                const baseLabel = (() => {
+                                                                    try {
+                                                                        const lbl = getUnitLabel(baseUom as any, language as any);
+                                                                        return String(lbl || baseUom);
+                                                                    } catch {
+                                                                        return baseUom;
+                                                                    }
+                                                                })();
+                                                                const packSize = Number((it as any)?.packSize || 0);
+                                                                const cartonSize = Number((it as any)?.cartonSize || 0);
+                                                                const options: Array<{ code: string; label: string; qtyInBase: number }> = [
+                                                                    { code: baseUom, label: baseLabel, qtyInBase: 1 },
+                                                                ];
+                                                                if (packSize > 0) options.push({ code: 'pack', label: `باكت (${packSize} ${baseLabel})`, qtyInBase: packSize });
+                                                                if (cartonSize > 0) options.push({ code: 'carton', label: `كرتون (${cartonSize} ${baseLabel})`, qtyInBase: cartonSize });
+                                                                const current = String((row as any).uomCode || baseUom);
+                                                                return (
+                                                                    <select
+                                                                        className="w-full p-1 border rounded font-mono"
+                                                                        value={current}
+                                                                        disabled={!row.itemId}
+                                                                        onChange={(e) => {
+                                                                            const code = String(e.target.value || '').trim();
+                                                                            const found = options.find(o => o.code === code) || options[0];
+                                                                            const next = [...orderItems];
+                                                                            next[index] = { ...next[index], uomCode: found.code, uomQtyInBase: found.qtyInBase };
+                                                                            setOrderItems(next);
+                                                                        }}
+                                                                    >
+                                                                        {options.map((o) => (
+                                                                            <option key={o.code} value={o.code}>{o.label}</option>
+                                                                        ))}
+                                                                    </select>
+                                                                );
+                                                            })()}
                                                         </td>
                                                         <td className="p-2 sm:p-2">
                                                             <input
