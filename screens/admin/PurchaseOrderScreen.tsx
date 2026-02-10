@@ -36,13 +36,13 @@ interface ReceiveRow {
     ordered: number;
     received: number;
     remaining: number;
-    receiveNow: number;
+    receiveNow: number | string;
     productionDate?: string;
     expiryDate?: string;
     previousReturned?: number;
     available?: number;
-    transportCost?: number;
-    supplyTaxCost?: number;
+    transportCost?: number | string;
+    supplyTaxCost?: number | string;
 }
 
 const PurchaseOrderScreen: React.FC = () => {
@@ -459,8 +459,8 @@ const PurchaseOrderScreen: React.FC = () => {
     const [receiveOnCreate, setReceiveOnCreate] = useState(true);
     const [quickAddCode, setQuickAddCode] = useState<string>('');
     const [quickAddName, setQuickAddName] = useState<string>('');
-    const [quickAddQuantity, setQuickAddQuantity] = useState<number>(1);
-    const [quickAddUnitCost, setQuickAddUnitCost] = useState<number>(0);
+    const [quickAddQuantity, setQuickAddQuantity] = useState<number | string>(1);
+    const [quickAddUnitCost, setQuickAddUnitCost] = useState<number | string>(0);
     const [bulkLinesText, setBulkLinesText] = useState<string>('');
     const [paymentOrder, setPaymentOrder] = useState<PurchaseOrder | null>(null);
     const [paymentAmount, setPaymentAmount] = useState<number>(0);
@@ -654,7 +654,7 @@ const PurchaseOrderScreen: React.FC = () => {
         }) || null;
     };
 
-    const appendOrderItem = (itemId: string, quantity: number, unitCost: number) => {
+    const appendOrderItem = (itemId: string, quantity: number | string, unitCost: number | string) => {
         const step = getQuantityStep(itemId);
         const q = Math.max(step, Number(quantity) || 0);
         const c = Math.max(0, Number(unitCost) || 0);
@@ -979,11 +979,16 @@ const PurchaseOrderScreen: React.FC = () => {
         return receiveRows.some((r) => r.itemId && isFoodItem(r.itemId));
     }, [isFoodItem, receiveRows]);
 
-    const updateReceiveRow = (index: number, value: number) => {
+    const updateReceiveRow = (index: number, value: number | string) => {
         const next = [...receiveRows];
         const row = next[index];
-        const v = Number(value || 0);
-        next[index] = { ...row, receiveNow: Math.max(0, Math.min(row.remaining, v)) };
+        let nextVal = value;
+        const num = Number(value);
+        if (Number.isFinite(num)) {
+            if (num > row.remaining) nextVal = row.remaining;
+            else if (num < 0) nextVal = 0;
+        }
+        next[index] = { ...row, receiveNow: nextVal };
         setReceiveRows(next);
     };
     const updateReceiveProduction = (index: number, value: string) => {
@@ -996,14 +1001,14 @@ const PurchaseOrderScreen: React.FC = () => {
         next[index] = { ...next[index], expiryDate: value || '' };
         setReceiveRows(next);
     };
-    const updateReceiveTransport = (index: number, value: number) => {
+    const updateReceiveTransport = (index: number, value: number | string) => {
         const next = [...receiveRows];
-        next[index] = { ...next[index], transportCost: Number(value) || 0 };
+        next[index] = { ...next[index], transportCost: value };
         setReceiveRows(next);
     };
-    const updateReceiveSupplyTax = (index: number, value: number) => {
+    const updateReceiveSupplyTax = (index: number, value: number | string) => {
         const next = [...receiveRows];
-        next[index] = { ...next[index], supplyTaxCost: Number(value) || 0 };
+        next[index] = { ...next[index], supplyTaxCost: value };
         setReceiveRows(next);
     };
 
@@ -1123,11 +1128,16 @@ const PurchaseOrderScreen: React.FC = () => {
         setIsReturnModalOpen(true);
     };
 
-    const updateReturnRow = (index: number, value: number) => {
+    const updateReturnRow = (index: number, value: number | string) => {
         const next = [...returnRows];
         const row = next[index];
-        const v = Number(value || 0);
-        next[index] = { ...row, receiveNow: Math.max(0, Math.min(row.remaining, v)) };
+        let nextVal = value;
+        const num = Number(value);
+        if (Number.isFinite(num)) {
+            if (num > row.remaining) nextVal = row.remaining;
+            else if (num < 0) nextVal = 0;
+        }
+        next[index] = { ...row, receiveNow: nextVal };
         setReturnRows(next);
     };
 
@@ -2080,7 +2090,7 @@ const PurchaseOrderScreen: React.FC = () => {
                                                 value={quickAddQuantity}
                                                 min={0}
                                                 step="0.01"
-                                                onChange={(e) => setQuickAddQuantity(Number(e.target.value) || 0)}
+                                                onChange={(e) => setQuickAddQuantity(e.target.value)}
                                                 className="w-full p-2 border rounded-lg dark:bg-gray-800 dark:border-gray-600 dark:text-white font-mono"
                                             />
                                         </div>
@@ -2091,7 +2101,7 @@ const PurchaseOrderScreen: React.FC = () => {
                                                 value={quickAddUnitCost}
                                                 min={0}
                                                 step="0.01"
-                                                onChange={(e) => setQuickAddUnitCost(Number(e.target.value) || 0)}
+                                                onChange={(e) => setQuickAddUnitCost(e.target.value)}
                                                 className="w-full p-2 border rounded-lg dark:bg-gray-800 dark:border-gray-600 dark:text-white font-mono"
                                             />
                                         </div>
@@ -2576,7 +2586,7 @@ const PurchaseOrderScreen: React.FC = () => {
                                                                 min={0}
                                                                 step={getQuantityStep(r.itemId)}
                                                                 value={r.receiveNow}
-                                                                onChange={(e) => updateReceiveRow(idx, parseFloat(e.target.value))}
+                                                                onChange={(e) => updateReceiveRow(idx, e.target.value)}
                                                                 className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white text-center font-mono"
                                                             />
                                                         </td>
@@ -2597,7 +2607,7 @@ const PurchaseOrderScreen: React.FC = () => {
                                                                             value={r.expiryDate || ''}
                                                                             onChange={(e) => updateReceiveExpiry(idx, e.target.value)}
                                                                             className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                                                                            required={Boolean(r.receiveNow) && r.receiveNow > 0}
+                                                                            required={Boolean(r.receiveNow) && Number(r.receiveNow) > 0}
                                                                         />
                                                                     </td>
                                                                 </>
@@ -2613,8 +2623,8 @@ const PurchaseOrderScreen: React.FC = () => {
                                                                 type="number"
                                                                 min={0}
                                                                 step="0.01"
-                                                                value={Number(r.transportCost || 0)}
-                                                                onChange={(e) => updateReceiveTransport(idx, parseFloat(e.target.value))}
+                                                                value={r.transportCost || 0}
+                                                                onChange={(e) => updateReceiveTransport(idx, e.target.value)}
                                                                 className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white text-center font-mono"
                                                             />
                                                         </td>
@@ -2623,8 +2633,8 @@ const PurchaseOrderScreen: React.FC = () => {
                                                                 type="number"
                                                                 min={0}
                                                                 step="0.01"
-                                                                value={Number(r.supplyTaxCost || 0)}
-                                                                onChange={(e) => updateReceiveSupplyTax(idx, parseFloat(e.target.value))}
+                                                                value={r.supplyTaxCost || 0}
+                                                                onChange={(e) => updateReceiveSupplyTax(idx, e.target.value)}
                                                                 className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white text-center font-mono"
                                                             />
                                                         </td>
@@ -2732,7 +2742,7 @@ const PurchaseOrderScreen: React.FC = () => {
                                                             min={0}
                                                             step={getQuantityStep(r.itemId)}
                                                             value={r.receiveNow}
-                                                            onChange={(e) => updateReturnRow(idx, parseFloat(e.target.value))}
+                                                            onChange={(e) => updateReturnRow(idx, e.target.value)}
                                                             className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white text-center font-mono"
                                                         />
                                                     </td>

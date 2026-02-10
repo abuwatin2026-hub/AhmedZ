@@ -28,7 +28,7 @@ import { toDateTimeLocalInputValue } from '../../utils/dateUtils';
 
 const statusTranslations: Record<OrderStatus, string> = {
     pending: 'قيد الانتظار',
-    preparing: 'جاري التحضير',
+    preparing: 'قيد التجهيز',
     out_for_delivery: 'في الطريق',
     delivered: 'تم التوصيل',
     scheduled: 'مجدول',
@@ -888,9 +888,9 @@ const ManageOrdersScreen: React.FC = () => {
             <PrintableOrder
                 order={order}
                 language="ar"
-                cafeteriaName={brand.name}
-                cafeteriaAddress={brand.address}
-                cafeteriaPhone={brand.contactNumber}
+                companyName={brand.name}
+                companyAddress={brand.address}
+                companyPhone={brand.contactNumber}
                 logoUrl={brand.logoUrl}
             />
         );
