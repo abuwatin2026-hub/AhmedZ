@@ -6,6 +6,7 @@ import CurrencyDualAmount from './common/CurrencyDualAmount';
 import QRCode from 'qrcode';
 import { generateZatcaTLV } from './admin/PrintableInvoice';
 import { AZTA_IDENTITY } from '../config/identity';
+import { useItemMeta } from '../contexts/ItemMetaContext';
 
 interface InvoiceProps {
   order: Order;
@@ -67,6 +68,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
     const vatNumber = (settings.taxSettings?.taxNumber || '').trim();
     const taxAmount = Number((invoiceOrder as any).taxAmount) || 0;
     const issueIso = String(invoiceDate || new Date().toISOString());
+    const { getUnitLabel } = useItemMeta();
 
     const qrValue = useMemo(() => {
         if (!vatNumber) return '';
@@ -108,16 +110,6 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
             'ar': 'آجل'
         };
         return methods[method] || method;
-    };
-
-    const getUnitTypeName = (type: string) => {
-        const types: Record<string, string> = {
-            'kg': 'كجم',
-            'gram': 'جم',
-            'piece': 'قطعة',
-            'box': 'علبة'
-        };
-        return types[type] || type;
     };
 
     return (
@@ -269,7 +261,7 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                     <tbody className="text-slate-800 text-sm bg-white">
                         {invoiceOrder.items.map((item: CartItem, idx: number) => {
                             const pricing = computeCartItemPricing(item);
-                            const displayQty = pricing.isWeightBased ? `${pricing.quantity} ${getUnitTypeName(pricing.unitType)}` : String(item.quantity);
+                            const displayQty = pricing.isWeightBased ? `${pricing.quantity} ${getUnitLabel(pricing.unitType as any, 'ar')}` : String(item.quantity);
                             
                             return (
                                 <tr key={item.cartItemId} className={`border-b border-slate-100 last:border-0 hover:bg-slate-50 transition-colors`}>

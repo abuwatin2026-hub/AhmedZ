@@ -3471,13 +3471,24 @@ const ManageOrdersScreen: React.FC = () => {
                                                                     ? itemUomRowsByItemId[mi.id]
                                                                     : (Array.isArray((mi as any)?.uomUnits) ? ((mi as any).uomUnits as Array<{ code: string; name?: string; qtyInBase: number }>) : []);
                                                                 const baseLabel = (mi.unitType || 'piece');
-                                                                const baseOpt = [{ code: baseLabel, name: baseLabel, qtyInBase: 1 }];
+                                                                const baseDisplay = baseLabel === 'piece' ? 'قطعة' : baseLabel === 'kg' ? 'كغ' : baseLabel === 'gram' ? 'غ' : baseLabel;
+                                                                const baseOpt = [{ code: baseLabel, name: baseDisplay, qtyInBase: 1 }];
                                                                 const merged = [...baseOpt, ...options.filter((o: any) => String(o?.code || '') !== baseLabel)];
-                                                                return merged.map((o: any) => (
-                                                                    <option key={o.code} value={o.code}>
-                                                                        {o.code}{Number(o.qtyInBase) > 1 ? ` (${Number(o.qtyInBase)} ${baseLabel})` : ''}
-                                                                    </option>
-                                                                ));
+                                                                return merged.map((o: any) => {
+                                                                    const codeLower = String(o.code || '').trim().toLowerCase();
+                                                                    const nameRaw = String(o.name || '').trim();
+                                                                    const displayName = codeLower === 'pack'
+                                                                        ? 'باكت'
+                                                                        : codeLower === 'carton'
+                                                                            ? 'كرتون'
+                                                                            : (nameRaw || o.code);
+                                                                    const qtyText = Number(o.qtyInBase) > 1 ? ` (${Number(o.qtyInBase)} ${baseDisplay})` : '';
+                                                                    return (
+                                                                        <option key={o.code} value={o.code}>
+                                                                            {displayName}{qtyText}
+                                                                        </option>
+                                                                    );
+                                                                });
                                                             })()}
                                                         </select>
                                                     </div>
@@ -3752,13 +3763,24 @@ const ManageOrdersScreen: React.FC = () => {
                                                     className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
                                                 >
                                                     {(() => {
-                                                        const baseOpt = [{ code: baseLabel, name: baseLabel, qtyInBase: 1 }];
+                                                        const baseDisplay = baseLabel === 'piece' ? 'قطعة' : baseLabel === 'kg' ? 'كغ' : baseLabel === 'gram' ? 'غ' : baseLabel;
+                                                        const baseOpt = [{ code: baseLabel, name: baseDisplay, qtyInBase: 1 }];
                                                         const merged = [...baseOpt, ...(uoms || []).filter((o: any) => String(o?.code || '') !== baseLabel)];
-                                                        return merged.map((o: any) => (
-                                                            <option key={o.code} value={o.code}>
-                                                                {o.code}{Number(o.qtyInBase) > 1 ? ` (${Number(o.qtyInBase)} ${baseLabel})` : ''}
-                                                            </option>
-                                                        ));
+                                                        return merged.map((o: any) => {
+                                                            const codeLower = String(o.code || '').trim().toLowerCase();
+                                                            const nameRaw = String(o.name || '').trim();
+                                                            const displayName = codeLower === 'pack'
+                                                                ? 'باكت'
+                                                                : codeLower === 'carton'
+                                                                    ? 'كرتون'
+                                                                    : (nameRaw || o.code);
+                                                            const qtyText = Number(o.qtyInBase) > 1 ? ` (${Number(o.qtyInBase)} ${baseDisplay})` : '';
+                                                            return (
+                                                                <option key={o.code} value={o.code}>
+                                                                    {displayName}{qtyText}
+                                                                </option>
+                                                            );
+                                                        });
                                                     })()}
                                                 </select>
                                             </div>

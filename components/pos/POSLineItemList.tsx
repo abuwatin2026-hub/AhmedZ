@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import type { CartItem } from '../../types';
 import NumericKeypadModal from './NumericKeypadModal';
 import { useStock } from '../../contexts/StockContext';
+import { useSettings } from '../../contexts/SettingsContext';
 
 interface Props {
   items: CartItem[];
@@ -31,6 +32,7 @@ const POSLineItemList: React.FC<Props> = ({ items, currencyCode, onUpdate, onRem
   const [keypadDecimal, setKeypadDecimal] = useState(true);
   const [keypadTarget, setKeypadTarget] = useState<{ id: string; kind: 'qty' | 'weight' } | null>(null);
   const { getStockByItemId } = useStock();
+  const { language } = useSettings();
   const code = String(currencyCode || '').toUpperCase() || '—';
 
   const InlineMoney = ({ amount, className }: { amount: number; className?: string }) => (
@@ -220,7 +222,9 @@ const POSLineItemList: React.FC<Props> = ({ items, currencyCode, onUpdate, onRem
                       const merged = [...baseOpt, ...opts.filter((o: any) => String(o?.code || '') !== baseLabel)];
                       return merged.map((o: any) => {
                         const codeLower = String(o.code || '').trim().toLowerCase();
-                        const nameRaw = String(o.name || '').trim();
+                        const raw = o.name;
+                        const nameObj = (raw && typeof raw === 'object') ? raw : null;
+                        const nameRaw = nameObj ? String(nameObj?.[language] || nameObj?.ar || nameObj?.en || '').trim() : String(raw || '').trim();
                         const displayName = codeLower === 'pack'
                           ? 'باكت'
                           : codeLower === 'carton'
