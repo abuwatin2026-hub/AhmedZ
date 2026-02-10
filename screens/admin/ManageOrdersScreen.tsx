@@ -888,9 +888,9 @@ const ManageOrdersScreen: React.FC = () => {
             <PrintableOrder
                 order={order}
                 language="ar"
-                cafeteriaName={brand.name}
-                cafeteriaAddress={brand.address}
-                cafeteriaPhone={brand.contactNumber}
+                companyName={brand.name}
+                companyAddress={brand.address}
+                companyPhone={brand.contactNumber}
                 logoUrl={brand.logoUrl}
             />
         );
