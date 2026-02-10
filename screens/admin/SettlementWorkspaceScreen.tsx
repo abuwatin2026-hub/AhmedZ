@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { getSupabaseClient } from '../../supabase';
 import * as Icons from '../../components/icons';
+import { useToast } from '../../contexts/ToastContext';
 
 type PartyRow = { id: string; name: string; currency_preference?: string | null };
 
@@ -45,6 +46,7 @@ const formatTime = (iso: string) => {
 
 export default function SettlementWorkspaceScreen() {
   const location = useLocation();
+  const { showNotification } = useToast();
   const [loading, setLoading] = useState(true);
   const [parties, setParties] = useState<PartyRow[]>([]);
   const [partyId, setPartyId] = useState('');
@@ -57,6 +59,8 @@ export default function SettlementWorkspaceScreen() {
   const [notes, setNotes] = useState('');
   const [running, setRunning] = useState(false);
   const [recentSettlements, setRecentSettlements] = useState<any[]>([]);
+  const [nextForeign, setNextForeign] = useState<string>('');
+  const [nextBase, setNextBase] = useState<string>('');
 
   const loadParties = async () => {
     const supabase = getSupabaseClient();
@@ -191,23 +195,49 @@ export default function SettlementWorkspaceScreen() {
     const c = creditById[selectedCredit];
     if (!d || !c) return;
     if (d.currency_code !== c.currency_code) {
-      alert('العملة يجب أن تكون نفسها.');
+      showNotification('العملة يجب أن تكون نفسها.', 'error');
       return;
     }
     const baseDraft: AllocationDraft = { fromOpenItemId: d.id, toOpenItemId: c.id };
-    if (suggestedAmount.kind === 'foreign') baseDraft.allocatedForeignAmount = Number(suggestedAmount.value || 0);
-    if (suggestedAmount.kind === 'base') baseDraft.allocatedBaseAmount = Number(suggestedAmount.value || 0);
+    const useForeign = (d.open_foreign_amount != null && c.open_foreign_amount != null);
+    if (useForeign) {
+      const maxForeign = Math.max(0, Math.min(Number(d.open_foreign_amount || 0), Number(c.open_foreign_amount || 0)));
+      const chosen = Number(nextForeign || '') || Number(suggestedAmount.value || 0);
+      if (!(chosen > 0)) {
+        showNotification('حدد مبلغ تخصيص صحيح.', 'error');
+        return;
+      }
+      if (chosen - maxForeign > 1e-6) {
+        showNotification(`المبلغ يتجاوز المتاح (${maxForeign.toFixed(2)})`, 'error');
+        return;
+      }
+      baseDraft.allocatedForeignAmount = chosen;
+    } else {
+      const maxBase = Math.max(0, Math.min(Number(d.open_base_amount || 0), Number(c.open_base_amount || 0)));
+      const chosen = Number(nextBase || '') || Number(suggestedAmount.value || 0);
+      if (!(chosen > 0)) {
+        showNotification('حدد مبلغ تخصيص صحيح.', 'error');
+        return;
+      }
+      if (chosen - maxBase > 1e-6) {
+        showNotification(`المبلغ يتجاوز المتاح (${maxBase.toFixed(2)})`, 'error');
+        return;
+      }
+      baseDraft.allocatedBaseAmount = chosen;
+    }
     if (!baseDraft.allocatedForeignAmount && !baseDraft.allocatedBaseAmount) {
-      alert('حدد مبلغ تخصيص صحيح.');
+      showNotification('حدد مبلغ تخصيص صحيح.', 'error');
       return;
     }
     setAllocations((prev) => [...prev, baseDraft]);
+    setNextForeign('');
+    setNextBase('');
   };
 
   const createSettlement = async () => {
     if (!partyId) return;
     if (allocations.length === 0) {
-      alert('لا توجد تخصيصات.');
+      showNotification('لا توجد تخصيصات.', 'info');
       return;
     }
     const supabase = getSupabaseClient();
@@ -231,9 +261,9 @@ export default function SettlementWorkspaceScreen() {
       setNotes('');
       await loadOpenItems();
       await loadRecentSettlements();
-      alert(`تم إنشاء التسوية: ${String(data || '').slice(-8)}`);
+      showNotification(`تم إنشاء التسوية: ${String(data || '').slice(-8)}`, 'success');
     } catch (e: any) {
-      alert(String(e?.message || 'فشل إنشاء التسوية'));
+      showNotification(String(e?.message || 'فشل إنشاء التسوية'), 'error');
     } finally {
       setRunning(false);
     }
@@ -249,9 +279,9 @@ export default function SettlementWorkspaceScreen() {
       if (error) throw error;
       await loadOpenItems();
       await loadRecentSettlements();
-      alert(data ? `تمت التسوية التلقائية: ${String(data).slice(-8)}` : 'لا توجد عناصر قابلة للمطابقة.');
+      showNotification(data ? `تمت التسوية التلقائية: ${String(data).slice(-8)}` : 'لا توجد عناصر قابلة للمطابقة.', data ? 'success' : 'info');
     } catch (e: any) {
-      alert(String(e?.message || 'فشل التشغيل التلقائي'));
+      showNotification(String(e?.message || 'فشل التشغيل التلقائي'), 'error');
     } finally {
       setRunning(false);
     }
@@ -268,9 +298,9 @@ export default function SettlementWorkspaceScreen() {
       if (error) throw error;
       await loadOpenItems();
       await loadRecentSettlements();
-      alert('تم عكس التسوية.');
+      showNotification('تم عكس التسوية.', 'success');
     } catch (e: any) {
-      alert(String(e?.message || 'فشل عكس التسوية'));
+      showNotification(String(e?.message || 'فشل عكس التسوية'), 'error');
     } finally {
       setRunning(false);
     }
@@ -482,6 +512,28 @@ export default function SettlementWorkspaceScreen() {
           </div>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">مبلغ عملة أجنبية</div>
+              <input
+                type="number"
+                value={nextForeign}
+                onChange={(e) => setNextForeign(e.target.value)}
+                placeholder="اختياري إذا كان العنصر بعملة أجنبية"
+                className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-mono"
+              />
+            </div>
+            <div>
+              <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">مبلغ بالأساس</div>
+              <input
+                type="number"
+                value={nextBase}
+                onChange={(e) => setNextBase(e.target.value)}
+                placeholder="اختياري عند عدم وجود أجنبي"
+                className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-mono"
+              />
+            </div>
+          </div>
           <input
             value={notes}
             onChange={(e) => setNotes(e.target.value)}

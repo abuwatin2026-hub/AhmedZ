@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { getSupabaseClient } from '../../supabase';
 import * as Icons from '../../components/icons';
+import { useToast } from '../../contexts/ToastContext';
 
 type PartyRow = { id: string; name: string; currency_preference?: string | null };
 
@@ -29,6 +30,7 @@ const formatTime = (iso: string) => {
 
 export default function AdvanceManagementScreen() {
   const location = useLocation();
+  const { showNotification } = useToast();
   const [loading, setLoading] = useState(true);
   const [parties, setParties] = useState<PartyRow[]>([]);
   const [partyId, setPartyId] = useState('');
@@ -38,6 +40,8 @@ export default function AdvanceManagementScreen() {
   const [selectedInvoice, setSelectedInvoice] = useState('');
   const [selectedAdvance, setSelectedAdvance] = useState('');
   const [running, setRunning] = useState(false);
+  const [applyForeign, setApplyForeign] = useState<string>('');
+  const [applyBase, setApplyBase] = useState<string>('');
 
   const loadParties = async () => {
     const supabase = getSupabaseClient();
@@ -171,11 +175,23 @@ export default function AdvanceManagementScreen() {
     const adv = advanceById[selectedAdvance];
     if (!inv || !adv) return;
     if (inv.currency_code !== adv.currency_code) {
-      alert('العملة يجب أن تكون نفسها.');
+      showNotification('العملة يجب أن تكون نفسها.', 'error');
       return;
     }
-    if (suggested.value <= 0) {
-      alert('لا يوجد مبلغ قابل للتطبيق.');
+    const useForeign = (inv.open_foreign_amount != null && adv.open_foreign_amount != null);
+    const maxForeign = useForeign ? Math.min(Number(inv.open_foreign_amount || 0), Number(adv.open_foreign_amount || 0)) : 0;
+    const maxBase = Math.min(Number(inv.open_base_amount || 0), Number(adv.open_base_amount || 0));
+    const chosen = useForeign ? (Number(applyForeign || '') || suggested.value) : (Number(applyBase || '') || suggested.value);
+    if (!(chosen > 0)) {
+      showNotification('لا يوجد مبلغ قابل للتطبيق.', 'error');
+      return;
+    }
+    if (useForeign && chosen - maxForeign > 1e-6) {
+      showNotification(`المبلغ يتجاوز المتاح (${maxForeign.toFixed(2)})`, 'error');
+      return;
+    }
+    if (!useForeign && chosen - maxBase > 1e-6) {
+      showNotification(`المبلغ يتجاوز المتاح (${maxBase.toFixed(2)})`, 'error');
       return;
     }
     const supabase = getSupabaseClient();
@@ -183,9 +199,9 @@ export default function AdvanceManagementScreen() {
     setRunning(true);
     try {
       const alloc =
-        suggested.kind === 'foreign'
-          ? [{ fromOpenItemId: inv.id, toOpenItemId: adv.id, allocatedForeignAmount: suggested.value }]
-          : [{ fromOpenItemId: inv.id, toOpenItemId: adv.id, allocatedBaseAmount: suggested.value }];
+        useForeign
+          ? [{ fromOpenItemId: inv.id, toOpenItemId: adv.id, allocatedForeignAmount: chosen }]
+          : [{ fromOpenItemId: inv.id, toOpenItemId: adv.id, allocatedBaseAmount: chosen }];
       const { error } = await supabase.rpc('create_settlement', {
         p_party_id: partyId,
         p_settlement_date: new Date().toISOString(),
@@ -194,9 +210,11 @@ export default function AdvanceManagementScreen() {
       } as any);
       if (error) throw error;
       await loadOpenItems();
-      alert('تم تطبيق الدفعة المقدمة.');
+      setApplyForeign('');
+      setApplyBase('');
+      showNotification('تم تطبيق الدفعة المقدمة.', 'success');
     } catch (e: any) {
-      alert(String(e?.message || 'فشل تطبيق الدفعة'));
+      showNotification(String(e?.message || 'فشل تطبيق الدفعة'), 'error');
     } finally {
       setRunning(false);
     }
@@ -245,7 +263,29 @@ export default function AdvanceManagementScreen() {
             ))}
           </select>
         </div>
-        <div className="flex items-end">
+        <div className="flex items-end gap-2">
+          <div className="flex-1 grid grid-cols-2 gap-2">
+            <div>
+              <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">مبلغ أجنبي</div>
+              <input
+                type="number"
+                value={applyForeign}
+                onChange={(e) => setApplyForeign(e.target.value)}
+                placeholder="اختياري إذا كانت هناك مبالغ أجنبية"
+                className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-mono"
+              />
+            </div>
+            <div>
+              <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">مبلغ بالأساس</div>
+              <input
+                type="number"
+                value={applyBase}
+                onChange={(e) => setApplyBase(e.target.value)}
+                placeholder="اختياري إذا لا يوجد أجنبي"
+                className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-mono"
+              />
+            </div>
+          </div>
           <button
             disabled={running || !selectedInvoice || !selectedAdvance}
             onClick={() => void applyAdvance()}

@@ -1,14 +1,15 @@
 param(
   [switch]$Repair,
-  [string]$RepairSchema = "public"
+  [string]$RepairSchema = "public",
+  [string]$ProjectRef,
+  [string]$AccessToken,
+  [string]$DbPassword
 )
 
 $ErrorActionPreference = "Stop"
 
-$projectRef = $env:SUPABASE_PROJECT_REF
-if (-not $projectRef -or -not $projectRef.Trim()) {
-  $projectRef = "twcjjisnxmfpseksqnhb"
-}
+$projectRef = if ($ProjectRef -and $ProjectRef.Trim()) { $ProjectRef } else { $env:SUPABASE_PROJECT_REF }
+if (-not $projectRef -or -not $projectRef.Trim()) { $projectRef = "twcjjisnxmfpseksqnhb" }
 
 function Require-Command {
   param([string]$Name)
@@ -23,13 +24,9 @@ Require-Command "npx"
 
 Write-Host "Target project ref: $projectRef"
 
-if (-not $env:SUPABASE_ACCESS_TOKEN) {
-  if ($env:VITE_SUPABASE_ACCESS_TOKEN) {
-    $env:SUPABASE_ACCESS_TOKEN = $env:VITE_SUPABASE_ACCESS_TOKEN
-  }
-}
-
-if (-not $env:SUPABASE_ACCESS_TOKEN) {
+if ($AccessToken -and $AccessToken.Trim()) { $env:SUPABASE_ACCESS_TOKEN = $AccessToken }
+elseif (-not $env:SUPABASE_ACCESS_TOKEN -and $env:VITE_SUPABASE_ACCESS_TOKEN) { $env:SUPABASE_ACCESS_TOKEN = $env:VITE_SUPABASE_ACCESS_TOKEN }
+elseif (-not $env:SUPABASE_ACCESS_TOKEN) {
   Write-Host "SUPABASE_ACCESS_TOKEN is not set. Trying Supabase CLI stored login..."
   try {
     & npx supabase projects list | Out-Null
@@ -44,17 +41,12 @@ if (-not $env:SUPABASE_ACCESS_TOKEN) {
   }
 }
 
-$plain = $env:SUPABASE_DB_PASSWORD
+$plain = if ($DbPassword -and $DbPassword.Trim()) { $DbPassword } else { $env:SUPABASE_DB_PASSWORD }
 if (-not $plain -or -not $plain.Trim()) { $plain = $env:SUPABASE_PASSWORD }
 if (-not $plain -or -not $plain.Trim()) { $plain = $env:VITE_SUPABASE_DB_PASSWORD }
 if (-not $plain -or -not $plain.Trim()) {
-  $secure = Read-Host "Enter production DB password (will not be stored)" -AsSecureString
-  $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
-  try {
-    $plain = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
-  } finally {
-    [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
-  }
+  Write-Error "DB password is required. Set -DbPassword or SUPABASE_DB_PASSWORD (or SUPABASE_PASSWORD/VITE_SUPABASE_DB_PASSWORD)."
+  exit 1
 }
 
 if (-not $plain -or -not $plain.Trim()) {

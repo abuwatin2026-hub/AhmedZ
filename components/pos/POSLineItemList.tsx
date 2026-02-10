@@ -215,13 +215,24 @@ const POSLineItemList: React.FC<Props> = ({ items, currencyCode, onUpdate, onRem
                         ? (uomOptionsByItemId || {})[String((item as any)?.id || (item as any)?.itemId || '')]
                         : (Array.isArray((item as any)?.uomUnits) ? (item as any).uomUnits : [])) || [];
                       const baseLabel = (item.unitType || 'piece');
-                      const baseOpt = [{ code: baseLabel, name: baseLabel, qtyInBase: 1 }];
+                      const baseDisplay = baseLabel === 'piece' ? 'قطعة' : baseLabel === 'kg' ? 'كغ' : baseLabel === 'gram' ? 'غ' : baseLabel;
+                      const baseOpt = [{ code: baseLabel, name: baseDisplay, qtyInBase: 1 }];
                       const merged = [...baseOpt, ...opts.filter((o: any) => String(o?.code || '') !== baseLabel)];
-                      return merged.map((o: any) => (
-                        <option key={o.code} value={o.code}>
-                          {o.code}{Number(o.qtyInBase) > 1 ? ` (${Number(o.qtyInBase)} ${baseLabel})` : ''}
-                        </option>
-                      ));
+                      return merged.map((o: any) => {
+                        const codeLower = String(o.code || '').trim().toLowerCase();
+                        const nameRaw = String(o.name || '').trim();
+                        const displayName = codeLower === 'pack'
+                          ? 'باكت'
+                          : codeLower === 'carton'
+                            ? 'كرتون'
+                            : (nameRaw || o.code);
+                        const qtyText = Number(o.qtyInBase) > 1 ? ` (${Number(o.qtyInBase)} ${baseDisplay})` : '';
+                        return (
+                          <option key={o.code} value={o.code}>
+                            {displayName}{qtyText}
+                          </option>
+                        );
+                      });
                     })()}
                   </select>
                 </div>
