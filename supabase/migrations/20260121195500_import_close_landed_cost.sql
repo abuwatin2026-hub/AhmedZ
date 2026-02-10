@@ -81,12 +81,6 @@ begin
       raise exception 'Receipt movement for batch % predates shipment arrival (item % warehouse %)', v_sm.last_batch_id, v_item.item_id_text, new.destination_warehouse_id;
     end if;
 
-  -- Update movement unit_cost to landed cost for this shipment item
-  update public.inventory_movements
-  set unit_cost = v_item.landed_unit,
-      total_cost = (coalesce(v_im.quantity, 0) * v_item.landed_unit)
-  where id = v_im.id;
-
   -- Sync batch unit_cost for all related purchase_in batches of this shipment (not fully consumed)
   update public.batches b
   set unit_cost = v_item.landed_unit,

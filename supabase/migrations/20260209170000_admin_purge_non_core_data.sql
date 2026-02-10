@@ -80,7 +80,7 @@ begin
 end;
 $$;
 
-revoke all on function public.purge_non_core_data(boolean, boolean, boolean, boolean, boolean) from public;
-grant execute on function public.purge_non_core_data(boolean, boolean, boolean, boolean, boolean) to authenticated;
+revoke all on function public.purge_non_core_data(boolean, boolean, boolean, boolean, boolean, boolean) from public;
+grant execute on function public.purge_non_core_data(boolean, boolean, boolean, boolean, boolean, boolean) to authenticated;
 
 notify pgrst, 'reload schema';
