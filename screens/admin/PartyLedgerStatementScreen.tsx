@@ -39,6 +39,7 @@ const PartyLedgerStatementScreen: React.FC = () => {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [partyName, setPartyName] = useState<string>('—');
+  const [partyType, setPartyType] = useState<string>('party');
   const [rows, setRows] = useState<StatementRow[]>([]);
   const [accountCode, setAccountCode] = useState<string>('');
   const [currency, setCurrency] = useState<string>('');
@@ -65,10 +66,11 @@ const PartyLedgerStatementScreen: React.FC = () => {
 
       const { data: partyRow } = await supabase
         .from('financial_parties')
-        .select('name')
+        .select('name,party_type')
         .eq('id', partyId)
         .maybeSingle();
       setPartyName(String((partyRow as any)?.name || '—'));
+      setPartyType(String((partyRow as any)?.party_type || 'party'));
 
       const { data, error } = await supabase.rpc('party_ledger_statement_v2', {
         p_party_id: partyId,
@@ -142,6 +144,38 @@ const PartyLedgerStatementScreen: React.FC = () => {
     void runAccounts();
     return () => { cancelled = true; };
   }, []);
+
+  const [aging, setAging] = useState<{ total_outstanding: number } | null>(null);
+  useEffect(() => {
+    const supabase = getSupabaseClient();
+    if (!supabase || !partyId) return;
+    let cancelled = false;
+    const run = async () => {
+      try {
+        if (partyType === 'supplier') {
+          const { data } = await supabase
+            .from('party_ap_aging_summary')
+            .select('total_outstanding')
+            .eq('party_id', partyId)
+            .maybeSingle();
+          if (!cancelled) setAging({ total_outstanding: Number((data as any)?.total_outstanding || 0) || 0 });
+        } else if (partyType === 'customer') {
+          const { data } = await supabase
+            .from('party_ar_aging_summary')
+            .select('total_outstanding')
+            .eq('party_id', partyId)
+            .maybeSingle();
+          if (!cancelled) setAging({ total_outstanding: Number((data as any)?.total_outstanding || 0) || 0 });
+        } else {
+          setAging(null);
+        }
+      } catch {
+        setAging(null);
+      }
+    };
+    void run();
+    return () => { cancelled = true; };
+  }, [partyId, partyType, rows.length]);
   useEffect(() => {
     const code = String(printCurrency || '').trim().toUpperCase();
     if (!code || !baseCurrency) {
@@ -442,6 +476,18 @@ const PartyLedgerStatementScreen: React.FC = () => {
         <div className="text-gray-700 dark:text-gray-200">إجمالي دائن: <span className="font-mono">{totals.credit.toFixed(2)}</span></div>
         <div className="text-gray-700 dark:text-gray-200">الرصيد الحالي: <span className="font-mono">{totals.last.toFixed(2)}</span></div>
       </div>
+
+      {rows.length === 0 && aging && aging.total_outstanding > 0 && (
+        <div className="p-4 mb-4 rounded-xl border border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-900/20">
+          <div className="text-sm font-semibold text-amber-800 dark:text-amber-200">يوجد رصيد مستحق حسب تقرير الشيخوخة</div>
+          <div className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+            الإجمالي المستحق: <span className="font-mono">{aging.total_outstanding.toFixed(2)}</span>
+          </div>
+          <div className="mt-2 text-xs text-amber-700 dark:text-amber-300">
+            إن لم تظهر حركات في كشف الحساب، تأكد من أن القيود مُرحّلة وليست مسودة، أو اضغط “تحديث دفتر الطرف” أعلاه ثم جرّب “عرض” لفترة مناسبة.
+          </div>
+        </div>
+      )}
 
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700 overflow-hidden">
         <div className="overflow-x-auto">
