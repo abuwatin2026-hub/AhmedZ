@@ -275,6 +275,7 @@ on conflict (code) do nothing;
 insert into public.item_uom_units(item_id, uom_id, qty_in_base, is_active)
 select iu.item_id, iu.base_uom_id, 1, true
 from public.item_uom iu
+join public.menu_items mi on mi.id = iu.item_id
 where not exists (
   select 1
   from public.item_uom_units x
@@ -282,4 +283,3 @@ where not exists (
 );
 
 notify pgrst, 'reload schema';
-

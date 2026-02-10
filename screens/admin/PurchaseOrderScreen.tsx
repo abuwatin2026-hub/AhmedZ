@@ -48,6 +48,8 @@ interface ReceiveRow {
     supplyTaxCost?: number | string;
 }
 
+type ItemUomRow = { code: string; name: string; qtyInBase: number };
+
 const PurchaseOrderScreen: React.FC = () => {
     const location = useLocation();
     const { purchaseOrders, suppliers, createPurchaseOrder, deletePurchaseOrder, cancelPurchaseOrder, recordPurchaseOrderPayment, receivePurchaseOrderPartial, createPurchaseReturn, updatePurchaseOrderInvoiceNumber, getPurchaseReturnSummary, loading, error: purchasesError, fetchPurchaseOrders } = usePurchases();
@@ -66,6 +68,8 @@ const PurchaseOrderScreen: React.FC = () => {
     const { showNotification } = useToast();
     const { warehouses } = useWarehouses();
     const { scope } = useSessionScope();
+    const [itemUomRowsByItemId, setItemUomRowsByItemId] = useState<Record<string, ItemUomRow[]>>({});
+    const itemUomLoadingRef = useRef<Set<string>>(new Set());
     const canDelete = user?.role === 'owner';
     const canCancel = user?.role === 'owner' || user?.role === 'manager';
     const canRepairReceipt = user?.role === 'owner' || user?.role === 'manager';
@@ -496,6 +500,40 @@ const PurchaseOrderScreen: React.FC = () => {
     const [isCreatingReturn, setIsCreatingReturn] = useState<boolean>(false);
     const createReturnInFlightRef = useRef(false);
     const [formErrors, setFormErrors] = useState<string[]>([]);
+
+    useEffect(() => {
+        const supabase = getSupabaseClient();
+        if (!supabase) return;
+        const ids = Array.from(new Set(orderItems.map((r) => String(r.itemId || '').trim()).filter(Boolean)));
+        if (!ids.length) return;
+
+        for (const id of ids) {
+            if (itemUomRowsByItemId[id]) continue;
+            if (itemUomLoadingRef.current.has(id)) continue;
+            itemUomLoadingRef.current.add(id);
+
+            (async () => {
+                try {
+                    const { data, error } = await supabase.rpc('list_item_uom_units', { p_item_id: id } as any);
+                    if (error) throw error;
+                    const rows = Array.isArray(data) ? data : [];
+                    const normalized: ItemUomRow[] = rows
+                        .filter((r: any) => Boolean(r?.is_active))
+                        .map((r: any) => ({
+                            code: String(r?.uom_code || '').trim(),
+                            name: String(r?.uom_name || '').trim(),
+                            qtyInBase: Number(r?.qty_in_base || 0) || 0,
+                        }))
+                        .filter((r: ItemUomRow) => r.code && r.qtyInBase > 0);
+                    setItemUomRowsByItemId((prev) => ({ ...prev, [id]: normalized }));
+                } catch {
+                    setItemUomRowsByItemId((prev) => ({ ...prev, [id]: [] }));
+                } finally {
+                    itemUomLoadingRef.current.delete(id);
+                }
+            })();
+        }
+    }, [orderItems, itemUomRowsByItemId]);
 
     useEffect(() => {
         if (!isModalOpen) return;
@@ -2225,18 +2263,38 @@ const PurchaseOrderScreen: React.FC = () => {
                                                                         return baseUom;
                                                                     }
                                                                 })();
-                                                                const packSize = Number((it as any)?.packSize || 0);
-                                                                const cartonSize = Number((it as any)?.cartonSize || 0);
+                                                                const baseLower = baseUom.toLowerCase();
                                                                 const options: Array<{ code: string; label: string; qtyInBase: number }> = [
                                                                     { code: baseUom, label: baseLabel, qtyInBase: 1 },
                                                                 ];
-                                                                if (packSize > 0) options.push({ code: 'pack', label: `باكت (${packSize} ${baseLabel})`, qtyInBase: packSize });
-                                                                if (cartonSize > 0) options.push({ code: 'carton', label: `كرتون (${cartonSize} ${baseLabel})`, qtyInBase: cartonSize });
+                                                                const uomRows = row.itemId ? (itemUomRowsByItemId[String(row.itemId)] || []) : [];
+                                                                for (const u of uomRows) {
+                                                                    const code = String((u as any)?.code || '').trim();
+                                                                    const qtyInBase = Number((u as any)?.qtyInBase || 0) || 0;
+                                                                    if (!code || qtyInBase <= 0) continue;
+                                                                    const codeLower = code.toLowerCase();
+                                                                    if (codeLower === baseLower) continue;
+                                                                    const nameRaw = String((u as any)?.name || '').trim();
+                                                                    const displayName = codeLower === 'pack'
+                                                                        ? 'باكت'
+                                                                        : codeLower === 'carton'
+                                                                            ? 'كرتون'
+                                                                            : (nameRaw || code);
+                                                                    const label = qtyInBase === 1 ? displayName : `${displayName} (${qtyInBase} ${baseLabel})`;
+                                                                    options.push({ code, label, qtyInBase });
+                                                                }
+                                                                if (options.length === 1) {
+                                                                    const packSize = Number((it as any)?.packSize || 0);
+                                                                    const cartonSize = Number((it as any)?.cartonSize || 0);
+                                                                    if (packSize > 0) options.push({ code: 'pack', label: `باكت (${packSize} ${baseLabel})`, qtyInBase: packSize });
+                                                                    if (cartonSize > 0) options.push({ code: 'carton', label: `كرتون (${cartonSize} ${baseLabel})`, qtyInBase: cartonSize });
+                                                                }
                                                                 const current = String((row as any).uomCode || baseUom);
+                                                                const safeCurrent = options.some((o) => String(o.code) === current) ? current : baseUom;
                                                                 return (
                                                                     <select
                                                                         className="w-full p-1 border rounded font-mono"
-                                                                        value={current}
+                                                                        value={safeCurrent}
                                                                         disabled={!row.itemId}
                                                                         onChange={(e) => {
                                                                             const code = String(e.target.value || '').trim();

@@ -275,14 +275,23 @@ export const MenuProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         if (error) throw error;
         const packSize = Number((newItem as any).packSize || 0);
         const cartonSize = Number((newItem as any).cartonSize || 0);
-        if (packSize > 0 || cartonSize > 0) {
-          const { error: uomErr } = await supabase.rpc('upsert_item_packaging_uom', {
-            p_item_id: newItem.id,
-            p_pack_size: packSize > 0 ? packSize : null,
-            p_carton_size: cartonSize > 0 ? cartonSize : null,
-          } as any);
-          if (uomErr) throw uomErr;
+        const extraUnitsRaw = (newItem as any).uomUnits ?? (newItem as any).data?.uomUnits;
+        const extraUnits = Array.isArray(extraUnitsRaw) ? extraUnitsRaw : [];
+        const unitsPayload: Array<{ code: string; name?: string; qtyInBase: number }> = [];
+        if (packSize > 0) unitsPayload.push({ code: 'pack', name: 'Pack', qtyInBase: packSize });
+        if (cartonSize > 0) unitsPayload.push({ code: 'carton', name: 'Carton', qtyInBase: cartonSize });
+        for (const u of extraUnits) {
+          const code = String((u as any)?.code || '').trim();
+          const qtyInBase = Number((u as any)?.qtyInBase || 0) || 0;
+          const name = typeof (u as any)?.name === 'string' ? String((u as any).name) : undefined;
+          if (!code || qtyInBase <= 0) continue;
+          unitsPayload.push({ code, name, qtyInBase });
         }
+        const { error: uomErr } = await supabase.rpc('upsert_item_uom_units', {
+          p_item_id: newItem.id,
+          p_units: unitsPayload,
+        } as any);
+        if (uomErr) throw uomErr;
       } catch (err) {
         throw new Error(localizeSupabaseError(err));
       }
@@ -341,10 +350,21 @@ export const MenuProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         if (error) throw error;
         const packSize = Number((normalizedItem as any).packSize || 0);
         const cartonSize = Number((normalizedItem as any).cartonSize || 0);
-        const { error: uomErr } = await supabase.rpc('upsert_item_packaging_uom', {
+        const extraUnitsRaw = (normalizedItem as any).uomUnits ?? (normalizedItem as any).data?.uomUnits;
+        const extraUnits = Array.isArray(extraUnitsRaw) ? extraUnitsRaw : [];
+        const unitsPayload: Array<{ code: string; name?: string; qtyInBase: number }> = [];
+        if (packSize > 0) unitsPayload.push({ code: 'pack', name: 'Pack', qtyInBase: packSize });
+        if (cartonSize > 0) unitsPayload.push({ code: 'carton', name: 'Carton', qtyInBase: cartonSize });
+        for (const u of extraUnits) {
+          const code = String((u as any)?.code || '').trim();
+          const qtyInBase = Number((u as any)?.qtyInBase || 0) || 0;
+          const name = typeof (u as any)?.name === 'string' ? String((u as any).name) : undefined;
+          if (!code || qtyInBase <= 0) continue;
+          unitsPayload.push({ code, name, qtyInBase });
+        }
+        const { error: uomErr } = await supabase.rpc('upsert_item_uom_units', {
           p_item_id: normalizedItem.id,
-          p_pack_size: packSize > 0 ? packSize : null,
-          p_carton_size: cartonSize > 0 ? cartonSize : null,
+          p_units: unitsPayload,
         } as any);
         if (uomErr) throw uomErr;
       } catch (err) {

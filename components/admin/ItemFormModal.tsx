@@ -60,6 +60,7 @@ const ItemFormModal: React.FC<ItemFormModalProps> = ({ isOpen, onClose, onSave, 
     supplyTaxCost: 0,
     packSize: 0,
     cartonSize: 0,
+    uomUnits: [],
     group: '',
   });
 
@@ -69,6 +70,16 @@ const ItemFormModal: React.FC<ItemFormModalProps> = ({ isOpen, onClose, onSave, 
 
   useEffect(() => {
     if (itemToEdit) {
+      const rawUomUnits = (itemToEdit as any)?.uomUnits ?? (itemToEdit as any)?.data?.uomUnits;
+      const uomUnits = Array.isArray(rawUomUnits)
+        ? rawUomUnits
+          .map((u: any) => ({
+            code: String(u?.code || '').trim(),
+            name: typeof u?.name === 'string' ? u.name : undefined,
+            qtyInBase: Number(u?.qtyInBase || 0) || 0,
+          }))
+          .filter((u: any) => u.code || u.qtyInBase > 0 || (u.name && String(u.name).trim()))
+        : [];
       setItem({
         name: itemToEdit.name,
         barcode: itemToEdit.barcode || '',
@@ -92,6 +103,7 @@ const ItemFormModal: React.FC<ItemFormModalProps> = ({ isOpen, onClose, onSave, 
         supplyTaxCost: itemToEdit.supplyTaxCost || 0,
         packSize: Number((itemToEdit as any).packSize ?? 0) || 0,
         cartonSize: Number((itemToEdit as any).cartonSize ?? 0) || 0,
+        uomUnits,
       });
     } else {
       setItem(getInitialFormState());
@@ -147,6 +159,12 @@ const ItemFormModal: React.FC<ItemFormModalProps> = ({ isOpen, onClose, onSave, 
     const unitType = String(item.unitType || '').trim();
     const packSize = Number((item as any).packSize ?? 0);
     const cartonSize = Number((item as any).cartonSize ?? 0);
+    const rawUomUnits = Array.isArray((item as any).uomUnits) ? (item as any).uomUnits : [];
+    const uomUnits = rawUomUnits.map((u: any) => ({
+      code: String(u?.code || '').trim().toLowerCase(),
+      name: typeof u?.name === 'string' ? String(u.name).trim() : '',
+      qtyInBase: Number(u?.qtyInBase || 0),
+    }));
 
     if (nameAr.length < 2) {
       setFormError(language === 'ar' ? 'اسم الصنف مطلوب (حرفين على الأقل)' : 'Item name is required');
@@ -185,6 +203,10 @@ const ItemFormModal: React.FC<ItemFormModalProps> = ({ isOpen, onClose, onSave, 
       setFormError(language === 'ar' ? 'وحدات الباكت/الكرتون غير متاحة للوحدات الوزنية' : 'Pack/Carton is not available for weight-based units');
       return;
     }
+    if ((unitType === 'kg' || unitType === 'gram') && uomUnits.some((u: any) => u.code || u.qtyInBase > 0 || u.name)) {
+      setFormError(language === 'ar' ? 'الوحدات الإضافية غير متاحة للوحدات الوزنية' : 'Additional units are not available for weight-based units');
+      return;
+    }
     if (packSize < 0 || cartonSize < 0) {
       setFormError(language === 'ar' ? 'قيم الباكت/الكرتون غير صالحة' : 'Invalid pack/carton values');
       return;
@@ -200,6 +222,34 @@ const ItemFormModal: React.FC<ItemFormModalProps> = ({ isOpen, onClose, onSave, 
     if (packSize > 0 && cartonSize > 0 && cartonSize < packSize) {
       setFormError(language === 'ar' ? 'حجم الكرتون يجب أن يكون أكبر أو يساوي حجم الباكت' : 'Carton size must be >= pack size');
       return;
+    }
+
+    const baseLower = unitType.toLowerCase();
+    const seen = new Set<string>();
+    for (const u of uomUnits) {
+      const hasAny = Boolean(u.code || u.qtyInBase > 0 || u.name);
+      if (!hasAny) continue;
+      if (!u.code) {
+        setFormError(language === 'ar' ? 'رمز الوحدة الإضافية مطلوب' : 'Additional unit code is required');
+        return;
+      }
+      if (u.code === baseLower) {
+        setFormError(language === 'ar' ? 'لا يمكن إضافة وحدة مطابقة لوحدة الأساس' : 'Cannot add a unit equal to the base unit');
+        return;
+      }
+      if (!Number.isFinite(u.qtyInBase) || !Number.isInteger(u.qtyInBase) || u.qtyInBase < 2) {
+        setFormError(language === 'ar' ? 'معامل التحويل للوحدة الإضافية يجب أن يكون رقم صحيح (2+) ' : 'Additional unit factor must be an integer (2+)');
+        return;
+      }
+      if ((u.code === 'pack' && packSize > 0) || (u.code === 'carton' && cartonSize > 0)) {
+        setFormError(language === 'ar' ? 'لا يمكن تكرار باكت/كرتون ضمن الوحدات الإضافية' : 'Pack/Carton is already defined');
+        return;
+      }
+      if (seen.has(u.code)) {
+        setFormError(language === 'ar' ? 'يوجد تكرار في رموز الوحدات الإضافية' : 'Duplicate additional unit codes');
+        return;
+      }
+      seen.add(u.code);
     }
 
     setFormError('');
@@ -233,6 +283,31 @@ const ItemFormModal: React.FC<ItemFormModalProps> = ({ isOpen, onClose, onSave, 
     const numeric = Number.isFinite(parsed) ? parsed : 0;
     setItem((prev) => {
       return { ...prev, [name]: numeric } as typeof prev;
+    });
+  };
+
+  const updateUomUnit = (index: number, patch: Partial<{ code: string; name?: string; qtyInBase: number }>) => {
+    setItem((prev) => {
+      const current = Array.isArray((prev as any).uomUnits) ? ([...(prev as any).uomUnits] as any[]) : [];
+      const row = current[index] && typeof current[index] === 'object' ? current[index] : {};
+      current[index] = { ...row, ...patch };
+      return { ...(prev as any), uomUnits: current } as typeof prev;
+    });
+  };
+
+  const addUomUnitRow = () => {
+    setItem((prev) => {
+      const current = Array.isArray((prev as any).uomUnits) ? ([...(prev as any).uomUnits] as any[]) : [];
+      current.push({ code: '', name: '', qtyInBase: 0 });
+      return { ...(prev as any), uomUnits: current } as typeof prev;
+    });
+  };
+
+  const removeUomUnitRow = (index: number) => {
+    setItem((prev) => {
+      const current = Array.isArray((prev as any).uomUnits) ? ([...(prev as any).uomUnits] as any[]) : [];
+      const next = current.filter((_, i) => i !== index);
+      return { ...(prev as any), uomUnits: next } as typeof prev;
     });
   };
 
@@ -521,6 +596,77 @@ const ItemFormModal: React.FC<ItemFormModalProps> = ({ isOpen, onClose, onSave, 
                         disabled={item.unitType === 'kg' || item.unitType === 'gram'}
                       />
                     </div>
+                  </div>
+                  <div className="mt-4 pt-4 border-t dark:border-gray-700">
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="text-sm font-semibold text-gray-800 dark:text-gray-200">وحدات إضافية</h4>
+                      <button
+                        type="button"
+                        onClick={addUomUnitRow}
+                        disabled={item.unitType === 'kg' || item.unitType === 'gram'}
+                        className="px-3 py-1 text-xs rounded bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200"
+                      >
+                        إضافة
+                      </button>
+                    </div>
+                    {Array.isArray((item as any).uomUnits) && (item as any).uomUnits.length > 0 ? (
+                      <div className="space-y-2">
+                        {(item as any).uomUnits.map((u: any, idx: number) => (
+                          <div key={idx} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-end">
+                            <div className="md:col-span-4">
+                              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">الرمز</label>
+                              <input
+                                type="text"
+                                value={String(u?.code || '')}
+                                disabled={item.unitType === 'kg' || item.unitType === 'gram'}
+                                onChange={(e) => updateUomUnit(idx, { code: e.target.value })}
+                                className="mt-1 w-full p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600"
+                                placeholder="box"
+                              />
+                            </div>
+                            <div className="md:col-span-4">
+                              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">الاسم</label>
+                              <input
+                                type="text"
+                                value={String(u?.name || '')}
+                                disabled={item.unitType === 'kg' || item.unitType === 'gram'}
+                                onChange={(e) => updateUomUnit(idx, { name: e.target.value })}
+                                className="mt-1 w-full p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600"
+                                placeholder="Box"
+                              />
+                            </div>
+                            <div className="md:col-span-3">
+                              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">كم حبة داخلها</label>
+                              <NumberInput
+                                id={`uomUnits.${idx}.qtyInBase`}
+                                name={`uomUnits.${idx}.qtyInBase`}
+                                value={Number(u?.qtyInBase || 0)}
+                                disabled={item.unitType === 'kg' || item.unitType === 'gram'}
+                                onChange={(e) => {
+                                  const parsed = parseFloat(e.target.value);
+                                  const numeric = Number.isFinite(parsed) ? parsed : 0;
+                                  updateUomUnit(idx, { qtyInBase: numeric });
+                                }}
+                                min={0}
+                                step={1}
+                              />
+                            </div>
+                            <div className="md:col-span-1 flex md:justify-end">
+                              <button
+                                type="button"
+                                onClick={() => removeUomUnitRow(idx)}
+                                disabled={item.unitType === 'kg' || item.unitType === 'gram'}
+                                className="px-3 py-2 text-xs rounded bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:hover:bg-red-900/30 text-red-700 dark:text-red-200"
+                              >
+                                حذف
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-xs text-gray-500 dark:text-gray-400">لا توجد وحدات إضافية.</div>
+                    )}
                   </div>
                 </div>
 

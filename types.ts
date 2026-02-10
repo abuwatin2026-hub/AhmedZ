@@ -276,6 +276,7 @@ export interface MenuItem {
   supplyTaxCost?: number; // Input Tax / Supply Tax
   packSize?: number;
   cartonSize?: number;
+  uomUnits?: Array<{ code: string; name?: string; qtyInBase: number }>;
   data?: any;
 }
 
