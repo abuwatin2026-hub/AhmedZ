@@ -28,7 +28,7 @@ import { toDateTimeLocalInputValue } from '../../utils/dateUtils';
 
 const statusTranslations: Record<OrderStatus, string> = {
     pending: 'قيد الانتظار',
-    preparing: 'جاري التحضير',
+    preparing: 'قيد التجهيز',
     out_for_delivery: 'في الطريق',
     delivered: 'تم التوصيل',
     scheduled: 'مجدول',
