@@ -17,9 +17,12 @@ interface InvoiceProps {
     contactNumber?: string;
     logoUrl?: string;
   };
+  copyLabel?: string;
+  accentColor?: string;
+  id?: string;
 }
 
-const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, branding }, ref) => {
+const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, branding, copyLabel, accentColor, id }, ref) => {
     const lang = 'ar';
     const { getDeliveryZoneById } = useDeliveryZones();
     const invoiceSnapshot = order.invoiceSnapshot;
@@ -113,11 +116,20 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
     };
 
     return (
-        <div ref={ref} className="bg-white text-gray-900 w-full min-h-[297mm] p-8 md:p-12 relative print:p-0 print:m-0 print:w-full print:h-auto border-t-[5px] border-t-slate-800" id="print-area" dir="rtl" style={{ fontFamily: 'Tajawal, Cairo, sans-serif' }}>
+        <div ref={ref} className="bg-white text-gray-900 w-full min-h-[297mm] p-8 md:p-12 relative print:p-0 print:m-0 print:w-full print:h-auto border-t-[5px] print:break-after-page" style={{ borderColor: accentColor || '#1e293b', fontFamily: 'Tajawal, Cairo, sans-serif' }} id={id || "print-area"} dir="rtl">
             {/* Watermark for Copy */}
-            {isCopy && (
+            {(isCopy || copyLabel) && (
                 <div className="pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden z-0">
-                    <div className="text-gray-100 font-black text-[10rem] -rotate-45 select-none opacity-60">نسخة</div>
+                    <div className="text-gray-100 font-black text-[10rem] -rotate-45 select-none opacity-60" style={{ color: accentColor ? `${accentColor}20` : undefined }}>
+                        {copyLabel || 'نسخة'}
+                    </div>
+                </div>
+            )}
+
+            {/* Copy Label Badge */}
+            {copyLabel && (
+                <div className="absolute top-0 left-0 bg-slate-100 px-4 py-2 rounded-br-xl border-b border-r border-slate-200 z-20">
+                    <span className="font-bold text-xs uppercase tracking-wider" style={{ color: accentColor }}>{copyLabel}</span>
                 </div>
             )}
 
@@ -404,6 +416,36 @@ const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ order, settings, bra
                     <span>Page 1 of 1</span>
                 </div>
             </div>
+        </div>
+    );
+});
+
+export const TriplicateInvoice = forwardRef<HTMLDivElement, InvoiceProps>((props, ref) => {
+    return (
+        <div ref={ref} id="print-area">
+            {/* Original / Customer Copy - Blue/Slate */}
+            <Invoice 
+                {...props} 
+                copyLabel="نسخة العميل (Customer)" 
+                accentColor="#1e293b" 
+                id="invoice-copy-1"
+            />
+            
+            {/* Warehouse Copy - Red/Orange */}
+            <Invoice 
+                {...props} 
+                copyLabel="نسخة المستودع (Warehouse)" 
+                accentColor="#c2410c" // Orange-700
+                id="invoice-copy-2"
+            />
+            
+            {/* Finance/Box Copy - Green/Emerald */}
+            <Invoice 
+                {...props} 
+                copyLabel="نسخة الصندوق (Finance)" 
+                accentColor="#047857" // Emerald-700
+                id="invoice-copy-3"
+            />
         </div>
     );
 });
