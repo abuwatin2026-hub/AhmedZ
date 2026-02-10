@@ -52,6 +52,9 @@ const PartyLedgerStatementScreen: React.FC = () => {
   const [backfilling, setBackfilling] = useState(false);
   const [lastBackfillCount, setLastBackfillCount] = useState<number | null>(null);
   const canManage = user?.role === 'owner' || user?.role === 'manager';
+  const [baseCurrency, setBaseCurrency] = useState<string>('');
+  const [printCurrency, setPrintCurrency] = useState<string>('');
+  const [printFxRate, setPrintFxRate] = useState<number>(1);
 
   const load = async () => {
     if (!partyId) return;
@@ -95,14 +98,18 @@ const PartyLedgerStatementScreen: React.FC = () => {
       try {
         const { data, error } = await supabase
           .from('currencies')
-          .select('code')
+          .select('code,is_base')
           .order('code', { ascending: true });
         if (error) throw error;
-        const codes = (Array.isArray(data) ? data : [])
-          .map((r: any) => String(r?.code || '').trim().toUpperCase())
-          .filter(Boolean);
+        const rows = (Array.isArray(data) ? data : []).map((r: any) => ({
+          code: String(r?.code || '').trim().toUpperCase(),
+          isBase: Boolean(r?.is_base),
+        })).filter(r => r.code);
+        const codes = rows.map(r => r.code);
         const uniq = Array.from(new Set(codes));
         if (!cancelled) setCurrencyOptions(uniq);
+        const baseRow = rows.find(r => r.isBase);
+        if (!cancelled && baseRow?.code) setBaseCurrency(baseRow.code);
       } catch {
         if (!cancelled) setCurrencyOptions([]);
       }
@@ -135,6 +142,38 @@ const PartyLedgerStatementScreen: React.FC = () => {
     void runAccounts();
     return () => { cancelled = true; };
   }, []);
+  useEffect(() => {
+    const code = String(printCurrency || '').trim().toUpperCase();
+    if (!code || !baseCurrency) {
+      setPrintFxRate(1);
+      return;
+    }
+    if (code === baseCurrency) {
+      setPrintFxRate(1);
+      return;
+    }
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+    const d = new Date().toISOString().slice(0, 10);
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const { data, error } = await supabase.rpc('get_fx_rate', {
+          p_currency: code,
+          p_date: d,
+          p_rate_type: 'operational',
+        } as any);
+        if (error) throw error;
+        const n = Number(data);
+        const rate = Number.isFinite(n) && n > 0 ? n : 0;
+        if (!cancelled) setPrintFxRate(rate || 0);
+      } catch {
+        if (!cancelled) setPrintFxRate(0);
+      }
+    };
+    void run();
+    return () => { cancelled = true; };
+  }, [printCurrency, baseCurrency]);
   const totals = useMemo(() => {
     const debit = rows.reduce((s, r) => s + (r.direction === 'debit' ? Number(r.base_amount || 0) : 0), 0);
     const credit = rows.reduce((s, r) => s + (r.direction === 'credit' ? Number(r.base_amount || 0) : 0), 0);
@@ -146,6 +185,15 @@ const PartyLedgerStatementScreen: React.FC = () => {
     if (!partyId) return;
     if (rows.length === 0) {
       showNotification('لا توجد حركات لطباعة كشف الحساب حسب المرشحات الحالية.', 'info');
+      return;
+    }
+    const desired = String(printCurrency || '').trim().toUpperCase();
+    if (desired && !currencyOptions.includes(desired)) {
+      showNotification('العملة المختارة غير معرفة ضمن النظام.', 'error');
+      return;
+    }
+    if (desired && desired !== baseCurrency && !(printFxRate > 0)) {
+      showNotification('لا يوجد سعر صرف تشغيلي لهذه العملة اليوم. أضف السعر من شاشة أسعار الصرف.', 'error');
       return;
     }
     setPrinting(true);
@@ -166,6 +214,9 @@ const PartyLedgerStatementScreen: React.FC = () => {
           start={start.trim() || null}
           end={end.trim() || null}
           rows={rows}
+          printCurrencyCode={desired || baseCurrency || null}
+          printFxRate={desired ? (desired === baseCurrency ? 1 : (printFxRate || 0)) : 1}
+          baseCurrencyCode={baseCurrency || null}
         />
       );
       printContent(content, `كشف حساب طرف • ${partyName || partyId.slice(-8).toUpperCase()}`, { page: 'A4' });
@@ -300,6 +351,9 @@ const PartyLedgerStatementScreen: React.FC = () => {
           <datalist id="account-codes">
             {accountOptions.map((c) => <option key={c} value={c} />)}
           </datalist>
+          <div className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+            اختياري: اتركه فارغًا لعرض كل الحسابات الخاصة بالطرف.
+          </div>
         </div>
         <div>
           <label className="block text-xs text-gray-600 dark:text-gray-300 mb-1">العملة (اختياري)</label>
@@ -334,6 +388,25 @@ const PartyLedgerStatementScreen: React.FC = () => {
             className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 font-mono"
             onKeyDown={(e) => { if (e.key === 'Enter') void load(); }}
           />
+        </div>
+        <div>
+          <label className="block text-xs text-gray-600 dark:text-gray-300 mb-1">عملة الطباعة</label>
+          <input
+            list="currency-codes"
+            value={printCurrency}
+            onChange={(e) => setPrintCurrency(String(e.target.value || '').toUpperCase())}
+            placeholder={baseCurrency ? `مثل ${baseCurrency}/USD` : 'اختر'}
+            className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 font-mono"
+          />
+          <div className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+            {printCurrency
+              ? (printCurrency === baseCurrency
+                  ? `ستتم الطباعة بالعملة الأساسية (${baseCurrency}).`
+                  : (printFxRate > 0
+                      ? `سعر الصرف: ${baseCurrency} لكل 1 ${printCurrency} = ${printFxRate}`
+                      : 'لا يوجد سعر صرف لهذه العملة اليوم.'))
+              : 'اتركها فارغة للطباعة بالعملة الأساسية.'}
+          </div>
         </div>
         <div className="flex items-end gap-2">
           <button

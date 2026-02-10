@@ -48,12 +48,22 @@ export default function PrintablePartyLedgerStatement(props: {
   start?: string | null;
   end?: string | null;
   rows: StatementRow[];
+  printCurrencyCode?: string | null;
+  printFxRate?: number | null;
+  baseCurrencyCode?: string | null;
 }) {
-  const { brand, partyId, partyName, accountCode, currency, start, end, rows } = props;
+  const { brand, partyId, partyName, accountCode, currency, start, end, rows, printCurrencyCode, printFxRate, baseCurrencyCode } = props;
+  const selectedCode = String(printCurrencyCode || '').trim().toUpperCase();
+  const baseCode = String(baseCurrencyCode || '').trim().toUpperCase();
+  const rate = Number(printFxRate || 1) || 1;
+  const convert = (v: number): number => {
+    if (selectedCode && baseCode && selectedCode !== baseCode) return (Number(v || 0) / rate);
+    return Number(v || 0);
+  };
   const totals = (() => {
-    const debit = rows.reduce((s, r) => s + (r.direction === 'debit' ? Number(r.base_amount || 0) : 0), 0);
-    const credit = rows.reduce((s, r) => s + (r.direction === 'credit' ? Number(r.base_amount || 0) : 0), 0);
-    const last = rows.length ? rows[rows.length - 1].running_balance : 0;
+    const debit = rows.reduce((s, r) => s + (r.direction === 'debit' ? convert(Number(r.base_amount || 0)) : 0), 0);
+    const credit = rows.reduce((s, r) => s + (r.direction === 'credit' ? convert(Number(r.base_amount || 0)) : 0), 0);
+    const last = rows.length ? convert(rows[rows.length - 1].running_balance) : 0;
     return { debit, credit, last };
   })();
   const periodText = [start ? formatDateOnly(start) : null, end ? formatDateOnly(end) : null]
@@ -63,6 +73,7 @@ export default function PrintablePartyLedgerStatement(props: {
     accountCode ? `الحساب: ${accountCode}` : '',
     currency ? `العملة: ${String(currency).toUpperCase()}` : '',
     periodText ? `الفترة: ${periodText}` : '',
+    selectedCode ? `طباعة بعملة: ${selectedCode}${(baseCode && selectedCode !== baseCode && rate > 0) ? ` • سعر: ${rate}` : ''}` : '',
   ]
     .filter(Boolean)
     .join(' • ');
@@ -222,9 +233,9 @@ export default function PrintablePartyLedgerStatement(props: {
             <th style={{ width: '14%' }}>التاريخ</th>
             <th style={{ width: '10%' }}>رمز الحساب</th>
             <th style={{ width: '18%' }}>اسم الحساب</th>
-            <th style={{ width: '10%' }}>مدين</th>
-            <th style={{ width: '10%' }}>دائن</th>
-            <th style={{ width: '10%' }}>الرصيد</th>
+            <th style={{ width: '12%' }}>مدين</th>
+            <th style={{ width: '12%' }}>دائن</th>
+            <th style={{ width: '12%' }}>الرصيد</th>
             <th style={{ width: '14%' }}>المصدر</th>
             <th style={{ width: '14%' }}>المتبقي/الحالة</th>
           </tr>
@@ -238,14 +249,18 @@ export default function PrintablePartyLedgerStatement(props: {
               <td className="tabular" dir="ltr" style={{ fontWeight: 700, color: '#475569' }}>{r.account_code}</td>
               <td style={{ fontWeight: 600 }}>{r.account_name}</td>
               <td className="tabular text-center" dir="ltr" style={{ color: r.direction === 'debit' ? '#0f172a' : '#cbd5e1' }}>
-                {r.direction === 'debit' ? fmt(Number(r.base_amount || 0)) : '—'}
-                {r.foreign_amount != null ? <div style={{ fontSize: 10, color: '#64748b' }}>{String(r.currency_code || '').toUpperCase()} {fmt(Number(r.foreign_amount || 0))}</div> : null}
+                {r.direction === 'debit' ? fmt(convert(Number(r.base_amount || 0))) : '—'}
+                <div style={{ fontSize: 10, color: '#64748b' }}>
+                  {selectedCode || baseCode} {r.direction === 'debit' ? fmt(convert(Number(r.base_amount || 0))) : '—'}
+                </div>
               </td>
               <td className="tabular text-center" dir="ltr" style={{ color: r.direction === 'credit' ? '#0f172a' : '#cbd5e1' }}>
-                {r.direction === 'credit' ? fmt(Number(r.base_amount || 0)) : '—'}
-                {r.foreign_amount != null ? <div style={{ fontSize: 10, color: '#64748b' }}>{String(r.currency_code || '').toUpperCase()} {fmt(Number(r.foreign_amount || 0))}</div> : null}
+                {r.direction === 'credit' ? fmt(convert(Number(r.base_amount || 0))) : '—'}
+                <div style={{ fontSize: 10, color: '#64748b' }}>
+                  {selectedCode || baseCode} {r.direction === 'credit' ? fmt(convert(Number(r.base_amount || 0))) : '—'}
+                </div>
               </td>
-              <td className="tabular text-center" dir="ltr">{fmt(Number(r.running_balance || 0))}</td>
+              <td className="tabular text-center" dir="ltr">{fmt(convert(Number(r.running_balance || 0)))}</td>
               <td>
                 <div className="tabular" style={{ fontSize: 11 }}>
                   {r.source_table}:{r.source_event}
@@ -256,7 +271,7 @@ export default function PrintablePartyLedgerStatement(props: {
               </td>
               <td>
                 <div className="tabular" dir="ltr" style={{ fontSize: 12 }}>
-                  {r.open_base_amount == null ? '—' : fmt(Number(r.open_base_amount || 0))}
+                  {r.open_base_amount == null ? '—' : fmt(convert(Number(r.open_base_amount || 0)))}
                 </div>
                 <div style={{ fontSize: 11, color: '#64748b' }}>
                   {r.open_status === 'open' ? 'مفتوح' : r.open_status === 'partially_settled' ? 'مجزأ' : r.open_status ? 'مُسوّى' : '—'}
