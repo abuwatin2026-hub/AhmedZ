@@ -24,8 +24,8 @@ import { localizeSupabaseError } from '../../utils/errorUtils';
 
 interface OrderItemRow {
     itemId: string;
-    quantity: number;
-    unitCost: number;
+    quantity: number | string;
+    unitCost: number | string;
     productionDate?: string;
     expiryDate?: string;
 }
@@ -602,7 +602,7 @@ const PurchaseOrderScreen: React.FC = () => {
     };
 
     const calculateTotal = () => {
-        return orderItems.reduce((sum, item) => sum + (item.quantity * item.unitCost), 0);
+        return orderItems.reduce((sum, item) => sum + (Number(item.quantity) * Number(item.unitCost)), 0);
     };
 
     const getItemById = (id: string) => activeMenuItems.find(i => i.id === id);
@@ -815,8 +815,8 @@ const PurchaseOrderScreen: React.FC = () => {
             normalizedItems.forEach((row, idx) => {
                 const rowNo = idx + 1;
                 if (!row.itemId) errors.push(`سطر ${rowNo}: الصنف مطلوب`);
-                if (!Number.isFinite(row.quantity) || Number(row.quantity) <= 0) errors.push(`سطر ${rowNo}: الكمية مطلوبة`);
-                if (!Number.isFinite(row.unitCost) || Number(row.unitCost) < 0) errors.push(`سطر ${rowNo}: سعر الشراء مطلوب`);
+                if (!Number.isFinite(Number(row.quantity)) || Number(row.quantity) <= 0) errors.push(`سطر ${rowNo}: الكمية مطلوبة`);
+                if (!Number.isFinite(Number(row.unitCost)) || Number(row.unitCost) < 0) errors.push(`سطر ${rowNo}: سعر الشراء مطلوب`);
                 const item = row.itemId ? getItemById(row.itemId) : null;
                 const exp = typeof row.expiryDate === 'string' ? row.expiryDate.trim() : '';
                 const hv = typeof row.productionDate === 'string' ? row.productionDate.trim() : '';
@@ -833,7 +833,11 @@ const PurchaseOrderScreen: React.FC = () => {
                 setFormErrors(errors);
                 return;
             }
-            const validItems = normalizedItems.filter(i => i.itemId && i.quantity > 0);
+            const validItems = normalizedItems.filter(i => i.itemId && Number(i.quantity) > 0).map(i => ({
+                ...i,
+                quantity: Number(i.quantity),
+                unitCost: Number(i.unitCost)
+            }));
             await createPurchaseOrder(
                 supplierId,
                 purchaseDate,
@@ -2177,7 +2181,7 @@ const PurchaseOrderScreen: React.FC = () => {
                                                                 required
                                                                 className="w-full p-1 border rounded text-center font-mono"
                                                                 value={row.quantity}
-                                                                onChange={(e) => updateRow(index, 'quantity', parseFloat(e.target.value))}
+                                                                onChange={(e) => updateRow(index, 'quantity', e.target.value)}
                                                             />
                                                         </td>
                                                         <td className="p-2 sm:p-2">
@@ -2188,11 +2192,11 @@ const PurchaseOrderScreen: React.FC = () => {
                                                                 required
                                                                 className="w-full p-1 border rounded text-center font-mono"
                                                                 value={row.unitCost}
-                                                                onChange={(e) => updateRow(index, 'unitCost', parseFloat(e.target.value))}
+                                                                onChange={(e) => updateRow(index, 'unitCost', e.target.value)}
                                                             />
                                                         </td>
                                                         <td className="p-2 sm:p-2 font-mono font-bold text-gray-700">
-                                                            <CurrencyDualAmount amount={Number(row.quantity * row.unitCost) || 0} currencyCode={poCurrency} compact />
+                                                            <CurrencyDualAmount amount={Number(Number(row.quantity) * Number(row.unitCost)) || 0} currencyCode={poCurrency} compact />
                                                         </td>
                                                         {showCreateDates ? (
                                                             <>
