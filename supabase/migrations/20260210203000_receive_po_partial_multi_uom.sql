@@ -1,5 +1,36 @@
 set app.allow_ledger_ddl = '1';
 
+create or replace function public.hash_payload(p_payload jsonb)
+returns text
+language plpgsql
+stable
+security definer
+set search_path = public, extensions
+as $$
+declare
+  v_text text;
+  v_hash text;
+begin
+  v_text := coalesce(p_payload::text, '');
+  begin
+    v_hash := encode(digest(v_text, 'sha256'), 'hex');
+    return v_hash;
+  exception when others then
+    return md5(v_text);
+  end;
+end;
+$$;
+
+alter table public.purchase_items
+  drop constraint if exists purchase_items_received_quantity_check;
+
+alter table public.purchase_items
+  add constraint purchase_items_received_quantity_check
+  check (
+    coalesce(received_quantity, 0::numeric) >= 0::numeric
+    and coalesce(received_quantity, 0::numeric) <= (coalesce(qty_base, quantity, 0::numeric) + 0.000000001)
+  );
+
 create or replace function public.receive_purchase_order_partial(
   p_order_id uuid,
   p_items jsonb,
@@ -38,7 +69,6 @@ declare
   v_batch_id uuid;
   v_movement_id uuid;
   v_wh uuid;
-  v_main uuid;
   v_receipt_req_id uuid;
   v_receipt_req_status text;
   v_receipt_requires_approval boolean;
@@ -132,28 +162,59 @@ begin
     raise exception 'warehouse_id is required';
   end if;
 
-  v_main := public._resolve_main_warehouse_id();
-
-  v_required_receipt := public.approval_required('receipt', coalesce(v_po.total_amount, 0));
-  select ar.id, ar.status
-  into v_receipt_req_id, v_receipt_req_status
-  from public.approval_requests ar
-  where ar.target_table = 'purchase_receipts'
-    and ar.target_id = p_order_id::text
-    and ar.request_type = 'receipt'
-    and ar.status = 'approved'
-  order by ar.created_at desc
-  limit 1;
-
-  v_receipt_requires_approval := v_required_receipt;
-  v_receipt_approval_status := case when v_receipt_req_id is null then 'pending' else 'approved' end;
-
   v_payload := jsonb_build_object(
     'purchaseOrderId', p_order_id::text,
     'warehouseId', v_wh::text,
     'items', p_items
   );
   v_payload_hash := public.hash_payload(v_payload);
+
+  v_required_receipt := public.approval_required('receipt', coalesce(v_po.total_amount, 0));
+  select ar.id, ar.status
+  into v_receipt_req_id, v_receipt_req_status
+  from public.approval_requests ar
+  where (
+      (ar.target_table = 'purchase_orders' and ar.target_id = p_order_id::text)
+      or (ar.target_table = 'purchase_receipts' and ar.target_id = p_order_id::text)
+    )
+    and ar.request_type = 'receipt'
+    and ar.status = 'approved'
+  order by ar.created_at desc
+  limit 1;
+
+  if v_required_receipt and v_receipt_req_id is null then
+    if public.is_owner() then
+      insert into public.approval_requests(
+        target_table, target_id, request_type, status,
+        requested_by, approved_by, approved_at,
+        payload_hash
+      )
+      values (
+        'purchase_orders',
+        p_order_id::text,
+        'receipt',
+        'approved',
+        auth.uid(),
+        auth.uid(),
+        now(),
+        v_payload_hash
+      )
+      returning id into v_receipt_req_id;
+
+      insert into public.approval_steps(
+        request_id, step_no, approver_role, status, action_by, action_at
+      )
+      values (v_receipt_req_id, 1, 'manager', 'approved', auth.uid(), now())
+      on conflict (request_id, step_no) do nothing;
+
+      v_receipt_req_status := 'approved';
+    else
+      raise exception 'purchase receipt requires approval';
+    end if;
+  end if;
+
+  v_receipt_requires_approval := v_required_receipt;
+  v_receipt_approval_status := case when v_receipt_req_id is null then 'pending' else 'approved' end;
 
   if not v_reuse_receipt then
     begin
@@ -609,4 +670,3 @@ revoke all on function public.receive_purchase_order_partial(uuid, jsonb, timest
 grant execute on function public.receive_purchase_order_partial(uuid, jsonb, timestamptz) to authenticated;
 
 notify pgrst, 'reload schema';
-

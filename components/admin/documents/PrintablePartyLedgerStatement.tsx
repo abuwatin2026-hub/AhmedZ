@@ -138,7 +138,7 @@ export default function PrintablePartyLedgerStatement(props: {
         .info-item { display: flex; flex-direction: column; }
         .info-label { font-size: 11px; color: #64748b; font-weight: bold; margin-bottom: 4px; }
         .info-value { font-size: 14px; font-weight: 600; color: #0f172a; }
-        .tabular { font-variant-numeric: tabular-nums; font-family: 'Courier New', monospace; }
+        .tabular { font-variant-numeric: tabular-nums; font-family: 'Courier New', monospace; word-break: break-word; overflow-wrap: anywhere; }
         .summary {
           display: grid;
           grid-template-columns: repeat(3, 1fr);
@@ -153,7 +153,7 @@ export default function PrintablePartyLedgerStatement(props: {
         }
         .summary-card .label { font-size: 12px; color: #64748b; }
         .summary-card .value { font-size: 18px; font-weight: 800; color: #0f172a; }
-        .lines-table { width: 100%; border-collapse: separate; border-spacing: 0; margin-bottom: 18px; font-size: 12px; border-radius: 8px; overflow: hidden; border: 1px solid #e2e8f0; }
+        .lines-table { width: 100%; border-collapse: separate; border-spacing: 0; margin-bottom: 18px; font-size: 12px; border-radius: 8px; overflow: hidden; border: 1px solid #e2e8f0; table-layout: fixed; }
         .lines-table th {
           background: #1e293b;
           color: white;
@@ -168,6 +168,8 @@ export default function PrintablePartyLedgerStatement(props: {
           border-bottom: 1px solid #e2e8f0;
           vertical-align: top;
           color: #334155;
+          word-break: break-word;
+          overflow-wrap: anywhere;
         }
         .lines-table tr:last-child td { border-bottom: none; }
         .lines-table tr:nth-child(even) { background-color: #f8fafc; }
@@ -224,20 +226,23 @@ export default function PrintablePartyLedgerStatement(props: {
         <div className="summary-card">
           <div className="label">الرصيد الحالي</div>
           <div className="value tabular" dir="ltr">{fmt(totals.last)}</div>
+          <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
+            {totals.last < 0 ? 'دائن' : totals.last > 0 ? 'مدين' : 'متزن'}
+          </div>
         </div>
       </div>
 
       <table className="lines-table">
         <thead>
           <tr>
-            <th style={{ width: '14%' }}>التاريخ</th>
+            <th style={{ width: '12%' }}>التاريخ</th>
             <th style={{ width: '10%' }}>رمز الحساب</th>
             <th style={{ width: '18%' }}>اسم الحساب</th>
             <th style={{ width: '12%' }}>مدين</th>
             <th style={{ width: '12%' }}>دائن</th>
             <th style={{ width: '12%' }}>الرصيد</th>
-            <th style={{ width: '14%' }}>المصدر</th>
-            <th style={{ width: '14%' }}>المتبقي/الحالة</th>
+            <th style={{ width: '12%' }}>المصدر</th>
+            <th style={{ width: '12%' }}>المتبقي/الحالة</th>
           </tr>
         </thead>
         <tbody>
@@ -250,24 +255,44 @@ export default function PrintablePartyLedgerStatement(props: {
               <td style={{ fontWeight: 600 }}>{r.account_name}</td>
               <td className="tabular text-center" dir="ltr" style={{ color: r.direction === 'debit' ? '#0f172a' : '#cbd5e1' }}>
                 {r.direction === 'debit' ? fmt(convert(Number(r.base_amount || 0))) : '—'}
-                <div style={{ fontSize: 10, color: '#64748b' }}>
-                  {selectedCode || baseCode} {r.direction === 'debit' ? fmt(convert(Number(r.base_amount || 0))) : '—'}
-                </div>
+                <div style={{ fontSize: 10, color: '#64748b' }}>{selectedCode || baseCode}</div>
               </td>
               <td className="tabular text-center" dir="ltr" style={{ color: r.direction === 'credit' ? '#0f172a' : '#cbd5e1' }}>
                 {r.direction === 'credit' ? fmt(convert(Number(r.base_amount || 0))) : '—'}
-                <div style={{ fontSize: 10, color: '#64748b' }}>
-                  {selectedCode || baseCode} {r.direction === 'credit' ? fmt(convert(Number(r.base_amount || 0))) : '—'}
-                </div>
+                <div style={{ fontSize: 10, color: '#64748b' }}>{selectedCode || baseCode}</div>
               </td>
               <td className="tabular text-center" dir="ltr">{fmt(convert(Number(r.running_balance || 0)))}</td>
               <td>
-                <div className="tabular" style={{ fontSize: 11 }}>
-                  {r.source_table}:{r.source_event}
-                </div>
-                <div className="tabular" dir="ltr" style={{ fontSize: 11, color: '#64748b' }}>
-                  {r.source_id || '—'}
-                </div>
+                {(() => {
+                  const t = String(r.source_table || '').trim();
+                  const e = String(r.source_event || '').trim();
+                  const id = String(r.source_id || '').trim();
+                  const mapTable = (x: string) => {
+                    const xl = x.toLowerCase();
+                    if (xl === 'payments') return 'دفعة';
+                    if (xl === 'purchase_orders') return 'أمر شراء';
+                    if (xl === 'orders') return 'طلب/فاتورة';
+                    if (xl === 'inventory_movements') return 'حركة مخزون';
+                    if (xl === 'journal_vouchers') return 'قيد اليومية';
+                    return x || '—';
+                  };
+                  const mapEvent = (x: string) => {
+                    const xl = x.toLowerCase();
+                    if (xl === 'out') return 'صرف';
+                    if (xl === 'in') return 'قبض';
+                    if (xl === 'created') return 'إنشاء';
+                    if (xl === 'purchase_in') return 'استلام مشتريات';
+                    return x || '';
+                  };
+                  const label = [mapTable(t), mapEvent(e)].filter(Boolean).join(' • ');
+                  const shortId = id ? id.slice(-8).toUpperCase() : '—';
+                  return (
+                    <>
+                      <div className="tabular" style={{ fontSize: 11 }}>{label || '—'}</div>
+                      <div className="tabular" dir="ltr" style={{ fontSize: 11, color: '#64748b' }}>{shortId}</div>
+                    </>
+                  );
+                })()}
               </td>
               <td>
                 <div className="tabular" dir="ltr" style={{ fontSize: 12 }}>

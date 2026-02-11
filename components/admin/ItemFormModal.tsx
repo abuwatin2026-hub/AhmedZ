@@ -65,8 +65,35 @@ const ItemFormModal: React.FC<ItemFormModalProps> = ({ isOpen, onClose, onSave, 
   });
 
   const [item, setItem] = useState(getInitialFormState());
+  const [priceDraft, setPriceDraft] = useState<string>('0');
   const [hasReceipts, setHasReceipts] = useState(false);
   const [formError, setFormError] = useState<string>('');
+
+  const normalizeDecimalDraft = (raw: string) => {
+    let s = String(raw ?? '');
+    const arabicIndic: Record<string, string> = { '٠': '0', '١': '1', '٢': '2', '٣': '3', '٤': '4', '٥': '5', '٦': '6', '٧': '7', '٨': '8', '٩': '9' };
+    const easternArabicIndic: Record<string, string> = { '۰': '0', '۱': '1', '۲': '2', '۳': '3', '۴': '4', '۵': '5', '۶': '6', '۷': '7', '۸': '8', '۹': '9' };
+    s = s.replace(/[٠-٩]/g, (d) => arabicIndic[d] || d);
+    s = s.replace(/[۰-۹]/g, (d) => easternArabicIndic[d] || d);
+    s = s.replace(/٫/g, '.').replace(/,/g, '.');
+    const keepTrailingDot = s.trim().endsWith('.');
+    s = s.replace(/[^\d.]/g, '');
+    const parts = s.split('.');
+    const intPart = parts[0] || '';
+    const fracPart = parts.slice(1).join('');
+    if (!intPart && !fracPart) return keepTrailingDot ? '.' : '';
+    if (keepTrailingDot) return `${intPart}${fracPart ? `.${fracPart}` : '.'}`;
+    return fracPart ? `${intPart}.${fracPart}` : intPart;
+  };
+
+  const parseDecimalDraft = (draft: string) => {
+    const s = normalizeDecimalDraft(draft);
+    if (!s || s === '.') return 0;
+    const cleaned = s.endsWith('.') ? s.slice(0, -1) : s;
+    const n = parseFloat(cleaned);
+    if (!Number.isFinite(n)) return 0;
+    return Math.max(0, n);
+  };
 
   useEffect(() => {
     if (itemToEdit) {
@@ -105,8 +132,10 @@ const ItemFormModal: React.FC<ItemFormModalProps> = ({ isOpen, onClose, onSave, 
         cartonSize: Number((itemToEdit as any).cartonSize ?? 0) || 0,
         uomUnits,
       });
+      setPriceDraft(String(Number(itemToEdit.price || 0) || 0));
     } else {
       setItem(getInitialFormState());
+      setPriceDraft('0');
     }
   }, [itemToEdit, isOpen]);
 
@@ -260,7 +289,18 @@ const ItemFormModal: React.FC<ItemFormModalProps> = ({ isOpen, onClose, onSave, 
     if (type === 'checkbox') {
       setItem(prev => ({ ...prev, [name]: (e.target as HTMLInputElement).checked }));
     } else {
-      setItem(prev => ({ ...prev, [name]: (name === 'price' || name === 'costPrice') ? parseFloat(value) : value }));
+      const parseNum = (raw: string) => {
+        let s = String(raw || '').trim();
+        const arabicIndic: Record<string, string> = { '٠': '0', '١': '1', '٢': '2', '٣': '3', '٤': '4', '٥': '5', '٦': '6', '٧': '7', '٨': '8', '٩': '9' };
+        const easternArabicIndic: Record<string, string> = { '۰': '0', '۱': '1', '۲': '2', '۳': '3', '۴': '4', '۵': '5', '۶': '6', '۷': '7', '۸': '8', '۹': '9' };
+        s = s.replace(/[٠-٩]/g, (d) => arabicIndic[d] || d);
+        s = s.replace(/[۰-۹]/g, (d) => easternArabicIndic[d] || d);
+        s = s.replace(/٫/g, '.').replace(/,/g, '.');
+        s = s.replace(/[^\d.\-]/g, '');
+        const n = parseFloat(s);
+        return Number.isFinite(n) ? n : 0;
+      };
+      setItem(prev => ({ ...prev, [name]: (name === 'price' || name === 'costPrice') ? parseNum(String(value || '')) : value }));
     }
   };
 
@@ -279,7 +319,14 @@ const ItemFormModal: React.FC<ItemFormModalProps> = ({ isOpen, onClose, onSave, 
 
   const handleNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
-    const parsed = parseFloat(value);
+    let s = String(value || '').trim();
+    const arabicIndic: Record<string, string> = { '٠': '0', '١': '1', '٢': '2', '٣': '3', '٤': '4', '٥': '5', '٦': '6', '٧': '7', '٨': '8', '٩': '9' };
+    const easternArabicIndic: Record<string, string> = { '۰': '0', '۱': '1', '۲': '2', '۳': '3', '۴': '4', '۵': '5', '۶': '6', '۷': '7', '۸': '8', '۹': '9' };
+    s = s.replace(/[٠-٩]/g, (d) => arabicIndic[d] || d);
+    s = s.replace(/[۰-۹]/g, (d) => easternArabicIndic[d] || d);
+    s = s.replace(/٫/g, '.').replace(/,/g, '.');
+    s = s.replace(/[^\d.\-]/g, '');
+    const parsed = parseFloat(s);
     const numeric = Number.isFinite(parsed) ? parsed : 0;
     setItem((prev) => {
       return { ...prev, [name]: numeric } as typeof prev;
@@ -417,16 +464,93 @@ const ItemFormModal: React.FC<ItemFormModalProps> = ({ isOpen, onClose, onSave, 
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">السعر (البيع)</label>
-              <NumberInput
-                id="price"
-                name="price"
-                value={item.price}
-                onChange={handleNumberChange}
-                min={0}
-                step={0.5}
-                disabled={Boolean(itemToEdit) && !hasPermission('prices.manage')}
-              />
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">السعر (البيع)</label>
+                <input
+                  id="price"
+                  name="price"
+                  type="text"
+                  inputMode="decimal"
+                  dir="ltr"
+                  value={priceDraft}
+                  onChange={(e) => {
+                    const next = normalizeDecimalDraft(e.target.value);
+                    setPriceDraft(next);
+                    if (/\d/.test(next)) {
+                      const n = parseDecimalDraft(next);
+                      setItem((prev) => ({ ...prev, price: n }));
+                    }
+                  }}
+                  onBlur={() => {
+                    const n = parseDecimalDraft(priceDraft);
+                    setItem((prev) => ({ ...prev, price: n }));
+                    setPriceDraft(String(n));
+                  }}
+                  className="mt-1 w-full p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600 font-mono"
+                  disabled={Boolean(itemToEdit) && !hasPermission('prices.manage')}
+                />
+                {(() => {
+                  const isWeight = item.unitType === 'kg' || item.unitType === 'gram';
+                  const packSize = Number((item as any).packSize || 0) || 0;
+                  const cartonSize = Number((item as any).cartonSize || 0) || 0;
+                  const basePrice = Number(item.price || 0) || 0;
+                  const round6 = (v: number) => {
+                    const n = Number(v);
+                    if (!Number.isFinite(n)) return 0;
+                    return Math.round(n * 1_000_000) / 1_000_000;
+                  };
+                  const canConvert = !isWeight && basePrice > 0;
+                  const derivedPack = packSize > 0 ? round6(basePrice * packSize) : null;
+                  const derivedCarton = cartonSize > 0 ? round6(basePrice * cartonSize) : null;
+                  const showDerived = derivedPack != null || derivedCarton != null;
+                  return (
+                    <div className="mt-2 space-y-2">
+                      <div className="text-xs text-gray-500 dark:text-gray-400">
+                        السعر يُحفظ على وحدة الأساس ({item.unitType || 'piece'}).
+                      </div>
+                      {showDerived ? (
+                        <div className="text-xs text-gray-600 dark:text-gray-300 font-mono" dir="ltr">
+                          {derivedPack != null ? <div>{`Pack=${packSize} ⇒ ${derivedPack.toFixed(2)} ${(baseCode || '—')}`}</div> : null}
+                          {derivedCarton != null ? <div>{`Carton=${cartonSize} ⇒ ${derivedCarton.toFixed(2)} ${(baseCode || '—')}`}</div> : null}
+                        </div>
+                      ) : null}
+                      {(packSize > 0 || cartonSize > 0) && canConvert ? (
+                        <div className="flex flex-wrap gap-2">
+                          {packSize > 0 ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const next = round6(basePrice / packSize);
+                                setItem((prev) => ({ ...prev, price: next }));
+                                setPriceDraft(String(next));
+                              }}
+                              disabled={Boolean(itemToEdit) && !hasPermission('prices.manage')}
+                              className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-xs text-gray-800 dark:text-gray-200"
+                            >
+                              اعتبر السعر الحالي سعر الباكت
+                            </button>
+                          ) : null}
+                          {cartonSize > 0 ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const next = round6(basePrice / cartonSize);
+                                setItem((prev) => ({ ...prev, price: next }));
+                                setPriceDraft(String(next));
+                              }}
+                              disabled={Boolean(itemToEdit) && !hasPermission('prices.manage')}
+                              className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-xs text-gray-800 dark:text-gray-200"
+                            >
+                              اعتبر السعر الحالي سعر الكرتون
+                            </button>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })()}
+              </div>
+              <div />
             </div>
 
             <div>

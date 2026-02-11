@@ -539,10 +539,12 @@ const ManageOrdersScreen: React.FC = () => {
         const base = inStoreLines.map((l) => {
             const mi = menuItems.find(m => m.id === l.menuItemId);
             const unitType = mi?.unitType || 'piece';
+            const uomQty = Number(l.uomQtyInBase || 1) || 1;
             const qty = (unitType === 'kg' || unitType === 'gram')
                 ? (Number(l.weight) || Number(l.quantity) || 0)
-                : (Number(l.quantity) || 0);
-            return `${l.menuItemId}:${unitType}:${qty}`;
+                : ((Number(l.quantity) || 0) * uomQty);
+            const priceSig = mi ? `${Number(mi.price) || 0}:${Number((mi as any).pricePerUnit) || 0}` : '0:0';
+            return `${l.menuItemId}:${unitType}:${qty}:u${uomQty}:p${priceSig}`;
         }).sort().join('|');
         const wh = sessionScope.scope?.warehouseId || '';
         return `${base}|cust:${inStoreSelectedCustomerId || ''}|wh:${wh}`;
@@ -572,9 +574,10 @@ const ManageOrdersScreen: React.FC = () => {
                 const requests = inStoreLines.map((l) => {
                     const mi = menuItems.find(m => m.id === l.menuItemId);
                     const unitType = mi?.unitType || 'piece';
+                    const uomQty = Number(l.uomQtyInBase || 1) || 1;
                     const pricingQty = (unitType === 'kg' || unitType === 'gram')
                         ? (Number(l.weight) || Number(l.quantity) || 0)
-                        : (Number(l.quantity) || 0);
+                        : ((Number(l.quantity) || 0) * uomQty);
                     const key = `${l.menuItemId}:${unitType}:${pricingQty}:${inStoreSelectedCustomerId || ''}`;
                     return { key, itemId: l.menuItemId, unitType, pricingQty };
                 }).filter(r => r.pricingQty > 0);
@@ -587,35 +590,19 @@ const ManageOrdersScreen: React.FC = () => {
 
                 const results = await Promise.all(Array.from(uniq.values()).map(async (r) => {
                     const fallback = async () => {
-                        const { data, error } = await supabase.rpc('get_item_price_with_discount', {
-                            p_item_id: r.itemId,
-                            p_customer_id: inStoreSelectedCustomerId ? String(inStoreSelectedCustomerId) : null,
-                            p_quantity: r.pricingQty,
-                        });
-                        if (error) throw error;
-                        const unitPrice = Number(data);
-                        if (!Number.isFinite(unitPrice) || unitPrice < 0) return { key: r.key, unitPrice: 0, unitType: r.unitType };
+                        const mi = menuItems.find(m => m.id === r.itemId);
+                        if (!mi) return { key: r.key, unitPrice: 0, unitType: r.unitType };
+                        const baseUnitPrice = mi.unitType === 'gram' && Number(mi.pricePerUnit || 0) > 0
+                            ? (Number(mi.pricePerUnit) || 0) / 1000
+                            : (Number(mi.price) || 0);
+                        const unitPrice = Number(baseUnitPrice) || 0;
                         const unitPricePerKg = r.unitType === 'gram' ? unitPrice * 1000 : undefined;
                         return { key: r.key, unitPrice, unitPricePerKg, unitType: r.unitType };
                     };
 
+                    // Prefer local pricing for in-store sales; skip server suggested pricing
                     if (warehouseId) {
-                        try {
-                            const { data, error } = await supabase.rpc('get_fefo_pricing', {
-                                p_item_id: r.itemId,
-                                p_warehouse_id: warehouseId,
-                                p_quantity: r.pricingQty,
-                                p_customer_id: (inStoreSelectedCustomerId && inStoreSelectedCustomerId.trim()) ? inStoreSelectedCustomerId : null,
-                            });
-                            if (error) throw error;
-                            const row = (Array.isArray(data) ? data[0] : data) as any;
-                            const unitPrice = Number(row?.suggested_price);
-                            if (!Number.isFinite(unitPrice) || unitPrice < 0) return await fallback();
-                            const unitPricePerKg = r.unitType === 'gram' ? unitPrice * 1000 : undefined;
-                            return { key: r.key, unitPrice, unitPricePerKg, unitType: r.unitType };
-                        } catch {
-                            return await fallback();
-                        }
+                        return await fallback();
                     }
 
                     return await fallback();
@@ -2634,6 +2621,7 @@ const ManageOrdersScreen: React.FC = () => {
                 confirmingText={language === 'ar' ? 'جاري التسجيل...' : 'Creating...'}
                 cancelText={language === 'ar' ? 'رجوع' : 'Back'}
                 confirmButtonClassName="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400"
+                maxWidthClassName="max-w-5xl"
                 hideConfirmButton={inStoreLines.length === 0 || inStoreVisiblePaymentMethods.length === 0 || !inStorePaymentMethod}
             >
                     <div className="space-y-4">
@@ -3374,6 +3362,7 @@ const ManageOrdersScreen: React.FC = () => {
                                     if (!mi) return null;
                                     const name = mi.name?.[language] || mi.name?.ar || mi.name?.en || mi.id;
                                     const isWeightBased = mi.unitType === 'kg' || mi.unitType === 'gram';
+                                    const uomQty = Number(line.uomQtyInBase || 1) || 1;
                                     const pricingQty = isWeightBased ? (Number(line.weight ?? 0) || 0) : ((Number(line.quantity ?? 0) || 0) * (Number(line.uomQtyInBase || 1) || 1));
                                     const pricingKey = `${line.menuItemId}:${mi.unitType || 'piece'}:${pricingQty}:${inStoreSelectedCustomerId || ''}`;
                                     const priced = inStorePricingMap[pricingKey];
@@ -3397,7 +3386,10 @@ const ManageOrdersScreen: React.FC = () => {
                                     const unitPrice = convertBaseToInStoreTxn(baseUnitPrice, Number(inStoreTransactionFxRate) || 1);
                                     const lineTotal = convertBaseToInStoreTxn(baseLineTotal, Number(inStoreTransactionFxRate) || 1);
                                     const currentValue = isWeightBased ? (line.weight ?? 0) : (line.quantity ?? 0);
-                                    const exceeded = typeof available === 'number' ? currentValue > available : false;
+                                    const availableInUom = (!isWeightBased && typeof available === 'number' && uomQty > 0)
+                                        ? Math.floor((available / uomQty) + 1e-9)
+                                        : available;
+                                    const exceeded = typeof availableInUom === 'number' ? currentValue > availableInUom : false;
 
                                     const addonNames = line.selectedAddons && mi.addons
                                         ? Object.keys(line.selectedAddons).map(aid => {
@@ -3412,8 +3404,15 @@ const ManageOrdersScreen: React.FC = () => {
                                                 <div className="flex-1 min-w-0">
                                                     <div className="text-sm font-semibold text-gray-900 dark:text-white truncate">{name}</div>
                                                     <div className="text-xs text-gray-500 dark:text-gray-400">{unitTranslations[mi.unitType || 'piece'] || (mi.unitType === 'piece' ? 'قطعة' : mi.unitType)}</div>
+                                                    {!isWeightBased && typeof available === 'number' ? (
+                                                        <div className="text-xs text-gray-500 dark:text-gray-400">
+                                                            متاح: {(!isWeightBased && typeof availableInUom === 'number') ? availableInUom : available}{' '}
+                                                            {String(line.uomCode || mi.unitType || 'piece')}{' '}
+                                                            <span className="text-gray-400">({available} {String(mi.unitType || 'piece')})</span>
+                                                        </div>
+                                                    ) : null}
                                                     <CurrencyDualAmount
-                                                      amount={unitPrice}
+                                                      amount={!isWeightBased ? (unitPrice * uomQty) : unitPrice}
                                                       currencyCode={inStoreTransactionCurrency}
                                                       baseAmount={undefined}
                                                       fxRate={undefined}
@@ -3440,13 +3439,13 @@ const ManageOrdersScreen: React.FC = () => {
                                                             updateInStoreLine(index, isWeightBased ? { weight: val } : { quantity: val });
                                                         }}
                                                         min={0}
-                                                        max={available}
+                                                        max={availableInUom}
                                                         step={isWeightBased ? (mi.unitType === 'gram' ? 1 : 0.01) : 1}
                                                         className={exceeded ? 'border-red-500' : ''}
                                                     />
                                                     {exceeded && (
                                                         <div className="mt-1 text-[10px] text-red-600 dark:text-red-400">
-                                                            يتجاوز المتاح: {available?.toFixed ? available.toFixed(2) : available}
+                                                            يتجاوز المتاح: {availableInUom?.toFixed ? availableInUom.toFixed(2) : availableInUom}
                                                         </div>
                                                     )}
                                                 </div>

@@ -36,7 +36,7 @@ const PartyLedgerStatementScreen: React.FC = () => {
   const location = useLocation();
   const { settings } = useSettings();
   const { showNotification } = useToast();
-  const { user } = useAuth();
+  const { hasPermission } = useAuth();
   const [loading, setLoading] = useState(true);
   const [partyName, setPartyName] = useState<string>('—');
   const [partyType, setPartyType] = useState<string>('party');
@@ -52,7 +52,8 @@ const PartyLedgerStatementScreen: React.FC = () => {
   const [applying, setApplying] = useState(false);
   const [backfilling, setBackfilling] = useState(false);
   const [lastBackfillCount, setLastBackfillCount] = useState<number | null>(null);
-  const canManage = user?.role === 'owner' || user?.role === 'manager';
+  const canViewAccounting = Boolean(hasPermission?.('accounting.view'));
+  const canManageAccounting = Boolean(hasPermission?.('accounting.manage'));
   const [baseCurrency, setBaseCurrency] = useState<string>('');
   const [printCurrency, setPrintCurrency] = useState<string>('');
   const [printFxRate, setPrintFxRate] = useState<number>(1);
@@ -81,6 +82,23 @@ const PartyLedgerStatementScreen: React.FC = () => {
       } as any);
       if (error) throw error;
       setRows((Array.isArray(data) ? data : []) as any);
+
+      const totalCredit = (Array.isArray(data) ? data : []).reduce((s: number, r: any) => s + (String(r?.direction) === 'credit' ? Number(r?.base_amount || 0) : 0), 0);
+      if (partyType === 'supplier' && totalCredit <= 1e-6) {
+        const { data: backfillCount } = await supabase.rpc('backfill_party_ledger_for_existing_entries', {
+          p_batch: 5000,
+          p_only_party_id: partyId,
+        } as any);
+        setLastBackfillCount(Number(backfillCount) || 0);
+        const { data: data2 } = await supabase.rpc('party_ledger_statement_v2', {
+          p_party_id: partyId,
+          p_account_code: accountCode.trim() || null,
+          p_currency: currency.trim().toUpperCase() || null,
+          p_start: start.trim() || null,
+          p_end: end.trim() || null,
+        } as any);
+        setRows((Array.isArray(data2) ? data2 : []) as any);
+      }
     } catch (err: any) {
       showNotification(String(err?.message || 'تعذر تحميل كشف الحساب'), 'error');
     } finally {
@@ -286,16 +304,25 @@ const PartyLedgerStatementScreen: React.FC = () => {
 
   const handleBackfill = async () => {
     if (!partyId) return;
+    if (!canViewAccounting) {
+      showNotification('ليس لديك صلاحية عرض المحاسبة.', 'error');
+      return;
+    }
     const ok = window.confirm('سيتم تحديث دفتر الطرف لهذا الطرف اعتمادًا على القيود المرحّلة. المتابعة؟');
     if (!ok) return;
     setBackfilling(true);
     try {
       const supabase = getSupabaseClient();
       if (!supabase) throw new Error('supabase not available');
-      const { data, error } = await supabase.rpc('backfill_party_ledger_for_existing_entries', {
-        p_batch: 5000,
-        p_only_party_id: partyId,
-      } as any);
+      const { data, error } = canManageAccounting
+        ? await supabase.rpc('backfill_party_ledger_for_existing_entries', {
+            p_batch: 5000,
+            p_only_party_id: partyId,
+          } as any)
+        : await supabase.rpc('backfill_party_ledger_entries_for_party', {
+            p_party_id: partyId,
+            p_batch: 5000,
+          } as any);
       if (error) throw error;
       const count = Number(data) || 0;
       setLastBackfillCount(count);
@@ -345,7 +372,7 @@ const PartyLedgerStatementScreen: React.FC = () => {
             <Icons.PrinterIcon className="w-5 h-5" />
             <span>طباعة</span>
           </button>
-          {canManage && (
+          {canViewAccounting && (
             <button
               type="button"
               onClick={() => void handleBackfill()}
@@ -356,7 +383,7 @@ const PartyLedgerStatementScreen: React.FC = () => {
               <span>{backfilling ? 'جاري التحديث...' : 'تحديث دفتر الطرف'}</span>
             </button>
           )}
-          {canManage && lastBackfillCount != null && (
+          {canViewAccounting && lastBackfillCount != null && (
             <span className="text-xs text-gray-600 dark:text-gray-300 px-2 py-1 border rounded-md bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
               تم تحديث: {Number(lastBackfillCount || 0)}
             </span>

@@ -58,6 +58,24 @@ begin
     return v_party_id;
   end if;
 
+  if p_source_table = 'inventory_movements' then
+    begin
+      select po.supplier_id
+      into v_po
+      from public.inventory_movements im
+      left join public.batches b on b.id = im.batch_id
+      left join public.purchase_receipts pr on pr.id = b.receipt_id
+      left join public.purchase_orders po on po.id = pr.purchase_order_id
+      where im.id = (p_source_id)::uuid;
+    exception when others then
+      v_po := null;
+    end;
+    if v_po.supplier_id is not null then
+      return public.ensure_financial_party_for_supplier(v_po.supplier_id);
+    end if;
+    return null;
+  end if;
+
   if p_source_table = 'payments' then
     begin
       select *
@@ -186,7 +204,21 @@ begin
 
   if v_is_party_account and new.currency_code is null then
     v_base := public.get_base_currency();
-    if v_source_table = 'orders' then
+    if v_source_table = 'payments' then
+      begin
+        select p.currency, p.fx_rate, p.amount
+        into v_order
+        from public.payments p
+        where p.id = (v_source_id)::uuid;
+        if v_order.currency is not null and upper(v_order.currency) <> upper(v_base) then
+          new.currency_code := upper(v_order.currency);
+          new.fx_rate := coalesce(v_order.fx_rate, 1);
+          new.foreign_amount := abs(coalesce(v_order.amount, 0));
+        end if;
+      exception when others then
+        null;
+      end;
+    elsif v_source_table = 'orders' then
       begin
         select o.currency, o.fx_rate, o.total
         into v_order
@@ -214,6 +246,23 @@ begin
       exception when others then
         null;
       end;
+    elsif v_source_table = 'inventory_movements' then
+      begin
+        select po.currency, po.fx_rate, po.total_amount
+        into v_po
+        from public.inventory_movements im
+        left join public.batches b on b.id = im.batch_id
+        left join public.purchase_receipts pr on pr.id = b.receipt_id
+        left join public.purchase_orders po on po.id = pr.purchase_order_id
+        where im.id = (v_source_id)::uuid;
+        if v_po.currency is not null and upper(v_po.currency) <> upper(v_base) then
+          new.currency_code := upper(v_po.currency);
+          new.fx_rate := coalesce(v_po.fx_rate, 1);
+          new.foreign_amount := abs(coalesce(v_po.total_amount, 0));
+        end if;
+      exception when others then
+        null;
+      end;
     end if;
   end if;
 
@@ -232,4 +281,3 @@ begin
 end $$;
 
 notify pgrst, 'reload schema';
-

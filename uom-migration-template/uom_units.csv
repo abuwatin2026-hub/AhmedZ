@@ -1,0 +1,4 @@
+identifier_type,identifier_value,uom_code,uom_name_ar,uom_name_en,qty_in_base,is_default_purchase,is_default_sales,start_date,end_date,notes
+item_id,,pack,باكت,Pack,12,false,true,,,12 قطعة في الباكت
+item_id,,carton,كرتون,Carton,288,true,false,,,24 باكت في الكرتون (24*12=288)
+barcode,,bottle,قارورة,Bottle,1,false,true,,,مثال لوحدة مساوية للأساس

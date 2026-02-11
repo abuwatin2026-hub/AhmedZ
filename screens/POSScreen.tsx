@@ -423,7 +423,9 @@ const POSScreen: React.FC = () => {
   const getPricingQty = (item: CartItem) => {
     if (isPromotionLine(item)) return Number(item.quantity) || 0;
     const isWeight = item.unitType === 'kg' || item.unitType === 'gram';
-    return isWeight ? (Number(item.weight) || Number(item.quantity) || 0) : (Number(item.quantity) || 0);
+    if (isWeight) return (Number(item.weight) || Number(item.quantity) || 0);
+    const factor = Number((item as any)?.uomQtyInBase || 1) || 1;
+    return (Number(item.quantity) || 0) * factor;
   };
 
   const pricingSignature = useMemo(() => {
@@ -431,7 +433,9 @@ const POSScreen: React.FC = () => {
     const base = items
       .map((i) => {
         if (isPromotionLine(i)) return `promo:${(i as any).promotionId || i.id}:${getPricingQty(i)}`;
-        return `${i.id}:${i.unitType || ''}:${getPricingQty(i)}`;
+        const factor = Number((i as any)?.uomQtyInBase || 1) || 1;
+        const priceSig = `${Number((i as any)?.price) || 0}:${Number((i as any)?.pricePerUnit) || 0}`;
+        return `${i.id}:${i.unitType || ''}:${getPricingQty(i)}:u${factor}:p${priceSig}`;
       })
       .sort()
       .join('|');
@@ -515,6 +519,8 @@ const POSScreen: React.FC = () => {
         if (!hasSession) {
           fefoPricingDisabledRef.current = true;
         }
+        // force local pricing for in-store POS
+        fefoPricingDisabledRef.current = true;
         const results = await Promise.all(pricingItems.map(async (item) => {
           const pricingQty = getPricingQty(item);
           const key = `${transactionCurrency}:${warehouseId}:${item.id}:${item.unitType || ''}:${pricingQty}:${selectedCustomerId || ''}`;
@@ -533,13 +539,7 @@ const POSScreen: React.FC = () => {
             const unitPricePerKg = item.unitType === 'gram' ? convertBaseToTxn(baseUnitPricePerKg || 0, fxRateRef.current) : undefined;
             return { baseUnitPrice, unitPrice, baseUnitPricePerKg, unitPricePerKg };
           };
-          const fallbackCall = async () => {
-            return await supabase.rpc('get_item_price_with_discount', {
-              p_item_id: item.id,
-              p_customer_id: customerId,
-              p_quantity: pricingQty,
-            });
-          };
+          // server fallback disabled: use local price only
           const call = async () => {
             return await supabase.rpc('get_fefo_pricing', {
               p_item_id: item.id,
@@ -549,28 +549,7 @@ const POSScreen: React.FC = () => {
             });
           };
           const resolveViaFallback = async () => {
-            if (!hasSession) return await resolveLocal();
-            let { data, error } = await fallbackCall();
-            if (error && isRpcNotFoundError(error)) {
-              const reloaded = await reloadPostgrestSchema();
-              if (reloaded) {
-                const retry = await fallbackCall();
-                data = retry.data;
-                error = retry.error;
-              }
-            }
-            if (error) throw error;
-            const baseUnitPrice = Number(data);
-            if (!Number.isFinite(baseUnitPrice) || baseUnitPrice < 0) throw new Error('تعذر احتساب السعر.');
-            const unitPrice = convertBaseToTxn(baseUnitPrice, fxRateRef.current);
-            const baseUnitPricePerKg = item.unitType === 'gram' ? baseUnitPrice * 1000 : undefined;
-            const unitPricePerKg = item.unitType === 'gram' ? convertBaseToTxn(baseUnitPricePerKg || 0, fxRateRef.current) : undefined;
-            return {
-              baseUnitPrice,
-              unitPrice,
-              baseUnitPricePerKg,
-              unitPricePerKg,
-            };
+            return await resolveLocal();
           };
 
           let entry: any;

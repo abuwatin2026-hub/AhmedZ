@@ -86,8 +86,19 @@ const POSLineItemList: React.FC<Props> = ({ items, currencyCode, onUpdate, onRem
           const factor = Number((item as any).uomQtyInBase || 1) || 1;
           effectiveQty = (Number(qty) || 0) * factor;
         }
+        const factor = Number((item as any).uomQtyInBase || 1) || 1;
+        const displayUnitPrice = item.unitType === 'gram' ? unitPrice : (unitPrice * factor);
         const lineTotal = (unitPrice + addonsPrice) * (Number(effectiveQty) || 0);
-        const unitLabel = isPromotionLine ? 'باقة' : (item.unitType === 'kg' ? 'كغ' : item.unitType === 'gram' ? 'غ' : 'قطعة');
+        const unitLabel = (() => {
+          if (isPromotionLine) return 'باقة';
+          if (item.unitType === 'kg') return 'كغ';
+          if (item.unitType === 'gram') return 'غ';
+          const raw = String((item as any)?.uomCode || item.unitType || 'piece').trim().toLowerCase();
+          if (raw === 'piece') return 'قطعة';
+          if (raw === 'pack') return 'باكت';
+          if (raw === 'carton') return 'كرتون';
+          return raw || 'قطعة';
+        })();
         const rowNo = index + 1;
         return (
           <div
@@ -109,7 +120,7 @@ const POSLineItemList: React.FC<Props> = ({ items, currencyCode, onUpdate, onRem
                 </div>
               </div>
               <div className="text-sm text-gray-600 dark:text-gray-300 flex flex-wrap gap-x-3 gap-y-1">
-                <InlineMoney amount={unitPrice} />
+                <InlineMoney amount={displayUnitPrice} />
                 {addonsPrice > 0 && (
                   <span>
                     + إضافات <InlineMoney amount={addonsPrice} />
@@ -118,9 +129,20 @@ const POSLineItemList: React.FC<Props> = ({ items, currencyCode, onUpdate, onRem
                 <span className="font-semibold text-indigo-600 dark:text-indigo-300">
                   = <InlineMoney amount={lineTotal} />
                 </span>
-                {!isPromotionLine && (
-                  <span className="text-[11px] text-gray-500 dark:text-gray-400">متاح: {Math.max(0, Number(availableToSell || 0))} • محجوز: {Math.max(0, Number(reserved || 0))}</span>
-                )}
+                {!isPromotionLine && (() => {
+                  const f = Number((item as any).uomQtyInBase || 1) || 1;
+                  const availBase = Math.max(0, Number(availableToSell || 0));
+                  const reservedBase = Math.max(0, Number(reserved || 0));
+                  const availUom = (f > 0 && item.unitType !== 'kg' && item.unitType !== 'gram') ? Math.floor((availBase / f) + 1e-9) : availBase;
+                  const reservedUom = (f > 0 && item.unitType !== 'kg' && item.unitType !== 'gram') ? Math.floor((reservedBase / f) + 1e-9) : reservedBase;
+                  const baseLabel = item.unitType === 'piece' ? 'قطعة' : item.unitType === 'kg' ? 'كغ' : item.unitType === 'gram' ? 'غ' : item.unitType;
+                  const uomLabel = String((item as any).uomCode || item.unitType || 'piece');
+                  return (
+                    <span className="text-[11px] text-gray-500 dark:text-gray-400">
+                      متاح: {availUom} {uomLabel} <span className="text-gray-400">({availBase} {baseLabel})</span> • محجوز: {reservedUom}
+                    </span>
+                  );
+                })()}
               </div>
               {!isPromotionLine && ((item as any)?._fefoBatchCode || (item as any)?._fefoExpiryDate) && (
                 <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-gray-600 dark:text-gray-300">

@@ -17,9 +17,10 @@ type FinancialPartyRow = {
 };
 
 const FinancialPartiesScreen: React.FC = () => {
-  const { user } = useAuth();
+  const { hasPermission } = useAuth();
   const { showNotification } = useToast();
-  const canManage = user?.role === 'owner' || user?.role === 'manager';
+  const canManage = Boolean(hasPermission?.('accounting.manage'));
+  const canViewAccounting = Boolean(hasPermission?.('accounting.view'));
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<FinancialPartyRow[]>([]);
   const [query, setQuery] = useState('');
@@ -143,8 +144,8 @@ const FinancialPartiesScreen: React.FC = () => {
   };
 
   const handleBackfillParty = async (partyId: string) => {
-    if (!canManage) {
-      showNotification('ليس لديك صلاحية تنفيذ هذا الإجراء.', 'error');
+    if (!canViewAccounting) {
+      showNotification('ليس لديك صلاحية عرض المحاسبة.', 'error');
       return;
     }
     const ok = window.confirm('سيتم تحديث دفتر الطرف لهذا الطرف اعتمادًا على القيود المرحّلة. المتابعة؟');
@@ -153,10 +154,15 @@ const FinancialPartiesScreen: React.FC = () => {
     try {
       const supabase = getSupabaseClient();
       if (!supabase) throw new Error('supabase not available');
-      const { data, error } = await supabase.rpc('backfill_party_ledger_for_existing_entries', {
-        p_batch: 5000,
-        p_only_party_id: partyId,
-      } as any);
+      const { data, error } = canManage
+        ? await supabase.rpc('backfill_party_ledger_for_existing_entries', {
+            p_batch: 5000,
+            p_only_party_id: partyId,
+          } as any)
+        : await supabase.rpc('backfill_party_ledger_entries_for_party', {
+            p_party_id: partyId,
+            p_batch: 5000,
+          } as any);
       if (error) throw error;
       const count = Number(data) || 0;
       showNotification(`تم تحديث دفتر الطرف (${count} سطر/أسطر).`, 'success');

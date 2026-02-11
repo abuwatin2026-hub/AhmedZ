@@ -23,6 +23,10 @@ export const isAbortLikeError = (error: unknown): boolean => {
 export const localizeError = (message: string): string => {
   const raw = message.trim().toLowerCase();
   if (!raw) return 'فشل العملية.';
+  if (raw.includes('barcode already exists')) return 'الباركود مستخدم مسبقاً لصنف آخر.';
+  if (raw.includes('duplicate') && raw.includes('menu_items_active_name_ar_uniq')) return 'يوجد صنف بنفس الاسم.';
+  if (raw.includes('duplicate') && raw.includes('menu_items_active_name_en_uniq')) return 'يوجد صنف بنفس الاسم.';
+  if (raw.includes('duplicate') && raw.includes('menu_items_active_barcode_uniq')) return 'الباركود مستخدم مسبقاً لصنف آخر.';
   if (raw.includes('no api key found in request') || raw.includes('no `apikey` request header') || raw.includes('apikey request header')) {
     return 'مفتاح Supabase (apikey) غير موجود في الطلب. تأكد من ضبط VITE_SUPABASE_ANON_KEY في بيئة البناء ثم أعد النشر.';
   }
@@ -114,6 +118,12 @@ export const localizeError = (message: string): string => {
   if (raw.includes('p_payment_id is required')) {
     return 'معرف الدفعة مطلوب.';
   }
+  if (raw.includes('base uom missing for item')) {
+    return 'تعذر إعداد وحدات الصنف لأن وحدة الأساس غير مهيأة له. حدّث النظام ثم أعد المحاولة.';
+  }
+  if (raw.includes('invalid refresh token') || raw.includes('refresh token not found')) {
+    return 'انتهت الجلسة أو بيانات الدخول غير صالحة. سجّل الخروج ثم سجّل الدخول مرة أخرى.';
+  }
   if (raw.includes('source_id is required') || raw.includes('source_type is required')) {
     return 'تعذر ترحيل القيد المحاسبي بسبب نقص بيانات المصدر. حدّث الصفحة ثم أعد المحاولة.';
   }
@@ -152,7 +162,8 @@ export const localizeError = (message: string): string => {
     raw.includes('already exists') ||
     raw.includes('duplicate')
   ) return 'البيانات المدخلة موجودة مسبقًا.';
-  if (raw.includes('missing') || raw.includes('required')) return 'الحقول المطلوبة ناقصة.';
+  if (raw.includes('missing required')) return 'الحقول المطلوبة ناقصة.';
+  if (raw.includes(' is required') || raw.includes(' required')) return 'الحقول المطلوبة ناقصة.';
   return message;
 };
 
@@ -165,6 +176,12 @@ export const localizeSupabaseError = (error: unknown): string => {
     const details = typeof anyErr?.details === 'string' ? anyErr.details : '';
     const hint = typeof anyErr?.hint === 'string' ? anyErr.hint : '';
     const combined = `${msg}\n${details}\n${hint}`.toLowerCase();
+    if (combined.includes('menu_items_active_name_ar_uniq') || combined.includes('menu_items_active_name_en_uniq')) {
+      return 'يوجد صنف بنفس الاسم.';
+    }
+    if (combined.includes('menu_items_active_barcode_uniq')) {
+      return 'الباركود مستخدم مسبقاً لصنف آخر.';
+    }
     if (combined.includes('uq_purchase_receipts_idempotency') || combined.includes('purchase_receipts') && combined.includes('idempotency')) {
       return 'تم تنفيذ هذا الاستلام مسبقًا (طلب مكرر).';
     }

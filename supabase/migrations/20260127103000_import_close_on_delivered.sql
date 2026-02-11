@@ -13,7 +13,7 @@ declare
   v_total_adjusted numeric;
   v_new_avg numeric;
 begin
-  if coalesce(new.destination_warehouse_id, '') is null then
+  if new.destination_warehouse_id is null then
     raise exception 'destination_warehouse_id is required to apply landed cost on delivered for shipment %', new.id;
   end if;
   perform public.calculate_shipment_landed_cost(new.id);
@@ -80,7 +80,11 @@ begin
       set avg_cost = v_new_avg,
           updated_at = now(),
           last_updated = now()
-      where id = v_sm.id;
+      where (case
+              when pg_typeof(stock_management.item_id)::text = 'uuid' then stock_management.item_id::text = v_item.item_id_text
+              else stock_management.item_id::text = v_item.item_id_text
+            end)
+        and stock_management.warehouse_id = new.destination_warehouse_id;
     end if;
   end loop;
   return new;

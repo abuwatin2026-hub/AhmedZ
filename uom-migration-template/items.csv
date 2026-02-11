@@ -1,0 +1,3 @@
+identifier_type,identifier_value,item_name_ar,desired_base_unit,base_unit_notes,legacy_purchase_unit,legacy_sales_unit,notes
+item_id,,شوكولاتة مثال,piece,"اختر وحدة الأساس الأصغر (piece/gram/kg).",carton,pack,"مثال: كان يتم الشراء بالكرتون والبيع بالباكت."
+barcode,,عصير مثال,ml,"إذا كان الصنف يُدار بالوزن/الحجم اجعل الأساس gram/kg/ml/l حسب تصميمكم.",case,bottle,"اكتب أي شيء يساعدنا نفهم الواقع."
