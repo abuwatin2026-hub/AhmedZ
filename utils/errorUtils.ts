@@ -47,6 +47,9 @@ export const localizeError = (message: string): string => {
   if (raw.includes('purchase_in requires batch_id') || raw.includes('purchase_in_requires_batch')) {
     return 'لا يمكن استلام المخزون بدون إنشاء دفعة (Batch). حدّث قاعدة البيانات (مايجريشن الاستلام) ثم أعد المحاولة.';
   }
+  if (raw.includes('purchase_items_received_quantity_check') || (raw.includes('violates check constraint') && raw.includes('received_quantity_check'))) {
+    return 'كمية الاستلام تجاوزت الكمية المطلوبة لهذا الصنف (تحقق من وحدة القياس/الكرتون). حدّث الصفحة ثم أعد المحاولة.';
+  }
   if (raw === 'food_sale_requires_batch') return 'لا يمكن بيع صنف غذائي بدون تحديد دفعة.';
   if (raw === 'sale_out_requires_batch') return 'لا يمكن تنفيذ الخصم بدون تحديد دفعة.';
   if (raw === 'no_valid_batch') return 'NO_VALID_BATCH';
