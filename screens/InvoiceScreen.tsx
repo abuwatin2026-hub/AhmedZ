@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useOrders } from '../contexts/OrderContext';
 import { useToast } from '../contexts/ToastContext';
-import Invoice from '../components/Invoice';
+import Invoice, { TriplicateInvoice } from '../components/Invoice';
 import { printPdfFromElement, sharePdf } from '../utils/export';
 import { buildPdfBrandOptions } from '../utils/branding';
 import { BackArrowIcon, ShareIcon, PrinterIcon } from '../components/icons';
@@ -572,12 +572,20 @@ const InvoiceScreen: React.FC = () => {
                 ) : (
                     <div className="bg-white p-4 rounded border border-gray-200">
                         <div className="text-xs text-gray-500 mb-3">هذه معاينة A4 ضمن الواجهة. عند الطباعة قد تُطبّق قواعد @media print.</div>
-                        <Invoice ref={invoiceRef} order={order} settings={settings as any} branding={resolveBranding()} />
+                        {isAdminInvoice ? (
+                            <TriplicateInvoice ref={invoiceRef} order={order} settings={settings as any} branding={resolveBranding()} />
+                        ) : (
+                            <Invoice ref={invoiceRef} order={order} settings={settings as any} branding={resolveBranding()} />
+                        )}
                     </div>
                 )}
             </ConfirmationModal>
 
-            <Invoice ref={invoiceRef} order={order} settings={settings as any} branding={resolveBranding()} />
+            {isAdminInvoice && selectedTemplate === 'a4' ? (
+                <TriplicateInvoice ref={invoiceRef} order={order} settings={settings as any} branding={resolveBranding()} />
+            ) : (
+                <Invoice ref={invoiceRef} order={order} settings={settings as any} branding={resolveBranding()} />
+            )}
         </div>
     );
 };
