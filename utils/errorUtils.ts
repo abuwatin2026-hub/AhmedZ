@@ -23,6 +23,20 @@ export const isAbortLikeError = (error: unknown): boolean => {
 export const localizeError = (message: string): string => {
   const raw = message.trim().toLowerCase();
   if (!raw) return 'فشل العملية.';
+  if (raw.startsWith('duplicate_constraint:')) {
+    const parts = message.split(':');
+    const constraint = (parts[1] || '').trim();
+    const c = constraint.toLowerCase();
+    if (c.includes('uq_purchase_receipts_idempotency') || (c.includes('purchase_receipts') && c.includes('idempotency'))) {
+      return 'تم تنفيذ هذا الاستلام مسبقًا (طلب مكرر).';
+    }
+    if (c.includes('idx_purchase_receipts_grn_number_unique') || (c.includes('purchase_receipts') && c.includes('grn_number'))) {
+      return 'تعذر توليد رقم إشعار الاستلام (GRN) بسبب تعارض. أعد المحاولة بعد لحظات أو تأكد من ضبط الفرع للمستودع.';
+    }
+    return constraint
+      ? `تعذر تنفيذ العملية بسبب تعارض في قاعدة البيانات (${constraint}). أرسل هذه الرسالة للدعم لإصلاح القيد.`
+      : 'تعذر تنفيذ العملية بسبب تعارض في قاعدة البيانات. أرسل هذه الرسالة للدعم لإصلاح القيد.';
+  }
   if (raw.includes('barcode already exists')) return 'الباركود مستخدم مسبقاً لصنف آخر.';
   if (raw.includes('duplicate') && raw.includes('menu_items_active_name_ar_uniq')) return 'يوجد صنف بنفس الاسم.';
   if (raw.includes('duplicate') && raw.includes('menu_items_active_name_en_uniq')) return 'يوجد صنف بنفس الاسم.';
@@ -161,7 +175,24 @@ export const localizeError = (message: string): string => {
     raw.includes('violates unique constraint') ||
     raw.includes('already exists') ||
     raw.includes('duplicate')
-  ) return 'البيانات المدخلة موجودة مسبقًا.';
+  ) {
+    if (raw.includes('uq_purchase_receipts_idempotency') || (raw.includes('purchase_receipts') && raw.includes('idempotency'))) {
+      return 'تم تنفيذ هذا الاستلام مسبقًا (طلب مكرر).';
+    }
+    if (raw.includes('idx_purchase_receipts_grn_number_unique') || (raw.includes('purchase_receipts') && raw.includes('grn_number'))) {
+      return 'تعذر توليد رقم إشعار الاستلام (GRN) بسبب تعارض. أعد المحاولة بعد لحظات أو تأكد من ضبط الفرع للمستودع.';
+    }
+    if (
+      raw.includes('purchase_receipt_items') ||
+      (raw.includes('receipt_id') && raw.includes('item_id') && raw.includes('purchase'))
+    ) {
+      return 'تم إرسال نفس الصنف أكثر من مرة ضمن نفس الاستلام. حدّث الصفحة ثم أعد المحاولة.';
+    }
+    if (raw.includes('uniq_approval_requests_pending')) {
+      return 'يوجد طلب موافقة معلّق لهذه العملية بالفعل. افتح قسم الموافقات واعتمد الطلب أو ألغِه.';
+    }
+    return 'البيانات المدخلة موجودة مسبقًا.';
+  }
   if (raw.includes('missing required')) return 'الحقول المطلوبة ناقصة.';
   if (raw.includes(' is required') || raw.includes(' required')) return 'الحقول المطلوبة ناقصة.';
   return message;

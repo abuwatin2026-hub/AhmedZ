@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { disableRealtime, getBaseCurrencyCode, getSupabaseClient, isRealtimeEnabled, reloadPostgrestSchema } from '../supabase';
 import { isAbortLikeError, localizeSupabaseError } from '../utils/errorUtils';
-import { normalizeIsoDateOnly, toDateInputValue, toUtcIsoAtMiddayFromYmd, toUtcIsoFromLocalDateTimeInput } from '../utils/dateUtils';
+import { normalizeIsoDateOnly, toDateInputValue, toUtcIsoFromLocalDateTimeInput } from '../utils/dateUtils';
 import { Supplier, PurchaseOrder } from '../types';
 import { useAuth } from './AuthContext';
 
@@ -759,7 +759,8 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           }
 
           if (receiveNow) {
-            const occurredAtIso = toUtcIsoAtMiddayFromYmd(normalizedDate);
+            const baseNow = new Date();
+            const occurredAtIsoBase = baseNow.toISOString();
             const rawReceiveItems = items.map(i => ({
               itemId: String(i.itemId || '').trim(),
               quantity: Number(i.quantity || 0),
@@ -783,7 +784,7 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             }
             const receiveItems = Array.from(mergedByKey.values()).filter((r: any) => Number(r?.quantity || 0) > 0);
 
-            const computeIdempotencyKey = async () => {
+            const computeIdempotencyKey = async (occurredAtIso: string) => {
               const parts = receiveItems
                 .map((x: any) => [
                   String(x.itemId || ''),
@@ -807,98 +808,144 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               }
               return raw.length > 180 ? raw.slice(0, 180) : raw;
             };
-            const idempotencyKey = await computeIdempotencyKey();
-            const receiveItemsWithIdempotency = receiveItems.map((x: any) => ({ ...x, idempotencyKey }));
-              const { error: receiveError } = await supabase.rpc('receive_purchase_order_partial', {
-                  p_order_id: orderId,
-                  p_items: receiveItemsWithIdempotency,
-                  p_occurred_at: occurredAtIso
+            const tryReceive = async (occurredAtIso: string) => {
+              const idempotencyKey = await computeIdempotencyKey(occurredAtIso);
+              const receiveItemsWithIdempotency = receiveItems.map((x: any) => ({ ...x, idempotencyKey }));
+              const { data, error } = await supabase.rpc('receive_purchase_order_partial', {
+                p_order_id: orderId,
+                p_items: receiveItemsWithIdempotency,
+                p_occurred_at: occurredAtIso
               });
-              let errAny: any = receiveError;
-              if (errAny) {
-                const msg = String((receiveError as any)?.message || '');
-                const code = String((receiveError as any)?.code || '');
-                if (code === '23505' && /uq_purchase_receipts_idempotency/i.test(msg)) {
-                  const retry = await supabase.rpc('receive_purchase_order_partial', {
-                    p_order_id: orderId,
-                    p_items: receiveItemsWithIdempotency,
-                    p_occurred_at: occurredAtIso
-                  });
+              return { data, error, idempotencyKey, occurredAtIso, receiveItemsWithIdempotency };
+            };
+
+            const recoverFromDuplicate = async (orderId: string, occurredAtIso: string, idempotencyKey: string) => {
+              try {
+                const { data: existing, error: existingErr } = await supabase
+                  .from('purchase_receipts')
+                  .select('id')
+                  .eq('purchase_order_id', orderId)
+                  .eq('idempotency_key', idempotencyKey)
+                  .order('created_at', { ascending: false })
+                  .limit(1)
+                  .maybeSingle();
+                if (!existingErr && existing?.id) {
+                  try {
+                    const repairRes = await supabase.rpc('repair_purchase_receipt_stock', { p_receipt_id: existing.id } as any);
+                    const repairMsg = String((repairRes as any)?.error?.message || '');
+                    if (/schema cache|could not find the function|PGRST202/i.test(repairMsg)) {
+                      await reloadPostgrestSchema();
+                    }
+                  } catch {
+                  }
+                  try {
+                    await supabase.rpc('reconcile_purchase_order_receipt_status', { p_order_id: orderId } as any);
+                  } catch {
+                  }
+                  await updateMenuItemDates(items);
+                  await fetchPurchaseOrders({ silent: false });
+                  return true;
+                }
+              } catch {
+              }
+
+              try {
+                const minIso = new Date(new Date(occurredAtIso).getTime() - 60_000).toISOString();
+                const maxIso = new Date(new Date(occurredAtIso).getTime() + 60_000).toISOString();
+                const { data: recent, error: recentErr } = await supabase
+                  .from('purchase_receipts')
+                  .select('id,received_at')
+                  .eq('purchase_order_id', orderId)
+                  .gte('received_at', minIso)
+                  .lte('received_at', maxIso)
+                  .order('received_at', { ascending: false })
+                  .limit(1)
+                  .maybeSingle();
+                if (!recentErr && recent?.id) {
+                  try {
+                    const repairRes = await supabase.rpc('repair_purchase_receipt_stock', { p_receipt_id: recent.id } as any);
+                    const repairMsg = String((repairRes as any)?.error?.message || '');
+                    if (/schema cache|could not find the function|PGRST202/i.test(repairMsg)) {
+                      await reloadPostgrestSchema();
+                    }
+                  } catch {
+                  }
+                  try {
+                    await supabase.rpc('reconcile_purchase_order_receipt_status', { p_order_id: orderId } as any);
+                  } catch {
+                  }
+                  await updateMenuItemDates(items);
+                  await fetchPurchaseOrders({ silent: false });
+                  return true;
+                }
+              } catch {
+              }
+
+              return false;
+            };
+
+            let lastReceiveErr: any = null;
+            for (let attempt = 0; attempt < 3; attempt += 1) {
+              const occurredAtIso = new Date(new Date(occurredAtIsoBase).getTime() + (attempt * 1100)).toISOString();
+              const result = await tryReceive(occurredAtIso);
+              if (!result.error) {
+                await updateMenuItemDates(items);
+                await fetchPurchaseOrders({ silent: false });
+                return;
+              }
+
+              const msg = String((result.error as any)?.message || '');
+              const code = String((result.error as any)?.code || '');
+              const isDup = isUniqueViolation(result.error) || /^duplicate_constraint:/i.test(msg);
+
+              if (isDup) {
+                const recovered = await recoverFromDuplicate(orderId, occurredAtIso, result.idempotencyKey);
+                if (recovered) return;
+                if (/idx_purchase_receipts_grn_number_unique/i.test(msg) || /grn_number/i.test(msg)) {
+                  lastReceiveErr = result.error as any;
+                  continue;
+                }
+              }
+
+              if (/RECEIPT_APPROVAL_REQUIRED/i.test(msg)) {
+                const reqId = await ensureApprovalRequest(orderId, 'receipt', totalAmount);
+                if (reqId) {
+                  throw new Error('يتطلب الاستلام موافقة. تم إنشاء طلب موافقة للاستلام؛ يرجى اعتماده من قسم الموافقات ثم أعد المحاولة.');
+                }
+                throw new Error('يتطلب الاستلام موافقة. يرجى إنشاء/اعتماد طلب الموافقة من قسم الموافقات ثم إعادة المحاولة.');
+              }
+              if (/RECEIPT_APPROVAL_PENDING/i.test(msg)) {
+                throw new Error('طلب موافقة الاستلام ما زال معلقًا. اعتمده من قسم الموافقات ثم أعد المحاولة.');
+              }
+              if (/purchase receipt requires approval/i.test(msg)) {
+                const reqId = await ensureApprovalRequest(orderId, 'receipt', totalAmount);
+                if (reqId) {
+                  throw new Error('تم إنشاء طلب موافقة للاستلام. يرجى اعتماده من قسم الموافقات ثم أعد المحاولة.');
+                } else {
+                  throw new Error('يتطلب الاستلام موافقة. تعذر إنشاء طلب الموافقة تلقائياً؛ يرجى إنشائه من قسم الموافقات ثم إعادة المحاولة.');
+                }
+              }
+              if (/accounting_documents/i.test(msg) && /branch_id/i.test(msg)) {
+                throw new Error('تم حفظ أمر الشراء، لكن فشل استلام المخزون بسبب إعدادات الفرع/الشركة في المحاسبة. تأكد من ضبط فرع للمستودع أو إنشاء فرع افتراضي ثم أعد المحاولة.');
+              }
+              if (/schema cache|could not find the function|PGRST202/i.test(msg) || code === 'PGRST202') {
+                const reloaded = await reloadPostgrestSchema();
+                if (reloaded) {
+                  const retry = await tryReceive(occurredAtIso);
                   if (!retry.error) {
                     await updateMenuItemDates(items);
                     await fetchPurchaseOrders({ silent: false });
                     return;
                   }
-                  try {
-                    const { data: existing, error: existingErr } = await supabase
-                      .from('purchase_receipts')
-                      .select('id')
-                      .eq('purchase_order_id', orderId)
-                      .eq('idempotency_key', idempotencyKey)
-                      .order('created_at', { ascending: false })
-                      .limit(1)
-                      .maybeSingle();
-                    if (!existingErr && existing?.id) {
-                      try {
-                        const repairRes = await supabase.rpc('repair_purchase_receipt_stock', { p_receipt_id: existing.id } as any);
-                        const repairMsg = String((repairRes as any)?.error?.message || '');
-                        if (/schema cache|could not find the function|PGRST202/i.test(repairMsg)) {
-                          await reloadPostgrestSchema();
-                        }
-                      } catch {
-                      }
-                      try {
-                        await supabase.rpc('reconcile_purchase_order_receipt_status', { p_order_id: orderId } as any);
-                      } catch {
-                      }
-                      await updateMenuItemDates(items);
-                      await fetchPurchaseOrders({ silent: false });
-                      return;
-                    }
-                  } catch {
-                  }
-                  errAny = retry.error as any;
+                  lastReceiveErr = retry.error as any;
+                  continue;
                 }
-                if (/RECEIPT_APPROVAL_REQUIRED/i.test(msg)) {
-                  const reqId = await ensureApprovalRequest(orderId, 'receipt', totalAmount);
-                  if (reqId) {
-                    throw new Error('يتطلب الاستلام موافقة. تم إنشاء طلب موافقة للاستلام؛ يرجى اعتماده من قسم الموافقات ثم أعد المحاولة.');
-                  }
-                  throw new Error('يتطلب الاستلام موافقة. يرجى إنشاء/اعتماد طلب الموافقة من قسم الموافقات ثم إعادة المحاولة.');
-                }
-                if (/RECEIPT_APPROVAL_PENDING/i.test(msg)) {
-                  throw new Error('طلب موافقة الاستلام ما زال معلقًا. اعتمده من قسم الموافقات ثم أعد المحاولة.');
-                }
-                if (/purchase receipt requires approval/i.test(msg)) {
-                  const reqId = await ensureApprovalRequest(orderId, 'receipt', totalAmount);
-                  if (reqId) {
-                    throw new Error('تم إنشاء طلب موافقة للاستلام. يرجى اعتماده من قسم الموافقات ثم أعد المحاولة.');
-                  } else {
-                    throw new Error('يتطلب الاستلام موافقة. تعذر إنشاء طلب الموافقة تلقائياً؛ يرجى إنشائه من قسم الموافقات ثم إعادة المحاولة.');
-                  }
-                }
-                if (/accounting_documents/i.test(msg) && /branch_id/i.test(msg)) {
-                  throw new Error('تم حفظ أمر الشراء، لكن فشل استلام المخزون بسبب إعدادات الفرع/الشركة في المحاسبة. تأكد من ضبط فرع للمستودع أو إنشاء فرع افتراضي ثم أعد المحاولة.');
-                }
-                if (/schema cache|could not find the function|PGRST202/i.test(msg)) {
-                  const reloaded = await reloadPostgrestSchema();
-                  if (reloaded) {
-                    const retry = await supabase.rpc('receive_purchase_order_partial', {
-                      p_order_id: orderId,
-                      p_items: receiveItemsWithIdempotency,
-                      p_occurred_at: occurredAtIso
-                    });
-                    if (!retry.error) {
-                      await updateMenuItemDates(items);
-                      await fetchPurchaseOrders({ silent: false });
-                      return;
-                    }
-                    errAny = retry.error as any;
-                  }
-                }
-                throw errAny;
               }
-              await updateMenuItemDates(items);
+
+              throw result.error as any;
+            }
+
+            if (lastReceiveErr) throw lastReceiveErr;
           }
 
           await fetchPurchaseOrders({ silent: false });
