@@ -185,6 +185,9 @@ export const localizeSupabaseError = (error: unknown): string => {
     if (combined.includes('uq_purchase_receipts_idempotency') || combined.includes('purchase_receipts') && combined.includes('idempotency')) {
       return 'تم تنفيذ هذا الاستلام مسبقًا (طلب مكرر).';
     }
+    if (combined.includes('idx_purchase_receipts_grn_number_unique') || (combined.includes('purchase_receipts') && combined.includes('grn_number'))) {
+      return 'رقم إشعار الاستلام (GRN) مستخدم مسبقًا. تم تنفيذ الاستلام سابقًا.';
+    }
     if (
       combined.includes('purchase_receipt_items') ||
       combined.includes('receipt_id') && combined.includes('item_id') && combined.includes('purchase')

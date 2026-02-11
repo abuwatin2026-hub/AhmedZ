@@ -173,9 +173,28 @@ begin
     order by ar.created_at desc
     limit 1;
 
+    if v_receipt_req_id is null then
+      select ar.id
+      into v_po_req_id
+      from public.approval_requests ar
+      where ar.target_table = 'purchase_orders'
+        and ar.target_id = p_order_id::text
+        and ar.request_type = 'po'
+        and ar.status = 'approved'
+      order by ar.created_at desc
+      limit 1;
+      if v_po_req_id is not null then
+        v_receipt_req_status := 'approved';
+      end if;
+    end if;
+
     if v_required_receipt then
       if v_receipt_req_id is null then
-        if public.is_owner() then
+        -- إذا كانت موافقة أمر الشراء موجودة مسبقًا نعتبر موافقة الاستلام مُعتمدة
+        if v_po_req_id is not null then
+          v_receipt_req_id := v_po_req_id;
+          v_receipt_req_status := 'approved';
+        elsif public.is_owner() then
           insert into public.approval_requests(
             target_table, target_id, request_type, status,
             requested_by, approved_by, approved_at,
@@ -208,10 +227,12 @@ begin
               coalesce(v_po.total_amount, 0),
               v_payload
             );
+            v_receipt_req_status := 'pending';
           exception when others then
             v_receipt_req_id := null;
+            v_receipt_req_status := 'pending';
           end;
-          raise exception 'RECEIPT_APPROVAL_REQUIRED:%', coalesce(v_receipt_req_id::text, '');
+          -- لا نمنع الاستلام؛ نسجل الاستلام بحالة موافقة "معلق"
         end if;
       elsif v_receipt_req_status <> 'approved' then
         raise exception 'RECEIPT_APPROVAL_PENDING:%', coalesce(v_receipt_req_id::text, '');
@@ -234,7 +255,7 @@ begin
         p_order_id,
         coalesce(p_occurred_at, now()),
         auth.uid(),
-        case when v_receipt_req_id is null then 'pending' else 'approved' end,
+        case when coalesce(v_receipt_req_status,'') = 'approved' then 'approved' else 'pending' end,
         v_receipt_req_id,
         v_required_receipt,
         v_wh,

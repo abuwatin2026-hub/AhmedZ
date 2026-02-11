@@ -1195,6 +1195,39 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               }
               error = retry.error as any;
             }
+            if (isUniqueViolation(error)) {
+              try {
+                const minIso = new Date(new Date(occurredAtIso).getTime() - 60_000).toISOString();
+                const maxIso = new Date(new Date(occurredAtIso).getTime() + 60_000).toISOString();
+                const { data: recent, error: recentErr } = await supabase
+                  .from('purchase_receipts')
+                  .select('id,received_at')
+                  .eq('purchase_order_id', orderId)
+                  .gte('received_at', minIso)
+                  .lte('received_at', maxIso)
+                  .order('received_at', { ascending: false })
+                  .limit(1)
+                  .maybeSingle();
+                if (!recentErr && recent?.id) {
+                  try {
+                    const repairRes = await supabase.rpc('repair_purchase_receipt_stock', { p_receipt_id: recent.id } as any);
+                    const repairMsg = String((repairRes as any)?.error?.message || '');
+                    if (/schema cache|could not find the function|PGRST202/i.test(repairMsg)) {
+                      await reloadPostgrestSchema();
+                    }
+                  } catch {
+                  }
+                  try {
+                    await supabase.rpc('reconcile_purchase_order_receipt_status', { p_order_id: orderId } as any);
+                  } catch {
+                  }
+                  await updateMenuItemDates(items);
+                  await fetchPurchaseOrders();
+                  return String(recent.id || '');
+                }
+              } catch {
+              }
+            }
             if (/RECEIPT_APPROVAL_REQUIRED/i.test(msg)) {
               const { data: poRow } = await supabase
                 .from('purchase_orders')
