@@ -194,6 +194,9 @@ export const localizeSupabaseError = (error: unknown): string => {
     ) {
       return 'تم إرسال نفس الصنف أكثر من مرة ضمن نفس الاستلام. حدّث الصفحة ثم أعد المحاولة.';
     }
+    if (combined.includes('uniq_approval_requests_pending')) {
+      return 'يوجد طلب موافقة معلّق لهذه العملية بالفعل. افتح قسم الموافقات واعتمد الطلب أو ألغِه.';
+    }
     if (combined.includes('approval_requests')) {
       return 'يوجد طلب موافقة مطابق سابقًا. افتح قسم الموافقات وتحقق من الحالة.';
     }
