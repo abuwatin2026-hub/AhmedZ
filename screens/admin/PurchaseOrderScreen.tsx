@@ -70,6 +70,8 @@ const PurchaseOrderScreen: React.FC = () => {
     const { scope } = useSessionScope();
     const [itemUomRowsByItemId, setItemUomRowsByItemId] = useState<Record<string, ItemUomRow[]>>({});
     const itemUomLoadingRef = useRef<Set<string>>(new Set());
+    const [receiptPostingByOrderId, setReceiptPostingByOrderId] = useState<Record<string, { receiptId: string; status: string; error: string }>>({});
+    const [receiptPostingLoading, setReceiptPostingLoading] = useState(false);
     const canDelete = user?.role === 'owner';
     const canCancel = user?.role === 'owner' || user?.role === 'manager';
     const canRepairReceipt = user?.role === 'owner' || user?.role === 'manager';
@@ -419,12 +421,76 @@ const PurchaseOrderScreen: React.FC = () => {
         };
     };
 
+    const loadLatestReceiptPostingForOrders = async (orderIds: string[]) => {
+        const supabase = getSupabaseClient();
+        if (!supabase) return {} as Record<string, { receiptId: string; status: string; error: string }>;
+        const ids = Array.from(new Set(orderIds.map((x) => String(x || '').trim()).filter(Boolean)));
+        const chunks: string[][] = [];
+        for (let i = 0; i < ids.length; i += 200) chunks.push(ids.slice(i, i + 200));
+        const rows: any[] = [];
+        for (const c of chunks) {
+            const { data, error } = await supabase
+                .from('purchase_receipts')
+                .select('id,purchase_order_id,posting_status,posting_error,received_at,created_at')
+                .in('purchase_order_id', c);
+            if (error) throw error;
+            if (Array.isArray(data)) rows.push(...data);
+        }
+        const bestByOrder = new Map<string, any>();
+        const score = (r: any) => {
+            const receivedAt = Date.parse(String(r?.received_at || ''));
+            const createdAt = Date.parse(String(r?.created_at || ''));
+            const a = Number.isFinite(receivedAt) ? receivedAt : 0;
+            const b = Number.isFinite(createdAt) ? createdAt : 0;
+            return a * 1000 + b;
+        };
+        for (const r of rows) {
+            const oid = String(r?.purchase_order_id || '').trim();
+            if (!oid) continue;
+            const prev = bestByOrder.get(oid);
+            if (!prev || score(r) > score(prev)) bestByOrder.set(oid, r);
+        }
+        const out: Record<string, { receiptId: string; status: string; error: string }> = {};
+        for (const [oid, r] of bestByOrder.entries()) {
+            out[oid] = {
+                receiptId: String(r?.id || ''),
+                status: String(r?.posting_status || ''),
+                error: String(r?.posting_error || ''),
+            };
+        }
+        return out;
+    };
+
     useEffect(() => {
         void getBaseCurrencyCode().then((c) => {
             if (!c) return;
             setBaseCode(c);
         });
     }, []);
+
+    useEffect(() => {
+        let active = true;
+        const ids = (purchaseOrders || [])
+            .filter((o: any) => (o?.items || []).some((it: any) => Number(it?.receivedQuantity || 0) > 0))
+            .map((o: any) => String(o?.id || '').trim())
+            .filter(Boolean);
+        if (ids.length === 0) {
+            setReceiptPostingByOrderId({});
+            return () => { active = false; };
+        }
+        setReceiptPostingLoading(true);
+        void (async () => {
+            try {
+                const map = await loadLatestReceiptPostingForOrders(ids);
+                if (active) setReceiptPostingByOrderId(map);
+            } catch {
+                if (active) setReceiptPostingByOrderId({});
+            } finally {
+                if (active) setReceiptPostingLoading(false);
+            }
+        })();
+        return () => { active = false; };
+    }, [purchaseOrders]);
 
     useEffect(() => {
         let active = true;
@@ -1489,6 +1555,8 @@ const PurchaseOrderScreen: React.FC = () => {
                         const linesCount = Number(order.itemsCount ?? (order.items || []).length ?? 0);
                         const canPay = order.status !== 'cancelled' && remainingRaw > 0;
                         const hasReceived = (order.items || []).some((it: any) => Number(it?.receivedQuantity || 0) > 0);
+                        const receiptPosting = receiptPostingByOrderId[order.id];
+                        const isReceiptPosted = String(receiptPosting?.status || '') === 'posted';
                         const canPurge = canDelete && order.status === 'draft' && paid <= 0 && !hasReceived;
                         const canCancelOrder = canCancel && order.status === 'draft' && paid <= 0 && !hasReceived;
                         const statusClass = order.status === 'completed'
@@ -1647,8 +1715,16 @@ const PurchaseOrderScreen: React.FC = () => {
                                                         if (st === 'failed') {
                                                             const details = String((data as any)?.error || latest.postingError || '');
                                                             alert(`فشل ترحيل القيود:\n${details || 'غير معروف'}`);
+                                                            setReceiptPostingByOrderId((prev) => ({
+                                                                ...prev,
+                                                                [order.id]: { receiptId: latest.id, status: 'failed', error: details },
+                                                            }));
                                                         } else {
                                                             showNotification('تم ترحيل القيود المحاسبية للاستلام.', 'success');
+                                                            setReceiptPostingByOrderId((prev) => ({
+                                                                ...prev,
+                                                                [order.id]: { receiptId: latest.id, status: 'posted', error: '' },
+                                                            }));
                                                             await fetchPurchaseOrders();
                                                         }
                                                     } catch (e) {
@@ -1656,9 +1732,10 @@ const PurchaseOrderScreen: React.FC = () => {
                                                     }
                                                 })();
                                             }}
+                                            disabled={receiptPostingLoading || isReceiptPosted}
                                             className="px-3 py-2 rounded-lg text-sm font-semibold bg-indigo-700 text-white hover:bg-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed"
                                         >
-                                            ترحيل القيود
+                                            {isReceiptPosted ? 'تم ترحيل القيود' : 'ترحيل القيود'}
                                         </button>
                                     ) : null}
                                     {canManageImports ? (
@@ -1786,6 +1863,8 @@ const PurchaseOrderScreen: React.FC = () => {
                                     const totalQty = items.reduce((sum: number, it: any) => sum + Number(it?.quantity || 0), 0);
                                     const canPay = order.status !== 'cancelled' && remainingRaw > 0;
                                     const hasReceived = items.some((it: any) => Number(it?.receivedQuantity || 0) > 0);
+                                    const receiptPosting = receiptPostingByOrderId[order.id];
+                                    const isReceiptPosted = String(receiptPosting?.status || '') === 'posted';
                                     const fullyReceived = items.length > 0 && items.every((it: any) => (Number(it?.receivedQuantity || 0) + eps) >= Number(it?.qtyBase ?? it?.quantity ?? 0));
                                     const canPurge = canDelete && order.status === 'draft' && paid <= 0 && !hasReceived;
                                     const canCancelOrder = canCancel && order.status === 'draft' && paid <= 0 && !hasReceived;
@@ -1929,8 +2008,16 @@ const PurchaseOrderScreen: React.FC = () => {
                                                                 if (st === 'failed') {
                                                                     const details = String((data as any)?.error || latest.postingError || '');
                                                                     alert(`فشل ترحيل القيود:\n${details || 'غير معروف'}`);
+                                                                    setReceiptPostingByOrderId((prev) => ({
+                                                                        ...prev,
+                                                                        [order.id]: { receiptId: latest.id, status: 'failed', error: details },
+                                                                    }));
                                                                 } else {
                                                                     showNotification('تم ترحيل القيود المحاسبية للاستلام.', 'success');
+                                                                    setReceiptPostingByOrderId((prev) => ({
+                                                                        ...prev,
+                                                                        [order.id]: { receiptId: latest.id, status: 'posted', error: '' },
+                                                                    }));
                                                                     await fetchPurchaseOrders();
                                                                 }
                                                             } catch (e) {
@@ -1938,9 +2025,10 @@ const PurchaseOrderScreen: React.FC = () => {
                                                             }
                                                         })();
                                                     }}
+                                                    disabled={receiptPostingLoading || isReceiptPosted}
                                                     className="px-3 py-2 rounded-lg text-sm font-semibold bg-indigo-700 text-white hover:bg-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed"
                                                 >
-                                                    ترحيل القيود
+                                                    {isReceiptPosted ? 'تم ترحيل القيود' : 'ترحيل القيود'}
                                                 </button>
                                             ) : null}
                                             <button
