@@ -93,10 +93,6 @@ serve(async (req) => {
             ? permissions.filter((p) => typeof p === 'string').map((p) => String(p))
             : []
 
-        if (normalizedEmail.endsWith('@azta.local')) {
-            normalizedEmail = normalizedEmail.replace(/@azta\.local$/i, '@azta.com')
-        }
-
         if (!normalizedEmail || !normalizedFullName || !normalizedUsername || !normalizedRole) {
             return new Response(
                 JSON.stringify({ error: 'البيانات المدخلة غير صحيحة.' }),
@@ -187,14 +183,115 @@ serve(async (req) => {
 
         if (userError) {
             const raw = String(userError?.message ?? '')
-            const msg = /already registered/i.test(raw)
-                ? 'هذا البريد مستخدم مسبقاً.'
-                : /password/i.test(raw) && /6/i.test(raw)
+            const isAlreadyRegistered = /already registered/i.test(raw)
+            if (!isAlreadyRegistered) {
+                const msg = /password/i.test(raw) && /6/i.test(raw)
                     ? 'كلمة المرور يجب أن تكون 6 أحرف على الأقل.'
                     : raw || 'تعذر إنشاء المستخدم في نظام الدخول.'
+                return new Response(
+                    JSON.stringify({ error: msg }),
+                    { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                )
+            }
+
+            const authSchemaClient = (typeof supabaseClient?.schema === 'function')
+                ? supabaseClient.schema('auth')
+                : null
+
+            if (!authSchemaClient) {
+                return new Response(
+                    JSON.stringify({ error: 'تعذر البحث عن المستخدم الحالي في نظام الدخول.' }),
+                    { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                )
+            }
+
+            const { data: existingAuthUser, error: existingAuthErr } = await authSchemaClient
+                .from('users')
+                .select('id, email')
+                .ilike('email', normalizedEmail)
+                .maybeSingle()
+
+            if (existingAuthErr || !existingAuthUser?.id) {
+                return new Response(
+                    JSON.stringify({ error: 'هذا البريد مستخدم مسبقاً، لكن تعذر العثور على الحساب في نظام الدخول.' }),
+                    { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                )
+            }
+
+            const targetUserId = String(existingAuthUser.id)
+
+            const { data: existingAdminRow, error: existingAdminErr } = await supabaseClient
+                .from('admin_users')
+                .select('auth_user_id, role, company_id, branch_id, warehouse_id')
+                .eq('auth_user_id', targetUserId)
+                .maybeSingle()
+
+            if (existingAdminErr) {
+                return new Response(
+                    JSON.stringify({ error: 'تعذر التحقق من صلاحيات المستخدم الحالي.' }),
+                    { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                )
+            }
+
+            if (existingAdminRow?.role && String(existingAdminRow.role).toLowerCase() === 'owner') {
+                return new Response(
+                    JSON.stringify({ error: 'لا يمكن تعديل بيانات المالك عبر هذه العملية.' }),
+                    { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                )
+            }
+
+            const { error: updateAuthErr } = await supabaseClient.auth.admin.updateUserById(targetUserId, {
+                password,
+                user_metadata: { full_name: normalizedFullName },
+            })
+
+            if (updateAuthErr) {
+                const updateRaw = String(updateAuthErr?.message ?? '')
+                const msg = /password/i.test(updateRaw) && /6/i.test(updateRaw)
+                    ? 'كلمة المرور يجب أن تكون 6 أحرف على الأقل.'
+                    : updateRaw || 'تعذر تحديث بيانات الدخول للمستخدم.'
+                return new Response(
+                    JSON.stringify({ error: msg }),
+                    { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                )
+            }
+
+            const finalCompanyId = existingAdminRow?.company_id ?? creatorCompanyId
+            const finalBranchId = existingAdminRow?.branch_id ?? creatorBranchId
+            const finalWarehouseId = existingAdminRow?.warehouse_id ?? creatorWarehouseId
+
+            const { error: upsertErr } = await supabaseClient
+                .from('admin_users')
+                .upsert({
+                    auth_user_id: targetUserId,
+                    email: normalizedEmail,
+                    username: normalizedUsername,
+                    full_name: normalizedFullName,
+                    phone_number: normalizedPhoneNumber,
+                    role: normalizedRole,
+                    permissions: normalizedPermissions,
+                    company_id: finalCompanyId,
+                    branch_id: finalBranchId,
+                    warehouse_id: finalWarehouseId,
+                    is_active: true,
+                }, { onConflict: 'auth_user_id' })
+
+            if (upsertErr) {
+                const upsertRaw = String(upsertErr?.message ?? '')
+                const msg = /duplicate key/i.test(upsertRaw) && /username/i.test(upsertRaw)
+                    ? 'اسم المستخدم مستخدم مسبقاً.'
+                    : /violates check constraint/i.test(upsertRaw) && /role/i.test(upsertRaw)
+                        ? 'الدور غير صالح.'
+                        : upsertRaw || 'تعذر حفظ بيانات المستخدم في قاعدة البيانات.'
+                return new Response(
+                    JSON.stringify({ error: msg }),
+                    { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                )
+            }
+
             return new Response(
-                JSON.stringify({ error: msg }),
-                { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                JSON.stringify({ userId: targetUserId, message: 'تم ربط الحساب بلوحة التحكم وتحديث كلمة المرور.' }),
+                { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
             )
         }
 

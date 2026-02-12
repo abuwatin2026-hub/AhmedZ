@@ -9,6 +9,7 @@ import { useSessionScope } from '../../contexts/SessionScopeContext';
 import { ImportShipment, ImportShipmentItem, ImportExpense } from '../../types';
 import { Plus, X, DollarSign, ArrowLeft } from '../../components/icons';
 import { getBaseCurrencyCode, getSupabaseClient } from '../../supabase';
+import { normalizeIsoDateOnly } from '../../utils/dateUtils';
 import { localizeSupabaseError } from '../../utils/errorUtils';
 
 const ImportShipmentDetailsScreen: React.FC = () => {
@@ -56,8 +57,7 @@ const ImportShipmentDetailsScreen: React.FC = () => {
 
     // Form states for adding expenses
     const [showExpenseForm, setShowExpenseForm] = useState(false);
-    const [isExpenseFxManual, setIsExpenseFxManual] = useState(false);
-    const [expenseFxSource, setExpenseFxSource] = useState<'system' | 'manual' | 'base' | 'unknown'>('unknown');
+    const [expenseFxSource, setExpenseFxSource] = useState<'system' | 'base' | 'unknown'>('unknown');
     const [newExpense, setNewExpense] = useState({
         expenseType: 'shipping' as ImportExpense['expenseType'],
         amount: 0,
@@ -131,14 +131,14 @@ const ImportShipmentDetailsScreen: React.FC = () => {
         setLoading(false);
     };
 
-    const fetchSystemFxRate = async (currency: string) => {
+    const fetchSystemFxRate = async (currency: string, onDate?: string) => {
         const code = String(currency || '').trim().toUpperCase();
         if (!code) return null;
         if (baseCode && code === baseCode) return 1;
         const supabase = getSupabaseClient();
         if (!supabase) return null;
         try {
-            const d = new Date().toISOString().slice(0, 10);
+            const d = (onDate ? normalizeIsoDateOnly(onDate) : null) || new Date().toISOString().slice(0, 10);
             const { data, error } = await supabase.rpc('get_fx_rate', {
                 p_currency: code,
                 p_date: d,
@@ -152,7 +152,7 @@ const ImportShipmentDetailsScreen: React.FC = () => {
         }
     };
 
-    const applySystemExpenseFxRate = async (currency: string) => {
+    const applySystemExpenseFxRate = async (currency: string, onDate?: string) => {
         const code = String(currency || '').trim().toUpperCase();
         if (!code) return;
         if (baseCode && code === baseCode) {
@@ -162,7 +162,7 @@ const ImportShipmentDetailsScreen: React.FC = () => {
         }
         setNewExpense((prev) => ({ ...prev, currency: code, exchangeRate: 0 }));
         setExpenseFxSource('unknown');
-        const rate = await fetchSystemFxRate(code);
+        const rate = await fetchSystemFxRate(code, onDate);
         if (!rate) {
             setExpenseFxSource('unknown');
             setNewExpense((prev) => ({ ...prev, currency: code, exchangeRate: 0 }));
@@ -172,6 +172,14 @@ const ImportShipmentDetailsScreen: React.FC = () => {
         setNewExpense((prev) => ({ ...prev, currency: code, exchangeRate: rate }));
         setExpenseFxSource('system');
     };
+
+    useEffect(() => {
+        if (!baseCode) return;
+        const curr = String(newExpense.currency || '').trim().toUpperCase();
+        const paidAt = normalizeIsoDateOnly(newExpense.paidAt);
+        if (!curr || curr === baseCode) return;
+        void applySystemExpenseFxRate(curr, paidAt || undefined);
+    }, [baseCode, newExpense.currency, newExpense.paidAt]);
 
     const moneyRound = (v: number) => {
         const n = Number(v);
@@ -533,10 +541,6 @@ const ImportShipmentDetailsScreen: React.FC = () => {
             return;
         }
         const isBase = Boolean(baseCode && currency === baseCode);
-        if (!isBase && !isExpenseFxManual && expenseFxSource !== 'system') {
-            showNotification('سعر الصرف يجب أن يكون من النظام أو فعّل "تعديل يدوي".', 'error');
-            return;
-        }
         const rate = Number(newExpense.exchangeRate);
         if (!Number.isFinite(rate) || rate <= 0) {
             showNotification('سعر الصرف غير صالح.', 'error');
@@ -555,7 +559,6 @@ const ImportShipmentDetailsScreen: React.FC = () => {
         });
 
         setShowExpenseForm(false);
-        setIsExpenseFxManual(false);
         setExpenseFxSource('unknown');
         setNewExpense({
             expenseType: 'shipping',
@@ -1030,10 +1033,8 @@ const ImportShipmentDetailsScreen: React.FC = () => {
                                                 return;
                                             }
                                             setNewExpense((prev) => ({ ...prev, currency: code, exchangeRate: 0 }));
-                                            setExpenseFxSource(isExpenseFxManual ? 'manual' : 'unknown');
-                                            if (!isExpenseFxManual) {
-                                                void applySystemExpenseFxRate(code);
-                                            }
+                                            setExpenseFxSource('unknown');
+                                            void applySystemExpenseFxRate(code, normalizeIsoDateOnly(newExpense.paidAt) || undefined);
                                         }}
                                         className="w-full px-3 py-2 border rounded-lg"
                                     >
@@ -1046,45 +1047,19 @@ const ImportShipmentDetailsScreen: React.FC = () => {
                                 <div>
                                     <div className="flex items-center justify-between mb-1">
                                         <label className="block text-sm font-medium">سعر الصرف</label>
-                                        <label className="flex items-center gap-2 text-xs text-gray-600">
-                                            <input
-                                                type="checkbox"
-                                                checked={isExpenseFxManual}
-                                                onChange={(e) => {
-                                                    const v = Boolean(e.target.checked);
-                                                    setIsExpenseFxManual(v);
-                                                    setExpenseFxSource(v ? 'manual' : 'unknown');
-                                                    if (!v) {
-                                                        void applySystemExpenseFxRate(newExpense.currency || baseCode || '');
-                                                    }
-                                                }}
-                                            />
-                                            تعديل يدوي
-                                        </label>
                                     </div>
                                     <div className="flex gap-2">
                                         <input
                                             type="number"
                                             step="0.000001"
                                             value={newExpense.exchangeRate}
-                                            onChange={(e) => {
-                                                setNewExpense({ ...newExpense, exchangeRate: Number(e.target.value) });
-                                                setExpenseFxSource('manual');
-                                            }}
-                                            disabled={!isExpenseFxManual || (Boolean(baseCode) && String(newExpense.currency || '').toUpperCase() === baseCode)}
+                                            readOnly
+                                            disabled
                                             className="w-full px-3 py-2 border rounded-lg disabled:bg-gray-100"
                                         />
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                setExpenseFxSource('unknown');
-                                                void applySystemExpenseFxRate(newExpense.currency || '');
-                                            }}
-                                            disabled={!newExpense.currency || (Boolean(baseCode) && String(newExpense.currency || '').toUpperCase() === baseCode)}
-                                            className="px-3 py-2 rounded-lg bg-gray-200 text-gray-800 hover:bg-gray-300 disabled:opacity-60 disabled:cursor-not-allowed"
-                                        >
-                                            من النظام
-                                        </button>
+                                    </div>
+                                    <div className="mt-1 text-xs text-gray-600">
+                                        {expenseFxSource === 'base' ? 'عملة أساسية' : expenseFxSource === 'system' ? 'من النظام' : 'غير متوفر'}
                                     </div>
                                 </div>
                                 <div className="col-span-2">
@@ -1107,7 +1082,6 @@ const ImportShipmentDetailsScreen: React.FC = () => {
                                 <button
                                     onClick={() => {
                                         setShowExpenseForm(false);
-                                        setIsExpenseFxManual(false);
                                         setExpenseFxSource('unknown');
                                     }}
                                     className="bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400"

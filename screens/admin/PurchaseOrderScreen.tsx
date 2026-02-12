@@ -1008,7 +1008,6 @@ const PurchaseOrderScreen: React.FC = () => {
                 supplierId,
                 purchaseDate,
                 normalizedPoCurrency,
-                Number(poFxRate),
                 validItems,
                 receiveOnCreate,
                 invoiceRef || undefined,

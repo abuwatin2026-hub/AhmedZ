@@ -263,14 +263,11 @@ export const ImportProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         try {
             const currency = String((expense as any).currency || '').toUpperCase();
             if (!currency) throw new Error('اختر عملة للمصروف.');
-            const exchangeRate = Number((expense as any).exchangeRate);
-            if (!Number.isFinite(exchangeRate) || exchangeRate <= 0) throw new Error('سعر الصرف غير صالح.');
             const { error } = await supabase.from('import_expenses').insert([{
                 shipment_id: expense.shipmentId,
                 expense_type: expense.expenseType,
                 amount: expense.amount,
                 currency,
-                exchange_rate: exchangeRate,
                 payment_method: expense.paymentMethod || 'cash',
                 description: expense.description,
                 invoice_number: expense.invoiceNumber,

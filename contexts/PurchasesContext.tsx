@@ -17,7 +17,6 @@ interface PurchasesContextType {
         supplierId: string,
         purchaseDate: string,
         currency: string,
-        fxRate: number,
         items: Array<{ itemId: string; quantity: number; unitCost: number; productionDate?: string; expiryDate?: string }>,
         receiveNow?: boolean,
         referenceNumber?: string,
@@ -605,7 +604,6 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         supplierId: string,
         purchaseDate: string,
         currency: string,
-        fxRate: number,
         items: Array<{ itemId: string; quantity: number; unitCost: number; uomCode?: string; uomQtyInBase?: number; productionDate?: string; expiryDate?: string }>,
         receiveNow: boolean = true,
         referenceNumber?: string,
@@ -618,9 +616,7 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         if (!user) throw new Error('لم يتم تسجيل الدخول.');
 
         const poCurrency = String(currency || '').trim().toUpperCase();
-        const poFxRate = Number(fxRate);
         if (!poCurrency) throw new Error('عملة أمر الشراء مطلوبة.');
-        if (!Number.isFinite(poFxRate) || poFxRate <= 0) throw new Error('سعر الصرف غير صالح.');
 
         const totalAmount = items.reduce((sum, item) => sum + (item.quantity * item.unitCost), 0);
         const itemsCount = items.length;
@@ -693,7 +689,6 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                   purchase_date: normalizedDate,
                   reference_number: currentRef || null,
                   currency: poCurrency,
-                  fx_rate: poFxRate,
                   total_amount: totalAmount,
                   items_count: itemsCount,
                   created_by: user.id,
