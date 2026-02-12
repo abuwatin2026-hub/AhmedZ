@@ -45,14 +45,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const normalizeUsername = (value: string) => value.trim();
   const makeServiceEmail = (value: string) => {
     const raw = (value || '').trim();
-    if (!raw) return `user-${Date.now()}@azta.local`;
+    if (!raw) return `user-${Date.now()}@azta.com`;
     if (raw.includes('@')) return raw.toLowerCase();
     const ascii = raw.normalize('NFKD').replace(/[^\x00-\x7F]/g, '');
     let slug = ascii.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').replace(/\.{2,}/g, '.').replace(/-+/g, '-').toLowerCase();
     if (!slug || slug === '.' || slug === '-') slug = `user-${Date.now()}`;
     if (slug.length > 64) slug = slug.slice(0, 64).replace(/[-.]+$/, '');
     if (!slug) slug = `user-${Date.now()}`;
-    return `${slug}@azta.local`;
+    return `${slug}@azta.com`;
   };
   const supabase = useMemo(() => getSupabaseClient(), []);
   const authProvider: 'supabase' = 'supabase';
@@ -446,7 +446,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const extractFunctionErrorMessage = async (error: unknown): Promise<string | null> => {
-    const maybeContext = (error as { context?: { text?: () => Promise<string>; json?: () => Promise<any> } })?.context;
+    const maybeContext = (error as any)?.context;
     if (!maybeContext) return null;
 
     const tryParse = (text: string) => {
@@ -460,6 +460,20 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         return trimmed;
       }
     };
+
+    const contextBody = (maybeContext as any)?.body;
+    if (typeof contextBody === 'string') {
+      const parsed = tryParse(contextBody);
+      if (parsed) return parsed;
+    }
+    if (contextBody && typeof contextBody === 'object') {
+      const msg = (contextBody as any)?.error || (contextBody as any)?.message;
+      if (typeof msg === 'string' && msg.trim()) return msg.trim();
+      try {
+        return JSON.stringify(contextBody);
+      } catch {
+      }
+    }
 
     if (typeof maybeContext.text === 'function') {
       try {
