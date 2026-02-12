@@ -36,8 +36,8 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-60 z-[1100] flex justify-center items-center p-4">
-      <div className={`bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full ${maxWidthClassName} animate-fade-in-up flex flex-col max-h-[min(90dvh,calc(100dvh-2rem))]`}>
-        <div className="p-6 overflow-y-auto custom-scrollbar">
+      <div className={`bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full ${maxWidthClassName} animate-fade-in-up flex flex-col max-h-[min(90dvh,calc(100dvh-2rem))] overflow-hidden`}>
+        <div className="p-6 flex-1 min-h-0 overflow-y-auto custom-scrollbar">
           <h3 className="text-lg font-bold text-gray-900 dark:text-white sticky top-0 bg-white dark:bg-gray-800 z-10 pb-2 mb-2 border-b dark:border-gray-700">{title}</h3>
           {children ? (
             <div className="mt-3">{children}</div>
