@@ -78,6 +78,18 @@ type UomInflationRow = {
   inflation_factor: number | null;
 };
 
+type LandedCostInflationRow = {
+  entry_id: string;
+  entry_date: string;
+  shipment_id: string;
+  source_event: string;
+  inventory_amount: number;
+  cogs_amount: number;
+  expenses_total: number;
+  expected_total: number;
+  inflation_factor: number | null;
+};
+
 type AgingCustomerRow = {
   customer_auth_user_id: string | null;
   current: number;
@@ -547,6 +559,7 @@ const FinancialReports: React.FC = () => {
   const [uomFixBusy, setUomFixBusy] = useState(false);
   const [uomFixApplyBusy, setUomFixApplyBusy] = useState(false);
   const [uomFixRows, setUomFixRows] = useState<UomInflationRow[]>([]);
+  const [landedCostFixRows, setLandedCostFixRows] = useState<LandedCostInflationRow[]>([]);
 
   const [arAging, setArAging] = useState<AgingCustomerRow[]>([]);
   const [apAging, setApAging] = useState<AgingSupplierRow[]>([]);
@@ -1766,8 +1779,28 @@ const FinancialReports: React.FC = () => {
         inflation_factor: r?.inflation_factor == null ? null : (Number(r.inflation_factor) || null),
       })).filter((x) => Boolean(x.movement_id));
       setUomFixRows(rows);
+
+      const { data: lcData, error: lcError } = await supabase.rpc('detect_landed_cost_close_uom_inflation', {
+        p_start: toIsoStart(appliedFilters.startDate),
+        p_end: toIsoEnd(appliedFilters.endDate),
+        p_limit: 200,
+      } as any);
+      if (lcError) throw lcError;
+      const lcRows: LandedCostInflationRow[] = (Array.isArray(lcData) ? lcData : []).map((r: any) => ({
+        entry_id: String(r?.entry_id || ''),
+        entry_date: String(r?.entry_date || ''),
+        shipment_id: String(r?.shipment_id || ''),
+        source_event: String(r?.source_event || ''),
+        inventory_amount: Number(r?.inventory_amount) || 0,
+        cogs_amount: Number(r?.cogs_amount) || 0,
+        expenses_total: Number(r?.expenses_total) || 0,
+        expected_total: Number(r?.expected_total) || 0,
+        inflation_factor: r?.inflation_factor == null ? null : (Number(r.inflation_factor) || null),
+      })).filter((x) => Boolean(x.entry_id));
+      setLandedCostFixRows(lcRows);
     } catch (err: any) {
       setUomFixRows([]);
+      setLandedCostFixRows([]);
       showNotification(localizeSupabaseError(err) || 'تعذر فحص تضخيم UOM.', 'error');
     } finally {
       setUomFixBusy(false);
@@ -1941,50 +1974,105 @@ const FinancialReports: React.FC = () => {
                 </div>
                 {uomFixBusy ? (
                   <div className="py-10 text-center text-gray-500 dark:text-gray-400 font-semibold">جاري التحميل...</div>
-                ) : uomFixRows.length === 0 ? (
+                ) : uomFixRows.length === 0 && landedCostFixRows.length === 0 ? (
                   <div className="py-10 text-center text-gray-500 dark:text-gray-400 font-semibold">لا توجد حالات مشتبهة في الفترة المحددة.</div>
                 ) : (
-                  <div className="overflow-auto max-h-[60vh]">
-                    <table className="min-w-full text-sm">
-                      <thead className="text-gray-500 dark:text-gray-400">
-                        <tr className="border-b dark:border-gray-700">
-                          <th className="py-2 px-3 text-right border-l dark:border-gray-700">التاريخ</th>
-                          <th className="py-2 px-3 text-right border-l dark:border-gray-700">الصنف</th>
-                          <th className="py-2 px-3 text-right border-l dark:border-gray-700">المصدر</th>
-                          <th className="py-2 px-3 text-right border-l dark:border-gray-700">المبلغ الحالي</th>
-                          <th className="py-2 px-3 text-right border-l dark:border-gray-700">المبلغ الصحيح</th>
-                          <th className="py-2 px-3 text-right border-l dark:border-gray-700">الفرق</th>
-                          <th className="py-2 px-3 text-right">عامل التضخيم</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {uomFixRows.map((r) => {
-                          const delta = (Number(r.total_cost) || 0) - (Number(r.expected_total_cost) || 0);
-                          return (
-                            <tr key={r.movement_id} className="border-b dark:border-gray-700">
-                              <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">{formatDateInput(r.occurred_at)}</td>
-                              <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700 font-mono">{r.item_id}</td>
-                              <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700">
-                                <div className="text-xs text-gray-500 dark:text-gray-400" dir="ltr">
-                                  {(r.reference_table || '—')}/{(r.reference_id || '—')}
-                                </div>
-                                <div className="text-[11px] text-gray-400 dark:text-gray-500 font-mono" dir="ltr">
-                                  {`#${shortRef(r.movement_id, 8)}`}
-                                </div>
-                              </td>
-                              <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">{formatMoney(Number(r.total_cost) || 0)}</td>
-                              <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">{formatMoney(Number(r.expected_total_cost) || 0)}</td>
-                              <td className={`py-2 px-3 border-l dark:border-gray-700 font-semibold ${Math.abs(delta) <= 0.01 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`} dir="ltr">
-                                {formatMoney(delta)}
-                              </td>
-                              <td className="py-2 px-3 dark:text-white font-mono" dir="ltr">
-                                {r.inflation_factor == null ? '—' : Number(r.inflation_factor).toFixed(2)}
-                              </td>
+                  <div className="space-y-4">
+                    {uomFixRows.length > 0 && (
+                      <div className="overflow-auto max-h-[50vh]">
+                        <table className="min-w-full text-sm">
+                          <thead className="text-gray-500 dark:text-gray-400">
+                            <tr className="border-b dark:border-gray-700">
+                              <th className="py-2 px-3 text-right border-l dark:border-gray-700">التاريخ</th>
+                              <th className="py-2 px-3 text-right border-l dark:border-gray-700">الصنف</th>
+                              <th className="py-2 px-3 text-right border-l dark:border-gray-700">المصدر</th>
+                              <th className="py-2 px-3 text-right border-l dark:border-gray-700">المبلغ الحالي</th>
+                              <th className="py-2 px-3 text-right border-l dark:border-gray-700">المبلغ الصحيح</th>
+                              <th className="py-2 px-3 text-right border-l dark:border-gray-700">الفرق</th>
+                              <th className="py-2 px-3 text-right">عامل التضخيم</th>
                             </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
+                          </thead>
+                          <tbody>
+                            {uomFixRows.map((r) => {
+                              const delta = (Number(r.total_cost) || 0) - (Number(r.expected_total_cost) || 0);
+                              return (
+                                <tr key={r.movement_id} className="border-b dark:border-gray-700">
+                                  <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">{formatDateInput(r.occurred_at)}</td>
+                                  <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700 font-mono">{r.item_id}</td>
+                                  <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700">
+                                    <div className="text-xs text-gray-500 dark:text-gray-400" dir="ltr">
+                                      {(r.reference_table || '—')}/{(r.reference_id || '—')}
+                                    </div>
+                                    <div className="text-[11px] text-gray-400 dark:text-gray-500 font-mono" dir="ltr">
+                                      {`#${shortRef(r.movement_id, 8)}`}
+                                    </div>
+                                  </td>
+                                  <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">{formatMoney(Number(r.total_cost) || 0)}</td>
+                                  <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">{formatMoney(Number(r.expected_total_cost) || 0)}</td>
+                                  <td className={`py-2 px-3 border-l dark:border-gray-700 font-semibold ${Math.abs(delta) <= 0.01 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`} dir="ltr">
+                                    {formatMoney(delta)}
+                                  </td>
+                                  <td className="py-2 px-3 dark:text-white font-mono" dir="ltr">
+                                    {r.inflation_factor == null ? '—' : Number(r.inflation_factor).toFixed(2)}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+
+                    {landedCostFixRows.length > 0 && (
+                      <div className="overflow-auto max-h-[50vh]">
+                        <div className="text-sm font-bold dark:text-white mb-2">فحص تضخيم إغلاق تكلفة الشحن (Import)</div>
+                        <table className="min-w-full text-sm">
+                          <thead className="text-gray-500 dark:text-gray-400">
+                            <tr className="border-b dark:border-gray-700">
+                              <th className="py-2 px-3 text-right border-l dark:border-gray-700">التاريخ</th>
+                              <th className="py-2 px-3 text-right border-l dark:border-gray-700">الشحنة</th>
+                              <th className="py-2 px-3 text-right border-l dark:border-gray-700">النوع</th>
+                              <th className="py-2 px-3 text-right border-l dark:border-gray-700">1410+5010 الحالي</th>
+                              <th className="py-2 px-3 text-right border-l dark:border-gray-700">إجمالي المصاريف</th>
+                              <th className="py-2 px-3 text-right border-l dark:border-gray-700">الفرق</th>
+                              <th className="py-2 px-3 text-right border-l dark:border-gray-700">عامل التضخيم</th>
+                              <th className="py-2 px-3 text-right">القيد</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {landedCostFixRows.map((r) => {
+                              const current = (Number(r.inventory_amount) || 0) + (Number(r.cogs_amount) || 0);
+                              const expected = Number(r.expected_total) || 0;
+                              const delta = current - expected;
+                              return (
+                                <tr key={r.entry_id} className="border-b dark:border-gray-700">
+                                  <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">{formatDateInput(r.entry_date)}</td>
+                                  <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700 font-mono" dir="ltr">{r.shipment_id}</td>
+                                  <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700 font-mono" dir="ltr">{r.source_event}</td>
+                                  <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">{formatMoney(current)}</td>
+                                  <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">{formatMoney(expected)}</td>
+                                  <td className={`py-2 px-3 border-l dark:border-gray-700 font-semibold ${Math.abs(delta) <= 0.01 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`} dir="ltr">
+                                    {formatMoney(delta)}
+                                  </td>
+                                  <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700 font-mono" dir="ltr">
+                                    {r.inflation_factor == null ? '—' : Number(r.inflation_factor).toFixed(2)}
+                                  </td>
+                                  <td className="py-2 px-3 dark:text-white">
+                                    <button
+                                      type="button"
+                                      onClick={() => void openEntryModal(r.entry_id)}
+                                      className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 font-semibold hover:bg-gray-50 dark:hover:bg-gray-700"
+                                    >
+                                      فتح
+                                    </button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
                   </div>
                 )}
                 {uomFixApplyBusy && (
