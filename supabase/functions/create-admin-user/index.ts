@@ -84,7 +84,7 @@ serve(async (req) => {
             )
         }
 
-        const normalizedEmail = String(email).trim().toLowerCase()
+        let normalizedEmail = String(email).trim().toLowerCase()
         const normalizedFullName = String(fullName).trim()
         const normalizedUsername = (typeof username === 'string' ? username : normalizedEmail.split('@')[0]).trim()
         const normalizedRole = String(role).trim()
@@ -92,6 +92,10 @@ serve(async (req) => {
         const normalizedPermissions = Array.isArray(permissions)
             ? permissions.filter((p) => typeof p === 'string').map((p) => String(p))
             : []
+
+        if (normalizedEmail.endsWith('@azta.local')) {
+            normalizedEmail = normalizedEmail.replace(/@azta\.local$/i, '@azta.com')
+        }
 
         if (!normalizedEmail || !normalizedFullName || !normalizedUsername || !normalizedRole) {
             return new Response(
