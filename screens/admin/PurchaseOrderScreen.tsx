@@ -402,7 +402,7 @@ const PurchaseOrderScreen: React.FC = () => {
         if (!supabase) return null;
         const { data, error } = await supabase
             .from('purchase_receipts')
-            .select('id,grn_number,received_at,posting_status')
+            .select('id,grn_number,received_at,posting_status,posting_error')
             .eq('purchase_order_id', orderId)
             .order('received_at', { ascending: false })
             .order('created_at', { ascending: false })
@@ -415,6 +415,7 @@ const PurchaseOrderScreen: React.FC = () => {
             grnNumber: String((data as any).grn_number || ''),
             receivedAt: String((data as any).received_at || ''),
             postingStatus: String((data as any).posting_status || ''),
+            postingError: String((data as any).posting_error || ''),
         };
     };
 
@@ -1157,10 +1158,17 @@ const PurchaseOrderScreen: React.FC = () => {
                             if (supabase) {
                                 const res = await supabase.rpc('post_purchase_receipt', { p_receipt_id: String(receiptId) } as any);
                                 if ((res as any)?.error) throw (res as any).error;
-                                showNotification('تم ترحيل القيود المحاسبية للاستلام.', 'success');
+                                const st = String((res as any)?.data?.status || '');
+                                if (st === 'failed') {
+                                    const details = String((res as any)?.data?.error || '');
+                                    alert(`فشل ترحيل القيود:\n${details || 'غير معروف'}`);
+                                } else {
+                                    showNotification('تم ترحيل القيود المحاسبية للاستلام.', 'success');
+                                    await fetchPurchaseOrders();
+                                }
                             }
                         } catch (e3) {
-                            alert(getErrorMessage(e3, 'تعذر ترحيل القيود المحاسبية الآن. يمكنك إعادة المحاولة لاحقاً.'));
+                            alert(getErrorMessage(e3, localizeSupabaseError(e3)));
                         }
                     }
                 } else {
@@ -1627,18 +1635,24 @@ const PurchaseOrderScreen: React.FC = () => {
                                                             showNotification('لا يوجد استلام لترحيل قيوده.', 'info');
                                                             return;
                                                         }
+                                                        if (latest.postingStatus === 'posted') {
+                                                            showNotification('قيود هذا الاستلام مُرحّلة بالفعل.', 'info');
+                                                            return;
+                                                        }
                                                         const supabase = getSupabaseClient();
                                                         if (!supabase) throw new Error('قاعدة البيانات غير متاحة.');
                                                         const { data, error } = await supabase.rpc('post_purchase_receipt', { p_receipt_id: latest.id } as any);
                                                         if (error) throw error;
                                                         const st = String((data as any)?.status || '');
                                                         if (st === 'failed') {
-                                                            showNotification('تعذر ترحيل القيود بالكامل. راجع رسالة الخطأ في سجل الترحيل أو أعد المحاولة.', 'error');
+                                                            const details = String((data as any)?.error || latest.postingError || '');
+                                                            alert(`فشل ترحيل القيود:\n${details || 'غير معروف'}`);
                                                         } else {
                                                             showNotification('تم ترحيل القيود المحاسبية للاستلام.', 'success');
+                                                            await fetchPurchaseOrders();
                                                         }
                                                     } catch (e) {
-                                                        alert(getErrorMessage(e, 'تعذر ترحيل القيود المحاسبية الآن. يمكنك إعادة المحاولة لاحقاً.'));
+                                                        alert(getErrorMessage(e, localizeSupabaseError(e)));
                                                     }
                                                 })();
                                             }}
@@ -1903,18 +1917,24 @@ const PurchaseOrderScreen: React.FC = () => {
                                                                     showNotification('لا يوجد استلام لترحيل قيوده.', 'info');
                                                                     return;
                                                                 }
+                                                                if (latest.postingStatus === 'posted') {
+                                                                    showNotification('قيود هذا الاستلام مُرحّلة بالفعل.', 'info');
+                                                                    return;
+                                                                }
                                                                 const supabase = getSupabaseClient();
                                                                 if (!supabase) throw new Error('قاعدة البيانات غير متاحة.');
                                                                 const { data, error } = await supabase.rpc('post_purchase_receipt', { p_receipt_id: latest.id } as any);
                                                                 if (error) throw error;
                                                                 const st = String((data as any)?.status || '');
                                                                 if (st === 'failed') {
-                                                                    showNotification('تعذر ترحيل القيود بالكامل. راجع رسالة الخطأ في سجل الترحيل أو أعد المحاولة.', 'error');
+                                                                    const details = String((data as any)?.error || latest.postingError || '');
+                                                                    alert(`فشل ترحيل القيود:\n${details || 'غير معروف'}`);
                                                                 } else {
                                                                     showNotification('تم ترحيل القيود المحاسبية للاستلام.', 'success');
+                                                                    await fetchPurchaseOrders();
                                                                 }
                                                             } catch (e) {
-                                                                alert(getErrorMessage(e, 'تعذر ترحيل القيود المحاسبية الآن. يمكنك إعادة المحاولة لاحقاً.'));
+                                                                alert(getErrorMessage(e, localizeSupabaseError(e)));
                                                             }
                                                         })();
                                                     }}
