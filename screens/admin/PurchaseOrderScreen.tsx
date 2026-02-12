@@ -397,6 +397,27 @@ const PurchaseOrderScreen: React.FC = () => {
         }
     };
 
+    const getLatestReceiptForOrder = async (orderId: string) => {
+        const supabase = getSupabaseClient();
+        if (!supabase) return null;
+        const { data, error } = await supabase
+            .from('purchase_receipts')
+            .select('id,grn_number,received_at,posting_status')
+            .eq('purchase_order_id', orderId)
+            .order('received_at', { ascending: false })
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+        if (error) throw error;
+        if (!data?.id) return null;
+        return {
+            id: String((data as any).id),
+            grnNumber: String((data as any).grn_number || ''),
+            receivedAt: String((data as any).received_at || ''),
+            postingStatus: String((data as any).posting_status || ''),
+        };
+    };
+
     useEffect(() => {
         void getBaseCurrencyCode().then((c) => {
             if (!c) return;
@@ -1573,6 +1594,59 @@ const PurchaseOrderScreen: React.FC = () => {
                                     >
                                         استلام
                                     </button>
+                                    {hasReceived ? (
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                void (async () => {
+                                                    try {
+                                                        const latest = await getLatestReceiptForOrder(order.id);
+                                                        if (!latest?.id) {
+                                                            showNotification('لا يوجد إشعار استلام مرتبط بهذا الأمر.', 'info');
+                                                            return;
+                                                        }
+                                                        await handlePrintGrn(latest.id, order);
+                                                    } catch (e) {
+                                                        alert(getErrorMessage(e, 'تعذر طباعة إشعار الاستلام.'));
+                                                    }
+                                                })();
+                                            }}
+                                            className="px-3 py-2 rounded-lg text-sm font-semibold bg-gray-900 text-white hover:bg-black disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                            طباعة الاستلام
+                                        </button>
+                                    ) : null}
+                                    {hasReceived && hasPermission('accounting.manage') ? (
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                void (async () => {
+                                                    try {
+                                                        const latest = await getLatestReceiptForOrder(order.id);
+                                                        if (!latest?.id) {
+                                                            showNotification('لا يوجد استلام لترحيل قيوده.', 'info');
+                                                            return;
+                                                        }
+                                                        const supabase = getSupabaseClient();
+                                                        if (!supabase) throw new Error('قاعدة البيانات غير متاحة.');
+                                                        const { data, error } = await supabase.rpc('post_purchase_receipt', { p_receipt_id: latest.id } as any);
+                                                        if (error) throw error;
+                                                        const st = String((data as any)?.status || '');
+                                                        if (st === 'failed') {
+                                                            showNotification('تعذر ترحيل القيود بالكامل. راجع رسالة الخطأ في سجل الترحيل أو أعد المحاولة.', 'error');
+                                                        } else {
+                                                            showNotification('تم ترحيل القيود المحاسبية للاستلام.', 'success');
+                                                        }
+                                                    } catch (e) {
+                                                        alert(getErrorMessage(e, 'تعذر ترحيل القيود المحاسبية الآن. يمكنك إعادة المحاولة لاحقاً.'));
+                                                    }
+                                                })();
+                                            }}
+                                            className="px-3 py-2 rounded-lg text-sm font-semibold bg-indigo-700 text-white hover:bg-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                            ترحيل القيود
+                                        </button>
+                                    ) : null}
                                     {canManageImports ? (
                                         <button
                                             type="button"
@@ -1796,6 +1870,59 @@ const PurchaseOrderScreen: React.FC = () => {
                                             >
                                                 طباعة PO
                                             </button>
+                                            {hasReceived ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        void (async () => {
+                                                            try {
+                                                                const latest = await getLatestReceiptForOrder(order.id);
+                                                                if (!latest?.id) {
+                                                                    showNotification('لا يوجد إشعار استلام مرتبط بهذا الأمر.', 'info');
+                                                                    return;
+                                                                }
+                                                                await handlePrintGrn(latest.id, order);
+                                                            } catch (e) {
+                                                                alert(getErrorMessage(e, 'تعذر طباعة إشعار الاستلام.'));
+                                                            }
+                                                        })();
+                                                    }}
+                                                    className="px-3 py-2 rounded-lg text-sm font-semibold bg-gray-900 text-white hover:bg-black disabled:opacity-50 disabled:cursor-not-allowed"
+                                                >
+                                                    طباعة الاستلام
+                                                </button>
+                                            ) : null}
+                                            {hasReceived && hasPermission('accounting.manage') ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        void (async () => {
+                                                            try {
+                                                                const latest = await getLatestReceiptForOrder(order.id);
+                                                                if (!latest?.id) {
+                                                                    showNotification('لا يوجد استلام لترحيل قيوده.', 'info');
+                                                                    return;
+                                                                }
+                                                                const supabase = getSupabaseClient();
+                                                                if (!supabase) throw new Error('قاعدة البيانات غير متاحة.');
+                                                                const { data, error } = await supabase.rpc('post_purchase_receipt', { p_receipt_id: latest.id } as any);
+                                                                if (error) throw error;
+                                                                const st = String((data as any)?.status || '');
+                                                                if (st === 'failed') {
+                                                                    showNotification('تعذر ترحيل القيود بالكامل. راجع رسالة الخطأ في سجل الترحيل أو أعد المحاولة.', 'error');
+                                                                } else {
+                                                                    showNotification('تم ترحيل القيود المحاسبية للاستلام.', 'success');
+                                                                }
+                                                            } catch (e) {
+                                                                alert(getErrorMessage(e, 'تعذر ترحيل القيود المحاسبية الآن. يمكنك إعادة المحاولة لاحقاً.'));
+                                                            }
+                                                        })();
+                                                    }}
+                                                    className="px-3 py-2 rounded-lg text-sm font-semibold bg-indigo-700 text-white hover:bg-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                >
+                                                    ترحيل القيود
+                                                </button>
+                                            ) : null}
                                             <button
                                                 type="button"
                                                 onClick={() => openReceiveModal(order)}
