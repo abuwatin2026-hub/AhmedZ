@@ -370,17 +370,9 @@ const PurchaseOrderScreen: React.FC = () => {
             totalCost: Number(b.quantity_received || 0) * Number(b.unit_cost || 0),
         })).filter((x: any) => Number(x.quantity || 0) > 0);
 
-        const approvalStatus = String((receipt as any)?.approval_status || '').toLowerCase();
-        const requiresApproval = Boolean((receipt as any)?.requires_approval);
-        const docStatus = approvalStatus === 'approved'
-            ? 'Approved'
-            : requiresApproval
-                ? 'Draft'
-                : 'Approved';
-
         const grn: PrintableGrnData = {
             grnNumber: String((receipt as any)?.grn_number || `GRN-${receiptId.slice(-6).toUpperCase()}`),
-            documentStatus: docStatus,
+            documentStatus: 'Approved',
             referenceId: receiptId,
             receivedAt: String((receipt as any)?.received_at || new Date().toISOString()),
             purchaseOrderNumber: po.poNumber || undefined,
@@ -411,7 +403,7 @@ const PurchaseOrderScreen: React.FC = () => {
                 metadata: {
                     docType: 'grn',
                     docNumber: grn.grnNumber,
-                    status: docStatus,
+                    status: 'Approved',
                     sourceTable: 'purchase_receipts',
                     sourceId: receiptId,
                     template: 'PrintableGrn',
@@ -2016,11 +2008,6 @@ const PurchaseOrderScreen: React.FC = () => {
                                                                 ? 'الاستلام: مستلم جزئيًا'
                                                                 : 'الاستلام: غير مستلم'}
                                             </span>
-                                            {fullyReceived && order.requiresApproval && String(order.approvalStatus || '').toLowerCase() !== 'approved' ? (
-                                                <span className="px-2 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-900">
-                                                    اعتماد PO: معلق
-                                                </span>
-                                            ) : null}
                                             <span className={['px-2 py-1 rounded-full text-xs font-bold', paymentBadge.className].join(' ')}>
                                                 {`الدفع: ${paymentBadge.label}`}
                                             </span>
