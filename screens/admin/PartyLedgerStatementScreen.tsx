@@ -8,6 +8,7 @@ import { useSettings } from '../../contexts/SettingsContext';
 import { useToast } from '../../contexts/ToastContext';
 import { printContent } from '../../utils/printUtils';
 import PrintablePartyLedgerStatement from '../../components/admin/documents/PrintablePartyLedgerStatement';
+import { formatSourceRefAr, localizeOpenStatusAr } from '../../utils/displayLabels';
 
 type StatementRow = {
   occurred_at: string;
@@ -567,7 +568,7 @@ const PartyLedgerStatementScreen: React.FC = () => {
                       </div>
                       {r.open_status ? (
                         <div className="text-xs text-gray-500 dark:text-gray-400">
-                          {r.open_status === 'open' ? 'مفتوح' : r.open_status === 'partially_settled' ? 'مجزأ' : 'مُسوّى'}
+                          {localizeOpenStatusAr(r.open_status)}
                         </div>
                       ) : null}
                       {Array.isArray(r.allocations) && r.allocations.length > 0 ? (
@@ -577,10 +578,7 @@ const PartyLedgerStatementScreen: React.FC = () => {
                       ) : null}
                     </td>
                     <td className="p-4 text-gray-700 dark:text-gray-200">
-                      <div className="font-mono text-xs">{r.source_table}:{r.source_event}</div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400 font-mono" dir="ltr">
-                        {r.source_id || '—'}
-                      </div>
+                      <div className="text-xs">{formatSourceRefAr(r.source_table, r.source_event, r.source_id)}</div>
                     </td>
                   </tr>
                 ))

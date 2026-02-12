@@ -13,6 +13,7 @@ import LineChart from '../../../components/admin/charts/LineChart';
 import ConfirmationModal from '../../../components/admin/ConfirmationModal';
 import { localizeSupabaseError } from '../../../utils/errorUtils';
 import { toYmdLocal } from '../../../utils/dateUtils';
+import { localizeSourceEventAr, localizeSourceTableAr } from '../../../utils/displayLabels';
 
 type TrialBalanceRow = {
   account_code: string;
@@ -298,7 +299,7 @@ const sourceTableLabel = (t: string | null) => {
     case 'journal_entries':
       return 'القيود';
     default:
-      return t || '';
+      return localizeSourceTableAr(t) || '';
   }
 };
 
@@ -322,7 +323,7 @@ const sourceEventLabel = (e: string | null) => {
     case 'adjust_out':
       return 'تسوية (خصم)';
     default:
-      return e || '';
+      return localizeSourceEventAr(e) || '';
   }
 };
 

@@ -1,4 +1,5 @@
 import { formatDateOnly } from '../../../utils/printUtils';
+import { localizeDocStatusAr, shortId } from '../../../utils/displayLabels';
 
 type Brand = {
   name?: string;
@@ -176,7 +177,7 @@ export default function PrintableGrn(props: { data: PrintableGrnData; brand?: Br
             <div className="ref-number tabular" dir="ltr">#{data.grnNumber}</div>
             <div style={{ marginTop: 10 }}>
                 <span style={{ fontSize: 12, fontWeight: 'bold', background: data.documentStatus === 'posted' ? '#dcfce7' : '#f1f5f9', color: data.documentStatus === 'posted' ? '#166534' : '#64748b', padding: '4px 12px', borderRadius: 20 }}>
-                    {data.documentStatus || 'DRAFT'}
+                    {language === 'ar' ? localizeDocStatusAr(data.documentStatus) : (data.documentStatus || 'DRAFT')}
                 </span>
             </div>
         </div>
@@ -189,7 +190,7 @@ export default function PrintableGrn(props: { data: PrintableGrnData; brand?: Br
         </div>
         <div className="info-item">
             <span className="info-label">{language === 'en' ? 'Reference' : 'المرجع'}</span>
-            <span className="info-value tabular" dir="ltr">{data.referenceId || '—'}</span>
+            <span className="info-value tabular" dir="ltr">{data.referenceId ? shortId(data.referenceId) : '—'}</span>
         </div>
         <div className="info-item">
             <span className="info-label">{language === 'en' ? 'PO Number' : 'رقم أمر الشراء'}</span>

@@ -1,4 +1,5 @@
 import { formatDateOnly } from '../../../utils/printUtils';
+import { formatSourceRefAr, localizeOpenStatusAr, shortId } from '../../../utils/displayLabels';
 type Brand = {
   name?: string;
   address?: string;
@@ -194,7 +195,7 @@ export default function PrintablePartyLedgerStatement(props: {
         </div>
         <div className="doc-title">
           <h2>كشف حساب طرف</h2>
-          <div className="ref tabular" dir="ltr">Party: {partyName} • {partyId.slice(-8).toUpperCase()}</div>
+          <div className="ref tabular" dir="ltr">طرف: {partyName} • {shortId(partyId)}</div>
           {headerFilters && <div className="ref">{headerFilters}</div>}
         </div>
       </div>
@@ -206,7 +207,7 @@ export default function PrintablePartyLedgerStatement(props: {
         </div>
         <div className="info-item">
           <span className="info-label">المعرف</span>
-          <span className="info-value tabular" dir="ltr">{partyId}</span>
+          <span className="info-value tabular" dir="ltr">{shortId(partyId)}</span>
         </div>
         <div className="info-item">
           <span className="info-label">تاريخ الطباعة</span>
@@ -263,43 +264,14 @@ export default function PrintablePartyLedgerStatement(props: {
               </td>
               <td className="tabular text-center" dir="ltr">{fmt(convert(Number(r.running_balance || 0)))}</td>
               <td>
-                {(() => {
-                  const t = String(r.source_table || '').trim();
-                  const e = String(r.source_event || '').trim();
-                  const id = String(r.source_id || '').trim();
-                  const mapTable = (x: string) => {
-                    const xl = x.toLowerCase();
-                    if (xl === 'payments') return 'دفعة';
-                    if (xl === 'purchase_orders') return 'أمر شراء';
-                    if (xl === 'orders') return 'طلب/فاتورة';
-                    if (xl === 'inventory_movements') return 'حركة مخزون';
-                    if (xl === 'journal_vouchers') return 'قيد اليومية';
-                    return x || '—';
-                  };
-                  const mapEvent = (x: string) => {
-                    const xl = x.toLowerCase();
-                    if (xl === 'out') return 'صرف';
-                    if (xl === 'in') return 'قبض';
-                    if (xl === 'created') return 'إنشاء';
-                    if (xl === 'purchase_in') return 'استلام مشتريات';
-                    return x || '';
-                  };
-                  const label = [mapTable(t), mapEvent(e)].filter(Boolean).join(' • ');
-                  const shortId = id ? id.slice(-8).toUpperCase() : '—';
-                  return (
-                    <>
-                      <div className="tabular" style={{ fontSize: 11 }}>{label || '—'}</div>
-                      <div className="tabular" dir="ltr" style={{ fontSize: 11, color: '#64748b' }}>{shortId}</div>
-                    </>
-                  );
-                })()}
+                <div className="tabular" style={{ fontSize: 11 }}>{formatSourceRefAr(r.source_table, r.source_event, r.source_id)}</div>
               </td>
               <td>
                 <div className="tabular" dir="ltr" style={{ fontSize: 12 }}>
                   {r.open_base_amount == null ? '—' : fmt(convert(Number(r.open_base_amount || 0)))}
                 </div>
                 <div style={{ fontSize: 11, color: '#64748b' }}>
-                  {r.open_status === 'open' ? 'مفتوح' : r.open_status === 'partially_settled' ? 'مجزأ' : r.open_status ? 'مُسوّى' : '—'}
+                  {localizeOpenStatusAr(r.open_status)}
                 </div>
               </td>
             </tr>

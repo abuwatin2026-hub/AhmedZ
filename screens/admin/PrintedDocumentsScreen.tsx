@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { getSupabaseClient } from '../../supabase';
 import { useToast } from '../../contexts/ToastContext';
 import PageLoader from '../../components/PageLoader';
+import { localizeDocStatusAr, localizeDocTypeAr, localizeSourceTableAr, shortId } from '../../utils/displayLabels';
 
 type Row = {
   id: string;
@@ -104,7 +105,7 @@ export default function PrintedDocumentsScreen() {
       <div className="flex items-center justify-between gap-3 mb-4">
         <div>
           <h1 className="text-2xl font-bold dark:text-white">المستندات المطبوعة</h1>
-          <div className="text-sm text-gray-500 dark:text-gray-400">سجل طباعة المستندات (Documents Print Audit)</div>
+          <div className="text-sm text-gray-500 dark:text-gray-400">سجل طباعة المستندات</div>
         </div>
         <div className="flex items-center gap-2">
           <input
@@ -146,10 +147,12 @@ export default function PrintedDocumentsScreen() {
             ) : filtered.map((r) => (
               <tr key={r.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30">
                 <td className="p-3 text-sm text-gray-700 dark:text-gray-200 border-r dark:border-gray-700" dir="ltr">{formatTime(r.performedAt)}</td>
-                <td className="p-3 text-sm dark:text-gray-200 border-r dark:border-gray-700">{r.docType || '—'}</td>
+                <td className="p-3 text-sm dark:text-gray-200 border-r dark:border-gray-700">{localizeDocTypeAr(r.docType)}</td>
                 <td className="p-3 text-sm font-mono dark:text-gray-200 border-r dark:border-gray-700" dir="ltr">{r.docNumber || '—'}</td>
-                <td className="p-3 text-sm dark:text-gray-200 border-r dark:border-gray-700">{r.status || '—'}</td>
-                <td className="p-3 text-sm font-mono dark:text-gray-200 border-r dark:border-gray-700" dir="ltr">{r.sourceTable ? `${r.sourceTable}:${String(r.sourceId || '').slice(-8)}` : '—'}</td>
+                <td className="p-3 text-sm dark:text-gray-200 border-r dark:border-gray-700">{localizeDocStatusAr(r.status)}</td>
+                <td className="p-3 text-sm dark:text-gray-200 border-r dark:border-gray-700">
+                  {r.sourceTable ? `${localizeSourceTableAr(r.sourceTable)} • ${shortId(r.sourceId)}` : '—'}
+                </td>
                 <td className="p-3 text-sm dark:text-gray-200 border-r dark:border-gray-700">{r.template || '—'}</td>
                 <td className="p-3 text-sm text-gray-700 dark:text-gray-200">{r.details || '—'}</td>
               </tr>

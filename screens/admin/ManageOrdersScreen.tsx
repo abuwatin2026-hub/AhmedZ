@@ -25,6 +25,7 @@ import { printContent } from '../../utils/printUtils';
 import { printReceiptVoucherByPaymentId } from '../../utils/vouchers';
 import CurrencyDualAmount from '../../components/common/CurrencyDualAmount';
 import { toDateTimeLocalInputValue } from '../../utils/dateUtils';
+import { localizeUomCodeAr } from '../../utils/displayLabels';
 
 const statusTranslations: Record<OrderStatus, string> = {
     pending: 'قيد الانتظار',
@@ -3407,8 +3408,8 @@ const ManageOrdersScreen: React.FC = () => {
                                                     {!isWeightBased && typeof available === 'number' ? (
                                                         <div className="text-xs text-gray-500 dark:text-gray-400">
                                                             متاح: {(!isWeightBased && typeof availableInUom === 'number') ? availableInUom : available}{' '}
-                                                            {String(line.uomCode || mi.unitType || 'piece')}{' '}
-                                                            <span className="text-gray-400">({available} {String(mi.unitType || 'piece')})</span>
+                                                            {localizeUomCodeAr(String(line.uomCode || mi.unitType || 'piece'))}{' '}
+                                                            <span className="text-gray-400">({available} {unitTranslations[mi.unitType || 'piece'] || localizeUomCodeAr(String(mi.unitType || 'piece'))})</span>
                                                         </div>
                                                     ) : null}
                                                     <CurrencyDualAmount

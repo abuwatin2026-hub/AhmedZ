@@ -3,6 +3,7 @@ import QRCode from 'qrcode';
 import { Order } from '../../types';
 import { computeCartItemPricing } from '../../utils/orderUtils';
 import { AZTA_IDENTITY } from '../../config/identity';
+import { localizeUomCodeAr } from '../../utils/displayLabels';
 
 // Helper to generate TLV base64 for ZATCA QR
 export const generateZatcaTLV = (sellerName: string, vatRegistrationNumber: string, timestamp: string, total: string, vatTotal: string) => {
@@ -146,7 +147,7 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
             ar: 'آجل',
             mixed: language === 'ar' ? 'متعدد' : 'Mixed',
         };
-        return methodMap[method] || method;
+        return methodMap[method] || (language === 'ar' ? 'غير معروف' : method);
     };
 
     const invoiceTerms: 'cash' | 'credit' = (invoiceOrder as any).invoiceTerms === 'credit' || invoiceOrder.paymentMethod === 'ar' ? 'credit' : 'cash';
@@ -211,7 +212,7 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
 
             <div className="text-center border-y py-1 mb-2">
                 <div className="font-bold text-lg">فاتورة ضريبية</div>
-                <div className="text-xs uppercase tracking-wider">Tax Invoice</div>
+                {language === 'ar' ? null : <div className="text-xs uppercase tracking-wider">Tax Invoice</div>}
             </div>
 
             <div className="mb-2 text-sm">
@@ -247,9 +248,11 @@ const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({
                 <tbody>
                     {invoiceOrder.items.map((item, index) => {
                         const pricing = computeCartItemPricing(item);
-                        const displayQty = pricing.isWeightBased
-                            ? `${pricing.quantity} ${pricing.unitType === 'gram' ? 'جم' : 'كجم'}`
-                            : String(item.quantity);
+                        const displayQty = (() => {
+                            if (pricing.isWeightBased) return `${pricing.quantity} ${pricing.unitType === 'gram' ? 'غ' : 'كغ'}`;
+                            const uom = localizeUomCodeAr(String((item as any)?.uomCode || item.unitType || 'piece'));
+                            return `${String(item.quantity)} ${uom}`;
+                        })();
 
                         return (
                             <tr key={item.cartItemId || index}>

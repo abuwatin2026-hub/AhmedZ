@@ -3,6 +3,7 @@ import type { CartItem } from '../../types';
 import NumericKeypadModal from './NumericKeypadModal';
 import { useStock } from '../../contexts/StockContext';
 import { useSettings } from '../../contexts/SettingsContext';
+import { localizeUomCodeAr } from '../../utils/displayLabels';
 
 interface Props {
   items: CartItem[];
@@ -93,11 +94,7 @@ const POSLineItemList: React.FC<Props> = ({ items, currencyCode, onUpdate, onRem
           if (isPromotionLine) return 'باقة';
           if (item.unitType === 'kg') return 'كغ';
           if (item.unitType === 'gram') return 'غ';
-          const raw = String((item as any)?.uomCode || item.unitType || 'piece').trim().toLowerCase();
-          if (raw === 'piece') return 'قطعة';
-          if (raw === 'pack') return 'باكت';
-          if (raw === 'carton') return 'كرتون';
-          return raw || 'قطعة';
+          return localizeUomCodeAr(String((item as any)?.uomCode || item.unitType || 'piece'));
         })();
         const rowNo = index + 1;
         return (
@@ -136,7 +133,7 @@ const POSLineItemList: React.FC<Props> = ({ items, currencyCode, onUpdate, onRem
                   const availUom = (f > 0 && item.unitType !== 'kg' && item.unitType !== 'gram') ? Math.floor((availBase / f) + 1e-9) : availBase;
                   const reservedUom = (f > 0 && item.unitType !== 'kg' && item.unitType !== 'gram') ? Math.floor((reservedBase / f) + 1e-9) : reservedBase;
                   const baseLabel = item.unitType === 'piece' ? 'قطعة' : item.unitType === 'kg' ? 'كغ' : item.unitType === 'gram' ? 'غ' : item.unitType;
-                  const uomLabel = String((item as any).uomCode || item.unitType || 'piece');
+                  const uomLabel = localizeUomCodeAr(String((item as any).uomCode || item.unitType || 'piece'));
                   return (
                     <span className="text-[11px] text-gray-500 dark:text-gray-400">
                       متاح: {availUom} {uomLabel} <span className="text-gray-400">({availBase} {baseLabel})</span> • محجوز: {reservedUom}

@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { getSupabaseClient } from '../../supabase';
 import * as Icons from '../../components/icons';
 import { useToast } from '../../contexts/ToastContext';
+import { localizeSourceTableAr, shortId } from '../../utils/displayLabels';
 
 type PartyRow = { id: string; name: string; currency_preference?: string | null };
 
@@ -426,7 +427,7 @@ export default function SettlementWorkspaceScreen() {
                       {Number(d.open_base_amount || 0).toFixed(2)}
                       <div className="text-xs text-gray-500 dark:text-gray-400">{d.currency_code}{d.open_foreign_amount != null ? ` (${Number(d.open_foreign_amount).toFixed(2)})` : ''}</div>
                     </td>
-                    <td className="p-3 font-mono text-xs" dir="ltr">{d.source_table}:{String(d.source_id || '').slice(-8)}</td>
+                    <td className="p-3 text-xs">{`${localizeSourceTableAr(d.source_table)} • ${shortId(d.source_id)}`}</td>
                   </tr>
                 ))}
                 {debits.length === 0 ? (
@@ -476,7 +477,7 @@ export default function SettlementWorkspaceScreen() {
                       {Number(d.open_base_amount || 0).toFixed(2)}
                       <div className="text-xs text-gray-500 dark:text-gray-400">{d.currency_code}{d.open_foreign_amount != null ? ` (${Number(d.open_foreign_amount).toFixed(2)})` : ''}</div>
                     </td>
-                    <td className="p-3 font-mono text-xs" dir="ltr">{d.source_table}:{String(d.source_id || '').slice(-8)}</td>
+                    <td className="p-3 text-xs">{`${localizeSourceTableAr(d.source_table)} • ${shortId(d.source_id)}`}</td>
                   </tr>
                 ))}
                 {credits.length === 0 ? (
@@ -502,10 +503,10 @@ export default function SettlementWorkspaceScreen() {
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div className="text-sm text-gray-700 dark:text-gray-200">
-            From (Debit): <span className="font-mono">{selectedDebit ? selectedDebit.slice(-8) : '—'}</span>
+            من (مدين): <span className="font-mono">{shortId(selectedDebit)}</span>
           </div>
           <div className="text-sm text-gray-700 dark:text-gray-200">
-            To (Credit): <span className="font-mono">{selectedCredit ? selectedCredit.slice(-8) : '—'}</span>
+            إلى (دائن): <span className="font-mono">{shortId(selectedCredit)}</span>
           </div>
           <div className="text-sm text-gray-700 dark:text-gray-200">
             مقترح: <span className="font-mono">{suggestedAmount.kind === 'foreign' || suggestedAmount.kind === 'base' ? suggestedAmount.value.toFixed(2) : '—'}</span>
