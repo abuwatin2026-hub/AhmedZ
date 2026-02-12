@@ -83,6 +83,7 @@ const POSScreen: React.FC = () => {
   const pricingRunIdRef = useRef(0);
   const [pricingBusy, setPricingBusy] = useState(false);
   const [pricingReady, setPricingReady] = useState(true);
+  const [costSummaryByItemId, setCostSummaryByItemId] = useState<Record<string, { distinctCosts: number; layersCount: number }>>({});
   const [isPortrait, setIsPortrait] = useState<boolean>(() => {
     try {
       return window.matchMedia && window.matchMedia('(orientation: portrait)').matches;
@@ -656,6 +657,46 @@ const POSScreen: React.FC = () => {
 
     void run();
   }, [pendingOrderId, pricingSignature, sessionScope, showNotification]);
+
+  useEffect(() => {
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+    const warehouseId = sessionScope.requireScope().warehouseId;
+    const ids = Array.from(new Set(items
+      .filter((it: any) => !((it as any)?.lineType === 'promotion' || Boolean((it as any)?.promotionId)))
+      .map((it: any) => String(it?.id || it?.itemId || '').trim())
+      .filter(Boolean)));
+    if (!warehouseId || ids.length === 0) {
+      setCostSummaryByItemId({});
+      return;
+    }
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const { data, error } = await supabase.rpc('get_item_cost_layers_summaries', {
+          p_warehouse_id: warehouseId,
+          p_item_ids: ids,
+        } as any);
+        if (cancelled) return;
+        if (error) return;
+        const map: Record<string, { distinctCosts: number; layersCount: number }> = {};
+        for (const row of (Array.isArray(data) ? data : [])) {
+          const itemId = String((row as any)?.item_id || '').trim();
+          if (!itemId) continue;
+          map[itemId] = {
+            distinctCosts: Number((row as any)?.distinct_costs || 0) || 0,
+            layersCount: Number((row as any)?.layers_count || 0) || 0,
+          };
+        }
+        setCostSummaryByItemId(map);
+      } catch {
+      }
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [items, sessionScope]);
 
   const pricingBlockReason = useMemo(() => {
     if (!items.length) return '';
@@ -1476,6 +1517,7 @@ const POSScreen: React.FC = () => {
               onSelect={setSelectedCartItemId}
               touchMode={touchMode}
               uomOptionsByItemId={itemUomRowsByItemId}
+              costSummaryByItemId={costSummaryByItemId}
             />
           </div>
         </div>

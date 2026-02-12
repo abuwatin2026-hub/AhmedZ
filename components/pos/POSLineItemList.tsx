@@ -15,6 +15,7 @@ interface Props {
   onSelect?: (cartItemId: string) => void;
   touchMode?: boolean;
   uomOptionsByItemId?: Record<string, Array<{ code: string; name?: string; qtyInBase: number }>>;
+  costSummaryByItemId?: Record<string, { distinctCosts: number; layersCount: number }>;
 }
 
 const fmt = (n: number) => {
@@ -26,7 +27,7 @@ const fmt = (n: number) => {
   }
 };
 
-const POSLineItemList: React.FC<Props> = ({ items, currencyCode, onUpdate, onRemove, onEditAddons, selectedCartItemId, onSelect, touchMode, uomOptionsByItemId }) => {
+const POSLineItemList: React.FC<Props> = ({ items, currencyCode, onUpdate, onRemove, onEditAddons, selectedCartItemId, onSelect, touchMode, uomOptionsByItemId, costSummaryByItemId }) => {
   const [keypadOpen, setKeypadOpen] = useState(false);
   const [keypadTitle, setKeypadTitle] = useState('');
   const [keypadInitial, setKeypadInitial] = useState(0);
@@ -161,6 +162,17 @@ const POSLineItemList: React.FC<Props> = ({ items, currencyCode, onUpdate, onRem
                       تنبيه: الدفعة التالية بسعر مختلف
                     </span>
                   )}
+                  {!isPromotionLine && (() => {
+                    const id = String((item as any)?.id || (item as any)?.itemId || '').trim();
+                    const info = id ? (costSummaryByItemId || {})[id] : undefined;
+                    const n = Number(info?.distinctCosts || 0);
+                    if (!(n > 1)) return null;
+                    return (
+                      <span className="px-2 py-1 rounded-full bg-slate-50 text-slate-800 border border-slate-200 dark:bg-slate-900/20 dark:text-slate-200 dark:border-slate-900">
+                        تكاليف متعددة: {n}
+                      </span>
+                    );
+                  })()}
                 </div>
               )}
             </div>

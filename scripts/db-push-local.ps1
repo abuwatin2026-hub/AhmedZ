@@ -14,7 +14,7 @@ function Get-DbPassword {
   if (-not $plain -or -not $plain.Trim()) { $plain = $env:SUPABASE_PASSWORD }
   if (-not $plain -or -not $plain.Trim()) { $plain = $env:VITE_SUPABASE_DB_PASSWORD }
   if (-not $plain -or -not $plain.Trim()) { $plain = $env:PGPASSWORD }
-  if (-not $plain -or -not $plain.Trim()) { $plain = "postgres" } # افتراضي بيئة Supabase المحلية
+  if (-not $plain -or -not $plain.Trim()) { $plain = "postgres" }
   return $plain
 }
 
@@ -109,7 +109,7 @@ if ($files.Count -eq 0) {
 foreach ($f in $files) {
   $name = $f.Name
   $version = ($name -split "_")[0]
-  if (-not ($version -match '^\d{8,}$')) { $version = $name } # fallback
+  if (-not ($version -match '^\d{8,}$')) { $version = $name }
   if ($applied.Contains($version)) {
     Write-Host "Skip: $name (already applied)"
     continue

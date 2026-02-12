@@ -64,6 +64,20 @@ type LedgerRow = {
   running_balance: number;
 };
 
+type UomInflationRow = {
+  movement_id: string;
+  occurred_at: string;
+  item_id: string;
+  reference_table: string | null;
+  reference_id: string | null;
+  quantity: number;
+  unit_cost: number;
+  total_cost: number;
+  expected_unit_cost: number;
+  expected_total_cost: number;
+  inflation_factor: number | null;
+};
+
 type AgingCustomerRow = {
   customer_auth_user_id: string | null;
   current: number;
@@ -529,6 +543,10 @@ const FinancialReports: React.FC = () => {
   const [entryHeader, setEntryHeader] = useState<JournalEntryHeader | null>(null);
   const [entryLines, setEntryLines] = useState<JournalEntryLine[]>([]);
   const [isEntryLoading, setIsEntryLoading] = useState(false);
+  const [uomFixOpen, setUomFixOpen] = useState(false);
+  const [uomFixBusy, setUomFixBusy] = useState(false);
+  const [uomFixApplyBusy, setUomFixApplyBusy] = useState(false);
+  const [uomFixRows, setUomFixRows] = useState<UomInflationRow[]>([]);
 
   const [arAging, setArAging] = useState<AgingCustomerRow[]>([]);
   const [apAging, setApAging] = useState<AgingSupplierRow[]>([]);
@@ -1712,6 +1730,77 @@ const FinancialReports: React.FC = () => {
     );
   }, [accountCode, appliedFilters.endDate, appliedFilters.startDate]);
 
+  const toIsoStart = (ymd?: string) => {
+    const s = String(ymd || '').trim();
+    if (!s) return null;
+    return `${s}T00:00:00.000Z`;
+  };
+
+  const toIsoEnd = (ymd?: string) => {
+    const s = String(ymd || '').trim();
+    if (!s) return null;
+    return `${s}T23:59:59.999Z`;
+  };
+
+  const loadUomFixPreview = useCallback(async () => {
+    if (!supabase) return;
+    setUomFixBusy(true);
+    try {
+      const { data, error } = await supabase.rpc('detect_purchase_in_uom_inflation', {
+        p_start: toIsoStart(appliedFilters.startDate),
+        p_end: toIsoEnd(appliedFilters.endDate),
+        p_limit: 200,
+      } as any);
+      if (error) throw error;
+      const rows: UomInflationRow[] = (Array.isArray(data) ? data : []).map((r: any) => ({
+        movement_id: String(r?.movement_id || ''),
+        occurred_at: String(r?.occurred_at || ''),
+        item_id: String(r?.item_id || ''),
+        reference_table: r?.reference_table ? String(r.reference_table) : null,
+        reference_id: r?.reference_id ? String(r.reference_id) : null,
+        quantity: Number(r?.quantity) || 0,
+        unit_cost: Number(r?.unit_cost) || 0,
+        total_cost: Number(r?.total_cost) || 0,
+        expected_unit_cost: Number(r?.expected_unit_cost) || 0,
+        expected_total_cost: Number(r?.expected_total_cost) || 0,
+        inflation_factor: r?.inflation_factor == null ? null : (Number(r.inflation_factor) || null),
+      })).filter((x) => Boolean(x.movement_id));
+      setUomFixRows(rows);
+    } catch (err: any) {
+      setUomFixRows([]);
+      showNotification(localizeSupabaseError(err) || 'تعذر فحص تضخيم UOM.', 'error');
+    } finally {
+      setUomFixBusy(false);
+    }
+  }, [appliedFilters.endDate, appliedFilters.startDate, showNotification, supabase]);
+
+  const applyUomFix = useCallback(async () => {
+    if (!supabase) return;
+    if (!canManageAccounting) {
+      showNotification('ليس لديك صلاحية إدارة المحاسبة.', 'error');
+      return;
+    }
+    setUomFixApplyBusy(true);
+    try {
+      const { data, error } = await supabase.rpc('repair_purchase_in_uom_inflation', {
+        p_start: toIsoStart(appliedFilters.startDate),
+        p_end: toIsoEnd(appliedFilters.endDate),
+        p_limit: 200,
+        p_dry_run: false,
+      } as any);
+      if (error) throw error;
+      const fixedCount = (Array.isArray(data) ? data : []).filter((r: any) => String(r?.action || '') === 'fixed').length;
+      showNotification(`تم إنشاء قيود تصحيح: ${fixedCount}`, 'success');
+      await loadLedgerFor(accountCode);
+      await loadStatements();
+      await loadUomFixPreview();
+    } catch (err: any) {
+      showNotification(localizeSupabaseError(err) || 'تعذر تطبيق إصلاح تضخيم UOM.', 'error');
+    } finally {
+      setUomFixApplyBusy(false);
+    }
+  }, [accountCode, appliedFilters.endDate, appliedFilters.startDate, canManageAccounting, loadLedgerFor, loadStatements, loadUomFixPreview, showNotification, supabase]);
+
   const createPeriod = async () => {
     if (!supabase || !newPeriod.name || !newPeriod.start_date || !newPeriod.end_date) return;
     if (!canManageAccounting) {
@@ -1808,6 +1897,104 @@ const FinancialReports: React.FC = () => {
 
   return (
     <div className="animate-fade-in space-y-8">
+      {uomFixOpen && (
+        <div className="fixed inset-0 z-50">
+          <div className="absolute inset-0 bg-black/50 z-40" onClick={() => setUomFixOpen(false)} />
+          <div className="absolute inset-0 flex items-center justify-center p-4 z-50" onClick={(e) => e.stopPropagation()}>
+            <div className="w-full max-w-5xl bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+              <div className="flex items-center justify-between gap-3 p-4 border-b border-gray-100 dark:border-gray-700">
+                <div className="min-w-0">
+                  <div className="text-lg font-bold dark:text-white truncate">فحص/إصلاح تضخيم الاستلام بسبب UOM</div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    يتم إنشاء قيود تصحيح جديدة بدون تعديل القيود القديمة.
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void loadUomFixPreview()}
+                    disabled={uomFixBusy || uomFixApplyBusy}
+                    className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 font-semibold disabled:opacity-60"
+                  >
+                    تحديث
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void applyUomFix()}
+                    disabled={uomFixBusy || uomFixApplyBusy || !canManageAccounting || uomFixRows.length === 0}
+                    className="px-3 py-2 rounded-lg bg-amber-600 text-white font-semibold disabled:opacity-60"
+                  >
+                    تطبيق الإصلاح
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setUomFixOpen(false)}
+                    className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 font-semibold hover:bg-gray-50 dark:hover:bg-gray-700"
+                  >
+                    إغلاق
+                  </button>
+                </div>
+              </div>
+              <div className="p-4 space-y-3">
+                <div className="p-3 rounded-lg border border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-900 dark:bg-amber-900/20 dark:text-amber-200 text-sm font-semibold">
+                  هذا يصلح حالة: كمية بالوحدة الأساسية + تكلفة بالوحدة غير الأساسية (مثلاً كرتون) مما يضخّم المخزون والذمم.
+                </div>
+                {uomFixBusy ? (
+                  <div className="py-10 text-center text-gray-500 dark:text-gray-400 font-semibold">جاري التحميل...</div>
+                ) : uomFixRows.length === 0 ? (
+                  <div className="py-10 text-center text-gray-500 dark:text-gray-400 font-semibold">لا توجد حالات مشتبهة في الفترة المحددة.</div>
+                ) : (
+                  <div className="overflow-auto max-h-[60vh]">
+                    <table className="min-w-full text-sm">
+                      <thead className="text-gray-500 dark:text-gray-400">
+                        <tr className="border-b dark:border-gray-700">
+                          <th className="py-2 px-3 text-right border-l dark:border-gray-700">التاريخ</th>
+                          <th className="py-2 px-3 text-right border-l dark:border-gray-700">الصنف</th>
+                          <th className="py-2 px-3 text-right border-l dark:border-gray-700">المصدر</th>
+                          <th className="py-2 px-3 text-right border-l dark:border-gray-700">المبلغ الحالي</th>
+                          <th className="py-2 px-3 text-right border-l dark:border-gray-700">المبلغ الصحيح</th>
+                          <th className="py-2 px-3 text-right border-l dark:border-gray-700">الفرق</th>
+                          <th className="py-2 px-3 text-right">عامل التضخيم</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {uomFixRows.map((r) => {
+                          const delta = (Number(r.total_cost) || 0) - (Number(r.expected_total_cost) || 0);
+                          return (
+                            <tr key={r.movement_id} className="border-b dark:border-gray-700">
+                              <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">{formatDateInput(r.occurred_at)}</td>
+                              <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700 font-mono">{r.item_id}</td>
+                              <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700">
+                                <div className="text-xs text-gray-500 dark:text-gray-400" dir="ltr">
+                                  {(r.reference_table || '—')}/{(r.reference_id || '—')}
+                                </div>
+                                <div className="text-[11px] text-gray-400 dark:text-gray-500 font-mono" dir="ltr">
+                                  {`#${shortRef(r.movement_id, 8)}`}
+                                </div>
+                              </td>
+                              <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">{formatMoney(Number(r.total_cost) || 0)}</td>
+                              <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">{formatMoney(Number(r.expected_total_cost) || 0)}</td>
+                              <td className={`py-2 px-3 border-l dark:border-gray-700 font-semibold ${Math.abs(delta) <= 0.01 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`} dir="ltr">
+                                {formatMoney(delta)}
+                              </td>
+                              <td className="py-2 px-3 dark:text-white font-mono" dir="ltr">
+                                {r.inflation_factor == null ? '—' : Number(r.inflation_factor).toFixed(2)}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                {uomFixApplyBusy && (
+                  <div className="text-sm text-gray-500 dark:text-gray-400 font-semibold">جارٍ تطبيق الإصلاح...</div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       {entryModalId && (
         <div className="fixed inset-0 z-50">
           <div className="absolute inset-0 bg-black/50 z-40" onClick={closeEntryModal} />
@@ -3564,6 +3751,16 @@ const FinancialReports: React.FC = () => {
             >
               تصدير Excel
             </button>
+            {accountCode.trim() === '1410' && canManageAccounting && (
+              <button
+                type="button"
+                onClick={() => { setUomFixOpen(true); void loadUomFixPreview(); }}
+                disabled={isBusy || uomFixBusy}
+                className="px-4 py-2 rounded-lg border border-amber-200 bg-amber-50 text-amber-900 font-semibold disabled:opacity-60 dark:border-amber-900 dark:bg-amber-900/20 dark:text-amber-200"
+              >
+                فحص تضخيم UOM
+              </button>
+            )}
           </div>
         </div>
         {accountsError && (

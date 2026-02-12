@@ -32,6 +32,25 @@ type AggregatedRow = {
   availableStock: number;
 };
 
+type CostSummary = {
+  layersCount: number;
+  distinctCosts: number;
+  minUnitCost: number;
+  maxUnitCost: number;
+  weightedAvgUnitCost: number;
+  totalRemaining: number;
+};
+
+type CostLayerRow = {
+  batchId: string;
+  batchCode: string;
+  expiryDate: string | null;
+  remainingQty: number;
+  unitCost: number;
+  purchaseOrderRef?: string;
+  importShipmentRef?: string;
+};
+
 const parseNumber = (v: unknown) => {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
@@ -59,6 +78,11 @@ const InventoryStockReportScreen: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
   const [rowsRaw, setRowsRaw] = useState<StockRow[]>([]);
+  const [costSummaryByItemId, setCostSummaryByItemId] = useState<Record<string, CostSummary>>({});
+  const [costModalOpen, setCostModalOpen] = useState(false);
+  const [costModalTitle, setCostModalTitle] = useState('');
+  const [costModalRows, setCostModalRows] = useState<CostLayerRow[]>([]);
+  const [costModalBusy, setCostModalBusy] = useState(false);
 
   useEffect(() => {
     if (warehouseId) return;
@@ -158,6 +182,85 @@ const InventoryStockReportScreen: React.FC = () => {
   }, [groupBy, searchTerm, selectedCategory, selectedGroup, selectedSupplier, stockFilter, warehouseId]);
 
   const filteredRows = useMemo<StockRow[]>(() => rowsRaw, [rowsRaw]);
+
+  useEffect(() => {
+    let active = true;
+    const run = async () => {
+      if (groupBy !== 'item') {
+        if (active) setCostSummaryByItemId({});
+        return;
+      }
+      if (!warehouseId) return;
+      const supabase = getSupabaseClient();
+      if (!supabase) return;
+      const ids = filteredRows.map((r) => String(r.itemId || '').trim()).filter(Boolean);
+      if (ids.length === 0) {
+        if (active) setCostSummaryByItemId({});
+        return;
+      }
+      try {
+        const { data, error: qErr } = await supabase.rpc('get_item_cost_layers_summaries', {
+          p_warehouse_id: warehouseId,
+          p_item_ids: ids,
+        } as any);
+        if (qErr) throw qErr;
+        const map: Record<string, CostSummary> = {};
+        for (const row of (Array.isArray(data) ? data : [])) {
+          const itemId = String((row as any)?.item_id || '').trim();
+          if (!itemId) continue;
+          map[itemId] = {
+            layersCount: Number((row as any)?.layers_count || 0) || 0,
+            distinctCosts: Number((row as any)?.distinct_costs || 0) || 0,
+            totalRemaining: parseNumber((row as any)?.total_remaining),
+            minUnitCost: parseNumber((row as any)?.min_unit_cost),
+            maxUnitCost: parseNumber((row as any)?.max_unit_cost),
+            weightedAvgUnitCost: parseNumber((row as any)?.weighted_avg_unit_cost),
+          };
+        }
+        if (active) setCostSummaryByItemId(map);
+      } catch (e: any) {
+        if (active) setCostSummaryByItemId({});
+      }
+    };
+    void run();
+    return () => {
+      active = false;
+    };
+  }, [filteredRows, groupBy, warehouseId]);
+
+  const openCostModal = async (row: StockRow) => {
+    if (!warehouseId) return;
+    const itemId = String(row.itemId || '').trim();
+    if (!itemId) return;
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+    setCostModalTitle(`طبقات التكلفة: ${row.name}`);
+    setCostModalOpen(true);
+    setCostModalBusy(true);
+    try {
+      const { data, error: qErr } = await supabase.rpc('list_item_cost_layers', {
+        p_item_id: itemId,
+        p_warehouse_id: warehouseId,
+        p_limit: 30,
+      } as any);
+      if (qErr) throw qErr;
+      const rows = (Array.isArray(data) ? data : []).map((r: any) => ({
+        batchId: String(r?.batch_id || ''),
+        batchCode: String(r?.batch_code || ''),
+        expiryDate: r?.expiry_date ? String(r.expiry_date) : null,
+        remainingQty: parseNumber(r?.remaining_qty),
+        unitCost: parseNumber(r?.unit_cost),
+        purchaseOrderRef: r?.purchase_order_ref ? String(r.purchase_order_ref) : undefined,
+        importShipmentRef: r?.import_shipment_ref ? String(r.import_shipment_ref) : undefined,
+      } satisfies CostLayerRow)).filter((x: any) => Boolean(x.batchId));
+      setCostModalRows(rows);
+    } catch (e: any) {
+      setCostModalRows([]);
+      showNotification(String(e?.message || '') || 'فشل تحميل طبقات التكلفة.', 'error');
+    } finally {
+      setCostModalBusy(false);
+    }
+  };
 
   const aggregated = useMemo<AggregatedRow[]>(() => {
     if (groupBy === 'item') return [];
@@ -486,6 +589,7 @@ const InventoryStockReportScreen: React.FC = () => {
                   <th className="p-3 text-sm font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">الفئة</th>
                   <th className="p-3 text-sm font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">المجموعة</th>
                   <th className="p-3 text-sm font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">الوحدة</th>
+                  <th className="p-3 text-sm font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">طبقات التكلفة</th>
                   <th className="p-3 text-sm font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">المخزون الحالي</th>
                   <th className="p-3 text-sm font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">محجوز</th>
                   <th className="p-3 text-sm font-semibold text-gray-600 dark:text-gray-300">متاح</th>
@@ -503,6 +607,28 @@ const InventoryStockReportScreen: React.FC = () => {
                       {row.group ? getGroupLabel(row.group, row.category || undefined, 'ar') : '—'}
                     </td>
                     <td className="p-3 text-gray-700 dark:text-gray-200 border-r dark:border-gray-700">{getUnitLabel(row.unit as any, 'ar')}</td>
+                    <td className="p-3 text-gray-700 dark:text-gray-200 border-r dark:border-gray-700">
+                      {(() => {
+                        const s = costSummaryByItemId[row.itemId];
+                        if (!s) return <span className="text-gray-400">—</span>;
+                        const multi = (s.distinctCosts || 0) > 1;
+                        const label = `${s.distinctCosts || 0} سعر • ${s.layersCount || 0} دفعة`;
+                        return (
+                          <div className="flex items-center gap-2">
+                            <span className={`px-2 py-1 rounded-full text-xs font-semibold border ${multi ? 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-900/20 dark:text-amber-200 dark:border-amber-900' : 'bg-gray-50 text-gray-700 border-gray-200 dark:bg-gray-900/20 dark:text-gray-200 dark:border-gray-800'}`}>
+                              {label}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => { void openCostModal(row); }}
+                              className="px-3 py-1 rounded-lg text-xs font-semibold bg-white border border-gray-200 hover:bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:hover:bg-gray-700"
+                            >
+                              عرض
+                            </button>
+                          </div>
+                        );
+                      })()}
+                    </td>
                     <td className="p-3 text-gray-700 dark:text-gray-200 border-r dark:border-gray-700 font-mono" dir="ltr">{row.currentStock.toFixed(2)}</td>
                     <td className="p-3 text-gray-700 dark:text-gray-200 border-r dark:border-gray-700 font-mono" dir="ltr">{row.reservedStock.toFixed(2)}</td>
                     <td className={`p-3 font-mono ${row.availableStock <= 0 ? 'text-red-600' : row.availableStock <= row.lowStockThreshold ? 'text-orange-600' : 'text-green-600'}`} dir="ltr">
@@ -512,12 +638,12 @@ const InventoryStockReportScreen: React.FC = () => {
                 ))}
                 {loading && (
                   <tr>
-                    <td colSpan={7} className="p-8 text-center text-gray-500 dark:text-gray-400">جاري التحميل...</td>
+                    <td colSpan={8} className="p-8 text-center text-gray-500 dark:text-gray-400">جاري التحميل...</td>
                   </tr>
                 )}
                 {!loading && filteredRows.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="p-8 text-center text-gray-500 dark:text-gray-400">لا توجد نتائج.</td>
+                    <td colSpan={8} className="p-8 text-center text-gray-500 dark:text-gray-400">لا توجد نتائج.</td>
                   </tr>
                 )}
               </tbody>
@@ -618,6 +744,56 @@ const InventoryStockReportScreen: React.FC = () => {
           </table>
         )}
       </div>
+      {costModalOpen && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-3xl border border-gray-100 dark:border-gray-700 overflow-hidden">
+            <div className="p-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
+              <div className="font-bold dark:text-white">{costModalTitle}</div>
+              <button
+                type="button"
+                onClick={() => { setCostModalOpen(false); setCostModalRows([]); }}
+                className="px-3 py-1 rounded-lg border border-gray-200 dark:border-gray-700 text-sm font-semibold"
+              >
+                إغلاق
+              </button>
+            </div>
+            <div className="p-4">
+              {costModalBusy ? (
+                <div className="text-center text-gray-500 dark:text-gray-400 py-10">جاري التحميل...</div>
+              ) : costModalRows.length === 0 ? (
+                <div className="text-center text-gray-500 dark:text-gray-400 py-10">لا توجد دفعات متاحة.</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-right">
+                    <thead className="bg-gray-50 dark:bg-gray-700/50">
+                      <tr>
+                        <th className="p-2 text-xs font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">الدفعة</th>
+                        <th className="p-2 text-xs font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">انتهاء</th>
+                        <th className="p-2 text-xs font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">متبقي</th>
+                        <th className="p-2 text-xs font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">تكلفة/وحدة</th>
+                        <th className="p-2 text-xs font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">أمر شراء</th>
+                        <th className="p-2 text-xs font-semibold text-gray-600 dark:text-gray-300">شحنة</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                      {costModalRows.map((r) => (
+                        <tr key={r.batchId}>
+                          <td className="p-2 border-r dark:border-gray-700 font-mono">{r.batchCode || r.batchId.slice(-6).toUpperCase()}</td>
+                          <td className="p-2 border-r dark:border-gray-700 font-mono" dir="ltr">{r.expiryDate || '—'}</td>
+                          <td className="p-2 border-r dark:border-gray-700 font-mono" dir="ltr">{Number(r.remainingQty || 0).toFixed(2)}</td>
+                          <td className="p-2 border-r dark:border-gray-700 font-mono" dir="ltr">{Number(r.unitCost || 0).toFixed(4)}</td>
+                          <td className="p-2 border-r dark:border-gray-700 font-mono">{r.purchaseOrderRef || '—'}</td>
+                          <td className="p-2 font-mono">{r.importShipmentRef || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

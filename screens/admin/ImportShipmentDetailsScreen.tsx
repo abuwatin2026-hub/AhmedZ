@@ -34,6 +34,9 @@ const ImportShipmentDetailsScreen: React.FC = () => {
     const [receiptSelection, setReceiptSelection] = useState<Record<string, boolean>>({});
     const [receiptsLoading, setReceiptsLoading] = useState(false);
     const [receiptsSyncing, setReceiptsSyncing] = useState(false);
+    const [allowedPoIds, setAllowedPoIds] = useState<string[]>([]);
+    const [allowedPoLabels, setAllowedPoLabels] = useState<Record<string, string>>({});
+    const [showAllReceipts, setShowAllReceipts] = useState(false);
     const [pricingLoading, setPricingLoading] = useState(false);
 
     const isUuid = (value: unknown) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value ?? '').trim());
@@ -305,13 +308,19 @@ const ImportShipmentDetailsScreen: React.FC = () => {
         if (!supabase) return;
         if (!opts?.silent) setReceiptsLoading(true);
         try {
-            const { data, error } = await supabase
+            let query = supabase
                 .from('purchase_receipts')
                 .select('id, received_at, purchase_order_id, import_shipment_id, purchase_order:purchase_orders(reference_number, supplier:suppliers(name))')
                 .eq('warehouse_id', shipment.destinationWarehouseId)
                 .or(`import_shipment_id.is.null,import_shipment_id.eq.${shipmentId}`)
                 .order('received_at', { ascending: false })
                 .limit(100);
+
+            if (!showAllReceipts && allowedPoIds.length > 0) {
+                query = query.in('purchase_order_id', allowedPoIds as any);
+            }
+
+            const { data, error } = await query;
             if (error) throw error;
             const rows = Array.isArray(data) ? data : [];
             setReceiptRows(rows);
@@ -334,6 +343,41 @@ const ImportShipmentDetailsScreen: React.FC = () => {
         loadReceipts({ silent: true });
     }, [shipment?.id, shipment?.destinationWarehouseId, isCreateMode]);
 
+    useEffect(() => {
+        if (!shipment?.id || isCreateMode) return;
+        loadReceipts({ silent: true });
+    }, [showAllReceipts, allowedPoIds.join('|')]);
+
+    useEffect(() => {
+        const shipmentId = String(shipment?.id || '').trim();
+        if (!shipmentId) return;
+        if (!isUuid(shipmentId)) return;
+        const supabase = getSupabaseClient();
+        if (!supabase) return;
+        void (async () => {
+            try {
+                const { data, error } = await supabase
+                    .from('import_shipment_purchase_orders')
+                    .select('purchase_order_id, purchase_order:purchase_orders(reference_number)')
+                    .eq('shipment_id', shipmentId);
+                if (error) return;
+                const rows = Array.isArray(data) ? data : [];
+                const ids = rows.map((r: any) => String(r?.purchase_order_id || '')).filter(Boolean);
+                const labels: Record<string, string> = {};
+                for (const r of rows) {
+                    const poId = String((r as any)?.purchase_order_id || '');
+                    if (!poId) continue;
+                    const ref = String((r as any)?.purchase_order?.reference_number || '').trim();
+                    labels[poId] = ref || poId.slice(-8);
+                }
+                setAllowedPoIds(ids);
+                setAllowedPoLabels(labels);
+                setShowAllReceipts(false);
+            } catch {
+            }
+        })();
+    }, [shipment?.id, isCreateMode]);
+
     const applyReceiptLinking = async (mode: 'link' | 'unlink') => {
         const shipmentId = String(shipment?.id || '').trim();
         if (!shipmentId || !shipment?.destinationWarehouseId) return;
@@ -354,6 +398,31 @@ const ImportShipmentDetailsScreen: React.FC = () => {
         if (targetIds.length === 0) return;
         setReceiptsLoading(true);
         try {
+            if (mode === 'link') {
+                const byId = new Map(receiptRows.map((r: any) => [String(r?.id || ''), r]));
+                const poIds = targetIds
+                    .map((rid) => String((byId.get(rid) as any)?.purchase_order_id || '').trim())
+                    .filter(Boolean);
+                const uniquePo = new Set<string>();
+                const dupPo = new Set<string>();
+                for (const pid of poIds) {
+                    if (uniquePo.has(pid)) dupPo.add(pid);
+                    uniquePo.add(pid);
+                }
+                if (dupPo.size > 0) {
+                    const names = Array.from(dupPo).map((x) => allowedPoLabels[x] || x.slice(-8));
+                    showNotification(`لا يمكن ربط أكثر من استلام لنفس أمر الشراء: ${names.join('، ')}`, 'error');
+                    return;
+                }
+                if (allowedPoIds.length > 0) {
+                    const disallowed = Array.from(uniquePo).filter((pid) => !allowedPoIds.includes(pid));
+                    if (disallowed.length > 0) {
+                        const names = disallowed.map((x) => allowedPoLabels[x] || x.slice(-8));
+                        showNotification(`هذه الشحنة لا تسمح بربط أوامر شراء غير محددة: ${names.join('، ')}`, 'error');
+                        return;
+                    }
+                }
+            }
             const { error } = await supabase
                 .from('purchase_receipts')
                 .update({ import_shipment_id: mode === 'link' ? shipmentId : null })
@@ -1121,6 +1190,23 @@ const ImportShipmentDetailsScreen: React.FC = () => {
                     {shipment.status === 'closed' && (
                         <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 p-3 rounded-lg mb-4">
                             الشحنة مغلقة. لا يمكن تعديل ربط الاستلامات.
+                        </div>
+                    )}
+
+                    {allowedPoIds.length > 0 && (
+                        <div className="bg-blue-50 border border-blue-200 text-blue-900 p-3 rounded-lg mb-4 flex items-center justify-between gap-3">
+                            <div className="text-sm">
+                                أوامر الشراء المسموح ربطها بهذه الشحنة: {allowedPoIds.map((poId) => allowedPoLabels[poId] || poId.slice(-8)).join('، ')}
+                            </div>
+                            <label className="flex items-center gap-2 text-sm whitespace-nowrap">
+                                <input
+                                    type="checkbox"
+                                    checked={showAllReceipts}
+                                    onChange={(e) => { setShowAllReceipts(e.target.checked); }}
+                                    disabled={receiptsLoading}
+                                />
+                                عرض كل الاستلامات
+                            </label>
                         </div>
                     )}
 

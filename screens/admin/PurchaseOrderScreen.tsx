@@ -257,6 +257,30 @@ const PurchaseOrderScreen: React.FC = () => {
                 return;
             }
 
+            try {
+                const { data: existingLink, error: lSelErr } = await supabase
+                    .from('import_shipment_purchase_orders')
+                    .select('shipment_id')
+                    .eq('shipment_id', shipmentId)
+                    .eq('purchase_order_id', order.id)
+                    .maybeSingle();
+                if (lSelErr) throw lSelErr;
+                if (existingLink) {
+                    showNotification(`هذا الأمر مرتبط بهذه الشحنة مسبقاً: ${shipmentRef}`, 'info');
+                    const open = window.confirm(`هذا الأمر مرتبط بهذه الشحنة مسبقاً: ${shipmentRef}\nهل تريد فتح الشحنة الآن؟`);
+                    if (open) window.open(`/admin/import-shipments/${shipmentId}`, '_blank');
+                    return;
+                }
+                const { error: lInsErr } = await supabase
+                    .from('import_shipment_purchase_orders')
+                    .insert({ shipment_id: shipmentId, purchase_order_id: order.id } as any);
+                if (lInsErr) throw lInsErr;
+            } catch (e: any) {
+                const msg = localizeSupabaseError(e) || 'تعذر ربط أمر الشراء بهذه الشحنة.';
+                showNotification(msg, 'error');
+                return;
+            }
+
             const { data: existingItems, error: eErr } = await supabase
                 .from('import_shipments_items')
                 .select('item_id,quantity,unit_price_fob,currency')
@@ -1069,6 +1093,21 @@ const PurchaseOrderScreen: React.FC = () => {
             if (!supabase || !wid) return;
             setReceiveShipmentsLoading(true);
             try {
+                let linkedShipments: Array<any> = [];
+                try {
+                    const { data: links, error: lErr } = await supabase
+                        .from('import_shipment_purchase_orders')
+                        .select('shipment_id, shipment:import_shipments(id,reference_number,status,destination_warehouse_id)')
+                        .eq('purchase_order_id', order.id);
+                    if (!lErr) {
+                        linkedShipments = (Array.isArray(links) ? links : [])
+                            .map((r: any) => r?.shipment)
+                            .filter((s: any) => s && String(s.destination_warehouse_id || '') === wid && String(s.status || '') !== 'cancelled' && String(s.status || '') !== 'closed');
+                    }
+                } catch {
+                    linkedShipments = [];
+                }
+
                 const { data, error } = await supabase
                     .from('import_shipments')
                     .select('id,reference_number,status,destination_warehouse_id')
@@ -1078,11 +1117,29 @@ const PurchaseOrderScreen: React.FC = () => {
                     .limit(50);
                 if (error) return;
                 const rows = Array.isArray(data) ? data : [];
-                setReceiveShipments(rows.map((r: any) => ({
+                const seen = new Set<string>();
+                const merged: Array<any> = [];
+                for (const s of linkedShipments) {
+                    const sid = String(s?.id || '');
+                    if (!sid || seen.has(sid)) continue;
+                    seen.add(sid);
+                    merged.push({ ...s, __poLinked: true });
+                }
+                for (const s of rows) {
+                    const sid = String((s as any)?.id || '');
+                    if (!sid || seen.has(sid)) continue;
+                    seen.add(sid);
+                    merged.push({ ...(s as any), __poLinked: false });
+                }
+                const list = merged.map((r: any) => ({
                     id: String(r.id),
                     referenceNumber: String(r.reference_number || r.id),
                     status: String(r.status || ''),
-                })).filter(x => x.id));
+                    poLinked: Boolean(r.__poLinked),
+                })).filter(x => x.id);
+                setReceiveShipments(list);
+                const preferred = list.filter((s: any) => Boolean(s.poLinked));
+                if (preferred.length === 1) setReceiveShipmentId(String(preferred[0].id));
             } finally {
                 setReceiveShipmentsLoading(false);
             }
@@ -1161,6 +1218,28 @@ const PurchaseOrderScreen: React.FC = () => {
         if (isReceivingPartial) return;
         setIsReceivingPartial(true);
         try {
+            if (receiveShipmentId) {
+                const supabase = getSupabaseClient();
+                if (supabase) {
+                    const shipmentId = String(receiveShipmentId).trim();
+                    const { count: totalLinks } = await supabase
+                        .from('import_shipment_purchase_orders')
+                        .select('shipment_id', { count: 'exact', head: true })
+                        .eq('shipment_id', shipmentId);
+                    if (Number(totalLinks || 0) > 0) {
+                        const { data: poLink } = await supabase
+                            .from('import_shipment_purchase_orders')
+                            .select('shipment_id')
+                            .eq('shipment_id', shipmentId)
+                            .eq('purchase_order_id', receiveOrder.id)
+                            .maybeSingle();
+                        if (!poLink) {
+                            showNotification('هذه الشحنة مقيدة بأوامر شراء أخرى. اربط أمر الشراء بالشحنة أولاً من زر (شحنة) ثم أعد الاستلام.', 'error');
+                            return;
+                        }
+                    }
+                }
+            }
             const normalizedRows = receiveRows.map((r) => ({
                 ...r,
                 productionDate: normalizeIsoDateOnly(r.productionDate || ''),
@@ -2900,7 +2979,7 @@ const PurchaseOrderScreen: React.FC = () => {
                                         <option value="">بدون شحنة</option>
                                         {receiveShipments.map((s) => (
                                             <option key={s.id} value={s.id}>
-                                                {s.referenceNumber}{s.status ? ` — ${s.status}` : ''}
+                                                {s.referenceNumber}{s.status ? ` — ${s.status}` : ''}{typeof (s as any).poLinked === 'boolean' ? ((s as any).poLinked ? ' — مرتبط بهذا الأمر' : ' — غير مرتبط بهذا الأمر') : ''}
                                             </option>
                                         ))}
                                     </select>
@@ -3026,7 +3105,7 @@ const PurchaseOrderScreen: React.FC = () => {
 
             {isReturnModalOpen && returnOrder && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-                    <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col animate-in fade-in zoom-in duration-200">
+                    <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden flex flex-col animate-in fade-in zoom-in duration-200">
                         <div className="p-4 bg-gray-50 dark:bg-gray-700/50 border-b dark:border-gray-700 flex justify-between items-center">
                             <h2 className="text-xl font-bold dark:text-white">مرتجع إلى المورد</h2>
                             <button
@@ -3043,7 +3122,7 @@ const PurchaseOrderScreen: React.FC = () => {
                                 <Icons.XIcon className="w-6 h-6" />
                             </button>
                         </div>
-                        <form onSubmit={handleCreateReturn} className="p-6 flex-1 min-h-0 flex flex-col gap-4">
+                        <form onSubmit={handleCreateReturn} className="p-6 space-y-4">
                             <div className="text-sm dark:text-gray-300">
                                 {returnOrder.supplierName} — {returnOrder.referenceNumber || returnOrder.id.slice(-6)}
                             </div>
@@ -3068,7 +3147,7 @@ const PurchaseOrderScreen: React.FC = () => {
                                 </div>
                             </div>
                             <div className="border rounded-lg overflow-hidden dark:border-gray-700">
-                                <div className="overflow-auto max-h-[50vh]">
+                                <div className="overflow-x-auto">
                                 <table className="min-w-[720px] w-full text-right text-sm">
                                     <thead className="bg-gray-50 dark:bg-gray-700">
                                         <tr>
@@ -3104,7 +3183,7 @@ const PurchaseOrderScreen: React.FC = () => {
                                 </table>
                                 </div>
                             </div>
-                            <div className="flex justify-end gap-2 pt-2 mt-auto">
+                            <div className="flex justify-end gap-2 pt-2">
                                 <button
                                     type="button"
                                     onClick={() => {
