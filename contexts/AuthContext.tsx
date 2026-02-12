@@ -266,7 +266,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       } catch {
       }
       logger.warn('Admin login denied - inactive or no profile', { userId: authUser.id });
-      throw new Error('هذا الحساب ليس لديه صلاحيات لوحة التحكم.');
+      throw new Error('هذا الحساب ليس لديه صلاحيات لوحة التحكم (غير مضاف/غير نشط ضمن admin_users). اطلب من المالك تفعيله أو إضافته.');
     }
     setIsConfigured(true);
     setUser(profile);
