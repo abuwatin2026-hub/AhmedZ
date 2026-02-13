@@ -159,7 +159,7 @@ const PurchaseOrderScreen: React.FC = () => {
 
     const handleReconcileAllPurchaseOrders = async () => {
         if (!canReconcileAll) return;
-        const confirm = window.confirm('سيتم مصالحة حالة جميع أوامر الشراء التي لديها سندات استلام.\nهل تريد المتابعة؟');
+        const confirm = window.confirm('سيتم تنفيذ إصلاح شامل: حساب الكميات الأساسية للأوامر والسندات ثم مصالحة حالة جميع أوامر الشراء.\nهل تريد المتابعة؟');
         if (!confirm) return;
         const supabase = getSupabaseClient();
         if (!supabase) {
@@ -168,10 +168,13 @@ const PurchaseOrderScreen: React.FC = () => {
         }
         setReconcilingAll(true);
         try {
-            const { data, error } = await supabase.rpc('reconcile_all_purchase_orders', { p_limit: 100000 } as any);
+            const { data, error } = await supabase.rpc('reconcile_po_full_fix', { p_limit: 100000 } as any);
             if (error) throw error;
-            const n = Number(data || 0);
-            showNotification(`تمت مصالحة ${n} أمر شراء.`, 'success');
+            const obj: any = data as any;
+            const n = Number(obj?.ordersReconciled || 0);
+            const r = Number(obj?.receiptItemsUpdated || 0);
+            const p = Number(obj?.purchaseItemsUpdated || 0);
+            showNotification(`تم تحديث أساس السندات=${r}، أساس الأوامر=${p}، مصالحة الأوامر=${n}.`, 'success');
             await fetchPurchaseOrders();
         } catch (e) {
             alert(getErrorMessage(e, 'فشل مصالحة أوامر الشراء.'));
