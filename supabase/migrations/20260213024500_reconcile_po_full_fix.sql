@@ -383,6 +383,83 @@ begin
 end;
 $$;
 
+create or replace function public.finalize_purchase_orders_without_shortages(p_limit int default 100000)
+returns int
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_id uuid;
+  v_n int := 0;
+begin
+  for v_id in
+    select po.id
+    from public.purchase_orders po
+    where po.status not in ('cancelled','completed')
+      and exists (select 1 from public.purchase_receipts pr where pr.purchase_order_id = po.id)
+    order by po.updated_at desc nulls last
+    limit greatest(coalesce(p_limit, 0), 0)
+  loop
+    begin
+      if to_regprocedure('public.report_partial_purchase_orders(integer)') is not null then
+        perform 1;
+      end if;
+
+      with ordered_sum as (
+        select sum(
+          coalesce(
+            nullif(pi.qty_base, 0),
+            case
+              when pi.uom_id is not null then public.item_qty_to_base_safe(pi.item_id, pi.quantity, pi.uom_id)
+              else pi.quantity
+            end,
+            0
+          )
+        ) as ordered_base
+        from public.purchase_items pi
+        where pi.purchase_order_id = v_id
+      ),
+      received_sum as (
+        select sum(
+          coalesce(
+            nullif(pri.qty_base, 0),
+            case
+              when pri.uom_id is not null then public.item_qty_to_base_safe(pri.item_id, pri.quantity, pri.uom_id)
+              else pri.quantity
+            end,
+            0
+          )
+        ) as received_base
+        from public.purchase_receipts pr
+        join public.purchase_receipt_items pri on pri.receipt_id = pr.id
+        where pr.purchase_order_id = v_id
+      )
+      update public.purchase_orders po
+      set status = 'completed',
+          approval_status = 'approved',
+          approval_request_id = null,
+          updated_at = now()
+      from ordered_sum o, received_sum r
+      where po.id = v_id
+        and po.status not in ('cancelled','completed')
+        and coalesce(o.ordered_base, 0) > 0
+        and coalesce(r.received_base, 0) + 0.000000001 >= coalesce(o.ordered_base, 0);
+
+      if found then
+        v_n := v_n + 1;
+      end if;
+    exception when others then
+      null;
+    end;
+  end loop;
+  return v_n;
+end;
+$$;
+
+revoke all on function public.finalize_purchase_orders_without_shortages(int) from public;
+grant execute on function public.finalize_purchase_orders_without_shortages(int) to authenticated;
+
 revoke all on function public.reconcile_po_full_fix(int) from public;
 grant execute on function public.reconcile_po_full_fix(int) to authenticated;
 

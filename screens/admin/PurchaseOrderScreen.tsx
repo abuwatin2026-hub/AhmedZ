@@ -81,6 +81,7 @@ const PurchaseOrderScreen: React.FC = () => {
     const canReconcileAll = user?.role === 'owner' || user?.role === 'manager' || hasPermission('stock.manage') || hasPermission('accounting.manage') || hasPermission('procurement.manage');
     const [reconcilingAll, setReconcilingAll] = useState(false);
     const [reportingPartial, setReportingPartial] = useState(false);
+    const [finalizingNoShortages, setFinalizingNoShortages] = useState(false);
     const resolveBrandingForWarehouseId = (warehouseId?: string) => {
         const fallback = {
             name: (settings as any)?.cafeteriaName?.ar || (settings as any)?.cafeteriaName?.en || '',
@@ -221,6 +222,29 @@ const PurchaseOrderScreen: React.FC = () => {
             alert(getErrorMessage(e, 'فشل إنشاء تقرير النواقص.'));
         } finally {
             setReportingPartial(false);
+        }
+    };
+
+    const handleFinalizeWithoutShortages = async () => {
+        if (!canReconcileAll) return;
+        const confirm = window.confirm('سيتم إنهاء جميع أوامر الشراء التي لا توجد لها نواقص وفق تقرير النواقص.\nهل تريد المتابعة؟');
+        if (!confirm) return;
+        const supabase = getSupabaseClient();
+        if (!supabase) {
+            alert('قاعدة البيانات غير متاحة.');
+            return;
+        }
+        setFinalizingNoShortages(true);
+        try {
+            const { data, error } = await supabase.rpc('finalize_purchase_orders_without_shortages', { p_limit: 100000 } as any);
+            if (error) throw error;
+            const n = Number(data || 0);
+            showNotification(`تم إنهاء ${n} أمر شراء بدون نواقص.`, 'success');
+            await fetchPurchaseOrders();
+        } catch (e) {
+            alert(getErrorMessage(e, 'فشل إنهاء أوامر الشراء بدون نواقص.'));
+        } finally {
+            setFinalizingNoShortages(false);
         }
     };
 
@@ -1664,6 +1688,14 @@ const PurchaseOrderScreen: React.FC = () => {
                             >
                                 <Icons.PrinterIcon className="w-5 h-5" />
                                 <span>{reportingPartial ? 'جاري إنشاء التقرير...' : 'تقرير النواقص'}</span>
+                            </button>
+                            <button
+                                onClick={() => { void handleFinalizeWithoutShortages(); }}
+                                disabled={finalizingNoShortages}
+                                className="bg-green-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-green-800 shadow-lg"
+                            >
+                                <Icons.CheckIcon className="w-5 h-5" />
+                                <span>{finalizingNoShortages ? 'جاري الإنهاء...' : 'إنهاء بدون نواقص'}</span>
                             </button>
                         </>
                     ) : null}
