@@ -44,12 +44,19 @@ const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUni
     const [localStock, setLocalStock] = useState<string>(String(currentStock));
     const [batches, setBatches] = useState<ItemBatch[]>([]);
     const [selectedBatchId, setSelectedBatchId] = useState<string>('');
-    const [showBatches, setShowBatches] = useState<boolean>(false);
+    const canQc = hasPermission('qc.inspect') || hasPermission('qc.release');
+    const [showBatches, setShowBatches] = useState<boolean>(canQc);
     const [qcBusyBatchId, setQcBusyBatchId] = useState<string | null>(null);
 
     useEffect(() => {
         setLocalStock(String(currentStock));
     }, [currentStock]);
+
+    useEffect(() => {
+        if (canQc || qcHold > 0) {
+            setShowBatches(true);
+        }
+    }, [canQc, qcHold]);
 
     useEffect(() => {
         const loadBatches = async () => {
@@ -255,7 +262,7 @@ const StockRow = ({ item, stock, warehouseId, baseCode, getCategoryLabel, getUni
                     onClick={() => setShowBatches(prev => !prev)}
                     className="mt-2 w-full px-3 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 transition text-sm font-semibold dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
                 >
-                    {showBatches ? 'إخفاء الدُفعات' : 'دفعات المخزون'}
+                    {showBatches ? 'إخفاء الدُفعات / QC' : 'دفعات المخزون / QC'}
                 </button>
                 {showBatches && (
                     <div className="mt-2 p-3 rounded-md bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700">
