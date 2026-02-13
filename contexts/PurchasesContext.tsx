@@ -917,24 +917,6 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                 }
               }
 
-              if (/RECEIPT_APPROVAL_REQUIRED/i.test(msg)) {
-                const reqId = await ensureApprovalRequest(orderId, 'receipt', totalAmount);
-                if (reqId) {
-                  throw new Error('يتطلب الاستلام موافقة. تم إنشاء طلب موافقة للاستلام؛ يرجى اعتماده من قسم الموافقات ثم أعد المحاولة.');
-                }
-                throw new Error('يتطلب الاستلام موافقة. يرجى إنشاء/اعتماد طلب الموافقة من قسم الموافقات ثم إعادة المحاولة.');
-              }
-              if (/RECEIPT_APPROVAL_PENDING/i.test(msg)) {
-                throw new Error('طلب موافقة الاستلام ما زال معلقًا. اعتمده من قسم الموافقات ثم أعد المحاولة.');
-              }
-              if (/purchase receipt requires approval/i.test(msg)) {
-                const reqId = await ensureApprovalRequest(orderId, 'receipt', totalAmount);
-                if (reqId) {
-                  throw new Error('تم إنشاء طلب موافقة للاستلام. يرجى اعتماده من قسم الموافقات ثم أعد المحاولة.');
-                } else {
-                  throw new Error('يتطلب الاستلام موافقة. تعذر إنشاء طلب الموافقة تلقائياً؛ يرجى إنشائه من قسم الموافقات ثم إعادة المحاولة.');
-                }
-              }
               if (/accounting_documents/i.test(msg) && /branch_id/i.test(msg)) {
                 throw new Error('تم حفظ أمر الشراء، لكن فشل استلام المخزون بسبب إعدادات الفرع/الشركة في المحاسبة. تأكد من ضبط فرع للمستودع أو إنشاء فرع افتراضي ثم أعد المحاولة.');
               }
@@ -1285,36 +1267,6 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                   return String(recent.id || '');
                 }
               } catch {
-              }
-            }
-            if (/RECEIPT_APPROVAL_REQUIRED/i.test(msg)) {
-              const { data: poRow } = await supabase
-                .from('purchase_orders')
-                .select('total_amount')
-                .eq('id', purchaseOrderId)
-                .maybeSingle();
-              const amt = Number((poRow as any)?.total_amount || 0);
-              const reqId = await ensureApprovalRequest(purchaseOrderId, 'receipt', amt);
-              if (reqId) {
-                throw new Error('يتطلب الاستلام موافقة. تم إنشاء طلب موافقة للاستلام؛ يرجى اعتماده من قسم الموافقات ثم أعد المحاولة.');
-              }
-              throw new Error('يتطلب الاستلام موافقة. يرجى إنشاء/اعتماد طلب الموافقة من قسم الموافقات ثم إعادة المحاولة.');
-            }
-            if (/RECEIPT_APPROVAL_PENDING/i.test(msg)) {
-              throw new Error('طلب موافقة الاستلام ما زال معلقًا. اعتمده من قسم الموافقات ثم أعد المحاولة.');
-            }
-            if (/purchase receipt requires approval/i.test(msg)) {
-              const { data: poRow } = await supabase
-                .from('purchase_orders')
-                .select('total_amount')
-                .eq('id', purchaseOrderId)
-                .maybeSingle();
-              const amt = Number((poRow as any)?.total_amount || 0);
-              const reqId = await ensureApprovalRequest(purchaseOrderId, 'receipt', amt);
-              if (reqId) {
-                throw new Error('يتطلب الاستلام موافقة. تم إنشاء طلب الموافقة، يرجى الاعتماد ثم إعادة المحاولة.');
-              } else {
-                throw new Error('يتطلب الاستلام موافقة. تعذر إنشاء طلب الموافقة تلقائياً؛ يرجى إنشائه من قسم الموافقات ثم إعادة المحاولة.');
               }
             }
             if (/schema cache|could not find the function|PGRST202/i.test(msg)) {

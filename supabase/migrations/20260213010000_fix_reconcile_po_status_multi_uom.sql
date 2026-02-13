@@ -16,7 +16,11 @@ begin
     raise exception 'p_order_id is required';
   end if;
 
-  if not public.can_manage_stock() then
+  if not (
+    public.can_manage_stock()
+    or public.has_admin_permission('procurement.manage')
+    or public.has_admin_permission('accounting.manage')
+  ) then
     raise exception 'not allowed';
   end if;
 

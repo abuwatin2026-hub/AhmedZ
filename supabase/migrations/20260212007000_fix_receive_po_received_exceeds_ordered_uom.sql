@@ -148,56 +148,11 @@ begin
   );
   v_payload_hash := md5(coalesce(v_payload::text, ''));
 
-  v_required_receipt := public.approval_required('receipt', coalesce(v_po.total_amount, 0));
-  select ar.id, ar.status
-  into v_receipt_req_id, v_receipt_req_status
-  from public.approval_requests ar
-  where (
-      (ar.target_table = 'purchase_orders' and ar.target_id = p_order_id::text)
-      or (ar.target_table = 'purchase_receipts' and ar.target_id = p_order_id::text)
-    )
-    and ar.request_type = 'receipt'
-    and ar.status in ('pending','approved')
-  order by ar.created_at desc
-  limit 1;
-
-  if v_required_receipt and v_receipt_req_id is null then
-    if public.is_owner() then
-      insert into public.approval_requests(
-        target_table, target_id, request_type, status,
-        requested_by, approved_by, approved_at,
-        payload_hash
-      )
-      values (
-        'purchase_orders',
-        p_order_id::text,
-        'receipt',
-        'approved',
-        auth.uid(),
-        auth.uid(),
-        now(),
-        v_payload_hash
-      )
-      returning id into v_receipt_req_id;
-
-      insert into public.approval_steps(
-        request_id, step_no, approver_role, status, action_by, action_at
-      )
-      values (v_receipt_req_id, 1, 'manager', 'approved', auth.uid(), now())
-      on conflict (request_id, step_no) do nothing;
-
-      v_receipt_req_status := 'approved';
-    else
-      raise exception 'purchase receipt requires approval';
-    end if;
-  end if;
-
-  v_receipt_requires_approval := v_required_receipt;
-  v_receipt_approval_status := case when v_receipt_req_id is null then 'pending' else 'approved' end;
-
-  if v_receipt_requires_approval and coalesce(v_receipt_req_status, '') <> 'approved' then
-    raise exception 'RECEIPT_APPROVAL_PENDING:%', coalesce(v_receipt_req_id::text, '');
-  end if;
+  v_required_receipt := false;
+  v_receipt_req_id := null;
+  v_receipt_req_status := 'approved';
+  v_receipt_requires_approval := false;
+  v_receipt_approval_status := 'approved';
 
   begin
     insert into public.purchase_receipts(
@@ -564,7 +519,17 @@ begin
   end if;
 
   for v_item_id, v_ordered, v_received in
-    select pi.item_id, coalesce(pi.quantity, 0), coalesce(pi.received_quantity, 0)
+    select
+      pi.item_id,
+      coalesce(
+        pi.qty_base,
+        case
+          when pi.uom_id is not null then public.item_qty_to_base(pi.item_id, pi.quantity, pi.uom_id)
+          else pi.quantity
+        end,
+        0
+      ),
+      coalesce(pi.received_quantity, 0)
     from public.purchase_items pi
     where pi.purchase_order_id = p_order_id
   loop
@@ -574,86 +539,17 @@ begin
     end if;
   end loop;
 
-  v_required_po := public.approval_required('po', coalesce(v_po.total_amount, 0));
-  select ar.id
-  into v_po_req_id
-  from public.approval_requests ar
-  where ar.target_table = 'purchase_orders'
-    and ar.target_id = p_order_id::text
-    and ar.request_type = 'po'
-    and ar.status = 'approved'
-  order by ar.created_at desc
-  limit 1;
-
-  if v_required_po and v_po_req_id is null and v_all_received then
-    if public.is_owner() then
-      insert into public.approval_requests(
-        target_table, target_id, request_type, status,
-        requested_by, approved_by, approved_at,
-        payload_hash
-      )
-      values (
-        'purchase_orders',
-        p_order_id::text,
-        'po',
-        'approved',
-        auth.uid(),
-        auth.uid(),
-        now(),
-        v_payload_hash
-      )
-      returning id into v_po_req_id;
-
-      insert into public.approval_steps(
-        request_id, step_no, approver_role, status, action_by, action_at
-      )
-      values (v_po_req_id, 1, 'manager', 'approved', auth.uid(), now())
-      on conflict (request_id, step_no) do nothing;
-
-      v_po_approved := true;
-    else
-      insert into public.approval_requests(
-        target_table, target_id, request_type, status,
-        requested_by, payload_hash
-      )
-      values (
-        'purchase_orders',
-        p_order_id::text,
-        'po',
-        'pending',
-        auth.uid(),
-        v_payload_hash
-      )
-      returning id into v_po_req_id;
-
-      insert into public.approval_steps(
-        request_id, step_no, approver_role, status
-      )
-      values (v_po_req_id, 1, 'manager', 'pending')
-      on conflict (request_id, step_no) do nothing;
-
-      v_po_approved := false;
-    end if;
-  elsif v_po_req_id is not null then
-    v_po_approved := true;
-  end if;
+  v_required_po := false;
+  v_po_req_id := null;
+  v_po_approved := true;
 
   if v_all_received then
-    if (not v_required_po) or v_po_approved then
-      update public.purchase_orders
-      set status = 'completed',
-          updated_at = now(),
-          approval_status = case when v_po_approved then 'approved' else approval_status end,
-          approval_request_id = coalesce(approval_request_id, v_po_req_id)
-      where id = p_order_id;
-    else
-      update public.purchase_orders
-      set status = 'partial',
-          updated_at = now(),
-          approval_status = 'pending',
-          approval_request_id = coalesce(approval_request_id, v_po_req_id)
-      where id = p_order_id;
-    end if;
+    update public.purchase_orders
+    set status = 'completed',
+        updated_at = now(),
+        approval_status = case when v_po_approved then 'approved' else approval_status end,
+        approval_request_id = coalesce(approval_request_id, v_po_req_id)
+    where id = p_order_id;
   else
     update public.purchase_orders
     set status = 'partial',
@@ -699,4 +595,3 @@ revoke all on function public.receive_purchase_order_partial(uuid, jsonb, timest
 grant execute on function public.receive_purchase_order_partial(uuid, jsonb, timestamptz) to authenticated;
 
 notify pgrst, 'reload schema';
-
