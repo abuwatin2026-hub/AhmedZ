@@ -1,5 +1,24 @@
 set app.allow_ledger_ddl = '1';
 
+create or replace function public.item_qty_to_base_safe(p_item_id text, p_qty numeric, p_uom_id uuid)
+returns numeric
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+begin
+  begin
+    return public.item_qty_to_base(p_item_id, p_qty, p_uom_id);
+  exception when others then
+    return coalesce(p_qty, 0);
+  end;
+end;
+$$;
+
+revoke all on function public.item_qty_to_base_safe(text, numeric, uuid) from public;
+grant execute on function public.item_qty_to_base_safe(text, numeric, uuid) to authenticated;
+
 create or replace function public.reconcile_purchase_order_receipt_status(p_order_id uuid)
 returns text
 language plpgsql
@@ -72,9 +91,9 @@ begin
         pi.id,
         pi.item_id::text as item_id,
         coalesce(
-          pi.qty_base,
+          nullif(pi.qty_base, 0),
           case
-            when pi.uom_id is not null then public.item_qty_to_base(pi.item_id, pi.quantity, pi.uom_id)
+            when pi.uom_id is not null then public.item_qty_to_base_safe(pi.item_id, pi.quantity, pi.uom_id)
             else pi.quantity
           end,
           0
@@ -95,9 +114,9 @@ begin
         pri.item_id::text as item_id,
         sum(
           coalesce(
-            pri.qty_base,
+            nullif(pri.qty_base, 0),
             case
-              when pri.uom_id is not null then public.item_qty_to_base(pri.item_id, pri.quantity, pri.uom_id)
+              when pri.uom_id is not null then public.item_qty_to_base_safe(pri.item_id, pri.quantity, pri.uom_id)
               else pri.quantity
             end,
             0
@@ -113,9 +132,9 @@ begin
         pi.id,
         pi.item_id::text as item_id,
         coalesce(
-          pi.qty_base,
+          nullif(pi.qty_base, 0),
           case
-            when pi.uom_id is not null then public.item_qty_to_base(pi.item_id, pi.quantity, pi.uom_id)
+            when pi.uom_id is not null then public.item_qty_to_base_safe(pi.item_id, pi.quantity, pi.uom_id)
             else pi.quantity
           end,
           0
@@ -137,9 +156,9 @@ begin
     from public.purchase_items pi
     where pi.purchase_order_id = p_order_id
       and (coalesce(pi.received_quantity, 0) + 0.000000001) < coalesce(
-        pi.qty_base,
+        nullif(pi.qty_base, 0),
         case
-          when pi.uom_id is not null then public.item_qty_to_base(pi.item_id, pi.quantity, pi.uom_id)
+          when pi.uom_id is not null then public.item_qty_to_base_safe(pi.item_id, pi.quantity, pi.uom_id)
           else pi.quantity
         end,
         0

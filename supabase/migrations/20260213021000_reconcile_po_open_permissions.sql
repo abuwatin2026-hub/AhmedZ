@@ -64,9 +64,9 @@ begin
         pi.id,
         pi.item_id::text as item_id,
         coalesce(
-          pi.qty_base,
+          nullif(pi.qty_base, 0),
           case
-            when pi.uom_id is not null then public.item_qty_to_base(pi.item_id, pi.quantity, pi.uom_id)
+            when pi.uom_id is not null then public.item_qty_to_base_safe(pi.item_id, pi.quantity, pi.uom_id)
             else pi.quantity
           end,
           0
@@ -87,9 +87,9 @@ begin
         pri.item_id::text as item_id,
         sum(
           coalesce(
-            pri.qty_base,
+            nullif(pri.qty_base, 0),
             case
-              when pri.uom_id is not null then public.item_qty_to_base(pri.item_id, pri.quantity, pri.uom_id)
+              when pri.uom_id is not null then public.item_qty_to_base_safe(pri.item_id, pri.quantity, pri.uom_id)
               else pri.quantity
             end,
             0
@@ -105,9 +105,9 @@ begin
         pi.id,
         pi.item_id::text as item_id,
         coalesce(
-          pi.qty_base,
+          nullif(pi.qty_base, 0),
           case
-            when pi.uom_id is not null then public.item_qty_to_base(pi.item_id, pi.quantity, pi.uom_id)
+            when pi.uom_id is not null then public.item_qty_to_base_safe(pi.item_id, pi.quantity, pi.uom_id)
             else pi.quantity
           end,
           0
@@ -129,9 +129,9 @@ begin
     from public.purchase_items pi
     where pi.purchase_order_id = p_order_id
       and (coalesce(pi.received_quantity, 0) + 0.000000001) < coalesce(
-        pi.qty_base,
+        nullif(pi.qty_base, 0),
         case
-          when pi.uom_id is not null then public.item_qty_to_base(pi.item_id, pi.quantity, pi.uom_id)
+          when pi.uom_id is not null then public.item_qty_to_base_safe(pi.item_id, pi.quantity, pi.uom_id)
           else pi.quantity
         end,
         0

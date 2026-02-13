@@ -174,7 +174,8 @@ const PurchaseOrderScreen: React.FC = () => {
             const n = Number(obj?.ordersReconciled || 0);
             const r = Number(obj?.receiptItemsUpdated || 0);
             const p = Number(obj?.purchaseItemsUpdated || 0);
-            showNotification(`تم تحديث أساس السندات=${r}، أساس الأوامر=${p}، مصالحة الأوامر=${n}.`, 'success');
+            const f = Number(obj?.ordersForced || 0);
+            showNotification(`تم تحديث أساس السندات=${r}، أساس الأوامر=${p}، مصالحة الأوامر=${n}، إكمال الأوامر=${f}.`, 'success');
             await fetchPurchaseOrders();
         } catch (e) {
             alert(getErrorMessage(e, 'فشل مصالحة أوامر الشراء.'));
