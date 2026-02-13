@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { getSupabaseClient } from '../../supabase';
 import * as Icons from '../../components/icons';
@@ -44,6 +44,8 @@ export default function AdvanceManagementScreen() {
   const location = useLocation();
   const { showNotification } = useToast();
   const [loading, setLoading] = useState(true);
+  const [initialLoaded, setInitialLoaded] = useState(false);
+  const loadingRef = useRef(false);
   const [parties, setParties] = useState<PartyRow[]>([]);
   const [partyId, setPartyId] = useState('');
   const [currency, setCurrency] = useState('');
@@ -86,6 +88,8 @@ export default function AdvanceManagementScreen() {
     if (!partyId) return;
     const supabase = getSupabaseClient();
     if (!supabase) return;
+    if (loadingRef.current) return;
+    loadingRef.current = true;
     setLoading(true);
     try {
       setCurrencyHint('');
@@ -125,6 +129,8 @@ export default function AdvanceManagementScreen() {
       showNotification(String(e?.message || 'فشل تحميل العناصر المفتوحة.'), 'error');
     } finally {
       setLoading(false);
+      loadingRef.current = false;
+      setInitialLoaded(true);
     }
   };
 
@@ -274,7 +280,7 @@ export default function AdvanceManagementScreen() {
     }
   };
 
-  if (loading) return <div className="p-8 text-center text-gray-500">جاري التحميل...</div>;
+  if (loading && !initialLoaded) return <div className="p-8 text-center text-gray-500">جاري التحميل...</div>;
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-4">
