@@ -171,7 +171,13 @@ const PurchaseOrderScreen: React.FC = () => {
             await fetchPurchaseOrders();
             showNotification(`تم تنفيذ الإصلاح: ${typeof data === 'string' ? data : 'تم'}`, 'success');
         } catch (e: any) {
-            alert(getErrorMessage(e, 'فشل إصلاح الاستلام.'));
+            try {
+                await supabase.rpc('reconcile_purchase_order_receipt_status', { p_order_id: order.id } as any);
+                await fetchPurchaseOrders();
+                showNotification('تمت مصالحة حالة أمر الشراء بناءً على السندات الموجودة.', 'success');
+            } catch {
+                alert(getErrorMessage(e, 'فشل إصلاح الاستلام.'));
+            }
         }
     };
 
