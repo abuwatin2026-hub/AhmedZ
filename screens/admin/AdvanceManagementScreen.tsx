@@ -44,7 +44,6 @@ export default function AdvanceManagementScreen() {
   const location = useLocation();
   const { showNotification } = useToast();
   const [loading, setLoading] = useState(true);
-  const [initialLoaded, setInitialLoaded] = useState(false);
   const loadingRef = useRef(false);
   const [parties, setParties] = useState<PartyRow[]>([]);
   const [partyId, setPartyId] = useState('');
@@ -130,7 +129,6 @@ export default function AdvanceManagementScreen() {
     } finally {
       setLoading(false);
       loadingRef.current = false;
-      setInitialLoaded(true);
     }
   };
 
@@ -280,8 +278,6 @@ export default function AdvanceManagementScreen() {
     }
   };
 
-  if (loading && !initialLoaded) return <div className="p-8 text-center text-gray-500">جاري التحميل...</div>;
-
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-4">
       <div className="flex items-center justify-between gap-3">
@@ -310,6 +306,9 @@ export default function AdvanceManagementScreen() {
           ) : null}
         </div>
       </div>
+      {loading ? (
+        <div className="text-xs text-gray-500 dark:text-gray-400">جاري التحميل...</div>
+      ) : null}
 
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow border border-gray-100 dark:border-gray-700 p-4 grid grid-cols-1 md:grid-cols-3 gap-3">
         <div>
