@@ -42,7 +42,20 @@ begin
           o.created_at
         )
       end as date_by,
-      coalesce(o.fx_rate, 1) as fx_rate,
+      public.order_fx_rate(
+        coalesce(nullif(btrim(coalesce(o.currency, '')), ''), nullif(btrim(coalesce(o.data->>'currency', '')), ''), public.get_base_currency()),
+        case
+          when p_invoice_only
+            then nullif(o.data->'invoiceSnapshot'->>'issuedAt', '')::timestamptz
+          else coalesce(
+            nullif(o.data->'invoiceSnapshot'->>'issuedAt', '')::timestamptz,
+            nullif(o.data->>'deliveredAt', '')::timestamptz,
+            nullif(o.data->>'paidAt', '')::timestamptz,
+            o.created_at
+          )
+        end,
+        o.fx_rate
+      ) as fx_rate,
       coalesce(
         o.delivery_zone_id,
         case
@@ -275,7 +288,11 @@ begin
         0
       ) as discount_amount,
       coalesce(nullif(o.data->>'subtotal','')::numeric, 0) as subtotal_amount,
-      coalesce(o.fx_rate, 1) as fx_rate,
+      public.order_fx_rate(
+        coalesce(nullif(btrim(coalesce(o.currency, '')), ''), nullif(btrim(coalesce(o.data->>'currency', '')), ''), public.get_base_currency()),
+        sr.return_date,
+        o.fx_rate
+      ) as fx_rate,
       o.data as order_data
     from public.sales_returns sr
     join public.orders o on o.id = sr.order_id
@@ -598,4 +615,3 @@ grant execute on function public.get_product_sales_report_v9(timestamptz, timest
 
 select pg_sleep(0.5);
 notify pgrst, 'reload schema';
-

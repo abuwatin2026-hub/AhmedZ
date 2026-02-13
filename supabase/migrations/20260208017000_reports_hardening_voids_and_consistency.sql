@@ -1,3 +1,28 @@
+create or replace function public.order_fx_rate(
+  p_currency text,
+  p_date timestamptz,
+  p_fx_rate numeric
+)
+returns numeric
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select coalesce(
+    nullif(p_fx_rate, 0),
+    public.get_fx_rate(
+      coalesce(nullif(btrim(coalesce(p_currency, '')), ''), public.get_base_currency()),
+      p_date::date,
+      'operational'
+    ),
+    1
+  );
+$$;
+
+revoke all on function public.order_fx_rate(text, timestamptz, numeric) from public;
+grant execute on function public.order_fx_rate(text, timestamptz, numeric) to authenticated;
+
 create or replace function public.get_sales_report_orders(
   p_start_date timestamptz,
   p_end_date timestamptz,
@@ -49,7 +74,20 @@ begin
       end as date_by,
       coalesce(
         o.base_total,
-        coalesce(nullif((o.data->>'total')::numeric, null), 0) * coalesce(o.fx_rate, 1)
+        coalesce(nullif((o.data->>'total')::numeric, null), 0) * public.order_fx_rate(
+          coalesce(nullif(btrim(coalesce(o.currency, '')), ''), nullif(btrim(coalesce(o.data->>'currency', '')), ''), public.get_base_currency()),
+          case
+            when p_invoice_only
+              then nullif(o.data->'invoiceSnapshot'->>'issuedAt', '')::timestamptz
+            else coalesce(
+              nullif(o.data->'invoiceSnapshot'->>'issuedAt', '')::timestamptz,
+              nullif(o.data->>'paidAt', '')::timestamptz,
+              nullif(o.data->>'deliveredAt', '')::timestamptz,
+              o.created_at
+            )
+          end,
+          o.fx_rate
+        )
       ) as total,
       coalesce(nullif(o.data->>'paymentMethod',''), 'unknown') as payment_method,
       coalesce(nullif(o.data->>'orderSource',''), '') as order_source,
@@ -161,7 +199,20 @@ begin
       o.created_at,
       coalesce(nullif(o.data->>'paymentMethod', ''), '') as payment_method,
       nullif(o.data->>'paidAt', '')::timestamptz as paid_at,
-      coalesce(o.fx_rate, 1) as fx_rate,
+      public.order_fx_rate(
+        coalesce(nullif(btrim(coalesce(o.currency, '')), ''), nullif(btrim(coalesce(o.data->>'currency', '')), ''), public.get_base_currency()),
+        case
+          when p_invoice_only
+            then nullif(o.data->'invoiceSnapshot'->>'issuedAt', '')::timestamptz
+          else coalesce(
+            nullif(o.data->'invoiceSnapshot'->>'issuedAt', '')::timestamptz,
+            nullif(o.data->>'paidAt', '')::timestamptz,
+            nullif(o.data->>'deliveredAt', '')::timestamptz,
+            o.created_at
+          )
+        end,
+        o.fx_rate
+      ) as fx_rate,
       case
         when p_invoice_only
           then nullif(o.data->'invoiceSnapshot'->>'issuedAt', '')::timestamptz
@@ -174,12 +225,77 @@ begin
       end as date_by,
       coalesce(
         o.base_total,
-        coalesce(nullif((o.data->>'total')::numeric, null), 0) * coalesce(o.fx_rate, 1)
+        coalesce(nullif((o.data->>'total')::numeric, null), 0) * public.order_fx_rate(
+          coalesce(nullif(btrim(coalesce(o.currency, '')), ''), nullif(btrim(coalesce(o.data->>'currency', '')), ''), public.get_base_currency()),
+          case
+            when p_invoice_only
+              then nullif(o.data->'invoiceSnapshot'->>'issuedAt', '')::timestamptz
+            else coalesce(
+              nullif(o.data->'invoiceSnapshot'->>'issuedAt', '')::timestamptz,
+              nullif(o.data->>'paidAt', '')::timestamptz,
+              nullif(o.data->>'deliveredAt', '')::timestamptz,
+              o.created_at
+            )
+          end,
+          o.fx_rate
+        )
       ) as total,
-      (coalesce(nullif((o.data->>'taxAmount')::numeric, null), 0) * coalesce(o.fx_rate, 1)) as tax_amount,
-      (coalesce(nullif((o.data->>'deliveryFee')::numeric, null), 0) * coalesce(o.fx_rate, 1)) as delivery_fee,
-      (coalesce(nullif((o.data->>'discountAmount')::numeric, null), 0) * coalesce(o.fx_rate, 1)) as discount_amount,
-      (coalesce(nullif((o.data->>'subtotal')::numeric, null), 0) * coalesce(o.fx_rate, 1)) as subtotal,
+      (coalesce(nullif((o.data->>'taxAmount')::numeric, null), 0) * public.order_fx_rate(
+        coalesce(nullif(btrim(coalesce(o.currency, '')), ''), nullif(btrim(coalesce(o.data->>'currency', '')), ''), public.get_base_currency()),
+        case
+          when p_invoice_only
+            then nullif(o.data->'invoiceSnapshot'->>'issuedAt', '')::timestamptz
+          else coalesce(
+            nullif(o.data->'invoiceSnapshot'->>'issuedAt', '')::timestamptz,
+            nullif(o.data->>'paidAt', '')::timestamptz,
+            nullif(o.data->>'deliveredAt', '')::timestamptz,
+            o.created_at
+          )
+        end,
+        o.fx_rate
+      )) as tax_amount,
+      (coalesce(nullif((o.data->>'deliveryFee')::numeric, null), 0) * public.order_fx_rate(
+        coalesce(nullif(btrim(coalesce(o.currency, '')), ''), nullif(btrim(coalesce(o.data->>'currency', '')), ''), public.get_base_currency()),
+        case
+          when p_invoice_only
+            then nullif(o.data->'invoiceSnapshot'->>'issuedAt', '')::timestamptz
+          else coalesce(
+            nullif(o.data->'invoiceSnapshot'->>'issuedAt', '')::timestamptz,
+            nullif(o.data->>'paidAt', '')::timestamptz,
+            nullif(o.data->>'deliveredAt', '')::timestamptz,
+            o.created_at
+          )
+        end,
+        o.fx_rate
+      )) as delivery_fee,
+      (coalesce(nullif((o.data->>'discountAmount')::numeric, null), 0) * public.order_fx_rate(
+        coalesce(nullif(btrim(coalesce(o.currency, '')), ''), nullif(btrim(coalesce(o.data->>'currency', '')), ''), public.get_base_currency()),
+        case
+          when p_invoice_only
+            then nullif(o.data->'invoiceSnapshot'->>'issuedAt', '')::timestamptz
+          else coalesce(
+            nullif(o.data->'invoiceSnapshot'->>'issuedAt', '')::timestamptz,
+            nullif(o.data->>'paidAt', '')::timestamptz,
+            nullif(o.data->>'deliveredAt', '')::timestamptz,
+            o.created_at
+          )
+        end,
+        o.fx_rate
+      )) as discount_amount,
+      (coalesce(nullif((o.data->>'subtotal')::numeric, null), 0) * public.order_fx_rate(
+        coalesce(nullif(btrim(coalesce(o.currency, '')), ''), nullif(btrim(coalesce(o.data->>'currency', '')), ''), public.get_base_currency()),
+        case
+          when p_invoice_only
+            then nullif(o.data->'invoiceSnapshot'->>'issuedAt', '')::timestamptz
+          else coalesce(
+            nullif(o.data->'invoiceSnapshot'->>'issuedAt', '')::timestamptz,
+            nullif(o.data->>'paidAt', '')::timestamptz,
+            nullif(o.data->>'deliveredAt', '')::timestamptz,
+            o.created_at
+          )
+        end,
+        o.fx_rate
+      )) as subtotal,
       coalesce(
         o.delivery_zone_id,
         case
@@ -269,17 +385,49 @@ begin
 
   with returns_base as (
     select
-      coalesce(o.fx_rate, 1) as fx_rate,
-      (coalesce(nullif((o.data->>'subtotal')::numeric, null), 0) * coalesce(o.fx_rate, 1)) as order_subtotal,
-      (coalesce(nullif((o.data->>'discountAmount')::numeric, null), 0) * coalesce(o.fx_rate, 1)) as order_discount,
+      public.order_fx_rate(
+        coalesce(nullif(btrim(coalesce(o.currency, '')), ''), nullif(btrim(coalesce(o.data->>'currency', '')), ''), public.get_base_currency()),
+        sr.return_date,
+        o.fx_rate
+      ) as fx_rate,
+      (coalesce(nullif((o.data->>'subtotal')::numeric, null), 0) * public.order_fx_rate(
+        coalesce(nullif(btrim(coalesce(o.currency, '')), ''), nullif(btrim(coalesce(o.data->>'currency', '')), ''), public.get_base_currency()),
+        sr.return_date,
+        o.fx_rate
+      )) as order_subtotal,
+      (coalesce(nullif((o.data->>'discountAmount')::numeric, null), 0) * public.order_fx_rate(
+        coalesce(nullif(btrim(coalesce(o.currency, '')), ''), nullif(btrim(coalesce(o.data->>'currency', '')), ''), public.get_base_currency()),
+        sr.return_date,
+        o.fx_rate
+      )) as order_discount,
       greatest(
-        (coalesce(nullif((o.data->>'subtotal')::numeric, null), 0) * coalesce(o.fx_rate, 1))
-        - (coalesce(nullif((o.data->>'discountAmount')::numeric, null), 0) * coalesce(o.fx_rate, 1)),
+        (coalesce(nullif((o.data->>'subtotal')::numeric, null), 0) * public.order_fx_rate(
+          coalesce(nullif(btrim(coalesce(o.currency, '')), ''), nullif(btrim(coalesce(o.data->>'currency', '')), ''), public.get_base_currency()),
+          sr.return_date,
+          o.fx_rate
+        ))
+        - (coalesce(nullif((o.data->>'discountAmount')::numeric, null), 0) * public.order_fx_rate(
+          coalesce(nullif(btrim(coalesce(o.currency, '')), ''), nullif(btrim(coalesce(o.data->>'currency', '')), ''), public.get_base_currency()),
+          sr.return_date,
+          o.fx_rate
+        )),
         0
       ) as order_net_subtotal,
-      (coalesce(nullif((o.data->>'taxAmount')::numeric, null), 0) * coalesce(o.fx_rate, 1)) as order_tax,
-      (coalesce(sum(coalesce(nullif((i->>'quantity')::numeric, null), 0) * coalesce(nullif((i->>'unitPrice')::numeric, null), 0)), 0) * coalesce(o.fx_rate, 1)) as return_subtotal,
-      (coalesce(sum(sr.total_refund_amount), 0) * coalesce(o.fx_rate, 1)) as total_refund_amount
+      (coalesce(nullif((o.data->>'taxAmount')::numeric, null), 0) * public.order_fx_rate(
+        coalesce(nullif(btrim(coalesce(o.currency, '')), ''), nullif(btrim(coalesce(o.data->>'currency', '')), ''), public.get_base_currency()),
+        sr.return_date,
+        o.fx_rate
+      )) as order_tax,
+      (coalesce(sum(coalesce(nullif((i->>'quantity')::numeric, null), 0) * coalesce(nullif((i->>'unitPrice')::numeric, null), 0)), 0) * public.order_fx_rate(
+        coalesce(nullif(btrim(coalesce(o.currency, '')), ''), nullif(btrim(coalesce(o.data->>'currency', '')), ''), public.get_base_currency()),
+        sr.return_date,
+        o.fx_rate
+      )) as return_subtotal,
+      (coalesce(sum(sr.total_refund_amount), 0) * public.order_fx_rate(
+        coalesce(nullif(btrim(coalesce(o.currency, '')), ''), nullif(btrim(coalesce(o.data->>'currency', '')), ''), public.get_base_currency()),
+        sr.return_date,
+        o.fx_rate
+      )) as total_refund_amount
     from public.sales_returns sr
     join public.orders o on o.id::text = sr.order_id::text
     cross join lateral jsonb_array_elements(coalesce(sr.items, '[]'::jsonb)) i
@@ -527,7 +675,20 @@ begin
       end as date_by,
       coalesce(
         o.base_total,
-        coalesce(nullif((o.data->>'total')::numeric, null), 0) * coalesce(o.fx_rate, 1)
+        coalesce(nullif((o.data->>'total')::numeric, null), 0) * public.order_fx_rate(
+          coalesce(nullif(btrim(coalesce(o.currency, '')), ''), nullif(btrim(coalesce(o.data->>'currency', '')), ''), public.get_base_currency()),
+          case
+            when p_invoice_only
+              then nullif(o.data->'invoiceSnapshot'->>'issuedAt', '')::timestamptz
+            else coalesce(
+              nullif(o.data->'invoiceSnapshot'->>'issuedAt', '')::timestamptz,
+              nullif(o.data->>'paidAt', '')::timestamptz,
+              nullif(o.data->>'deliveredAt', '')::timestamptz,
+              o.created_at
+            )
+          end,
+          o.fx_rate
+        )
       ) as total,
       coalesce(
         o.delivery_zone_id,
@@ -609,7 +770,20 @@ begin
       end as date_by,
       coalesce(
         o.base_total,
-        coalesce(nullif((o.data->>'total')::numeric, null), 0) * coalesce(o.fx_rate, 1)
+        coalesce(nullif((o.data->>'total')::numeric, null), 0) * public.order_fx_rate(
+          coalesce(nullif(btrim(coalesce(o.currency, '')), ''), nullif(btrim(coalesce(o.data->>'currency', '')), ''), public.get_base_currency()),
+          case
+            when p_invoice_only
+              then nullif(o.data->'invoiceSnapshot'->>'issuedAt', '')::timestamptz
+            else coalesce(
+              nullif(o.data->'invoiceSnapshot'->>'issuedAt', '')::timestamptz,
+              nullif(o.data->>'paidAt', '')::timestamptz,
+              nullif(o.data->>'deliveredAt', '')::timestamptz,
+              o.created_at
+            )
+          end,
+          o.fx_rate
+        )
       ) as total,
       coalesce(
         o.delivery_zone_id,
@@ -690,7 +864,20 @@ begin
       end as date_by,
       coalesce(
         o.base_total,
-        coalesce(nullif((o.data->>'total')::numeric, null), 0) * coalesce(o.fx_rate, 1)
+        coalesce(nullif((o.data->>'total')::numeric, null), 0) * public.order_fx_rate(
+          coalesce(nullif(btrim(coalesce(o.currency, '')), ''), nullif(btrim(coalesce(o.data->>'currency', '')), ''), public.get_base_currency()),
+          case
+            when p_invoice_only
+              then nullif(o.data->'invoiceSnapshot'->>'issuedAt', '')::timestamptz
+            else coalesce(
+              nullif(o.data->'invoiceSnapshot'->>'issuedAt', '')::timestamptz,
+              nullif(o.data->>'paidAt', '')::timestamptz,
+              nullif(o.data->>'deliveredAt', '')::timestamptz,
+              o.created_at
+            )
+          end,
+          o.fx_rate
+        )
       ) as total,
       coalesce(
         o.delivery_zone_id,
@@ -772,7 +959,20 @@ begin
       end as date_by,
       coalesce(
         o.base_total,
-        coalesce(nullif((o.data->>'total')::numeric, null), 0) * coalesce(o.fx_rate, 1)
+        coalesce(nullif((o.data->>'total')::numeric, null), 0) * public.order_fx_rate(
+          coalesce(nullif(btrim(coalesce(o.currency, '')), ''), nullif(btrim(coalesce(o.data->>'currency', '')), ''), public.get_base_currency()),
+          case
+            when p_invoice_only
+              then nullif(o.data->'invoiceSnapshot'->>'issuedAt', '')::timestamptz
+            else coalesce(
+              nullif(o.data->'invoiceSnapshot'->>'issuedAt', '')::timestamptz,
+              nullif(o.data->>'paidAt', '')::timestamptz,
+              nullif(o.data->>'deliveredAt', '')::timestamptz,
+              o.created_at
+            )
+          end,
+          o.fx_rate
+        )
       ) as total,
       coalesce(
         o.delivery_zone_id,
@@ -853,7 +1053,20 @@ begin
           o.created_at
         )
       end as date_by,
-      coalesce(nullif(o.fx_rate, 0), 1) as fx_rate,
+      public.order_fx_rate(
+        coalesce(nullif(btrim(coalesce(o.currency, '')), ''), nullif(btrim(coalesce(o.data->>'currency', '')), ''), public.get_base_currency()),
+        case
+          when p_invoice_only
+            then nullif(o.data->'invoiceSnapshot'->>'issuedAt', '')::timestamptz
+          else coalesce(
+            nullif(o.data->'invoiceSnapshot'->>'issuedAt', '')::timestamptz,
+            nullif(o.data->>'paidAt', '')::timestamptz,
+            nullif(o.data->>'deliveredAt', '')::timestamptz,
+            o.created_at
+          )
+        end,
+        o.fx_rate
+      ) as fx_rate,
       coalesce(
         o.delivery_zone_id,
         case

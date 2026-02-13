@@ -37,6 +37,18 @@ type AllocationDraft = {
   allocatedBaseAmount?: number;
 };
 
+const withTimeout = async <T,>(promise: PromiseLike<T>, ms: number, message: string): Promise<T> => {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), ms);
+  });
+  try {
+    return await Promise.race([Promise.resolve(promise), timeout]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+};
+
 const formatTime = (iso: string) => {
   try {
     return new Date(iso).toLocaleString('ar-SA-u-nu-latn');
@@ -97,11 +109,15 @@ export default function SettlementWorkspaceScreen() {
     setLoading(true);
     try {
       setCurrencyHint('');
-      const { data, error } = await supabase.rpc('list_party_open_items', {
-        p_party_id: partyId,
-        p_currency: null,
-        p_status: 'open_active',
-      } as any);
+      const { data, error } = await withTimeout<any>(
+        supabase.rpc('list_party_open_items', {
+          p_party_id: partyId,
+          p_currency: null,
+          p_status: 'open_active',
+        } as any),
+        15000,
+        'انتهت مهلة تحميل العناصر المفتوحة.'
+      );
       if (error) throw error;
       const rows = (Array.isArray(data) ? data : []) as any[];
       setItems(rows as any);
@@ -122,8 +138,11 @@ export default function SettlementWorkspaceScreen() {
       }
       if (rows.length === 0 && !didAutoBackfill) {
         setDidAutoBackfill(true);
-        await backfillOpenItems();
+        void backfillOpenItems();
       }
+    } catch (e: any) {
+      setItems([]);
+      showNotification(String(e?.message || 'فشل تحميل العناصر المفتوحة.'), 'error');
     } finally {
       setLoading(false);
     }
@@ -133,13 +152,22 @@ export default function SettlementWorkspaceScreen() {
     if (!partyId) return;
     const supabase = getSupabaseClient();
     if (!supabase) return;
-    const { data } = await supabase
-      .from('settlement_headers')
-      .select('id,settlement_date,currency_code,settlement_type,reverses_settlement_id,created_at,notes')
-      .eq('party_id', partyId)
-      .order('settlement_date', { ascending: false })
-      .limit(50);
-    setRecentSettlements(Array.isArray(data) ? data : []);
+    try {
+      const { data } = await withTimeout<any>(
+        supabase
+          .from('settlement_headers')
+          .select('id,settlement_date,currency_code,settlement_type,reverses_settlement_id,created_at,notes')
+          .eq('party_id', partyId)
+          .order('settlement_date', { ascending: false })
+          .limit(50),
+        15000,
+        'انتهت مهلة تحميل التسويات الأخيرة.'
+      );
+      setRecentSettlements(Array.isArray(data) ? data : []);
+    } catch (e: any) {
+      setRecentSettlements([]);
+      showNotification(String(e?.message || 'فشل تحميل التسويات الأخيرة.'), 'error');
+    }
   };
 
   useEffect(() => {
@@ -164,10 +192,14 @@ export default function SettlementWorkspaceScreen() {
     if (!supabase) return;
     setBackfilling(true);
     try {
-      const { data, error } = await supabase.rpc('backfill_party_open_items_for_party', {
-        p_party_id: partyId,
-        p_batch: 5000,
-      } as any);
+      const { data, error } = await withTimeout<any>(
+        supabase.rpc('backfill_party_open_items_for_party', {
+          p_party_id: partyId,
+          p_batch: 5000,
+        } as any),
+        20000,
+        'انتهت مهلة تحديث العناصر المفتوحة.'
+      );
       if (error) throw error;
       const created = Number((data as any)?.openItemsCreated || 0);
       setLastBackfillCount(created);

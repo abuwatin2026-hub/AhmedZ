@@ -20,6 +20,18 @@ type OpenItemRow = {
   status: string;
 };
 
+const withTimeout = async <T,>(promise: PromiseLike<T>, ms: number, message: string): Promise<T> => {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), ms);
+  });
+  try {
+    return await Promise.race([Promise.resolve(promise), timeout]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+};
+
 const formatTime = (iso: string) => {
   try {
     return new Date(iso).toLocaleString('ar-SA-u-nu-latn');
@@ -77,11 +89,15 @@ export default function AdvanceManagementScreen() {
     setLoading(true);
     try {
       setCurrencyHint('');
-      const { data, error } = await supabase.rpc('list_party_open_items', {
-        p_party_id: partyId,
-        p_currency: null,
-        p_status: 'open_active',
-      } as any);
+      const { data, error } = await withTimeout<any>(
+        supabase.rpc('list_party_open_items', {
+          p_party_id: partyId,
+          p_currency: null,
+          p_status: 'open_active',
+        } as any),
+        15000,
+        'انتهت مهلة تحميل العناصر المفتوحة.'
+      );
       if (error) throw error;
       const rows = (Array.isArray(data) ? data : []) as any[];
       setItems(rows as any);
@@ -102,8 +118,11 @@ export default function AdvanceManagementScreen() {
       }
       if (rows.length === 0 && !didAutoBackfill) {
         setDidAutoBackfill(true);
-        await backfillOpenItems();
+        void backfillOpenItems();
       }
+    } catch (e: any) {
+      setItems([]);
+      showNotification(String(e?.message || 'فشل تحميل العناصر المفتوحة.'), 'error');
     } finally {
       setLoading(false);
     }
@@ -130,10 +149,14 @@ export default function AdvanceManagementScreen() {
     if (!supabase) return;
     setBackfilling(true);
     try {
-      const { data, error } = await supabase.rpc('backfill_party_open_items_for_party', {
-        p_party_id: partyId,
-        p_batch: 5000,
-      } as any);
+      const { data, error } = await withTimeout<any>(
+        supabase.rpc('backfill_party_open_items_for_party', {
+          p_party_id: partyId,
+          p_batch: 5000,
+        } as any),
+        20000,
+        'انتهت مهلة تحديث العناصر المفتوحة.'
+      );
       if (error) throw error;
       const created = Number((data as any)?.openItemsCreated || 0);
       setLastBackfillCount(created);
