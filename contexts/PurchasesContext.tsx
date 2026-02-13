@@ -454,18 +454,13 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                 .filter((o) => o.status === 'partial')
                 .filter((o) => Array.isArray(o.items) && o.items.length > 0)
                 .filter((o) => (o.items || []).every((it: any) => (Number(it?.receivedQuantity || 0) + eps) >= Number(it?.qtyBase ?? it?.quantity ?? 0)))
-                .map((o) => o.id)
-                .filter(Boolean)
-                .slice(0, 8);
+                .map((o) => o.id);
               if (candidates.length > 0) {
-                await Promise.allSettled(
-                  candidates.map(async (id) => {
-                    const res = await supabase.rpc('reconcile_purchase_order_receipt_status', { p_order_id: id } as any);
-                    const msg = String((res as any)?.error?.message || '');
-                    if (/schema cache|could not find the function|PGRST202/i.test(msg)) return;
-                  })
-                );
-                void fetchPurchaseOrders({ silent: true });
+                const res = await supabase.rpc('reconcile_all_purchase_orders', { p_limit: 100000 } as any);
+                const msg = String((res as any)?.error?.message || '');
+                if (!/schema cache|could not find the function|PGRST202/i.test(msg)) {
+                  void fetchPurchaseOrders({ silent: true });
+                }
               }
             } catch {
             }
