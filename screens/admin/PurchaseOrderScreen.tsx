@@ -78,6 +78,8 @@ const PurchaseOrderScreen: React.FC = () => {
     const canViewAccounting = hasPermission('accounting.view') || hasPermission('accounting.manage');
     const canManageAccounting = hasPermission('accounting.manage');
     const canManageImports = hasPermission('procurement.manage');
+    const canReconcileAll = user?.role === 'owner' || user?.role === 'manager' || hasPermission('stock.manage') || hasPermission('accounting.manage') || hasPermission('procurement.manage');
+    const [reconcilingAll, setReconcilingAll] = useState(false);
     const resolveBrandingForWarehouseId = (warehouseId?: string) => {
         const fallback = {
             name: (settings as any)?.cafeteriaName?.ar || (settings as any)?.cafeteriaName?.en || '',
@@ -152,6 +154,29 @@ const PurchaseOrderScreen: React.FC = () => {
                 } as any);
             } catch {
             }
+        }
+    };
+
+    const handleReconcileAllPurchaseOrders = async () => {
+        if (!canReconcileAll) return;
+        const confirm = window.confirm('سيتم مصالحة حالة جميع أوامر الشراء التي لديها سندات استلام.\nهل تريد المتابعة؟');
+        if (!confirm) return;
+        const supabase = getSupabaseClient();
+        if (!supabase) {
+            alert('قاعدة البيانات غير متاحة.');
+            return;
+        }
+        setReconcilingAll(true);
+        try {
+            const { data, error } = await supabase.rpc('reconcile_all_purchase_orders', { p_limit: 100000 } as any);
+            if (error) throw error;
+            const n = Number(data || 0);
+            showNotification(`تمت مصالحة ${n} أمر شراء.`, 'success');
+            await fetchPurchaseOrders();
+        } catch (e) {
+            alert(getErrorMessage(e, 'فشل مصالحة أوامر الشراء.'));
+        } finally {
+            setReconcilingAll(false);
         }
     };
 
@@ -1577,27 +1602,39 @@ const PurchaseOrderScreen: React.FC = () => {
                 <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-l from-primary-600 to-gold-500">
                     أوامر الشراء (المخزون)
                 </h1>
-                <button
-                    onClick={() => {
-                        setIsModalOpen(true);
-                        setSupplierInvoiceNumber('');
-                        setWarehouseId(String(scope?.warehouseId || warehouses.find(w => w.isActive)?.id || ''));
-                        setPurchaseDate(toDateInputValue());
-                        setPaymentTerms('cash');
-                        setNetDays(0);
-                        setDueDate(toDateInputValue());
-                        setQuickAddCode('');
-                        setQuickAddQuantity(1);
-                        setQuickAddUnitCost(0);
-                        setBulkLinesText('');
-                        setOrderItems([]);
-                        addRow();
-                    }}
-                    className="bg-primary-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-primary-600 shadow-lg self-end sm:self-auto"
-                >
-                    <Icons.PlusIcon className="w-5 h-5" />
-                    <span>أمر شراء جديد</span>
-                </button>
+                <div className="flex items-center gap-2">
+                    {canReconcileAll ? (
+                        <button
+                            onClick={() => { void handleReconcileAllPurchaseOrders(); }}
+                            disabled={reconcilingAll}
+                            className="bg-gray-800 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-gray-900 shadow-lg"
+                        >
+                            <Icons.SettingsIcon className="w-5 h-5" />
+                            <span>{reconcilingAll ? 'جاري المصالحة...' : 'مصالحة الأوامر'}</span>
+                        </button>
+                    ) : null}
+                    <button
+                        onClick={() => {
+                            setIsModalOpen(true);
+                            setSupplierInvoiceNumber('');
+                            setWarehouseId(String(scope?.warehouseId || warehouses.find(w => w.isActive)?.id || ''));
+                            setPurchaseDate(toDateInputValue());
+                            setPaymentTerms('cash');
+                            setNetDays(0);
+                            setDueDate(toDateInputValue());
+                            setQuickAddCode('');
+                            setQuickAddQuantity(1);
+                            setQuickAddUnitCost(0);
+                            setBulkLinesText('');
+                            setOrderItems([]);
+                            addRow();
+                        }}
+                        className="bg-primary-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-primary-600 shadow-lg"
+                    >
+                        <Icons.PlusIcon className="w-5 h-5" />
+                        <span>أمر شراء جديد</span>
+                    </button>
+                </div>
             </div>
 
             {purchasesError ? (
