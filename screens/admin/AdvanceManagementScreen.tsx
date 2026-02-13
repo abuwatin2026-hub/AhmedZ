@@ -42,6 +42,9 @@ export default function AdvanceManagementScreen() {
   const [running, setRunning] = useState(false);
   const [applyForeign, setApplyForeign] = useState<string>('');
   const [applyBase, setApplyBase] = useState<string>('');
+  const [backfilling, setBackfilling] = useState(false);
+  const [lastBackfillCount, setLastBackfillCount] = useState<number | null>(null);
+  const [didAutoBackfill, setDidAutoBackfill] = useState(false);
 
   const loadParties = async () => {
     const supabase = getSupabaseClient();
@@ -97,6 +100,10 @@ export default function AdvanceManagementScreen() {
           setCurrency(currencies[0]);
         }
       }
+      if (rows.length === 0 && !didAutoBackfill) {
+        setDidAutoBackfill(true);
+        await backfillOpenItems();
+      }
     } finally {
       setLoading(false);
     }
@@ -117,6 +124,30 @@ export default function AdvanceManagementScreen() {
     void loadOpenItems();
   }, [partyId]);
 
+  const backfillOpenItems = async () => {
+    if (!partyId) return;
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+    setBackfilling(true);
+    try {
+      const { data, error } = await supabase.rpc('backfill_party_open_items_for_party', {
+        p_party_id: partyId,
+        p_batch: 5000,
+      } as any);
+      if (error) throw error;
+      const created = Number((data as any)?.openItemsCreated || 0);
+      setLastBackfillCount(created);
+      if (created > 0) {
+        showNotification(`تم تحديث العناصر المفتوحة: ${created}`, 'success');
+      }
+      await loadOpenItems();
+    } catch (e: any) {
+      showNotification(String(e?.message || 'فشل تحديث العناصر المفتوحة.'), 'error');
+    } finally {
+      setBackfilling(false);
+    }
+  };
+
   const currencyFilter = useMemo(() => String(currency || '').trim().toUpperCase(), [currency]);
   const filteredItems = useMemo(() => {
     if (!currencyFilter) return items;
@@ -135,7 +166,7 @@ export default function AdvanceManagementScreen() {
   const invoices = useMemo(
     () =>
       filteredItems
-        .filter((x) => x.direction === 'debit' && x.item_type === 'invoice')
+        .filter((x) => x.direction === 'debit' && ['invoice', 'bill', 'debit_note'].includes(String(x.item_type || '')))
         .sort((a, b) => String(a.occurred_at).localeCompare(String(b.occurred_at))),
     [filteredItems],
   );
@@ -143,7 +174,7 @@ export default function AdvanceManagementScreen() {
   const advances = useMemo(
     () =>
       filteredItems
-        .filter((x) => x.direction === 'credit' && x.item_type === 'advance')
+        .filter((x) => x.direction === 'credit' && ['advance', 'payment', 'receipt', 'credit_note'].includes(String(x.item_type || '')))
         .sort((a, b) => String(a.occurred_at).localeCompare(String(b.occurred_at))),
     [filteredItems],
   );
@@ -229,12 +260,26 @@ export default function AdvanceManagementScreen() {
           <h1 className="text-2xl font-bold dark:text-white">Advance Management</h1>
           <div className="text-sm text-gray-500 dark:text-gray-400">ربط الدفعات المسبقة بالفواتير لاحقاً</div>
         </div>
-        <button
-          onClick={() => void loadOpenItems()}
-          className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm"
-        >
-          تحديث
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => void loadOpenItems()}
+            className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm"
+          >
+            تحديث
+          </button>
+          <button
+            onClick={() => void backfillOpenItems()}
+            disabled={backfilling}
+            className="px-3 py-2 rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/20 text-sm text-emerald-700 dark:text-emerald-200 disabled:opacity-60"
+          >
+            {backfilling ? 'جاري التحديث...' : 'تحديث العناصر المفتوحة'}
+          </button>
+          {lastBackfillCount != null ? (
+            <span className="text-xs text-gray-600 dark:text-gray-300 px-2 py-1 border rounded-md bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
+              تم تحديث: {Number(lastBackfillCount || 0)}
+            </span>
+          ) : null}
+        </div>
       </div>
 
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow border border-gray-100 dark:border-gray-700 p-4 grid grid-cols-1 md:grid-cols-3 gap-3">

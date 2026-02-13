@@ -16,13 +16,15 @@ type DocRow = {
   journal_entry_id: string | null;
 };
 
-type DocType = 'ar_invoice' | 'ap_bill' | 'ar_receipt' | 'ap_payment';
+type DocType = 'ar_invoice' | 'ap_bill' | 'ar_receipt' | 'ap_payment' | 'advance' | 'custodian';
 
 const docTypeLabel: Record<DocType, string> = {
   ar_invoice: 'فاتورة عميل (AR)',
   ap_bill: 'فاتورة مورد (AP)',
   ar_receipt: 'سند قبض (AR)',
   ap_payment: 'سند صرف (AP)',
+  advance: 'دفعة مقدمة',
+  custodian: 'عهدة',
 };
 
 const defaultAccounts: Record<DocType, { partyAccount: string; counterAccount: string; cashAccount?: string }> = {
@@ -30,6 +32,8 @@ const defaultAccounts: Record<DocType, { partyAccount: string; counterAccount: s
   ap_bill: { partyAccount: '2010', counterAccount: '6100' },
   ar_receipt: { partyAccount: '1200', counterAccount: '1010', cashAccount: '1010' },
   ap_payment: { partyAccount: '2010', counterAccount: '1010', cashAccount: '1010' },
+  advance: { partyAccount: '1210', counterAccount: '1010', cashAccount: '1010' },
+  custodian: { partyAccount: '1035', counterAccount: '1010', cashAccount: '1010' },
 };
 
 export default function PartyDocumentsScreen() {
@@ -164,6 +168,12 @@ export default function PartyDocumentsScreen() {
       counterLine.debit = amt;
       partyLine.credit = amt;
     } else if (docType === 'ap_payment') {
+      partyLine.debit = amt;
+      counterLine.credit = amt;
+    } else if (docType === 'advance') {
+      partyLine.debit = amt;
+      counterLine.credit = amt;
+    } else if (docType === 'custodian') {
       partyLine.debit = amt;
       counterLine.credit = amt;
     }
@@ -480,4 +490,3 @@ export default function PartyDocumentsScreen() {
     </div>
   );
 }
-

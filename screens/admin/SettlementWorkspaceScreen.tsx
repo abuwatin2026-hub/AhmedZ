@@ -62,6 +62,9 @@ export default function SettlementWorkspaceScreen() {
   const [recentSettlements, setRecentSettlements] = useState<any[]>([]);
   const [nextForeign, setNextForeign] = useState<string>('');
   const [nextBase, setNextBase] = useState<string>('');
+  const [backfilling, setBackfilling] = useState(false);
+  const [lastBackfillCount, setLastBackfillCount] = useState<number | null>(null);
+  const [didAutoBackfill, setDidAutoBackfill] = useState(false);
 
   const loadParties = async () => {
     const supabase = getSupabaseClient();
@@ -117,6 +120,10 @@ export default function SettlementWorkspaceScreen() {
           setCurrency(currencies[0]);
         }
       }
+      if (rows.length === 0 && !didAutoBackfill) {
+        setDidAutoBackfill(true);
+        await backfillOpenItems();
+      }
     } finally {
       setLoading(false);
     }
@@ -150,6 +157,31 @@ export default function SettlementWorkspaceScreen() {
     void loadOpenItems();
     void loadRecentSettlements();
   }, [partyId]);
+
+  const backfillOpenItems = async () => {
+    if (!partyId) return;
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+    setBackfilling(true);
+    try {
+      const { data, error } = await supabase.rpc('backfill_party_open_items_for_party', {
+        p_party_id: partyId,
+        p_batch: 5000,
+      } as any);
+      if (error) throw error;
+      const created = Number((data as any)?.openItemsCreated || 0);
+      setLastBackfillCount(created);
+      if (created > 0) {
+        showNotification(`تم تحديث العناصر المفتوحة: ${created}`, 'success');
+      }
+      await loadOpenItems();
+      await loadRecentSettlements();
+    } catch (e: any) {
+      showNotification(String(e?.message || 'فشل تحديث العناصر المفتوحة.'), 'error');
+    } finally {
+      setBackfilling(false);
+    }
+  };
 
   const currencyFilter = useMemo(() => String(currency || '').trim().toUpperCase(), [currency]);
   const filteredItems = useMemo(() => {
@@ -341,6 +373,18 @@ export default function SettlementWorkspaceScreen() {
           >
             تحديث
           </button>
+          <button
+            onClick={() => void backfillOpenItems()}
+            disabled={backfilling}
+            className="px-3 py-2 rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/20 text-sm text-emerald-700 dark:text-emerald-200 disabled:opacity-60"
+          >
+            {backfilling ? 'جاري التحديث...' : 'تحديث العناصر المفتوحة'}
+          </button>
+          {lastBackfillCount != null ? (
+            <span className="text-xs text-gray-600 dark:text-gray-300 px-2 py-1 border rounded-md bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
+              تم تحديث: {Number(lastBackfillCount || 0)}
+            </span>
+          ) : null}
         </div>
       </div>
 
