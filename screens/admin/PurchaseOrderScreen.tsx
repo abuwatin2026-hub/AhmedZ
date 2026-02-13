@@ -1169,8 +1169,9 @@ const PurchaseOrderScreen: React.FC = () => {
 
     const openReceiveModal = (order: PurchaseOrder) => {
         const eps = 0.000000001;
-        const fullyReceived = (order.items || []).length > 0
-            && (order.items || []).every((it: any) => (Number(it?.receivedQuantity || 0) + eps) >= Number(it?.qtyBase ?? it?.quantity ?? 0));
+        const fullyReceived = order.status === 'completed'
+            || ((order.items || []).length > 0
+                && (order.items || []).every((it: any) => (Number(it?.receivedQuantity || 0) + eps) >= Number(it?.qtyBase ?? it?.quantity ?? 0)));
         if (fullyReceived) {
             showNotification('هذا الأمر مستلم بالكامل ولا توجد كميات متبقية للاستلام.', 'info');
             return;
@@ -1786,9 +1787,11 @@ const PurchaseOrderScreen: React.FC = () => {
                         const totalQty = (order.items || []).reduce((sum: number, it: any) => sum + Number(it?.quantity || 0), 0);
                         const linesCount = Number(order.itemsCount ?? (order.items || []).length ?? 0);
                         const canPay = order.status !== 'cancelled' && remainingRaw > 0;
-                        const hasReceived = (order.items || []).some((it: any) => Number(it?.receivedQuantity || 0) > 0);
-                        const fullyReceived = (order.items || []).length > 0
-                            && (order.items || []).every((it: any) => (Number(it?.receivedQuantity || 0) + eps) >= Number(it?.qtyBase ?? it?.quantity ?? 0));
+                        const hasReceived = order.status === 'completed'
+                            || (order.items || []).some((it: any) => Number(it?.receivedQuantity || 0) > 0);
+                        const fullyReceived = order.status === 'completed'
+                            || ((order.items || []).length > 0
+                                && (order.items || []).every((it: any) => (Number(it?.receivedQuantity || 0) + eps) >= Number(it?.qtyBase ?? it?.quantity ?? 0)));
                         const receiptPosting = receiptPostingByOrderId[order.id];
                         const isReceiptPosted = String(receiptPosting?.status || '') === 'posted';
                         const canPurge = canDelete && order.status === 'draft' && paid <= 0 && !hasReceived;
@@ -2098,10 +2101,11 @@ const PurchaseOrderScreen: React.FC = () => {
                                     const currencyCode = String(order.currency || '').toUpperCase() || '—';
                                     const totalQty = items.reduce((sum: number, it: any) => sum + Number(it?.quantity || 0), 0);
                                     const canPay = order.status !== 'cancelled' && remainingRaw > 0;
-                                    const hasReceived = items.some((it: any) => Number(it?.receivedQuantity || 0) > 0);
+                                    const hasReceived = order.status === 'completed' || items.some((it: any) => Number(it?.receivedQuantity || 0) > 0);
                                     const receiptPosting = receiptPostingByOrderId[order.id];
                                     const isReceiptPosted = String(receiptPosting?.status || '') === 'posted';
-                                    const fullyReceived = items.length > 0 && items.every((it: any) => (Number(it?.receivedQuantity || 0) + eps) >= Number(it?.qtyBase ?? it?.quantity ?? 0));
+                                    const fullyReceived = order.status === 'completed'
+                                        || (items.length > 0 && items.every((it: any) => (Number(it?.receivedQuantity || 0) + eps) >= Number(it?.qtyBase ?? it?.quantity ?? 0)));
                                     const canPurge = canDelete && order.status === 'draft' && paid <= 0 && !hasReceived;
                                     const canCancelOrder = canCancel && order.status === 'draft' && paid <= 0 && !hasReceived;
                                     const paymentBadge = (() => {
