@@ -59,6 +59,25 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const [error, setError] = useState<string | null>(null);
     const { user } = useAuth();
   const supabase = getSupabaseClient();
+  const reconcilePurchaseOrderStatus = useCallback(async (purchaseOrderId: string) => {
+    if (!supabase) return;
+    const orderId = String(purchaseOrderId || '').trim();
+    if (!orderId) return;
+    try {
+      const { error: reconcileErr } = await supabase.rpc('reconcile_purchase_order_receipt_status', { p_order_id: orderId } as any);
+      if (reconcileErr) {
+        const msg = String((reconcileErr as any)?.message || '');
+        const code = String((reconcileErr as any)?.code || '');
+        if (/schema cache|could not find the function|PGRST202/i.test(msg) || code === 'PGRST202') {
+          const reloaded = await reloadPostgrestSchema();
+          if (reloaded) {
+            await supabase.rpc('reconcile_purchase_order_receipt_status', { p_order_id: orderId } as any);
+          }
+        }
+      }
+    } catch {
+    }
+  }, [supabase]);
 
   const mapSupplierRow = (row: any): Supplier => {
     const now = new Date().toISOString();
@@ -879,6 +898,7 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               const occurredAtIso = new Date(new Date(occurredAtIsoBase).getTime() + (attempt * 1100)).toISOString();
               const result = await tryReceive(occurredAtIso);
               if (!result.error) {
+                await reconcilePurchaseOrderStatus(orderId);
                 await updateMenuItemDates(items);
                 await fetchPurchaseOrders({ silent: false });
                 return;
@@ -923,6 +943,7 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                 if (reloaded) {
                   const retry = await tryReceive(occurredAtIso);
                   if (!retry.error) {
+                      await reconcilePurchaseOrderStatus(orderId);
                     await updateMenuItemDates(items);
                     await fetchPurchaseOrders({ silent: false });
                     return;
@@ -1198,6 +1219,7 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             if (code === '23505' && /uq_purchase_receipts_idempotency/i.test(msg)) {
               const retry = await supabase.rpc('receive_purchase_order_partial', args);
               if (!retry.error) {
+                await reconcilePurchaseOrderStatus(orderId);
                 await updateMenuItemDates(items);
                 await fetchPurchaseOrders();
                 return String(retry.data || '');
@@ -1300,6 +1322,7 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               if (reloaded) {
                 const retry = await supabase.rpc('receive_purchase_order_partial', args);
                 if (!retry.error) {
+                  await reconcilePurchaseOrderStatus(orderId);
                   await updateMenuItemDates(items);
                   await fetchPurchaseOrders();
                   return String(retry.data || '');
@@ -1315,6 +1338,7 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             }
             throw error;
           }
+          await reconcilePurchaseOrderStatus(orderId);
           await updateMenuItemDates(items);
           await fetchPurchaseOrders();
           return String(data || '');
