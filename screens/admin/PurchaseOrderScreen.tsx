@@ -80,6 +80,7 @@ const PurchaseOrderScreen: React.FC = () => {
     const canManageImports = hasPermission('procurement.manage');
     const canReconcileAll = user?.role === 'owner' || user?.role === 'manager' || hasPermission('stock.manage') || hasPermission('accounting.manage') || hasPermission('procurement.manage');
     const [reconcilingAll, setReconcilingAll] = useState(false);
+    const [reportingPartial, setReportingPartial] = useState(false);
     const resolveBrandingForWarehouseId = (warehouseId?: string) => {
         const fallback = {
             name: (settings as any)?.cafeteriaName?.ar || (settings as any)?.cafeteriaName?.en || '',
@@ -181,6 +182,45 @@ const PurchaseOrderScreen: React.FC = () => {
             alert(getErrorMessage(e, 'فشل مصالحة أوامر الشراء.'));
         } finally {
             setReconcilingAll(false);
+        }
+    };
+
+    const handleReportPartialPurchaseOrders = async () => {
+        if (!canReconcileAll) return;
+        const supabase = getSupabaseClient();
+        if (!supabase) {
+            alert('قاعدة البيانات غير متاحة.');
+            return;
+        }
+        setReportingPartial(true);
+        try {
+            const { data, error } = await supabase.rpc('report_partial_purchase_orders', { p_limit: 100000 } as any);
+            if (error) throw error;
+            const obj: any = data as any;
+            const rows = Array.isArray(obj?.rows) ? obj.rows : [];
+            const escapeHtml = (input: string) => input.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            const body = rows.map((r: any) => {
+                const head = `أمر: ${String(r?.reference || r?.orderId || '')}${r?.supplierName ? ` • المورد: ${String(r.supplierName)}` : ''}`;
+                const items = (Array.isArray(r?.items) ? r.items : []).map((it: any) => {
+                    const ordered = Number(it?.ordered || 0);
+                    const received = Number(it?.received || 0);
+                    const remaining = Number(it?.remaining || 0);
+                    return `- ${String(it?.itemId || '')}: المطلوب ${ordered}، المستلم ${received}، المتبقي ${remaining}`;
+                }).join('\n');
+                return `${head}\n${items}`;
+            }).join('\n\n');
+            const reportText = `تقرير نواقص الاستلام\nعدد الأوامر: ${rows.length}\n\n${body || 'لا توجد نواقص.'}`;
+            const w = window.open('', '_blank');
+            if (w && w.document) {
+                w.document.write(`<pre style="white-space:pre-wrap;font-family:system-ui,Segoe UI,Arial">${escapeHtml(reportText)}</pre>`);
+                w.document.close();
+            } else {
+                alert(reportText);
+            }
+        } catch (e) {
+            alert(getErrorMessage(e, 'فشل إنشاء تقرير النواقص.'));
+        } finally {
+            setReportingPartial(false);
         }
     };
 
@@ -1608,14 +1648,24 @@ const PurchaseOrderScreen: React.FC = () => {
                 </h1>
                 <div className="flex items-center gap-2">
                     {canReconcileAll ? (
-                        <button
-                            onClick={() => { void handleReconcileAllPurchaseOrders(); }}
-                            disabled={reconcilingAll}
-                            className="bg-gray-800 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-gray-900 shadow-lg"
-                        >
-                            <Icons.SettingsIcon className="w-5 h-5" />
-                            <span>{reconcilingAll ? 'جاري المصالحة...' : 'مصالحة الأوامر'}</span>
-                        </button>
+                        <>
+                            <button
+                                onClick={() => { void handleReconcileAllPurchaseOrders(); }}
+                                disabled={reconcilingAll}
+                                className="bg-gray-800 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-gray-900 shadow-lg"
+                            >
+                                <Icons.SettingsIcon className="w-5 h-5" />
+                                <span>{reconcilingAll ? 'جاري المصالحة...' : 'مصالحة الأوامر'}</span>
+                            </button>
+                            <button
+                                onClick={() => { void handleReportPartialPurchaseOrders(); }}
+                                disabled={reportingPartial}
+                                className="bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-800 shadow-lg"
+                            >
+                                <Icons.PrinterIcon className="w-5 h-5" />
+                                <span>{reportingPartial ? 'جاري إنشاء التقرير...' : 'تقرير النواقص'}</span>
+                            </button>
+                        </>
                     ) : null}
                     <button
                         onClick={() => {
