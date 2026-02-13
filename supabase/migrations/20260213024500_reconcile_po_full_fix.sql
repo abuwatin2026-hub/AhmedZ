@@ -333,6 +333,46 @@ $$;
 revoke all on function public.report_partial_purchase_orders(int) from public;
 grant execute on function public.report_partial_purchase_orders(int) to authenticated;
 
+create or replace function public.force_complete_purchase_orders_status_only(p_limit int default 100000)
+returns int
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_id uuid;
+  v_n int := 0;
+begin
+  for v_id in
+    select po.id
+    from public.purchase_orders po
+    where po.status <> 'cancelled'
+      and exists (select 1 from public.purchase_receipts pr where pr.purchase_order_id = po.id)
+    order by po.updated_at desc nulls last
+    limit greatest(coalesce(p_limit, 0), 0)
+  loop
+    begin
+      update public.purchase_orders po
+      set status = 'completed',
+          approval_status = 'approved',
+          approval_request_id = null,
+          updated_at = now()
+      where po.id = v_id
+        and po.status is distinct from 'completed';
+      if found then
+        v_n := v_n + 1;
+      end if;
+    exception when others then
+      null;
+    end;
+  end loop;
+  return v_n;
+end;
+$$;
+
+revoke all on function public.force_complete_purchase_orders_status_only(int) from public;
+grant execute on function public.force_complete_purchase_orders_status_only(int) to authenticated;
+
 create or replace function public.reconcile_po_full_fix(p_limit int default 100000)
 returns jsonb
 language plpgsql

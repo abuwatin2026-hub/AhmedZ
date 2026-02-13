@@ -82,6 +82,7 @@ const PurchaseOrderScreen: React.FC = () => {
     const [reconcilingAll, setReconcilingAll] = useState(false);
     const [reportingPartial, setReportingPartial] = useState(false);
     const [finalizingNoShortages, setFinalizingNoShortages] = useState(false);
+    const [forcingStatusOnly, setForcingStatusOnly] = useState(false);
     const resolveBrandingForWarehouseId = (warehouseId?: string) => {
         const fallback = {
             name: (settings as any)?.cafeteriaName?.ar || (settings as any)?.cafeteriaName?.en || '',
@@ -245,6 +246,29 @@ const PurchaseOrderScreen: React.FC = () => {
             alert(getErrorMessage(e, 'فشل إنهاء أوامر الشراء بدون نواقص.'));
         } finally {
             setFinalizingNoShortages(false);
+        }
+    };
+
+    const handleForceCompleteStatusOnly = async () => {
+        if (!canReconcileAll) return;
+        const confirm = window.confirm('سيتم إنهاء حالة الاستلام إلى "مكتمل" لكل أمر لديه سند استلام.\nلن يتم تعديل المخزون أو المحاسبة.\nهل تريد المتابعة؟');
+        if (!confirm) return;
+        const supabase = getSupabaseClient();
+        if (!supabase) {
+            alert('قاعدة البيانات غير متاحة.');
+            return;
+        }
+        setForcingStatusOnly(true);
+        try {
+            const { data, error } = await supabase.rpc('force_complete_purchase_orders_status_only', { p_limit: 100000 } as any);
+            if (error) throw error;
+            const n = Number(data || 0);
+            showNotification(`تم إكمال الحالة لـ ${n} أمر شراء.`, 'success');
+            await fetchPurchaseOrders();
+        } catch (e) {
+            alert(getErrorMessage(e, 'فشل إكمال الحالة.'));
+        } finally {
+            setForcingStatusOnly(false);
         }
     };
 
@@ -1696,6 +1720,14 @@ const PurchaseOrderScreen: React.FC = () => {
                             >
                                 <Icons.CheckIcon className="w-5 h-5" />
                                 <span>{finalizingNoShortages ? 'جاري الإنهاء...' : 'إنهاء بدون نواقص'}</span>
+                            </button>
+                            <button
+                                onClick={() => { void handleForceCompleteStatusOnly(); }}
+                                disabled={forcingStatusOnly}
+                                className="bg-emerald-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-emerald-800 shadow-lg"
+                            >
+                                <Icons.CheckIcon className="w-5 h-5" />
+                                <span>{forcingStatusOnly ? 'جاري الإكمال...' : 'إكمال الحالة فقط'}</span>
                             </button>
                         </>
                     ) : null}
