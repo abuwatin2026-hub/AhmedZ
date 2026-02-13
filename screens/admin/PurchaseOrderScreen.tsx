@@ -74,7 +74,7 @@ const PurchaseOrderScreen: React.FC = () => {
     const [receiptPostingLoading, setReceiptPostingLoading] = useState(false);
     const canDelete = user?.role === 'owner';
     const canCancel = user?.role === 'owner' || user?.role === 'manager';
-    const canRepairReceipt = user?.role === 'owner' || user?.role === 'manager';
+    const canRepairReceipt = user?.role === 'owner' || user?.role === 'manager' || hasPermission('stock.manage') || hasPermission('procurement.manage') || hasPermission('accounting.manage');
     const canViewAccounting = hasPermission('accounting.view') || hasPermission('accounting.manage');
     const canManageAccounting = hasPermission('accounting.manage');
     const canManageImports = hasPermission('procurement.manage');
@@ -2117,6 +2117,16 @@ const PurchaseOrderScreen: React.FC = () => {
                                                     className="px-3 py-2 rounded-lg text-sm font-semibold bg-emerald-700 text-white hover:bg-emerald-800 disabled:opacity-50 disabled:cursor-not-allowed"
                                                 >
                                                     شحنة
+                                                </button>
+                                            ) : null}
+                                            {canRepairReceipt ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleRepairPurchaseOrder(order)}
+                                                    disabled={order.status === 'cancelled'}
+                                                    className="px-3 py-2 rounded-lg text-sm font-semibold bg-gray-800 text-white hover:bg-gray-900 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                >
+                                                    إصلاح الاستلام
                                                 </button>
                                             ) : null}
                                             <button
