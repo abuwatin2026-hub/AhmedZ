@@ -3091,8 +3091,8 @@ const PurchaseOrderScreen: React.FC = () => {
 
             {isReturnModalOpen && returnOrder && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-                    <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden flex flex-col animate-in fade-in zoom-in duration-200">
-                        <div className="p-4 bg-gray-50 dark:bg-gray-700/50 border-b dark:border-gray-700 flex justify-between items-center">
+                    <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[min(90dvh,calc(100dvh-2rem))] overflow-hidden flex flex-col animate-in fade-in zoom-in duration-200">
+                        <div className="p-4 bg-gray-50 dark:bg-gray-700/50 border-b dark:border-gray-700 flex justify-between items-center flex-shrink-0">
                             <h2 className="text-xl font-bold dark:text-white">مرتجع إلى المورد</h2>
                             <button
                                 type="button"
@@ -3108,68 +3108,70 @@ const PurchaseOrderScreen: React.FC = () => {
                                 <Icons.XIcon className="w-6 h-6" />
                             </button>
                         </div>
-                        <form onSubmit={handleCreateReturn} className="p-6 space-y-4">
-                            <div className="text-sm dark:text-gray-300">
-                                {returnOrder.supplierName} — {returnOrder.referenceNumber || returnOrder.id.slice(-6)}
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-sm font-medium mb-1 dark:text-gray-300">وقت المرتجع</label>
-                                    <input
-                                        type="datetime-local"
-                                        value={returnOccurredAt}
-                                        onChange={(e) => setReturnOccurredAt(e.target.value)}
-                                        className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                                    />
+                        <form onSubmit={handleCreateReturn} className="flex-1 flex flex-col overflow-hidden">
+                            <div className="p-6 space-y-4 overflow-y-auto flex-1">
+                                <div className="text-sm dark:text-gray-300">
+                                    {returnOrder.supplierName} — {returnOrder.referenceNumber || returnOrder.id.slice(-6)}
                                 </div>
-                                <div>
-                                    <label className="block text-sm font-medium mb-1 dark:text-gray-300">سبب المرتجع</label>
-                                    <input
-                                        type="text"
-                                        value={returnReason}
-                                        onChange={(e) => setReturnReason(e.target.value)}
-                                        className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                                    />
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1 dark:text-gray-300">وقت المرتجع</label>
+                                        <input
+                                            type="datetime-local"
+                                            value={returnOccurredAt}
+                                            onChange={(e) => setReturnOccurredAt(e.target.value)}
+                                            className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1 dark:text-gray-300">سبب المرتجع</label>
+                                        <input
+                                            type="text"
+                                            value={returnReason}
+                                            onChange={(e) => setReturnReason(e.target.value)}
+                                            className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                        />
+                                    </div>
+                                </div>
+                                <div className="border rounded-lg overflow-hidden dark:border-gray-700">
+                                    <div className="overflow-x-auto">
+                                        <table className="min-w-[720px] w-full text-right text-sm">
+                                            <thead className="bg-gray-50 dark:bg-gray-700">
+                                                <tr>
+                                                    <th className="p-2 sm:p-3">الصنف</th>
+                                                    <th className="p-2 sm:p-3 w-24">المستلم</th>
+                                                    <th className="p-2 sm:p-3 w-24">مرتجع سابق</th>
+                                                    <th className="p-2 sm:p-3 w-24">المتبقي</th>
+                                                    <th className="p-2 sm:p-3 w-24">المتاح حالياً</th>
+                                                    <th className="p-2 sm:p-3 w-24">مرتجع الآن</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                                                {returnRows.map((r, idx) => (
+                                                    <tr key={r.itemId}>
+                                                        <td className="p-2 sm:p-2 dark:text-gray-200">{r.itemName}</td>
+                                                        <td className="p-2 sm:p-2 text-center font-mono">{r.received}</td>
+                                                        <td className="p-2 sm:p-2 text-center font-mono">{r.previousReturned || 0}</td>
+                                                        <td className="p-2 sm:p-2 text-center font-mono">{r.remaining}</td>
+                                                        <td className="p-2 sm:p-2 text-center font-mono">{Number(r.available || 0)}</td>
+                                                        <td className="p-2 sm:p-2">
+                                                            <input
+                                                                type="number"
+                                                                min={0}
+                                                                step={getQuantityStep(r.itemId)}
+                                                                value={r.receiveNow}
+                                                                onChange={(e) => updateReturnRow(idx, e.target.value)}
+                                                                className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white text-center font-mono"
+                                                            />
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
                                 </div>
                             </div>
-                            <div className="border rounded-lg overflow-hidden dark:border-gray-700">
-                                <div className="overflow-x-auto">
-                                <table className="min-w-[720px] w-full text-right text-sm">
-                                    <thead className="bg-gray-50 dark:bg-gray-700">
-                                        <tr>
-                                            <th className="p-2 sm:p-3">الصنف</th>
-                                            <th className="p-2 sm:p-3 w-24">المستلم</th>
-                                            <th className="p-2 sm:p-3 w-24">مرتجع سابق</th>
-                                            <th className="p-2 sm:p-3 w-24">المتبقي</th>
-                                            <th className="p-2 sm:p-3 w-24">المتاح حالياً</th>
-                                            <th className="p-2 sm:p-3 w-24">مرتجع الآن</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                                        {returnRows.map((r, idx) => (
-                                            <tr key={r.itemId}>
-                                                <td className="p-2 sm:p-2 dark:text-gray-200">{r.itemName}</td>
-                                                <td className="p-2 sm:p-2 text-center font-mono">{r.received}</td>
-                                                <td className="p-2 sm:p-2 text-center font-mono">{r.previousReturned || 0}</td>
-                                                <td className="p-2 sm:p-2 text-center font-mono">{r.remaining}</td>
-                                                <td className="p-2 sm:p-2 text-center font-mono">{Number(r.available || 0)}</td>
-                                                    <td className="p-2 sm:p-2">
-                                                        <input
-                                                            type="number"
-                                                            min={0}
-                                                            step={getQuantityStep(r.itemId)}
-                                                            value={r.receiveNow}
-                                                            onChange={(e) => updateReturnRow(idx, e.target.value)}
-                                                            className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white text-center font-mono"
-                                                        />
-                                                    </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                                </div>
-                            </div>
-                            <div className="flex justify-end gap-2 pt-2">
+                            <div className="p-6 pt-3 border-t dark:border-gray-700 bg-white dark:bg-gray-800 flex justify-end gap-2 flex-shrink-0">
                                 <button
                                     type="button"
                                     onClick={() => {

@@ -453,7 +453,7 @@ export const PurchasesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               const candidates = withReturns
                 .filter((o) => o.status === 'partial')
                 .filter((o) => Array.isArray(o.items) && o.items.length > 0)
-                .filter((o) => (o.items || []).every((it: any) => (Number(it?.receivedQuantity || 0) + eps) >= Number(it?.quantity || 0)))
+                .filter((o) => (o.items || []).every((it: any) => (Number(it?.receivedQuantity || 0) + eps) >= Number(it?.qtyBase ?? it?.quantity ?? 0)))
                 .map((o) => o.id)
                 .filter(Boolean)
                 .slice(0, 8);

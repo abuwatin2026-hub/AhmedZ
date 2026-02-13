@@ -76,4 +76,3 @@ revoke all on function public.post_purchase_receipt(uuid) from public;
 grant execute on function public.post_purchase_receipt(uuid) to authenticated;
 
 notify pgrst, 'reload schema';
-
