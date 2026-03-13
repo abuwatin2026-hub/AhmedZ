@@ -11,6 +11,82 @@ export interface BackupProgress {
     message: string;
 }
 
+export interface BackupReadinessReport {
+    ok: boolean;
+    checks: Array<{ key: string; ok: boolean; message: string }>;
+}
+
+export const checkBackupRestoreReadiness = async (): Promise<BackupReadinessReport> => {
+    const supabase = getSupabaseClient();
+    if (!supabase) throw new Error('Supabase client not initialized');
+
+    const checks: Array<{ key: string; ok: boolean; message: string }> = [];
+
+    const tableProbe = await supabase.rpc('admin_get_all_tables');
+    checks.push({
+        key: 'admin_get_all_tables',
+        ok: !tableProbe.error && Array.isArray(tableProbe.data),
+        message: tableProbe.error ? tableProbe.error.message : `tables: ${Array.isArray(tableProbe.data) ? tableProbe.data.length : 0}`,
+    });
+
+    const exportProbe = await supabase.rpc('admin_export_table_data', {
+        p_table: 'warehouses',
+        p_offset: 0,
+        p_limit: 1,
+    });
+    checks.push({
+        key: 'admin_export_table_data',
+        ok: !exportProbe.error,
+        message: exportProbe.error ? exportProbe.error.message : 'ok',
+    });
+
+    const wipeProbe = await supabase.rpc('admin_wipe_all_tables_for_restore');
+    checks.push({
+        key: 'admin_wipe_all_tables_for_restore',
+        ok: !wipeProbe.error,
+        message: wipeProbe.error ? wipeProbe.error.message : 'ok',
+    });
+
+    const importProbe = await supabase.rpc('admin_import_table_data', {
+        p_table: 'warehouses',
+        p_data: [],
+    });
+    checks.push({
+        key: 'admin_import_table_data',
+        ok: !importProbe.error,
+        message: importProbe.error ? importProbe.error.message : 'ok',
+    });
+
+    const resyncProbe = await supabase.rpc('admin_post_restore_resync');
+    checks.push({
+        key: 'admin_post_restore_resync',
+        ok: !resyncProbe.error,
+        message: resyncProbe.error ? resyncProbe.error.message : 'ok',
+    });
+
+    const bucketsProbe = await supabase.storage.listBuckets();
+    const hasAutomatedBucket = !bucketsProbe.error && Array.isArray(bucketsProbe.data) && bucketsProbe.data.some(b => b.name === 'automated_backups');
+    checks.push({
+        key: 'automated_backups_bucket',
+        ok: !!hasAutomatedBucket,
+        message: bucketsProbe.error ? bucketsProbe.error.message : (hasAutomatedBucket ? 'ok' : 'missing'),
+    });
+
+    if (hasAutomatedBucket) {
+        const objectsProbe = await supabase.storage.from('automated_backups').list('', { limit: 1, sortBy: { column: 'created_at', order: 'desc' } });
+        checks.push({
+            key: 'automated_backups_latest_object',
+            ok: !objectsProbe.error && Array.isArray(objectsProbe.data) && objectsProbe.data.length > 0,
+            message: objectsProbe.error ? objectsProbe.error.message : `objects: ${Array.isArray(objectsProbe.data) ? objectsProbe.data.length : 0}`,
+        });
+    }
+
+    return {
+        ok: checks.every(c => c.ok),
+        checks,
+    };
+};
+
 export const exportFullSystemBackup = async (
     onProgress: (progress: BackupProgress) => void
 ): Promise<Blob> => {
@@ -213,7 +289,18 @@ export const importSystemBackup = async (
             throw new Error('الملف غير صالح للاسترداد أو أنه تالف.');
         }
 
+        const criticalTables = ['warehouses', 'admin_users', 'menu_items', 'stock_management', 'batches', 'inventory_movements', 'orders', 'purchase_orders'];
+        const missingCritical = criticalTables.filter(t => !Array.isArray(parsed.data?.[t]));
+        if (missingCritical.length > 0) {
+            throw new Error(`النسخة لا تحتوي جداول حرجة: ${missingCritical.join(', ')}`);
+        }
+
         if (isWipeRestore) {
+            const readiness = await checkBackupRestoreReadiness();
+            const failed = readiness.checks.filter(c => !c.ok);
+            if (failed.length > 0) {
+                throw new Error(`فحص الجاهزية فشل قبل الاستعادة الشاملة: ${failed.map(f => `${f.key}: ${f.message}`).join(' | ')}`);
+            }
             onProgress({ status: 'idle', currentTable: 'WIPE', tableProgress: 0, tablesCompleted: 0, totalTables: 0, message: 'جاري التهيئة والمسح الشامل لقاعدة البيانات...' });
             const { error: wipeError } = await supabase.rpc('admin_wipe_all_tables_for_restore');
             if (wipeError) {

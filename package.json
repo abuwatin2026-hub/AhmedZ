@@ -46,7 +46,8 @@
     "smoke:modern:ui": "playwright test tests/e2e/modern-smoke.spec.ts --headed",
     "smoke:modern": "npm run smoke:modern:db && npm run smoke:modern:ui",
     "stock:health:check": "node scripts/run-stock-health-check-prod.mjs",
-    "stock:health:schedule": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\register-stock-health-task.ps1"
+    "stock:health:schedule": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\register-stock-health-task.ps1",
+    "backup:dr:readiness": "node scripts/backup-dr-readiness-prod.mjs"
   },
   "dependencies": {
     "@capacitor-community/file-opener": "^6.0.1",
@@ -63,6 +64,7 @@
     "jspdf": "^4.0.0",
     "jszip": "^3.10.1",
     "pg": "^8.20.0",
+    "pg-copy-streams": "^7.0.0",
     "qrcode": "^1.5.3",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",

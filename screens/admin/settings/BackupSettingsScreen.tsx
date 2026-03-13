@@ -4,7 +4,9 @@ import {
     exportSummaryAsExcel,
     importSystemBackup,
     downloadBlob,
-    BackupProgress
+    BackupProgress,
+    BackupReadinessReport,
+    checkBackupRestoreReadiness
 } from '../../../utils/backupUtils';
 import { useToast } from '../../../contexts/ToastContext';
 import * as Icons from '../../../components/icons';
@@ -14,6 +16,8 @@ const BackupSettingsScreen: React.FC = () => {
     const [isBackingUp, setIsBackingUp] = useState(false);
     const [restoreMode, setRestoreMode] = useState<'safe' | 'wipe'>('safe');
     const [backupType, setBackupType] = useState<'json' | 'excel' | null>(null);
+    const [isCheckingReadiness, setIsCheckingReadiness] = useState(false);
+    const [readinessReport, setReadinessReport] = useState<BackupReadinessReport | null>(null);
     const [progress, setProgress] = useState<BackupProgress>({
         status: 'idle',
         currentTable: '',
@@ -103,6 +107,23 @@ const BackupSettingsScreen: React.FC = () => {
         return Math.min(100, Math.max(0, Math.round(totalPercentage)));
     };
 
+    const handleReadinessCheck = async () => {
+        try {
+            setIsCheckingReadiness(true);
+            const report = await checkBackupRestoreReadiness();
+            setReadinessReport(report);
+            if (report.ok) {
+                showNotification('جاهزية النسخ والاستعادة ممتازة حالياً.', 'success');
+            } else {
+                showNotification('تم اكتشاف فجوات جاهزية في النسخ والاستعادة. راجع التقرير أدناه.', 'error');
+            }
+        } catch (error: any) {
+            showNotification(error.message || 'فشل فحص الجاهزية.', 'error');
+        } finally {
+            setIsCheckingReadiness(false);
+        }
+    };
+
     return (
         <div className="animate-fade-in space-y-8 max-w-5xl mx-auto">
             <div>
@@ -110,6 +131,40 @@ const BackupSettingsScreen: React.FC = () => {
                 <p className="text-gray-600 dark:text-gray-300">
                     احتفظ بنسخة من بيانات متجرك وحساباتك بأمان على جهازك الشخصي لتكون دائماً مطمئناً.
                 </p>
+            </div>
+
+            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-100 dark:border-gray-700 p-6">
+                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                    <div>
+                        <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-1">فحص جاهزية الطوارئ</h2>
+                        <p className="text-gray-600 dark:text-gray-400 text-sm">يفحص صلاحيات النسخ والاستعادة، ودوال الاسترجاع، وتوفر النسخ الآلية.</p>
+                    </div>
+                    <button
+                        onClick={handleReadinessCheck}
+                        disabled={isCheckingReadiness || isBackingUp}
+                        className="px-5 py-3 rounded-xl font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 transition-all flex items-center justify-center gap-2"
+                    >
+                        <Icons.ReportIcon className="h-5 w-5" />
+                        {isCheckingReadiness ? 'جاري الفحص...' : 'تشغيل فحص الجاهزية'}
+                    </button>
+                </div>
+                {readinessReport && (
+                    <div className="mt-5 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+                        <div className={`px-4 py-3 text-sm font-bold ${readinessReport.ok ? 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-300' : 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-300'}`}>
+                            {readinessReport.ok ? 'النتيجة: جاهز' : 'النتيجة: يوجد فجوات تحتاج إغلاق'}
+                        </div>
+                        <div className="divide-y divide-gray-200 dark:divide-gray-700">
+                            {readinessReport.checks.map((c) => (
+                                <div key={c.key} className="px-4 py-3 flex items-center justify-between gap-4 text-sm">
+                                    <span className="font-mono text-gray-700 dark:text-gray-300">{c.key}</span>
+                                    <span className={c.ok ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}>
+                                        {c.ok ? `OK - ${c.message}` : `FAIL - ${c.message}`}
+                                    </span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
             </div>
 
             {isBackingUp && backupType && (
