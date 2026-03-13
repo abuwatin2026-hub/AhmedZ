@@ -47,7 +47,8 @@
     "smoke:modern": "npm run smoke:modern:db && npm run smoke:modern:ui",
     "stock:health:check": "node scripts/run-stock-health-check-prod.mjs",
     "stock:health:schedule": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\register-stock-health-task.ps1",
-    "backup:dr:readiness": "node scripts/backup-dr-readiness-prod.mjs"
+    "backup:dr:readiness": "node scripts/backup-dr-readiness-prod.mjs",
+    "backup:automated:manual": "node scripts/run-manual-automated-backup.mjs"
   },
   "dependencies": {
     "@capacitor-community/file-opener": "^6.0.1",

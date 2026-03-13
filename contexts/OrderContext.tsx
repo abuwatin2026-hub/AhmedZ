@@ -1908,9 +1908,6 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         .map((it: any) => String(it?.warehouseId || warehouseId || '').trim())
         .filter(Boolean)
     ));
-    if (lineWarehouseIds.length > 1) {
-      throw new Error('الطلب الواحد لا يدعم حالياً التنفيذ من عدة مستودعات. أنشئ طلباً مستقلاً لكل مستودع.');
-    }
     const effectiveOrderWarehouseId = String(lineWarehouseIds[0] || warehouseId || '').trim();
     if (!effectiveOrderWarehouseId) {
       throw new Error('لا يمكن إنشاء الطلب بدون تحديد مستودع تنفيذ.');
@@ -3093,9 +3090,6 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         .map((it: any) => String(it?.warehouseId || warehouseId || '').trim())
         .filter(Boolean)
     ));
-    if (lineWarehouseIds.length > 1) {
-      throw new Error('لا يمكن إنشاء طلب معلّق من عدة مستودعات ضمن نفس الطلب. أنشئ طلباً مستقلاً لكل مستودع.');
-    }
     const effectiveOrderWarehouseId = String(lineWarehouseIds[0] || warehouseId || '').trim();
     if (!effectiveOrderWarehouseId) {
       throw new Error('لا يمكن إنشاء الطلب بدون تحديد مستودع تنفيذ.');
