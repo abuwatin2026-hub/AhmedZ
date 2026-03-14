@@ -40,28 +40,10 @@ export const checkBackupRestoreReadiness = async (): Promise<BackupReadinessRepo
         message: exportProbe.error ? exportProbe.error.message : 'ok',
     });
 
-    const wipeProbe = await supabase.rpc('admin_wipe_all_tables_for_restore');
     checks.push({
-        key: 'admin_wipe_all_tables_for_restore',
-        ok: !wipeProbe.error,
-        message: wipeProbe.error ? wipeProbe.error.message : 'ok',
-    });
-
-    const importProbe = await supabase.rpc('admin_import_table_data', {
-        p_table: 'warehouses',
-        p_data: [],
-    });
-    checks.push({
-        key: 'admin_import_table_data',
-        ok: !importProbe.error,
-        message: importProbe.error ? importProbe.error.message : 'ok',
-    });
-
-    const resyncProbe = await supabase.rpc('admin_post_restore_resync');
-    checks.push({
-        key: 'admin_post_restore_resync',
-        ok: !resyncProbe.error,
-        message: resyncProbe.error ? resyncProbe.error.message : 'ok',
+        key: 'destructive_restore_rpcs',
+        ok: true,
+        message: 'skipped in readiness check for safety',
     });
 
     const bucketsProbe = await supabase.storage.listBuckets();

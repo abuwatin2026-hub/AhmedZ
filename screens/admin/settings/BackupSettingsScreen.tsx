@@ -113,9 +113,9 @@ const BackupSettingsScreen: React.FC = () => {
             const report = await checkBackupRestoreReadiness();
             setReadinessReport(report);
             if (report.ok) {
-                showNotification('جاهزية النسخ والاستعادة ممتازة حالياً.', 'success');
+                showNotification('جاهزية النسخ والاستعادة الآمنة ممتازة حالياً.', 'success');
             } else {
-                showNotification('تم اكتشاف فجوات جاهزية في النسخ والاستعادة. راجع التقرير أدناه.', 'error');
+                showNotification('تم اكتشاف فجوات جاهزية في الفحص الآمن. راجع التقرير أدناه.', 'error');
             }
         } catch (error: any) {
             showNotification(error.message || 'فشل فحص الجاهزية.', 'error');
@@ -137,7 +137,7 @@ const BackupSettingsScreen: React.FC = () => {
                 <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                     <div>
                         <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-1">فحص جاهزية الطوارئ</h2>
-                        <p className="text-gray-600 dark:text-gray-400 text-sm">يفحص صلاحيات النسخ والاستعادة، ودوال الاسترجاع، وتوفر النسخ الآلية.</p>
+                        <p className="text-gray-600 dark:text-gray-400 text-sm">يفحص جاهزية النسخ والاستعادة بشكل آمن بدون تنفيذ أي عمليات مسح أو استيراد.</p>
                     </div>
                     <button
                         onClick={handleReadinessCheck}
@@ -145,7 +145,7 @@ const BackupSettingsScreen: React.FC = () => {
                         className="px-5 py-3 rounded-xl font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 transition-all flex items-center justify-center gap-2"
                     >
                         <Icons.ReportIcon className="h-5 w-5" />
-                        {isCheckingReadiness ? 'جاري الفحص...' : 'تشغيل فحص الجاهزية'}
+                        {isCheckingReadiness ? 'جاري الفحص...' : 'تشغيل فحص الجاهزية الآمن'}
                     </button>
                 </div>
                 {readinessReport && (
