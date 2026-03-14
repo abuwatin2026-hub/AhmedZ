@@ -156,7 +156,7 @@ const ManageOrdersScreen: React.FC = () => {
     const sessionScope = useSessionScope();
     const { warehouses, getWarehouseById } = useWarehouses();
     const { menuItems: allMenuItems } = useMenu();
-    const { getStockByItemId, fetchStock } = useStock();
+    const { getStockByItemId, fetchStock, getGlobalSellableByItemId, getGlobalLastUpdatedByItemId } = useStock();
     const { isWeightBasedUnit, getUnitLabel } = useItemMeta();
     const { guardPosting } = useGovernance();
     const [filterStatus, setFilterStatus] = useState<OrderStatus | 'all' | 'delivered_no_returns'>('all');
@@ -2338,22 +2338,23 @@ const ManageOrdersScreen: React.FC = () => {
     const selectedInStoreAvailability = useMemo(() => {
         if (!selectedInStoreMenuItem) return null;
         const stockRow = getStockByItemId(String(selectedInStoreMenuItem.id || ''));
-        const globalAvailable = Math.max(0, Number((selectedInStoreMenuItem as any).availableStock || 0));
+        const itemId = String(selectedInStoreMenuItem.id || '');
+        const globalAvailable = getGlobalSellableByItemId(itemId);
         const sessionAvailable = stockRow
             ? Math.max(0, Number(stockRow.availableQuantity || 0) - Number(stockRow.reservedQuantity || 0))
             : globalAvailable;
         const sessionReserved = stockRow ? Math.max(0, Number(stockRow.reservedQuantity || 0)) : 0;
+        const globalLastUpdated = getGlobalLastUpdatedByItemId(itemId);
         const status = sessionAvailable > 0
             ? 'ok'
             : (globalAvailable > 0 ? 'switch' : 'none');
-        return { globalAvailable, sessionAvailable, sessionReserved, status };
-    }, [selectedInStoreMenuItem, getStockByItemId]);
+        return { globalAvailable, sessionAvailable, sessionReserved, status, globalLastUpdated };
+    }, [selectedInStoreMenuItem, getStockByItemId, getGlobalSellableByItemId, getGlobalLastUpdatedByItemId]);
 
     useEffect(() => {
         if (!isInStoreSaleOpen) return;
         void fetchStock();
     }, [isInStoreSaleOpen, fetchStock]);
-
     const updateInStoreLine = (index: number, patch: { quantity?: number; weight?: number; uomCode?: string; uomQtyInBase?: number; warehouseId?: string }) => {
         setInStoreLines(prev => prev.map((l, i) => (i === index ? { ...l, ...patch } : l)));
     };
@@ -6214,6 +6215,11 @@ const ManageOrdersScreen: React.FC = () => {
                                                 ? 'يتطلب تبديل مستودع'
                                                 : 'غير متوفر إجمالًا'}
                                     </span>
+                                    {selectedInStoreAvailability.globalLastUpdated && (
+                                        <span className="text-[10px] text-gray-500 dark:text-gray-400">
+                                            تحديث: {new Date(selectedInStoreAvailability.globalLastUpdated).toLocaleString('ar-EG-u-nu-latn')}
+                                        </span>
+                                    )}
                                 </div>
                             </div>
                         )}
@@ -6231,7 +6237,7 @@ const ManageOrdersScreen: React.FC = () => {
                                     ) : filteredInStoreMenuItems.map((mi, idx) => {
                                         const name = mi.name?.[language] || mi.name?.ar || mi.name?.en || mi.id;
                                         const stockRow = getStockByItemId(String(mi.id || ''));
-                                        const globalAvailable = Math.max(0, Number(mi.availableStock || 0));
+                                        const globalAvailable = getGlobalSellableByItemId(String(mi.id || ''));
                                         const sessionAvailable = stockRow
                                             ? Math.max(0, Number(stockRow.availableQuantity || 0) - Number(stockRow.reservedQuantity || 0))
                                             : globalAvailable;
@@ -6302,7 +6308,7 @@ const ManageOrdersScreen: React.FC = () => {
                                         ? convertInStoreTxnToBase(pricedUnitPrice, Number(inStoreTransactionFxRate) || 1)
                                         : pricedUnitPrice;
                                     const stockRow = getStockByItemId(String(mi.id || ''));
-                                    const globalAvailable = Math.max(0, Number(mi.availableStock || 0));
+                                    const globalAvailable = getGlobalSellableByItemId(String(mi.id || ''));
                                     const sessionAvailableBase = stockRow
                                         ? Math.max(0, Number(stockRow.availableQuantity || 0) - Number(stockRow.reservedQuantity || 0))
                                         : globalAvailable;

@@ -18,6 +18,8 @@ interface StockContextType {
     releaseStock: (itemId: string, quantity: number, orderId?: string) => Promise<void>;
     getStockByItemId: (itemId: string) => StockManagement | undefined;
     checkStockAvailability: (itemId: string, requestedQuantity: number) => boolean;
+    getGlobalSellableByItemId: (itemId: string) => number;
+    getGlobalLastUpdatedByItemId: (itemId: string) => string | undefined;
     initializeStockForItem: (item: MenuItem) => Promise<void>;
     processExpiredItems: () => Promise<void>;
 }
@@ -26,6 +28,8 @@ const StockContext = createContext<StockContextType | undefined>(undefined);
 
 export const StockProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const [stockItems, setStockItems] = useState<StockManagement[]>([]);
+    const [globalSellableByItemId, setGlobalSellableByItemId] = useState<Record<string, number>>({});
+    const [globalLastUpdatedByItemId, setGlobalLastUpdatedByItemId] = useState<Record<string, string>>({});
     const [loading, setLoading] = useState(true);
     const { showNotification } = useToast();
     const { t, language } = useSettings();
@@ -178,6 +182,35 @@ export const StockProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         };
     };
 
+    const refreshGlobalStockSummary = useCallback(async (supabaseArg?: any) => {
+        const supabase = supabaseArg || getSupabaseClient();
+        if (!supabase) {
+            setGlobalSellableByItemId({});
+            setGlobalLastUpdatedByItemId({});
+            return;
+        }
+        try {
+            const { data, error } = await supabase
+                .from('stock_management')
+                .select('item_id, available_quantity, reserved_quantity, last_updated');
+            if (error) throw error;
+            const sellableMap: Record<string, number> = {};
+            const updatedMap: Record<string, string> = {};
+            for (const r of (Array.isArray(data) ? data : [])) {
+                const itemId = String((r as any)?.item_id || '').trim();
+                if (!itemId) continue;
+                const available = Number((r as any)?.available_quantity || 0);
+                const reserved = Number((r as any)?.reserved_quantity || 0);
+                sellableMap[itemId] = (sellableMap[itemId] || 0) + Math.max(0, available - reserved);
+                const ts = String((r as any)?.last_updated || '').trim();
+                if (ts && (!updatedMap[itemId] || ts > updatedMap[itemId])) updatedMap[itemId] = ts;
+            }
+            setGlobalSellableByItemId(sellableMap);
+            setGlobalLastUpdatedByItemId(updatedMap);
+        } catch {
+        }
+    }, []);
+
     const fetchStock = useCallback(async () => {
         setLoading(true);
         try {
@@ -207,6 +240,7 @@ export const StockProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             if (error) throw error;
             const remoteStock = (rows || []).map(toStockFromRow).filter(Boolean) as StockManagement[];
             setStockItems(remoteStock);
+            await refreshGlobalStockSummary(supabase);
         } catch (error) {
             const isOffline = typeof navigator !== 'undefined' && navigator.onLine === false;
             if (isOffline || isAbortLikeError(error)) return;
@@ -215,7 +249,7 @@ export const StockProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         } finally {
             setLoading(false);
         }
-    }, [sessionScope.scope?.warehouseId]);
+    }, [sessionScope.scope?.warehouseId, refreshGlobalStockSummary]);
 
     useEffect(() => {
         fetchStock();
@@ -498,6 +532,15 @@ export const StockProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         return stockItems.find(stock => stock.itemId === itemId);
     }, [stockItems]);
 
+    const getGlobalSellableByItemId = useCallback((itemId: string) => {
+        return Math.max(0, Number(globalSellableByItemId[itemId] || 0));
+    }, [globalSellableByItemId]);
+
+    const getGlobalLastUpdatedByItemId = useCallback((itemId: string) => {
+        const v = String(globalLastUpdatedByItemId[itemId] || '').trim();
+        return v || undefined;
+    }, [globalLastUpdatedByItemId]);
+
     const checkStockAvailability = useCallback((itemId: string, requestedQuantity: number): boolean => {
         const stock = stockItems.find(s => s.itemId === itemId);
         if (!stock) return false;
@@ -571,6 +614,8 @@ export const StockProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             releaseStock,
             getStockByItemId,
             checkStockAvailability,
+            getGlobalSellableByItemId,
+            getGlobalLastUpdatedByItemId,
             initializeStockForItem,
             processExpiredItems,
         }}>

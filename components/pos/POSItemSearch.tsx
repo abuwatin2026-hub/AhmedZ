@@ -17,7 +17,7 @@ const POSItemSearch: React.FC<Props> = ({ onAddLine, inputRef, disabled, touchMo
   const { settings } = useSettings();
   const { getUnitLabel } = useItemMeta();
   const sessionScope = useSessionScope();
-  const { getStockByItemId } = useStock();
+  const { getStockByItemId, getGlobalSellableByItemId } = useStock();
   const [baseItems, setBaseItems] = useState<MenuItem[]>([]);
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
@@ -112,7 +112,7 @@ const POSItemSearch: React.FC<Props> = ({ onAddLine, inputRef, disabled, touchMo
   const indexedItems = useMemo(() => {
     const withStock = (baseItems || []).map((m) => {
       const stock = getStockByItemId(String(m.id || ''));
-      const globalAvailable = Math.max(0, Number(m.availableStock || 0));
+      const globalAvailable = getGlobalSellableByItemId(String(m.id || ''));
       const sessionPhysical = stock ? Number(stock.availableQuantity || 0) : 0;
       const sessionReserved = stock ? Number(stock.reservedQuantity || 0) : 0;
       const sessionAvailable = Math.max(0, sessionPhysical - sessionReserved);
@@ -144,7 +144,7 @@ const POSItemSearch: React.FC<Props> = ({ onAddLine, inputRef, disabled, touchMo
         label: ar || en || id,
       };
     });
-  }, [baseItems, getStockByItemId]);
+  }, [baseItems, getStockByItemId, getGlobalSellableByItemId]);
 
   const results = useMemo(() => {
     const qRaw = debouncedQuery.trim();
