@@ -48,7 +48,11 @@
     "stock:health:check": "node scripts/run-stock-health-check-prod.mjs",
     "stock:health:schedule": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\register-stock-health-task.ps1",
     "backup:dr:readiness": "node scripts/backup-dr-readiness-prod.mjs",
-    "backup:automated:manual": "node scripts/run-manual-automated-backup.mjs"
+    "backup:automated:manual": "node scripts/run-manual-automated-backup.mjs",
+    "orders:sla:probe": "node scripts/orders-sla-probe-prod.mjs",
+    "orders:sla:check": "node scripts/orders-sla-probe-prod.mjs && node scripts/run-orders-sla-alert-prod.mjs",
+    "orders:sla:alert": "node scripts/run-orders-sla-alert-prod.mjs",
+    "orders:sla:schedule": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\register-orders-sla-task.ps1"
   },
   "dependencies": {
     "@capacitor-community/file-opener": "^6.0.1",

@@ -7,7 +7,7 @@ import { useAuth } from './AuthContext';
 import { useSessionScope } from './SessionScopeContext';
 import { generateInvoiceNumber } from '../utils/orderUtils';
 import { disableRealtime, getBaseCurrencyCode, getSupabaseClient, isRealtimeEnabled, isRpcStrictMode, isRpcWrappersAvailable, markRpcStrictModeEnabled, reloadPostgrestSchema, rpcHasFunction } from '../supabase';
-import { createLogger } from '../utils/logger';
+import { createLogger, measurePerformance } from '../utils/logger';
 import { localizeSupabaseError, isAbortLikeError, resolveErrorMessage } from '../utils/errorUtils';
 import { enqueueRpc, upsertOfflinePosOrder } from '../utils/offlineQueue';
 import { decryptField, isEncrypted } from '../utils/encryption';
@@ -1214,6 +1214,9 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const fetchOrders = useCallback(async () => {
     if (isFetchingRef.current) return;
     isFetchingRef.current = true;
+    const startedAt = Date.now();
+    let failed = false;
+    let fetchedRows = 0;
     setLoading(true);
     let nextOrders: Order[] = [];
     try {
@@ -1304,6 +1307,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
               return enriched;
             }).filter(Boolean);
             merged.sort((a, b) => (String(b.createdAt || '')).localeCompare(String(a.createdAt || '')));
+            fetchedRows = merged.length;
             setOrders(merged);
             setLoading(false);
             void (async () => {
@@ -1339,6 +1343,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         nextOrders = [];
       }
     } catch (error: any) {
+      failed = true;
       const msg = String(error?.message || '');
       const isOffline = typeof navigator !== 'undefined' && navigator.onLine === false;
       const isAborted = /abort|ERR_ABORTED|Failed to fetch/i.test(msg);
@@ -1356,6 +1361,16 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         }
       }
     } finally {
+      const durationMs = Date.now() - startedAt;
+      measurePerformance('orders.fetch', startedAt);
+      if (durationMs > 5000 || failed) {
+        logger.warn('orders_fetch_health', {
+          durationMs,
+          failed,
+          fetchedRows,
+          isAuthenticated: isAdminAuthenticated,
+        });
+      }
       setOrders(nextOrders);
       setLoading(false);
       isFetchingRef.current = false;
