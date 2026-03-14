@@ -2022,30 +2022,36 @@ const ManageOrdersScreen: React.FC = () => {
     const executePurgePayment = async () => {
         if (!purgePaymentOrderId || isPurgingPayment) return;
         if (!canRequestPurge) {
-            showNotification('لا تملك صلاحية إنشاء طلب عكس الدفعة.', 'error');
+            showNotification('لا تملك صلاحية تنفيذ تنظيف الدفعة الطارئ.', 'error');
             return;
         }
         const reason = purgePaymentReason.trim();
         if (reason.length < 20) {
-            showNotification('سبب الطلب إلزامي وبحد أدنى 20 حرفًا.', 'error');
+            showNotification('سبب التنفيذ إلزامي وبحد أدنى 20 حرفًا.', 'error');
             return;
         }
         setIsPurgingPayment(true);
         try {
             const supabase = getSupabaseClient();
             if (!supabase) throw new Error('Supabase غير مهيأ.');
-            const { data: result, error } = await supabase.rpc('request_order_payment_purge', {
+            const { data: result, error } = await supabase.rpc('purge_order_payment', {
                 p_order_id: purgePaymentOrderId,
                 p_reason: reason,
-                p_reason_category: purgePaymentReasonCategory,
             });
             if (error) throw error;
-            const rid = String((result as any)?.requestId || '');
-            showNotification(`تم إنشاء طلب عكس الدفعة${rid ? ` (${rid.slice(-6).toUpperCase()})` : ''} وبانتظار اعتماد مستخدم ثانٍ.`, 'success');
+            const deletedPayments = Number((result as any)?.deletedPayments || 0);
+            showNotification(`تم تنظيف الدفعة الطارئ بنجاح وحذف ${deletedPayments} عملية دفع.`, 'success');
             setPurgePaymentOrderId(null);
             setPurgePaymentReason('');
             setPurgePaymentReasonCategory('misapplied_payment');
-            await loadPendingPurgeRequests(filteredAndSortedOrders.map(o => o.id));
+            try {
+                await fetchOrders();
+            } catch { }
+            await Promise.all([
+                loadPaidSums(filteredAndSortedOrders.map(o => o.id)),
+                loadPendingPurgeRequests(filteredAndSortedOrders.map(o => o.id)),
+                loadPurgeDashboard(),
+            ]);
         } catch (error) {
             const anyErr = error as any;
             const rawMsg = [
@@ -2054,8 +2060,8 @@ const ManageOrdersScreen: React.FC = () => {
                 `details=${anyErr?.details || '?'}`,
                 `hint=${anyErr?.hint || '?'}`,
             ].join(' | ');
-            console.error('request_order_payment_purge error', error);
-            showNotification(`خطأ طلب عكس الدفعة: ${rawMsg}`, 'error');
+            console.error('purge_order_payment error', error);
+            showNotification(`خطأ تنظيف الدفعة الطارئ: ${rawMsg}`, 'error');
         } finally {
             setIsPurgingPayment(false);
         }
@@ -3934,7 +3940,7 @@ const ManageOrdersScreen: React.FC = () => {
                                 disabled={isPurgingPayment}
                                 className="w-full py-2 bg-red-700 text-white rounded hover:bg-red-800 transition text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                                طلب عكس الدفعة (4-Eyes)
+                                تنظيف دفعة طارئ
                             </button>
                             )}
                         </div>
@@ -4831,7 +4837,7 @@ const ManageOrdersScreen: React.FC = () => {
                                                                 disabled={isPurgingPayment || isReadOnlyOrdersView}
                                                                 className="px-3 py-1 bg-red-700 text-white rounded hover:bg-red-800 transition text-xs disabled:opacity-50 disabled:cursor-not-allowed"
                                                             >
-                                                                طلب عكس الدفعة
+                                                                تنظيف دفعة طارئ
                                                             </button>
                                                         )
                                                     ) : null;
@@ -7797,7 +7803,7 @@ const ManageOrdersScreen: React.FC = () => {
                     setPurgeApprovalNote('');
                 }}
                 onConfirm={executeApprovePurge}
-                title="اعتماد طلب عكس الدفعة"
+                title="اعتماد عكس الدفعة"
                 message=""
                 isConfirming={isApprovingPurge}
                 confirmText="اعتماد وتنفيذ"
