@@ -5,6 +5,7 @@ import * as Icons from '../../components/icons';
 import { exportToXlsx } from '../../utils/export';
 import { buildXlsxBrandOptions } from '../../utils/branding';
 import { useSettings } from '../../contexts/SettingsContext';
+import { useNavigate } from 'react-router-dom';
 
 /* ─── Types ─── */
 type Period = 'today' | 'yesterday' | 'week' | 'month' | 'custom';
@@ -86,6 +87,7 @@ const acctTypeLabel: Record<string, string> = {
 const partyTypeLabel: Record<string, string> = {
     customer: 'عميل', supplier: 'مورد', employee: 'موظف',
 };
+const SHIFT_PAGE_SIZE = 50;
 
 function parseLocalDateInput(value?: string) {
     if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
@@ -130,6 +132,7 @@ const ShiftReconciliationScreen: React.FC = () => {
     const { hasPermission } = useAuth();
     const { settings } = useSettings();
     const supabase = getSupabaseClient();
+    const navigate = useNavigate();
 
     const [tab, setTab] = useState<Tab>('cash');
     const [period, setPeriod] = useState<Period>('today');
@@ -143,6 +146,8 @@ const ShiftReconciliationScreen: React.FC = () => {
     const [cashierMap, setCashierMap] = useState<Record<string, string>>({});
     const [reviewerMap, setReviewerMap] = useState<Record<string, string>>({});
     const [cashierOptions, setCashierOptions] = useState<{ id: string; label: string }[]>([]);
+    const [shiftPage, setShiftPage] = useState(1);
+    const [shiftTotal, setShiftTotal] = useState(0);
 
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
@@ -151,8 +156,9 @@ const ShiftReconciliationScreen: React.FC = () => {
     const [reviewBusy, setReviewBusy] = useState(false);
     const [baseCurrency, setBaseCurrency] = useState('—');
 
-    const canReviewShifts = hasPermission('cashShifts.manage');
+    const canReviewShifts = hasPermission('cashShifts.manage') || hasPermission('accounting.approve');
     const dateRange = useMemo(() => getDateRange(period, customStart, customEnd), [period, customStart, customEnd]);
+    const shiftTotalPages = useMemo(() => Math.max(1, Math.ceil(shiftTotal / SHIFT_PAGE_SIZE)), [shiftTotal]);
 
     useEffect(() => { void getBaseCurrencyCode().then(c => { if (c) setBaseCurrency(c); }); }, []);
 
@@ -164,48 +170,55 @@ const ShiftReconciliationScreen: React.FC = () => {
         })();
     }, [supabase]);
 
+    useEffect(() => {
+        if (tab === 'cash') setShiftPage(1);
+    }, [tab, period, customStart, customEnd, selectedCashier]);
+
     /* ── Load data ─────────────────────────────────────────── */
     const loadData = useCallback(async () => {
         if (!supabase) return;
         setLoading(true); setError('');
         try {
-            // Always load dashboard summary
-            const dArgs: any = { p_start_date: dateRange.start.toISOString(), p_end_date: dateRange.end.toISOString() };
-            const { data: dData, error: dErr } = await supabase.rpc('get_accountant_dashboard_summary', dArgs);
-            if (dErr) {
-                throw dErr;
-            }
-            if (dData) setDashboard(dData as DashboardSummary);
+            const startIso = dateRange.start.toISOString();
+            const endIso = dateRange.end.toISOString();
 
-            // Load shift reconciliation
-            const rpcArgs: any = { p_start_date: dateRange.start.toISOString(), p_end_date: dateRange.end.toISOString() };
-            if (selectedCashier) rpcArgs.p_cashier_id = selectedCashier;
-            const { data: sData, error: sErr } = await supabase.rpc('get_shift_reconciliation_summary', rpcArgs);
-            if (sErr) {
-                throw sErr;
-            }
-            if (sData) setSummary(sData as ReconcSummary);
+            if (tab === 'cash') {
+                const rpcArgs: any = { p_start_date: startIso, p_end_date: endIso };
+                if (selectedCashier) rpcArgs.p_cashier_id = selectedCashier;
+                const { data: sData, error: sErr } = await supabase.rpc('get_shift_reconciliation_summary', rpcArgs);
+                if (sErr) throw sErr;
+                if (sData) setSummary(sData as ReconcSummary);
 
-            // Load individual shifts
-            let q = supabase.from('cash_shifts')
-                .select('id, cashier_id, opened_at, closed_at, start_amount, end_amount, expected_amount, difference, status, review_status, reviewed_by, reviewed_at, notes, shift_number')
-                .gte('opened_at', dateRange.start.toISOString()).lte('opened_at', dateRange.end.toISOString())
-                .order('opened_at', { ascending: false });
-            if (selectedCashier) q = q.eq('cashier_id', selectedCashier);
-            const { data: shiftData } = await q.limit(200);
-            setShifts((shiftData || []) as ShiftRow[]);
+                let q = supabase.from('cash_shifts')
+                    .select('id, cashier_id, opened_at, closed_at, start_amount, end_amount, expected_amount, difference, status, review_status, reviewed_by, reviewed_at, notes, shift_number', { count: 'exact' })
+                    .gte('opened_at', startIso).lte('opened_at', endIso)
+                    .order('opened_at', { ascending: false });
+                if (selectedCashier) q = q.eq('cashier_id', selectedCashier);
+                const from = (shiftPage - 1) * SHIFT_PAGE_SIZE;
+                const to = from + SHIFT_PAGE_SIZE - 1;
+                const { data: shiftData, count } = await q.range(from, to);
+                setShifts((shiftData || []) as ShiftRow[]);
+                setShiftTotal(count || 0);
 
-            // Name maps
-            const allIds = new Set<string>();
-            ((shiftData || []) as ShiftRow[]).forEach(s => { if (s.cashier_id) allIds.add(s.cashier_id); if (s.reviewed_by) allIds.add(s.reviewed_by); });
-            if (allIds.size > 0) {
-                const { data: uData } = await supabase.from('admin_users').select('auth_user_id, full_name, username, email').in('auth_user_id', Array.from(allIds));
-                const cMap: Record<string, string> = {}; const rMap: Record<string, string> = {};
-                (uData || []).forEach((u: any) => { const lbl = String(u.full_name || u.username || u.email || '').trim(); if (u.auth_user_id && lbl) { cMap[String(u.auth_user_id)] = lbl; rMap[String(u.auth_user_id)] = lbl; } });
-                setCashierMap(cMap); setReviewerMap(rMap);
+                const allIds = new Set<string>();
+                ((shiftData || []) as ShiftRow[]).forEach(s => { if (s.cashier_id) allIds.add(s.cashier_id); if (s.reviewed_by) allIds.add(s.reviewed_by); });
+                if (allIds.size > 0) {
+                    const { data: uData } = await supabase.from('admin_users').select('auth_user_id, full_name, username, email').in('auth_user_id', Array.from(allIds));
+                    const cMap: Record<string, string> = {}; const rMap: Record<string, string> = {};
+                    (uData || []).forEach((u: any) => { const lbl = String(u.full_name || u.username || u.email || '').trim(); if (u.auth_user_id && lbl) { cMap[String(u.auth_user_id)] = lbl; rMap[String(u.auth_user_id)] = lbl; } });
+                    setCashierMap(cMap); setReviewerMap(rMap);
+                } else {
+                    setCashierMap({});
+                    setReviewerMap({});
+                }
+            } else {
+                const dArgs: any = { p_start_date: startIso, p_end_date: endIso };
+                const { data: dData, error: dErr } = await supabase.rpc('get_accountant_dashboard_summary', dArgs);
+                if (dErr) throw dErr;
+                if (dData) setDashboard(dData as DashboardSummary);
             }
         } catch (err: any) { setError(err?.message || 'تعذر تحميل البيانات.'); } finally { setLoading(false); }
-    }, [supabase, dateRange, selectedCashier]);
+    }, [supabase, dateRange, selectedCashier, tab, shiftPage]);
 
     useEffect(() => { void loadData(); }, [loadData]);
 
@@ -287,6 +300,15 @@ const ShiftReconciliationScreen: React.FC = () => {
                     <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">مطابقة شاملة — الصندوق • المبيعات • المشتريات • الذمم • الحسابات</p>
                 </div>
                 <div className="flex items-center gap-2">
+                    <button onClick={() => navigate('/admin/reports/financial')} className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 text-sm">
+                        القوائم المالية
+                    </button>
+                    <button onClick={() => navigate('/admin/reports/party-aging')} className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 text-sm">
+                        تقادم الذمم
+                    </button>
+                    <button onClick={() => navigate('/admin/bank-reconciliation')} className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 text-sm">
+                        التسويات البنكية
+                    </button>
                     <button onClick={loadData} disabled={loading} className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 text-sm">
                         {loading ? '...' : 'تحديث'}
                     </button>
@@ -313,7 +335,7 @@ const ShiftReconciliationScreen: React.FC = () => {
                 {tab === 'cash' && (
                     <div>
                         <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">الكاشير</label>
-                        <select value={selectedCashier} onChange={e => setSelectedCashier(e.target.value)} className="rounded-lg border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white px-3 py-2 text-sm">
+                        <select value={selectedCashier} onChange={e => { setSelectedCashier(e.target.value); setShiftPage(1); }} className="rounded-lg border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white px-3 py-2 text-sm">
                             <option value="">الكل</option>
                             {cashierOptions.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
                         </select>
@@ -404,6 +426,22 @@ const ShiftReconciliationScreen: React.FC = () => {
                         </div>
                     )}
 
+                    {Object.keys(summary.by_currency).length > 0 && (
+                        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-4 mb-6">
+                            <h2 className="font-bold text-lg dark:text-white mb-3">فروقات الجرد حسب العملة</h2>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                                {Object.entries(summary.by_currency).map(([currency, data]) => (
+                                    <div key={currency} className="p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50">
+                                        <div className="text-sm font-medium dark:text-gray-200">{currency}</div>
+                                        <div className={`text-xl font-bold font-mono mt-1 ${Math.abs(data.total_difference) > 0.01 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>
+                                            {data.total_difference > 0 ? '+' : ''}{fmt(data.total_difference)}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
                     {/* Individual Shifts */}
                     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-4">
                         <h2 className="font-bold text-lg dark:text-white mb-3">تفاصيل الورديات</h2>
@@ -457,6 +495,25 @@ const ShiftReconciliationScreen: React.FC = () => {
                                     {shifts.length === 0 && <tr><td colSpan={canReviewShifts ? 10 : 9} className="p-8 text-center text-gray-400 dark:text-gray-500">لا توجد ورديات</td></tr>}
                                 </tbody>
                             </table>
+                        </div>
+                        <div className="flex items-center justify-between mt-4">
+                            <div className="text-xs text-gray-500 dark:text-gray-400">صفحة {shiftPage} من {shiftTotalPages} — إجمالي {shiftTotal} وردية</div>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => setShiftPage(p => Math.max(1, p - 1))}
+                                    disabled={shiftPage <= 1 || loading}
+                                    className="px-3 py-1.5 rounded border border-gray-200 dark:border-gray-600 text-sm dark:text-gray-200 disabled:opacity-50"
+                                >
+                                    السابق
+                                </button>
+                                <button
+                                    onClick={() => setShiftPage(p => Math.min(shiftTotalPages, p + 1))}
+                                    disabled={shiftPage >= shiftTotalPages || loading}
+                                    className="px-3 py-1.5 rounded border border-gray-200 dark:border-gray-600 text-sm dark:text-gray-200 disabled:opacity-50"
+                                >
+                                    التالي
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </>

@@ -1031,6 +1031,7 @@ export const defaultAdminPermissionsForRole = (role: AdminRole): AdminPermission
     'accounting.view',
     'accounting.manage',
     'accounting.periods.close',
+    'accounting.approve',
   ];
   if (role === 'delivery') return ['profile.view', 'orders.view', 'orders.updateStatus.delivery'];
   if (role === 'cashier') return [
