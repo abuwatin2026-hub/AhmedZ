@@ -4136,14 +4136,25 @@ const ManageOrdersScreen: React.FC = () => {
                         <span>{language === 'ar' ? 'طباعة / تصدير PDF' : 'Print / PDF'}</span>
                     </button>
                     {canCreateInStoreSale && (
-                        <button
-                            type="button"
-                            onClick={openNewInStoreSale}
-                            disabled={isReadOnlyOrdersView}
-                            className="px-4 py-2 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 transition text-sm font-semibold"
-                        >
-                            {language === 'ar' ? 'إضافة بيع حضوري' : 'New in-store sale'}
-                        </button>
+                        <div className="flex flex-col gap-1">
+                            <button
+                                type="button"
+                                onClick={openNewInStoreSale}
+                                disabled={isReadOnlyOrdersView}
+                                title={isReadOnlyOrdersView ? (language === 'ar' ? `الزر معطل في هذا العرض. غيّر فلتر المستودع إلى: ${scopeWarehouseName}` : `Disabled in current view. Switch warehouse filter to: ${scopeWarehouseName}`) : (language === 'ar' ? 'إنشاء بيع حضوري سريع' : 'Create quick in-store sale')}
+                                className={`px-5 py-2.5 rounded-md transition text-sm font-semibold inline-flex items-center gap-2 ${isReadOnlyOrdersView ? 'bg-gray-300 text-gray-600 dark:bg-gray-700 dark:text-gray-300 cursor-not-allowed' : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm'}`}
+                            >
+                                <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path d="M10 4a1 1 0 011 1v4h4a1 1 0 110 2h-4v4a1 1 0 11-2 0v-4H5a1 1 0 110-2h4V5a1 1 0 011-1z" /></svg>
+                                <span>{language === 'ar' ? 'إضافة بيع حضوري' : 'New in-store sale'}</span>
+                            </button>
+                            {isReadOnlyOrdersView && (
+                                <span className="text-[11px] text-amber-700 dark:text-amber-300">
+                                    {language === 'ar'
+                                        ? `لتفعيل الزر: اعرض طلبات مستودع الجلسة (${scopeWarehouseName}).`
+                                        : `To enable: switch to session warehouse view (${scopeWarehouseName}).`}
+                                </span>
+                            )}
+                        </div>
                     )}
                     <div className="flex items-center gap-2">
                         <label htmlFor="customerNameFilter" className="text-sm font-medium dark:text-gray-300 mx-2">بحث ذكي:</label>

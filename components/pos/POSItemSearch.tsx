@@ -112,11 +112,21 @@ const POSItemSearch: React.FC<Props> = ({ onAddLine, inputRef, disabled, touchMo
   const indexedItems = useMemo(() => {
     const withStock = (baseItems || []).map((m) => {
       const stock = getStockByItemId(String(m.id || ''));
-      const physical = stock ? Number(stock.availableQuantity || 0) : Number(m.availableStock || 0);
-      const reserved = stock ? Number(stock.reservedQuantity || 0) : 0;
-      const availableStock = Math.max(0, physical - reserved);
-      return { ...m, availableStock };
-    }).filter((m) => Number(m.availableStock || 0) > 0);
+      const globalAvailable = Math.max(0, Number(m.availableStock || 0));
+      const sessionPhysical = stock ? Number(stock.availableQuantity || 0) : 0;
+      const sessionReserved = stock ? Number(stock.reservedQuantity || 0) : 0;
+      const sessionAvailable = Math.max(0, sessionPhysical - sessionReserved);
+      const availableStock = stock ? sessionAvailable : globalAvailable;
+      return {
+        ...m,
+        availableStock,
+        reservedQuantity: stock ? sessionReserved : 0,
+        sessionAvailableStock: sessionAvailable,
+        sessionReservedQuantity: sessionReserved,
+        globalAvailableStock: globalAvailable,
+        stockFromSession: Boolean(stock),
+      };
+    }).filter((m) => Math.max(0, Number((m as any).globalAvailableStock ?? m.availableStock ?? 0)) > 0);
     return withStock.map((m) => {
       const ar = String(m.name?.ar || '');
       const en = String(m.name?.en || '');
@@ -324,6 +334,17 @@ const POSItemSearch: React.FC<Props> = ({ onAddLine, inputRef, disabled, touchMo
           const isWeight = item.unitType === 'kg' || item.unitType === 'gram';
           const isSelected = idx === selectedIndex;
           const shortId = String(item.id || '').slice(-6).toUpperCase();
+          const sessionAvailable = Math.max(0, Number((item as any).sessionAvailableStock ?? item.availableStock ?? 0));
+          const sessionReserved = Math.max(0, Number((item as any).sessionReservedQuantity ?? (item as any).reservedQuantity ?? 0));
+          const globalAvailable = Math.max(0, Number((item as any).globalAvailableStock ?? item.availableStock ?? 0));
+          const needed = Math.max(0, Number(isWeight ? weight : quantity) || 0);
+          const sessionInsufficient = needed > 0 && sessionAvailable + 1e-9 < needed;
+          const globalCanCover = needed > 0 && globalAvailable + 1e-9 >= needed;
+          const stockBadge = sessionInsufficient
+            ? (globalCanCover
+              ? { label: 'يتطلب تبديل مستودع', cls: 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-900/30 dark:text-amber-200 dark:border-amber-800' }
+              : { label: 'غير متوفر إجمالًا', cls: 'bg-red-50 text-red-800 border-red-200 dark:bg-red-900/30 dark:text-red-200 dark:border-red-800' })
+            : { label: 'متوفر في الجلسة', cls: 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-200 dark:border-emerald-800' };
           return (
             <button
               key={item.id}
@@ -336,13 +357,29 @@ const POSItemSearch: React.FC<Props> = ({ onAddLine, inputRef, disabled, touchMo
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <div className={`font-bold dark:text-white truncate ${touchMode ? 'text-lg' : ''}`}>{item.name?.ar || item.name?.en || item.id}</div>
+                  <div className="flex items-center gap-2">
+                    <div className={`font-bold dark:text-white truncate ${touchMode ? 'text-lg' : ''}`}>{item.name?.ar || item.name?.en || item.id}</div>
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full border whitespace-nowrap ${stockBadge.cls}`}>{stockBadge.label}</span>
+                  </div>
                   <div className={`text-gray-600 dark:text-gray-300 ${touchMode ? 'text-base' : 'text-sm'}`}>
                     {isWeight ? 'وزن' : 'كمية'} • سعر حسب العملة المختارة
                   </div>
                   <div className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
-                    متاح: {Number(item.availableStock || 0)} {getUnitLabel(String(item.unitType || 'piece') as any, 'ar') || 'وحدة'} • محجوز: {Number((item as any).reservedQuantity || 0)}
+                    مستودع الجلسة: {sessionAvailable} {getUnitLabel(String(item.unitType || 'piece') as any, 'ar') || 'وحدة'} • محجوز: {sessionReserved}
                   </div>
+                  <div className="text-[11px] text-gray-500 dark:text-gray-400">
+                    إجمالي كل المستودعات: {globalAvailable}
+                  </div>
+                  {sessionInsufficient && globalCanCover && (
+                    <div className="mt-1 text-[11px] text-amber-700 dark:text-amber-300">
+                      غير كافٍ في مستودع الجلسة لهذه الكمية، اختر مستودعًا مناسبًا داخل السطر بعد الإضافة.
+                    </div>
+                  )}
+                  {sessionInsufficient && !globalCanCover && (
+                    <div className="mt-1 text-[11px] text-red-700 dark:text-red-300">
+                      الكمية المطلوبة غير متوفرة في إجمالي المستودعات حاليًا.
+                    </div>
+                  )}
                 </div>
                 <div className="text-xs font-mono text-gray-400 shrink-0">#{shortId}</div>
               </div>
