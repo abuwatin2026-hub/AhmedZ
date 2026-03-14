@@ -24,6 +24,7 @@ import NumberInput from '../../components/NumberInput';
 import { useMenu } from '../../contexts/MenuContext';
 import { useItemMeta } from '../../contexts/ItemMetaContext';
 import { useGovernance } from '../../contexts/GovernanceContext';
+import { useStock } from '../../contexts/StockContext';
 import { getBaseCurrencyCode, getSupabaseClient } from '../../supabase';
 import { printContent } from '../../utils/printUtils';
 import { printJournalVoucherByEntryId, printPaymentVoucherByPaymentId, printReceiptVoucherByPaymentId } from '../../utils/vouchers';
@@ -155,6 +156,7 @@ const ManageOrdersScreen: React.FC = () => {
     const sessionScope = useSessionScope();
     const { warehouses, getWarehouseById } = useWarehouses();
     const { menuItems: allMenuItems } = useMenu();
+    const { getStockByItemId, fetchStock } = useStock();
     const { isWeightBasedUnit, getUnitLabel } = useItemMeta();
     const { guardPosting } = useGovernance();
     const [filterStatus, setFilterStatus] = useState<OrderStatus | 'all' | 'delivered_no_returns'>('all');
@@ -514,6 +516,7 @@ const ManageOrdersScreen: React.FC = () => {
     const [editChangesByCartItemId, setEditChangesByCartItemId] = useState<Record<string, { quantity?: number; uomCode?: string; uomQtyInBase?: number }>>({});
     const [editReservationResult, setEditReservationResult] = useState<Array<{ itemId: string; released: number; reserved: number; name?: string }>>([]);
     const [inStoreSelectedItemId, setInStoreSelectedItemId] = useState<string>('');
+    const [inStoreSelectedItemIndex, setInStoreSelectedItemIndex] = useState<number>(-1);
     const [inStoreItemSearch, setInStoreItemSearch] = useState('');
     const [inStoreSelectedAddons, setInStoreSelectedAddons] = useState<Record<string, number>>({});
     const [inStoreLines, setInStoreLines] = useState<Array<{ menuItemId: string; quantity?: number; weight?: number; selectedAddons?: Record<string, number>; uomCode?: string; uomQtyInBase?: number; warehouseId?: string }>>([]);
@@ -2290,6 +2293,7 @@ const ManageOrdersScreen: React.FC = () => {
             ];
         });
         setInStoreSelectedItemId('');
+        setInStoreSelectedItemIndex(-1);
         setInStoreSelectedAddons({});
     };
 
@@ -2297,15 +2301,58 @@ const ManageOrdersScreen: React.FC = () => {
         const needle = inStoreItemSearch.trim().toLowerCase();
         const source = menuItems;
         if (!needle) {
-            return source.slice(0, 200);
+            return [...source]
+                .sort((a, b) => (Number((b as any).availableStock || 0) - Number((a as any).availableStock || 0)))
+                .slice(0, 200);
         }
         return source.filter(mi => {
             const name = (mi.name?.[language] || mi.name?.ar || mi.name?.en || '').toLowerCase();
             const barcode = String((mi as any)?.barcode || (mi as any)?.data?.barcode || '').toLowerCase();
             const sku = String((mi as any)?.sku || (mi as any)?.data?.sku || '').toLowerCase();
             return name.includes(needle) || barcode.includes(needle) || sku.includes(needle);
-        }).slice(0, 200);
+        })
+            .sort((a, b) => (Number((b as any).availableStock || 0) - Number((a as any).availableStock || 0)))
+            .slice(0, 200);
     }, [inStoreItemSearch, language, menuItems]);
+
+    useEffect(() => {
+        if (filteredInStoreMenuItems.length === 0) {
+            if (inStoreSelectedItemId) setInStoreSelectedItemId('');
+            if (inStoreSelectedItemIndex !== -1) setInStoreSelectedItemIndex(-1);
+            return;
+        }
+        const selectedIndex = filteredInStoreMenuItems.findIndex(mi => String(mi.id) === String(inStoreSelectedItemId || ''));
+        if (selectedIndex >= 0) {
+            if (selectedIndex !== inStoreSelectedItemIndex) setInStoreSelectedItemIndex(selectedIndex);
+            return;
+        }
+        setInStoreSelectedItemId(filteredInStoreMenuItems[0].id);
+        setInStoreSelectedItemIndex(0);
+    }, [filteredInStoreMenuItems, inStoreSelectedItemId, inStoreSelectedItemIndex]);
+
+    const selectedInStoreMenuItem = useMemo(
+        () => filteredInStoreMenuItems.find(mi => String(mi.id) === String(inStoreSelectedItemId || '')) || null,
+        [filteredInStoreMenuItems, inStoreSelectedItemId]
+    );
+
+    const selectedInStoreAvailability = useMemo(() => {
+        if (!selectedInStoreMenuItem) return null;
+        const stockRow = getStockByItemId(String(selectedInStoreMenuItem.id || ''));
+        const globalAvailable = Math.max(0, Number((selectedInStoreMenuItem as any).availableStock || 0));
+        const sessionAvailable = stockRow
+            ? Math.max(0, Number(stockRow.availableQuantity || 0) - Number(stockRow.reservedQuantity || 0))
+            : globalAvailable;
+        const sessionReserved = stockRow ? Math.max(0, Number(stockRow.reservedQuantity || 0)) : 0;
+        const status = sessionAvailable > 0
+            ? 'ok'
+            : (globalAvailable > 0 ? 'switch' : 'none');
+        return { globalAvailable, sessionAvailable, sessionReserved, status };
+    }, [selectedInStoreMenuItem, getStockByItemId]);
+
+    useEffect(() => {
+        if (!isInStoreSaleOpen) return;
+        void fetchStock();
+    }, [isInStoreSaleOpen, fetchStock]);
 
     const updateInStoreLine = (index: number, patch: { quantity?: number; weight?: number; uomCode?: string; uomQtyInBase?: number; warehouseId?: string }) => {
         setInStoreLines(prev => prev.map((l, i) => (i === index ? { ...l, ...patch } : l)));
@@ -2885,6 +2932,7 @@ const ManageOrdersScreen: React.FC = () => {
             setInStoreDiscountValue(0);
             setInStoreLines([]);
             setInStoreSelectedItemId('');
+            setInStoreSelectedItemIndex(-1);
             setInStoreSelectedAddons({});
             setInStoreCustomerMode('walk_in');
             setInStoreSelectedCustomerId('');
@@ -4102,6 +4150,22 @@ const ManageOrdersScreen: React.FC = () => {
         if (preferred) setInStoreTransactionCurrency(preferred);
         setIsInStoreSaleOpen(true);
     };
+    const openNewInStoreSaleRef = useRef<(() => void) | null>(null);
+    openNewInStoreSaleRef.current = openNewInStoreSale;
+    useEffect(() => {
+        const handler = (e: KeyboardEvent) => {
+            if (!(e.ctrlKey || e.metaKey) || !e.shiftKey || String(e.key || '').toLowerCase() !== 'n') return;
+            const target = e.target as HTMLElement | null;
+            const tag = String(target?.tagName || '').toLowerCase();
+            if (tag === 'input' || tag === 'textarea' || tag === 'select' || target?.isContentEditable) return;
+            if (!canCreateInStoreSale || isReadOnlyOrdersView) return;
+            e.preventDefault();
+            e.stopPropagation();
+            openNewInStoreSaleRef.current?.();
+        };
+        window.addEventListener('keydown', handler, true);
+        return () => window.removeEventListener('keydown', handler, true);
+    }, [canCreateInStoreSale, isReadOnlyOrdersView]);
 
     return (
         <div className="animate-fade-in">
@@ -4146,12 +4210,18 @@ const ManageOrdersScreen: React.FC = () => {
                             >
                                 <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path d="M10 4a1 1 0 011 1v4h4a1 1 0 110 2h-4v4a1 1 0 11-2 0v-4H5a1 1 0 110-2h4V5a1 1 0 011-1z" /></svg>
                                 <span>{language === 'ar' ? 'إضافة بيع حضوري' : 'New in-store sale'}</span>
+                                {!isReadOnlyOrdersView && <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/20">Ctrl+Shift+N</span>}
                             </button>
                             {isReadOnlyOrdersView && (
                                 <span className="text-[11px] text-amber-700 dark:text-amber-300">
                                     {language === 'ar'
                                         ? `لتفعيل الزر: اعرض طلبات مستودع الجلسة (${scopeWarehouseName}).`
                                         : `To enable: switch to session warehouse view (${scopeWarehouseName}).`}
+                                </span>
+                            )}
+                            {!isReadOnlyOrdersView && (
+                                <span className="text-[11px] text-emerald-700 dark:text-emerald-300">
+                                    {language === 'ar' ? 'الأكثر استخدامًا — اختصار سريع: Ctrl+Shift+N' : 'Most used — Quick shortcut: Ctrl+Shift+N'}
                                 </span>
                             )}
                         </div>
@@ -4357,6 +4427,17 @@ const ManageOrdersScreen: React.FC = () => {
                 <div className="mb-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg px-4 py-3 text-sm text-amber-800 dark:text-amber-200">
                     وضع عرض فقط — النطاق الحالي: <span className="font-bold">{effectiveWarehouseViewName}</span>، بينما المستودع النشط للجلسة: <span className="font-bold">{scopeWarehouseName}</span>. عمليات التعديل معطلة حتى تعود إلى "المستودع النشط للجلسة".
                 </div>
+            )}
+            {canCreateInStoreSale && !isReadOnlyOrdersView && (
+                <button
+                    type="button"
+                    onClick={openNewInStoreSale}
+                    title={language === 'ar' ? 'بيع حضوري سريع (Ctrl+Shift+N)' : 'Quick in-store sale (Ctrl+Shift+N)'}
+                    className="fixed z-40 bottom-5 left-5 px-4 py-3 rounded-full shadow-lg bg-emerald-600 text-white hover:bg-emerald-700 font-bold text-sm inline-flex items-center gap-2"
+                >
+                    <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path d="M10 4a1 1 0 011 1v4h4a1 1 0 110 2h-4v4a1 1 0 11-2 0v-4H5a1 1 0 110-2h4V5a1 1 0 011-1z" /></svg>
+                    <span>{language === 'ar' ? 'بيع حضوري سريع' : 'Quick Sale'}</span>
+                </button>
             )}
 
             {canRequestPurge && (
@@ -6075,42 +6156,121 @@ const ManageOrdersScreen: React.FC = () => {
                             value={inStoreItemSearch}
                             onChange={(e) => setInStoreItemSearch(e.target.value)}
                             onKeyDown={(e) => {
-                                if (e.key !== 'Enter') return;
-                                if (inStoreSelectedItemId) {
-                                    addInStoreLine();
+                                if (e.key === 'ArrowDown') {
+                                    e.preventDefault();
+                                    if (!filteredInStoreMenuItems.length) return;
+                                    const next = Math.min(filteredInStoreMenuItems.length - 1, Math.max(0, inStoreSelectedItemIndex + 1));
+                                    setInStoreSelectedItemIndex(next);
+                                    setInStoreSelectedItemId(filteredInStoreMenuItems[next]?.id || '');
                                     return;
                                 }
-                                const first = filteredInStoreMenuItems[0];
-                                if (first?.id) {
-                                    setInStoreSelectedItemId(first.id);
+                                if (e.key === 'ArrowUp') {
+                                    e.preventDefault();
+                                    if (!filteredInStoreMenuItems.length) return;
+                                    const next = Math.max(0, (inStoreSelectedItemIndex <= 0 ? 0 : inStoreSelectedItemIndex - 1));
+                                    setInStoreSelectedItemIndex(next);
+                                    setInStoreSelectedItemId(filteredInStoreMenuItems[next]?.id || '');
+                                    return;
+                                }
+                                if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    if (inStoreSelectedItemId) {
+                                        addInStoreLine();
+                                        return;
+                                    }
+                                    const first = filteredInStoreMenuItems[0];
+                                    if (first?.id) {
+                                        setInStoreSelectedItemId(first.id);
+                                        setInStoreSelectedItemIndex(0);
+                                    }
                                 }
                             }}
                             className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
                         />
+                        {selectedInStoreMenuItem && selectedInStoreAvailability && (
+                            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-800/60 p-2">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="text-xs font-semibold text-gray-800 dark:text-gray-100">
+                                        {selectedInStoreMenuItem.name?.[language] || selectedInStoreMenuItem.name?.ar || selectedInStoreMenuItem.name?.en || selectedInStoreMenuItem.id}
+                                    </span>
+                                    <span className="text-[10px] px-2 py-0.5 rounded-full border bg-blue-50 text-blue-800 border-blue-200 dark:bg-blue-900/30 dark:text-blue-200 dark:border-blue-800">
+                                        الكل: {selectedInStoreAvailability.globalAvailable}
+                                    </span>
+                                    <span className="text-[10px] px-2 py-0.5 rounded-full border bg-slate-50 text-slate-800 border-slate-200 dark:bg-slate-900/30 dark:text-slate-200 dark:border-slate-700">
+                                        الجلسة: {selectedInStoreAvailability.sessionAvailable}
+                                    </span>
+                                    <span className="text-[10px] px-2 py-0.5 rounded-full border bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-900/30 dark:text-amber-200 dark:border-amber-800">
+                                        محجوز: {selectedInStoreAvailability.sessionReserved}
+                                    </span>
+                                    <span className={`text-[10px] px-2 py-0.5 rounded-full border ${selectedInStoreAvailability.status === 'ok'
+                                        ? 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-200 dark:border-emerald-800'
+                                        : selectedInStoreAvailability.status === 'switch'
+                                            ? 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-900/30 dark:text-amber-200 dark:border-amber-800'
+                                            : 'bg-red-50 text-red-800 border-red-200 dark:bg-red-900/30 dark:text-red-200 dark:border-red-800'
+                                        }`}>
+                                        {selectedInStoreAvailability.status === 'ok'
+                                            ? 'متوفر في الجلسة'
+                                            : selectedInStoreAvailability.status === 'switch'
+                                                ? 'يتطلب تبديل مستودع'
+                                                : 'غير متوفر إجمالًا'}
+                                    </span>
+                                </div>
+                            </div>
+                        )}
 
                         <div className="flex gap-2">
-                            <select
-                                value={inStoreSelectedItemId}
-                                onChange={(e) => setInStoreSelectedItemId(e.target.value)}
-                                onKeyDown={(e) => {
-                                    if (e.key !== 'Enter') return;
-                                    addInStoreLine();
-                                }}
-                                onDoubleClick={() => addInStoreLine()}
-                                className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                                size={5} // Show multiple items to make it act like a list box
-                            >
-                                <option value="">{language === 'ar' ? 'اختر صنف لإضافته' : 'Select item to add'}</option>
-                                {filteredInStoreMenuItems.map(mi => {
-                                    const name = mi.name?.[language] || mi.name?.ar || mi.name?.en || mi.id;
-                                    const stock = typeof mi.availableStock === 'number' ? `(${mi.availableStock})` : '';
-                                    return (
-                                        <option key={mi.id} value={mi.id}>
-                                            {name} {stock}
-                                        </option>
-                                    );
-                                })}
-                            </select>
+                            <div className="flex-1 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 overflow-hidden">
+                                <div className="px-3 py-1.5 text-xs font-semibold text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-600">
+                                    {language === 'ar' ? 'اختر صنف لإضافته (الكمية بين القوسين = إجمالي كل المستودعات)' : 'Choose item to add (quantity in parentheses = total stock)'}
+                                </div>
+                                <div className="max-h-44 overflow-auto">
+                                    {filteredInStoreMenuItems.length === 0 ? (
+                                        <div className="px-3 py-2 text-xs text-gray-500 dark:text-gray-400">
+                                            {language === 'ar' ? 'لا توجد نتائج' : 'No items found'}
+                                        </div>
+                                    ) : filteredInStoreMenuItems.map((mi, idx) => {
+                                        const name = mi.name?.[language] || mi.name?.ar || mi.name?.en || mi.id;
+                                        const stockRow = getStockByItemId(String(mi.id || ''));
+                                        const globalAvailable = Math.max(0, Number(mi.availableStock || 0));
+                                        const sessionAvailable = stockRow
+                                            ? Math.max(0, Number(stockRow.availableQuantity || 0) - Number(stockRow.reservedQuantity || 0))
+                                            : globalAvailable;
+                                        const isActive = String(inStoreSelectedItemId || '') === String(mi.id || '');
+                                        const badge = sessionAvailable > 0
+                                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-200 dark:border-emerald-800'
+                                            : (globalAvailable > 0
+                                                ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-200 dark:border-amber-800'
+                                                : 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-200 dark:border-red-800');
+                                        return (
+                                            <button
+                                                key={mi.id}
+                                                type="button"
+                                                onClick={() => {
+                                                    setInStoreSelectedItemId(mi.id);
+                                                    setInStoreSelectedItemIndex(idx);
+                                                }}
+                                                onDoubleClick={() => {
+                                                    setInStoreSelectedItemId(mi.id);
+                                                    setInStoreSelectedItemIndex(idx);
+                                                    setTimeout(() => addInStoreLine(), 0);
+                                                }}
+                                                className={`w-full text-right px-3 py-2 border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600/40 ${isActive ? 'bg-blue-50 dark:bg-blue-900/20' : ''}`}
+                                            >
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <div className="truncate text-sm text-gray-900 dark:text-white">{name}</div>
+                                                    <div className="text-xs font-semibold text-gray-700 dark:text-gray-200">({globalAvailable})</div>
+                                                </div>
+                                                <div className="mt-1 flex items-center gap-1 flex-wrap">
+                                                    <span className="text-[10px] text-gray-500 dark:text-gray-400">جلسة: {sessionAvailable}</span>
+                                                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full border ${badge}`}>
+                                                        {sessionAvailable > 0 ? 'متوفر' : (globalAvailable > 0 ? 'حوّل المستودع' : 'غير متوفر')}
+                                                    </span>
+                                                </div>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
                             <button
                                 type="button"
                                 onClick={addInStoreLine}
@@ -6141,7 +6301,12 @@ const ManageOrdersScreen: React.FC = () => {
                                     const baseUnitPrice = priced?.isTxnPrice
                                         ? convertInStoreTxnToBase(pricedUnitPrice, Number(inStoreTransactionFxRate) || 1)
                                         : pricedUnitPrice;
-                                    const available = typeof mi.availableStock === 'number' ? mi.availableStock : undefined;
+                                    const stockRow = getStockByItemId(String(mi.id || ''));
+                                    const globalAvailable = Math.max(0, Number(mi.availableStock || 0));
+                                    const sessionAvailableBase = stockRow
+                                        ? Math.max(0, Number(stockRow.availableQuantity || 0) - Number(stockRow.reservedQuantity || 0))
+                                        : globalAvailable;
+                                    const sessionReservedBase = stockRow ? Math.max(0, Number(stockRow.reservedQuantity || 0)) : 0;
                                     let baseAddonsCost = 0;
                                     if (line.selectedAddons && mi.addons) {
                                         Object.entries(line.selectedAddons).forEach(([aid, qty]) => {
@@ -6157,10 +6322,30 @@ const ManageOrdersScreen: React.FC = () => {
                                     const unitPrice = convertBaseToInStoreTxn(baseUnitPrice, Number(inStoreTransactionFxRate) || 1);
                                     const lineTotal = convertBaseToInStoreTxn(baseLineTotal, Number(inStoreTransactionFxRate) || 1);
                                     const currentValue = isWeightBased ? (line.weight ?? 0) : (line.quantity ?? 0);
-                                    const availableInUom = (!isWeightBased && typeof available === 'number' && uomQty > 0)
-                                        ? Math.floor((available / uomQty) + 1e-9)
-                                        : available;
-                                    const exceeded = typeof availableInUom === 'number' ? currentValue > availableInUom : false;
+                                    const sessionAvailableInUom = (!isWeightBased && uomQty > 0)
+                                        ? Math.floor((sessionAvailableBase / uomQty) + 1e-9)
+                                        : sessionAvailableBase;
+                                    const globalAvailableInUom = (!isWeightBased && uomQty > 0)
+                                        ? Math.floor((globalAvailable / uomQty) + 1e-9)
+                                        : globalAvailable;
+                                    const exceeded = typeof sessionAvailableInUom === 'number' ? currentValue > sessionAvailableInUom : false;
+                                    const canCoverFromOtherWarehouse = exceeded && currentValue <= globalAvailableInUom;
+                                    const stockBadge = isWeightBased
+                                        ? null
+                                        : (exceeded
+                                            ? (canCoverFromOtherWarehouse
+                                                ? {
+                                                    label: 'يتطلب تبديل مستودع',
+                                                    cls: 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-900/30 dark:text-amber-200 dark:border-amber-800',
+                                                }
+                                                : {
+                                                    label: 'غير متوفر إجمالًا',
+                                                    cls: 'bg-red-50 text-red-800 border-red-200 dark:bg-red-900/30 dark:text-red-200 dark:border-red-800',
+                                                })
+                                            : {
+                                                label: 'متوفر في الجلسة',
+                                                cls: 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-200 dark:border-emerald-800',
+                                            });
 
                                     const addonNames = line.selectedAddons && mi.addons
                                         ? Object.keys(line.selectedAddons).map(aid => {
@@ -6173,15 +6358,39 @@ const ManageOrdersScreen: React.FC = () => {
                                         <div key={`${line.menuItemId}-${index}`} className="flex flex-col gap-1 p-2 border border-gray-100 dark:border-gray-700 rounded bg-gray-50/50 dark:bg-gray-800/50">
                                             <div className="flex items-center gap-2">
                                                 <div className="flex-1 min-w-0">
-                                                    <div className="text-sm font-semibold text-gray-900 dark:text-white truncate">{name}</div>
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="text-sm font-semibold text-gray-900 dark:text-white truncate">{name}</div>
+                                                        {stockBadge && (
+                                                            <span className={`text-[10px] px-2 py-0.5 rounded-full border whitespace-nowrap ${stockBadge.cls}`}>
+                                                                {stockBadge.label}
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                     <div className="text-xs text-gray-500 dark:text-gray-400">{getUnitLabel(String(mi.unitType || 'piece') as any, 'ar') || localizeUomCodeAr(String(mi.unitType || 'piece'))}</div>
-                                                    {!isWeightBased && typeof available === 'number' ? (
+                                                    {!isWeightBased ? (
                                                         <div className="text-xs text-gray-500 dark:text-gray-400">
-                                                            متاح: {(!isWeightBased && typeof availableInUom === 'number') ? availableInUom : available}{' '}
+                                                            مستودع الجلسة: {sessionAvailableInUom}{' '}
                                                             {localizeUomCodeAr(String(line.uomCode || mi.unitType || 'piece'))}{' '}
-                                                            <span className="text-gray-400">({available} {getUnitLabel(String(mi.unitType || 'piece') as any, 'ar') || localizeUomCodeAr(String(mi.unitType || 'piece'))})</span>
+                                                            <span className="text-gray-400">({sessionAvailableBase} {getUnitLabel(String(mi.unitType || 'piece') as any, 'ar') || localizeUomCodeAr(String(mi.unitType || 'piece'))} • محجوز: {sessionReservedBase})</span>
                                                         </div>
                                                     ) : null}
+                                                    {!isWeightBased ? (
+                                                        <div className="text-xs text-gray-500 dark:text-gray-400">
+                                                            إجمالي كل المستودعات: {globalAvailableInUom}{' '}
+                                                            {localizeUomCodeAr(String(line.uomCode || mi.unitType || 'piece'))}{' '}
+                                                            <span className="text-gray-400">({globalAvailable} {getUnitLabel(String(mi.unitType || 'piece') as any, 'ar') || localizeUomCodeAr(String(mi.unitType || 'piece'))})</span>
+                                                        </div>
+                                                    ) : null}
+                                                    {!isWeightBased && canCoverFromOtherWarehouse && (
+                                                        <div className="text-[11px] text-amber-700 dark:text-amber-300">
+                                                            الكمية المطلوبة لا تكفي في مستودع الجلسة؛ يمكن تغطيتها من مستودع آخر عبر اختيار المستودع أدناه.
+                                                        </div>
+                                                    )}
+                                                    {!isWeightBased && exceeded && !canCoverFromOtherWarehouse && (
+                                                        <div className="text-[11px] text-red-700 dark:text-red-300">
+                                                            الكمية المطلوبة غير متوفرة في إجمالي المستودعات.
+                                                        </div>
+                                                    )}
                                                     <CurrencyDualAmount
                                                         amount={!isWeightBased ? (unitPrice * uomQty) : unitPrice}
                                                         currencyCode={inStoreTransactionCurrency}
@@ -6224,7 +6433,7 @@ const ManageOrdersScreen: React.FC = () => {
                                                                 updateInStoreLine(index, isWeightBased ? { weight: val } : { quantity: val });
                                                             }}
                                                             min={0}
-                                                            max={availableInUom}
+                                                            max={sessionAvailableInUom}
                                                             step={isWeightBased ? (mi.unitType === 'gram' ? 1 : 0.01) : 1}
                                                             className={`text-center ${exceeded ? 'border-red-500' : ''}`}
                                                         />
@@ -6233,7 +6442,7 @@ const ManageOrdersScreen: React.FC = () => {
                                                             onClick={() => {
                                                                 const step = isWeightBased ? (mi.unitType === 'gram' ? 100 : 0.5) : 1;
                                                                 const current = isWeightBased ? (line.weight ?? 0) : (line.quantity ?? 0);
-                                                                const max = availableInUom;
+                                                                const max = sessionAvailableInUom;
                                                                 const next = typeof max === 'number' ? Math.min(max, current + step) : current + step;
                                                                 updateInStoreLine(index, isWeightBased ? { weight: next } : { quantity: next });
                                                             }}
@@ -6245,7 +6454,7 @@ const ManageOrdersScreen: React.FC = () => {
                                                     </div>
                                                     {exceeded && (
                                                         <div className="mt-1 text-[10px] text-red-600 dark:text-red-400">
-                                                            يتجاوز المتاح: {availableInUom?.toFixed ? availableInUom.toFixed(2) : availableInUom}
+                                                            يتجاوز متاح مستودع الجلسة: {sessionAvailableInUom?.toFixed ? sessionAvailableInUom.toFixed(2) : sessionAvailableInUom}
                                                         </div>
                                                     )}
                                                 </div>
@@ -6408,6 +6617,7 @@ const ManageOrdersScreen: React.FC = () => {
                                         onClick={() => {
                                             setInStoreLines([]);
                                             setInStoreSelectedItemId('');
+                                            setInStoreSelectedItemIndex(-1);
                                             setInStoreSelectedAddons({});
                                         }}
                                         className="px-2 py-1 rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600 text-xs"

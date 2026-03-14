@@ -143,6 +143,19 @@ const POSScreen: React.FC = () => {
   const [pricingReady, setPricingReady] = useState(true);
   const initialWarehouseIdRef = useRef<string>('');
   const [costSummaryByItemId, setCostSummaryByItemId] = useState<Record<string, { distinctCosts: number; layersCount: number }>>({});
+  const lastCostSummarySignatureRef = useRef<string>('');
+  const costSummaryRequest = useMemo(() => {
+    const warehouseId = String(sessionScope.scope?.warehouseId || '').trim();
+    const ids = Array.from(
+      new Set(
+        items
+          .filter((it: any) => !((it as any)?.lineType === 'promotion' || Boolean((it as any)?.promotionId)))
+          .map((it: any) => String(it?.id || it?.itemId || '').trim())
+          .filter(Boolean)
+      )
+    ).sort();
+    return { warehouseId, ids, signature: `${warehouseId}::${ids.join(',')}` };
+  }, [items, sessionScope.scope?.warehouseId]);
   const [isPortrait, setIsPortrait] = useState<boolean>(() => {
     try {
       return window.matchMedia && window.matchMedia('(orientation: portrait)').matches;
@@ -694,21 +707,14 @@ const POSScreen: React.FC = () => {
   useEffect(() => {
     const supabase = getSupabaseClient();
     if (!supabase) return;
-    let warehouseId = '';
-    try {
-      warehouseId = String(sessionScope.scope?.warehouseId || sessionScope.requireScope().warehouseId || '').trim();
-    } catch {
-      setCostSummaryByItemId({});
-      return;
-    }
-    const ids = Array.from(new Set(items
-      .filter((it: any) => !((it as any)?.lineType === 'promotion' || Boolean((it as any)?.promotionId)))
-      .map((it: any) => String(it?.id || it?.itemId || '').trim())
-      .filter(Boolean)));
+    const warehouseId = String(costSummaryRequest.warehouseId || '').trim();
+    const ids = costSummaryRequest.ids;
     if (!warehouseId || ids.length === 0) {
+      lastCostSummarySignatureRef.current = '';
       setCostSummaryByItemId({});
       return;
     }
+    if (lastCostSummarySignatureRef.current === costSummaryRequest.signature) return;
     let cancelled = false;
     const run = async () => {
       try {
@@ -728,14 +734,16 @@ const POSScreen: React.FC = () => {
           };
         }
         setCostSummaryByItemId(map);
+        lastCostSummarySignatureRef.current = costSummaryRequest.signature;
       } catch {
       }
     };
-    void run();
+    const timer = window.setTimeout(() => { void run(); }, 180);
     return () => {
       cancelled = true;
+      window.clearTimeout(timer);
     };
-  }, [items, sessionScope]);
+  }, [costSummaryRequest.signature]);
 
   const pricingBlockReason = useMemo(() => {
     const currentWid = String(sessionScope.scope?.warehouseId || '').trim();

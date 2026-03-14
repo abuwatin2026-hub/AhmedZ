@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CartItem } from '../../types';
 import NumericKeypadModal from './NumericKeypadModal';
 import { useStock } from '../../contexts/StockContext';
@@ -52,13 +52,23 @@ const POSLineItemList: React.FC<Props> = ({ items, currencyCode, onUpdate, onRem
   type WarehouseAlert = { type: string; severity: 'error' | 'warning' | 'info' | 'success'; message: string; other_warehouse_id?: string; other_warehouse?: string;[k: string]: any };
   const [alertsByCartItemId, setAlertsByCartItemId] = useState<Record<string, WarehouseAlert[]>>({});
   const [alertsLoadingByCartItemId, setAlertsLoadingByCartItemId] = useState<Record<string, boolean>>({});
+  const lastAlertRequestKeyByCartItemIdRef = useRef<Record<string, string>>({});
 
   const { warehouses } = useWarehouses();
   const warehouseId = useMemo(() => String(sessionScope.scope?.warehouseId || '').trim(), [sessionScope.scope?.warehouseId]);
+  const warehouseOptionNodes = useMemo(
+    () => (warehouses || [])
+      .filter(w => w.isActive)
+      .map(w => ({ id: w.id, name: w.name })),
+    [warehouses]
+  );
 
   const fetchAlerts = useCallback(async (cartItemId: string, itemId: string, whId: string, qty: number) => {
     const supabase = getSupabaseClient();
     if (!supabase || !itemId || !whId) return;
+    const requestKey = `${itemId}|${whId}|${Number(qty || 0).toFixed(3)}`;
+    if (lastAlertRequestKeyByCartItemIdRef.current[cartItemId] === requestKey) return;
+    lastAlertRequestKeyByCartItemIdRef.current[cartItemId] = requestKey;
     setAlertsLoadingByCartItemId(prev => ({ ...prev, [cartItemId]: true }));
     try {
       const { data, error } = await supabase.rpc('get_warehouse_item_alerts', {
@@ -67,6 +77,7 @@ const POSLineItemList: React.FC<Props> = ({ items, currencyCode, onUpdate, onRem
       if (error) throw error;
       setAlertsByCartItemId(prev => ({ ...prev, [cartItemId]: Array.isArray(data) ? data : [] }));
     } catch {
+      delete lastAlertRequestKeyByCartItemIdRef.current[cartItemId];
       setAlertsByCartItemId(prev => ({ ...prev, [cartItemId]: [] }));
     } finally {
       setAlertsLoadingByCartItemId(prev => ({ ...prev, [cartItemId]: false }));
@@ -385,7 +396,7 @@ const POSLineItemList: React.FC<Props> = ({ items, currencyCode, onUpdate, onRem
                     }}
                     className="flex-1 border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 text-xs py-1 px-2 dark:bg-gray-700 dark:text-gray-200"
                   >
-                    {warehouses?.filter(w => w.isActive).map(w => (
+                    {warehouseOptionNodes.map(w => (
                       <option key={w.id} value={w.id}>{w.name}</option>
                     ))}
                   </select>
