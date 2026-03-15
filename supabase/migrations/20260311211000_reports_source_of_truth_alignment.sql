@@ -99,7 +99,8 @@ begin
     sum(coalesce(eo.total_base, 0)) as total_base_amount,
     count(distinct eo.id)::integer as order_count
   from effective_orders eo
-  where (eo.status = 'delivered' or eo.paid_at is not null)
+  where eo.status <> 'cancelled'
+    and (eo.status = 'delivered' or eo.paid_at is not null)
     and eo.date_by >= p_start_date
     and eo.date_by <= p_end_date
   group by coalesce(eo.currency_code, v_base)
@@ -179,7 +180,8 @@ begin
     coalesce(sum(eo.total), 0) as total_sales,
     count(*)::bigint as order_count
   from effective_orders eo
-  where (eo.status = 'delivered' or eo.paid_at is not null)
+  where eo.status <> 'cancelled'
+    and (eo.status = 'delivered' or eo.paid_at is not null)
     and eo.date_by >= p_start_date
     and eo.date_by <= p_end_date
   group by 1

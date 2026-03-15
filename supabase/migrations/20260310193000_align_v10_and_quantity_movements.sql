@@ -86,10 +86,11 @@ begin
     select
       o.id
     from public.orders o
-    where (
+    where o.status <> 'cancelled'
+      and (
       nullif(o.data->>'paidAt','') is not null
       or o.status = 'delivered'
-    )
+      )
       and coalesce(
         nullif(o.data->'invoiceSnapshot'->>'issuedAt', '')::timestamptz,
         nullif(o.data->>'paidAt', '')::timestamptz,

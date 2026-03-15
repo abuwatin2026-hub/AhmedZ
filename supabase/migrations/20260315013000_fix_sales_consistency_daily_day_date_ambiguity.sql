@@ -86,7 +86,8 @@ begin
   eo_filtered as (
     select *
     from effective_orders eo
-    where (eo.status = 'delivered' or eo.paid_at is not null)
+    where eo.status <> 'cancelled'
+      and (eo.status = 'delivered' or eo.paid_at is not null)
       and eo.date_by >= p_start_date
       and eo.date_by <= p_end_date
   ),

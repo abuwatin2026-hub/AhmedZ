@@ -82,6 +82,7 @@ begin
         else null
       end
     ) = p_zone_id)
+      and nullif(trim(coalesce(o.data->>'voidedAt','')), '') is null
   ),
   sales_orders as (
     select
@@ -300,6 +301,7 @@ begin
     where sr.status = 'completed'
       and sr.return_date >= p_start_date
       and sr.return_date <= p_end_date
+      and nullif(trim(coalesce(o.data->>'voidedAt','')), '') is null
       and (p_zone_id is null or coalesce(
         o.delivery_zone_id,
         case
@@ -511,6 +513,9 @@ begin
       sum(im.quantity) as qty_returned_cost,
       sum(im.total_cost) as returned_cost
     from public.inventory_movements im
+    join public.sales_returns sr
+      on sr.id::text = im.reference_id
+     and sr.status = 'completed'
     where im.reference_table = 'sales_returns'
       and im.movement_type = 'return_in'
       and im.occurred_at >= p_start_date
@@ -518,7 +523,7 @@ begin
       and (
         p_zone_id is null or exists (
           select 1 from public.orders o
-          where o.id = (im.data->>'orderId')::uuid
+          where o.id = sr.order_id
             and coalesce(
               o.delivery_zone_id,
               case

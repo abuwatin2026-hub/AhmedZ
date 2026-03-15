@@ -211,8 +211,11 @@ begin
     v_delivered_orders
   from effective_orders eo
   where (
+      eo.status <> 'cancelled'
+      and (
       eo.status = 'delivered'
       or eo.paid_at is not null
+      )
   )
     and eo.date_by >= p_start_date
     and eo.date_by <= p_end_date;
@@ -346,13 +349,17 @@ begin
   into v_total_cogs
   from public.order_item_cogs oic
   join effective_orders eo on oic.order_id = eo.id
-  where (eo.status = 'delivered' or eo.paid_at is not null)
+  where eo.status <> 'cancelled'
+    and (eo.status = 'delivered' or eo.paid_at is not null)
     and eo.date_by >= p_start_date
     and eo.date_by <= p_end_date;
 
   select coalesce(sum(im.total_cost), 0)
   into v_total_returns_cogs
   from public.inventory_movements im
+  join public.sales_returns sr
+    on sr.id::text = im.reference_id
+   and sr.status = 'completed'
   where im.reference_table = 'sales_returns'
     and im.movement_type = 'return_in'
     and im.occurred_at >= p_start_date
@@ -360,7 +367,7 @@ begin
     and (
       p_zone_id is null or exists (
         select 1 from public.orders o
-        where o.id::text = (im.data->>'orderId')
+        where o.id = sr.order_id
           and nullif(trim(coalesce(o.data->>'voidedAt','')), '') is null
           and coalesce(
             o.delivery_zone_id,

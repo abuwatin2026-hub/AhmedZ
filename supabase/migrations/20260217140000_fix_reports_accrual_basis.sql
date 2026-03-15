@@ -133,8 +133,11 @@ begin
   from effective_orders eo
   left join public.delivery_zones dz on dz.id = eo.zone_effective
   where (
+      eo.status <> 'cancelled'
+      and (
       eo.paid_at is not null
       or eo.status = 'delivered'            -- ← ACCRUAL: include ALL delivered orders
+      )
   )
     and eo.date_by >= p_start_date
     and eo.date_by <= p_end_date

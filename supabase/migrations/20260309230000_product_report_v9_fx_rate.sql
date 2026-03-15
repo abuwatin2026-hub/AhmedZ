@@ -82,6 +82,7 @@ begin
         else null
       end
     ) = p_zone_id)
+      and nullif(trim(coalesce(o.data->>'voidedAt','')), '') is null
   ),
   sales_orders as (
     select
@@ -94,7 +95,8 @@ begin
       ) as discount_amount,
       coalesce(nullif(eo.data->>'subtotal','')::numeric, 0) as subtotal_amount
     from effective_orders eo
-    where (eo.status = 'delivered' or eo.paid_at is not null)
+    where eo.status <> 'cancelled'
+      and (eo.status = 'delivered' or eo.paid_at is not null)
       and eo.date_by >= p_start_date
       and eo.date_by <= p_end_date
   ),
@@ -300,6 +302,7 @@ begin
     where sr.status = 'completed'
       and sr.return_date >= p_start_date
       and sr.return_date <= p_end_date
+      and nullif(trim(coalesce(o.data->>'voidedAt','')), '') is null
       and (p_zone_id is null or coalesce(
         o.delivery_zone_id,
         case
@@ -511,6 +514,9 @@ begin
       sum(im.quantity) as qty_returned_cost,
       sum(im.total_cost) as returned_cost
     from public.inventory_movements im
+    join public.sales_returns sr
+      on sr.id::text = im.reference_id
+     and sr.status = 'completed'
     where im.reference_table = 'sales_returns'
       and im.movement_type = 'return_in'
       and im.occurred_at >= p_start_date
@@ -518,7 +524,7 @@ begin
       and (
         p_zone_id is null or exists (
           select 1 from public.orders o
-          where o.id = (im.data->>'orderId')::uuid
+          where o.id = sr.order_id
             and coalesce(
               o.delivery_zone_id,
               case
@@ -552,6 +558,19 @@ begin
       and im.occurred_at <= p_end_date
     group by im.item_id::text
   ),
+  stock_agg as (
+    select
+      sm.item_id::text as item_id_text,
+      sum(coalesce(sm.available_quantity, 0)) as available_quantity,
+      sum(coalesce(sm.reserved_quantity, 0)) as reserved_quantity,
+      case
+        when sum(coalesce(sm.available_quantity, 0)) > 0 then
+          sum(coalesce(sm.avg_cost, 0) * coalesce(sm.available_quantity, 0)) / sum(coalesce(sm.available_quantity, 0))
+        else max(coalesce(sm.avg_cost, 0))
+      end as avg_cost
+    from public.stock_management sm
+    group by sm.item_id::text
+  ),
   item_keys as (
     select item_id_text from sales_lines
     union
@@ -560,28 +579,44 @@ begin
     select item_id_text from returns_cost
     union
     select item_id_text from cogs_gross
+  ),
+  net_metrics as (
+    select
+      k.item_id_text,
+      coalesce(sl.qty_sold, 0) as gross_qty_sold,
+      coalesce(sl.net_sales, 0) as gross_net_sales,
+      greatest(coalesce(sl.qty_sold, 0) - coalesce(rs.qty_returned, 0), 0) as net_qty,
+      greatest(coalesce(sl.net_sales, 0) - coalesce(rs.returned_sales, 0), 0) as net_sales_raw,
+      greatest(coalesce(cg.gross_cost, 0) - coalesce(rc.returned_cost, 0), 0) as net_cost_raw
+    from item_keys k
+    left join sales_lines sl on sl.item_id_text = k.item_id_text
+    left join returns_sales rs on rs.item_id_text = k.item_id_text
+    left join returns_cost rc on rc.item_id_text = k.item_id_text
+    left join cogs_gross cg on cg.item_id_text = k.item_id_text
   )
   select
     k.item_id_text as item_id,
     coalesce(mi.data->'name', sl.any_name, jsonb_build_object('ar', k.item_id_text)) as item_name,
     coalesce(nullif(mi.unit_type, ''), nullif(sl.any_unit, ''), 'piece') as unit_type,
-    greatest(coalesce(sl.qty_sold, 0) - coalesce(rs.qty_returned, 0), 0) as quantity_sold,
-    greatest(coalesce(sl.net_sales, 0) - coalesce(rs.returned_sales, 0), 0) as total_sales,
-    greatest(coalesce(cg.gross_cost, 0) - coalesce(rc.returned_cost, 0), 0) as total_cost,
-    (
-      greatest(coalesce(sl.net_sales, 0) - coalesce(rs.returned_sales, 0), 0)
-      - greatest(coalesce(cg.gross_cost, 0) - coalesce(rc.returned_cost, 0), 0)
-    ) as total_profit,
-    coalesce(sm.available_quantity, 0) as current_stock,
-    coalesce(sm.reserved_quantity, 0) as reserved_stock,
-    coalesce(sm.avg_cost, mi.cost_price, 0) as current_cost_price,
+    case
+      when nm.net_qty > 0 then nm.net_qty
+      when nm.net_sales_raw > 0 and nm.gross_net_sales > 0 and nm.gross_qty_sold > 0
+        then greatest(nm.gross_qty_sold * (nm.net_sales_raw / nullif(nm.gross_net_sales, 0)), 0)
+      else 0
+    end as quantity_sold,
+    nm.net_sales_raw as total_sales,
+    nm.net_cost_raw as total_cost,
+    (nm.net_sales_raw - nm.net_cost_raw) as total_profit,
+    coalesce(sa.available_quantity, 0) as current_stock,
+    coalesce(sa.reserved_quantity, 0) as reserved_stock,
+    coalesce(sa.avg_cost, mi.cost_price, 0) as current_cost_price,
     (
       (
         greatest(
-          coalesce(sm.available_quantity, 0) - coalesce(pm.net_qty_period, 0),
+          coalesce(sa.available_quantity, 0) - coalesce(pm.net_qty_period, 0),
           0
         )
-        + coalesce(sm.available_quantity, 0)
+        + coalesce(sa.available_quantity, 0)
       ) / 2.0
     ) as avg_inventory
   from item_keys k
@@ -590,7 +625,8 @@ begin
   left join returns_sales rs on rs.item_id_text = k.item_id_text
   left join returns_cost rc on rc.item_id_text = k.item_id_text
   left join cogs_gross cg on cg.item_id_text = k.item_id_text
-  left join public.stock_management sm on sm.item_id::text = k.item_id_text
+  left join net_metrics nm on nm.item_id_text = k.item_id_text
+  left join stock_agg sa on sa.item_id_text = k.item_id_text
   left join period_movements pm on pm.item_id_text = k.item_id_text
   where (coalesce(sl.qty_sold, 0) + coalesce(rs.qty_returned, 0) + coalesce(rc.qty_returned_cost, 0)) > 0
   order by total_sales desc;
