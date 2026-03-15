@@ -1,31 +1,31 @@
 {
   "period": {
     "start": "1970-01-01T00:00:00.000Z",
-    "end": "2026-03-10T20:14:36.867Z"
+    "end": "2026-03-15T19:59:51.989Z"
   },
   "totals": {
-    "items_count": 54,
-    "qty_sold": 8994,
-    "net_sales_sum": 124239.23,
-    "total_cost_sum": 92744.19,
-    "total_profit_sum": 28841.15,
-    "gross_margin_pct": 23.21
+    "items_count": 57,
+    "qty_sold": 2374.22,
+    "net_sales_sum": 114267.12,
+    "total_cost_sum": 62243.82,
+    "total_profit_sum": 52023.3,
+    "gross_margin_pct": 45.53
   },
   "reconciliation": {
     "sales_summary": {
-      "gross_subtotal": 146764.46,
-      "discounts": 12385.51,
-      "returns": 24672.64,
-      "cogs": 88786.93,
-      "derived_net_sales": 109706.31
+      "gross_subtotal": 144612.59,
+      "discounts": 12536.19,
+      "returns": 20644.27,
+      "cogs": 59350.6,
+      "derived_net_sales": 111432.13
     },
     "product_report": {
-      "net_sales_sum": 124239.23,
-      "cost_sum": 92744.19
+      "net_sales_sum": 114267.12,
+      "cost_sum": 62243.82
     },
     "diff": {
-      "net_sales_diff": 14532.92,
-      "cogs_diff": 3957.26
+      "net_sales_diff": 2834.99,
+      "cogs_diff": 2893.22
     }
   }
 }
