@@ -376,15 +376,15 @@ const SalesReports: React.FC = () => {
     const reportData = useMemo(() => {
         const totalSalesCollected = Number(serverSummary?.total_collected || 0); // Cash Basis
         const totalSalesAccrual = Number(serverSummary?.total_sales_accrual || 0); // Accrual Basis (New)
-        const returns = Number(serverSummary?.returns || 0);
+        const returnsTotal = Number((serverSummary?.returns_total ?? serverSummary?.returns) || 0);
         const deliveryFees = Number(serverSummary?.delivery_fees || 0);
         const discounts = Number(serverSummary?.discounts || 0);
         const grossSubtotal = Number(serverSummary?.gross_subtotal || 0);
         const totalOrdersAccrual = Number(serverSummary?.total_orders_accrual || serverSummary?.total_orders || 0); // Accrual Basis Count
 
-        const netCollected = totalSalesCollected - returns;
+        const netCollected = totalSalesCollected - returnsTotal;
         // Revenue should reflect Sales (Accrual), not just collection
-        const netRevenue = totalSalesAccrual - returns;
+        const netRevenue = totalSalesAccrual - returnsTotal;
 
         const averageOrderValue = totalOrdersAccrual > 0 ? netRevenue / totalOrdersAccrual : 0;
         const cancelledCount = Number(serverSummary?.cancelled_orders || 0);
@@ -396,12 +396,12 @@ const SalesReports: React.FC = () => {
         const wastageLoss = Number(serverSummary?.wastage || 0);
         const totalExpenses = Number(serverSummary?.expenses || 0);
         const deliveryCost = Number(serverSummary?.delivery_cost || 0);
-        const grossProfit = (grossSubtotal - discounts - returns) - cogs;
+        const grossProfit = netRevenue - cogs;
         const netProfit = grossProfit - wastageLoss - totalExpenses - deliveryCost;
         return {
             netRevenue, // Now Accrual
             grossSubtotal,
-            returns,
+            returns: returnsTotal,
             totalCollected: totalSalesCollected,
             netCollected,
             deliveryFees,
