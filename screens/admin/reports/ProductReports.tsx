@@ -56,7 +56,7 @@ const ProductReports: React.FC = () => {
     const [showAllProducts, setShowAllProducts] = useState(false);
 
     const [reportData, setReportData] = useState<ProductSalesRow[]>([]);
-    const [unifiedSummary, setUnifiedSummary] = useState<{ sales: number; orders: number } | null>(null);
+    const [unifiedSummary, setUnifiedSummary] = useState<{ sales: number; orders: number; cogs: number } | null>(null);
     const [quantitySourceFromMovements, setQuantitySourceFromMovements] = useState(false);
     const [allStockInventoryValue, setAllStockInventoryValue] = useState(0);
     const [recallBatchId, setRecallBatchId] = useState('');
@@ -185,6 +185,7 @@ const ProductReports: React.FC = () => {
                                 setUnifiedSummary({
                                     sales: summaryGross - summaryReturns,
                                     orders: summaryOrders,
+                                    cogs: Number((summaryData as any)?.cogs) || 0,
                                 });
                             }
                         } else if (active) {
@@ -1038,8 +1039,8 @@ const ProductReports: React.FC = () => {
                                     الطلبات: <span className="font-bold">{Number(unifiedSummary?.orders || 0).toLocaleString('en-US')}</span> •
                                     كمية مباعة: <span className="font-bold">{totals.qty.toLocaleString('en-US')}</span> •
                                     صافي المبيعات (موحد): <span className="font-bold text-orange-600">{Number((unifiedSummary?.sales ?? totals.sales) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {currency}</span> •
-                                    صافي التكلفة: <span className="font-bold text-red-600">{totals.cost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {currency}</span> •
-                                    صافي الربح: <span className={`font-bold ${totals.profit >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>{totals.profit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {currency}</span> •
+                                    صافي التكلفة: <span className="font-bold text-red-600">{Number((unifiedSummary?.cogs ?? totals.cost) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {currency}</span> •
+                                    صافي الربح: <span className={`font-bold ${Number((unifiedSummary?.sales ?? totals.sales) - (unifiedSummary?.cogs ?? totals.cost)) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>{Number((unifiedSummary?.sales ?? totals.sales) - (unifiedSummary?.cogs ?? totals.cost)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {currency}</span> •
                                     معدل الدوران: <span className="font-bold">{totals.turnover.toFixed(2)}×</span>
                                 </p>
                             </div>

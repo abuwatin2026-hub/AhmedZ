@@ -393,6 +393,8 @@ export const KPIBar: React.FC = () => {
                 let unifiedOrders = 0;
                 let prevUnifiedSales = 0;
                 let prevUnifiedOrders = 0;
+                let unifiedCogs = 0;
+                let prevUnifiedCogs = 0;
                 const hasSalesSummary = await rpcHasFunction('public.get_sales_report_summary');
                 if (hasSalesSummary) {
                     const summaryPayload = {
@@ -408,6 +410,7 @@ export const KPIBar: React.FC = () => {
                     const summaryReturns = Number(summary?.returns_total) || 0;
                     unifiedSales = summaryGross - summaryReturns;
                     unifiedOrders = Number(summary?.total_orders) || 0;
+                    unifiedCogs = Math.max(0, Number(summary?.cogs) || 0);
 
                     const { data: prevSummaryData, error: prevSummaryErr }: any = await supabase.rpc('get_sales_report_summary', {
                         ...summaryPayload,
@@ -420,6 +423,7 @@ export const KPIBar: React.FC = () => {
                     const prevSummaryReturns = Number(prevSummary?.returns_total) || 0;
                     prevUnifiedSales = prevSummaryGross - prevSummaryReturns;
                     prevUnifiedOrders = Number(prevSummary?.total_orders) || 0;
+                    prevUnifiedCogs = Math.max(0, Number(prevSummary?.cogs) || 0);
                 }
 
                 const salesData = (kpi && typeof kpi === 'object') ? (kpi.sales || {}) : {};
@@ -429,7 +433,7 @@ export const KPIBar: React.FC = () => {
                     const grossSales = Number(salesData?.total_sales_accrual) || 0;
                     const returnsAmount = Number((salesData as any)?.returns_total ?? salesData?.returns) || 0;
                     const netSales = grossSales - returnsAmount;
-                    const cogs = Number(salesData?.cogs) || 0;
+                    const cogs = hasSalesSummary ? unifiedCogs : (Number(salesData?.cogs) || 0);
                     const adjustedCogs = Math.max(0, cogs);
                     const expenses = Number(salesData?.expenses) || 0;
                     const wastage = Number(salesData?.wastage) || 0;
@@ -440,7 +444,7 @@ export const KPIBar: React.FC = () => {
                     const prevGrossSales = Number(prevSalesData?.total_sales_accrual) || 0;
                     const prevReturnsAmount = Number((prevSalesData as any)?.returns_total ?? prevSalesData?.returns) || 0;
                     const prevNetSales = prevGrossSales - prevReturnsAmount;
-                    const prevCogs = Math.max(0, Number(prevSalesData?.cogs) || 0);
+                    const prevCogs = hasSalesSummary ? prevUnifiedCogs : Math.max(0, Number(prevSalesData?.cogs) || 0);
                     const prevGrossProfit = prevNetSales - prevCogs;
                     const prevNetProfit = prevGrossProfit - (Number(prevSalesData?.expenses) || 0) - (Number(prevSalesData?.wastage) || 0) - (Number(prevSalesData?.delivery_cost) || 0);
 
