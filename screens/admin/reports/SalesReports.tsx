@@ -140,8 +140,10 @@ const SalesReports: React.FC = () => {
                 setServerOrders((data as any[]).map((r: any) => ({
                     id: String(r.id),
                     status: String(r.status || ''),
+                    returnStatus: String(r.return_status || ''),
                     dateBy: r.date_by,
                     total: Number(r.total) || 0,
+                    orderCogs: Number(r.order_cogs) || 0,
                     paymentMethod: String(r.payment_method || ''),
                     orderSource: String(r.order_source || ''),
                     customerName: String(r.customer_name || ''),
@@ -476,6 +478,22 @@ const SalesReports: React.FC = () => {
         return () => { active = false; };
     }, [effectiveRange, selectedZoneId, invoiceOnly, language]);
 
+    const getStatusDisplay = (order: any): { label: string; color: string } => {
+        const s = String(order.status || '').toLowerCase();
+        const rs = String(order.returnStatus || '').toLowerCase();
+        if (s === 'delivered' && rs === 'full') return { label: 'مسترجع بالكامل', color: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' };
+        if (s === 'delivered' && rs === 'partial') return { label: 'مسترجع جزئياً', color: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200' };
+        if (s === 'delivered') return { label: 'تم التوصيل', color: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' };
+        if (s === 'cancelled') return { label: 'ملغي', color: 'bg-gray-200 text-gray-700 dark:bg-gray-600 dark:text-gray-200' };
+        if (s === 'pending') return { label: 'قيد الانتظار', color: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' };
+        if (s === 'preparing') return { label: 'قيد التجهيز', color: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' };
+        if (s === 'out_for_delivery') return { label: 'في الطريق', color: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200' };
+        if (s === 'scheduled') return { label: 'مجدول', color: 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200' };
+        return { label: s || '-', color: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300' };
+    };
+
+    const getStatusLabelText = (order: any): string => getStatusDisplay(order).label;
+
     const visibleOrders = useMemo(() => {
         const sorted = [...serverOrders].sort((a: any, b: any) => {
             const da = getEffectiveDate(a).getTime();
@@ -491,6 +509,7 @@ const SalesReports: React.FC = () => {
             'التاريخ',
             'اسم العميل',
             'الإجمالي',
+            'التكلفة',
             'الحالة',
             'رقم الفاتورة',
             'وقت إصدار الفاتورة',
@@ -518,23 +537,27 @@ const SalesReports: React.FC = () => {
             showNotification('فشل تحميل بيانات التصدير من الخادم', 'error');
             return;
         }
-        const rows = (data as any[]).map((r: any) => [
-            String(r.id).slice(-6).toUpperCase(),
-            new Date(String(r.date_by)).toLocaleString('ar-SA-u-nu-latn'),
-            String(r.customer_name || ''),
-            Number(r.total || 0).toFixed(2),
-            String(r.status || ''),
-            String(r.invoice_number || ''),
-            r.invoice_issued_at ? String(r.invoice_issued_at) : '',
-            methodLabel(String(r.payment_method || '')),
-            String(r.order_source || '') === 'in_store' ? 'حضوري' : 'أونلاين',
-            String(r.delivery_zone_name || '') || 'غير محدد',
-        ]);
+        const rows = (data as any[]).map((r: any) => {
+            const mapped = { status: String(r.status || ''), returnStatus: String(r.return_status || '') };
+            return [
+                String(r.id).slice(-6).toUpperCase(),
+                new Date(String(r.date_by)).toLocaleString('ar-SA-u-nu-latn'),
+                String(r.customer_name || ''),
+                Number(r.total || 0).toFixed(2),
+                Number(r.order_cogs || 0).toFixed(2),
+                getStatusLabelText(mapped),
+                String(r.invoice_number || ''),
+                r.invoice_issued_at ? String(r.invoice_issued_at) : '',
+                methodLabel(String(r.payment_method || '')),
+                String(r.order_source || '') === 'in_store' ? 'حضوري' : 'أونلاين',
+                String(r.delivery_zone_name || '') || 'غير محدد',
+            ];
+        });
         const success = await exportToXlsx(
             headers,
             rows,
             `sales_report_${startDate || 'all'}_to_${endDate || 'all'}.xlsx`,
-            { sheetName: 'Sales', currencyColumns: [3], currencyFormat: '#,##0.00', ...buildXlsxBrandOptions(settings, 'المبيعات', headers.length, { periodText: `الفترة: ${startDate || '—'} → ${endDate || '—'}` }) }
+            { sheetName: 'Sales', currencyColumns: [3, 4], currencyFormat: '#,##0.00', ...buildXlsxBrandOptions(settings, 'المبيعات', headers.length, { periodText: `الفترة: ${startDate || '—'} → ${endDate || '—'}` }) }
         );
         if (success) {
             showNotification(`تم حفظ التقرير في مجلد المستندات`, 'success');
@@ -951,6 +974,7 @@ const SalesReports: React.FC = () => {
                                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase border-r dark:border-gray-700">التاريخ</th>
                                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase border-r dark:border-gray-700">اسم العميل</th>
                                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase border-r dark:border-gray-700">الإجمالي</th>
+                                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase border-r dark:border-gray-700">التكلفة</th>
                                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase border-r dark:border-gray-700">الحالة</th>
                                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase border-r dark:border-gray-700">رقم الفاتورة</th>
                                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase border-r dark:border-gray-700">وقت إصدار الفاتورة</th>
@@ -968,7 +992,12 @@ const SalesReports: React.FC = () => {
                                         <td className="px-6 py-4 whitespace-nowrap font-semibold text-orange-500 border-r dark:border-gray-700">
                                             {Number(order.total || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {currency}
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap border-r dark:border-gray-700">{order.status}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap font-semibold text-gray-600 dark:text-gray-300 border-r dark:border-gray-700">
+                                            {Number(order.orderCogs || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {currency}
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap border-r dark:border-gray-700">
+                                            {(() => { const sd = getStatusDisplay(order); return <span className={`px-2 py-1 rounded-full text-xs font-semibold ${sd.color}`}>{sd.label}</span>; })()}
+                                        </td>
                                         <td className="px-6 py-4 whitespace-nowrap font-mono border-r dark:border-gray-700">{order.invoiceNumber || '-'}</td>
                                         <td className="px-6 py-4 whitespace-nowrap border-r dark:border-gray-700" dir="ltr">
                                             {order.invoiceIssuedAt ? new Date(order.invoiceIssuedAt).toLocaleString('ar-EG-u-nu-latn') : '-'}
