@@ -240,6 +240,16 @@ const ProductReports: React.FC = () => {
                         args: () => any;
                     }> = [
                             {
+                                name: 'get_product_sales_report_v11',
+                                has: async () => await rpcHasFunction('public.get_product_sales_report_v11'),
+                                args: () => ({
+                                    p_start_date: p_start,
+                                    p_end_date: p_end,
+                                    p_zone_id: zoneArg || undefined,
+                                    p_invoice_only: invoiceOnly,
+                                }),
+                            },
+                            {
                                 name: 'get_product_sales_report_v10',
                                 has: async () => await rpcHasFunction('public.get_product_sales_report_v10'),
                                 args: () => ({
