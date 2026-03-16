@@ -242,21 +242,31 @@ const PrintableContract: React.FC<Props> = ({ data, companyName, companyPhone, c
                     حُرر هذا العقد من نسختين أصليتين لكل طرف نسخة للعمل بموجبها.
                 </div>
 
-                {/* SIGNATURES */}
-                <div className="ct-signatures" style={{ position: 'relative', zIndex: 10 }}>
-                    <div className="ct-sig-box">
-                        <div className="ct-sig-title">الطرف الأول (صاحب العمل)</div>
-                        <div className="ct-sig-line"></div>
-                        <div className="ct-sig-label">الاسم: ________________________</div>
-                        <div className="ct-sig-label">التوقيع والختم</div>
-                        <div className="ct-sig-label">التاريخ: ___ / ___ / ______</div>
+                {/* SIGNATURES — inline styles guarantee layout even if CSS classes don't load */}
+                <div className="ct-signatures" style={{
+                    display: 'flex', justifyContent: 'space-between', marginTop: '20px',
+                    paddingTop: '14px', borderTop: '2px solid rgba(212,175,55,0.27)',
+                    position: 'relative', zIndex: 10
+                }}>
+                    <div className="ct-sig-box" style={{
+                        textAlign: 'center', width: '45%', border: '1px solid #E5E7EB',
+                        borderRadius: '8px', padding: '14px 10px'
+                    }}>
+                        <div className="ct-sig-title" style={{ fontWeight: 700, fontSize: '12px', color: '#1E3A8A', marginBottom: '4px' }}>الطرف الأول (صاحب العمل)</div>
+                        <div className="ct-sig-line" style={{ borderBottom: '1px dashed #9CA3AF', margin: '28px 0 8px' }}></div>
+                        <div className="ct-sig-label" style={{ fontSize: '10px', color: '#6B7280', marginTop: '4px' }}>الاسم: ________________________</div>
+                        <div className="ct-sig-label" style={{ fontSize: '10px', color: '#6B7280', marginTop: '4px' }}>التوقيع والختم</div>
+                        <div className="ct-sig-label" style={{ fontSize: '10px', color: '#6B7280', marginTop: '4px' }}>التاريخ: ___ / ___ / ______</div>
                     </div>
-                    <div className="ct-sig-box">
-                        <div className="ct-sig-title">الطرف الثاني (الموظف)</div>
-                        <div className="ct-sig-line"></div>
-                        <div className="ct-sig-label">الاسم: ________________________</div>
-                        <div className="ct-sig-label">رقم الهوية: ____________________</div>
-                        <div className="ct-sig-label">التاريخ: ___ / ___ / ______</div>
+                    <div className="ct-sig-box" style={{
+                        textAlign: 'center', width: '45%', border: '1px solid #E5E7EB',
+                        borderRadius: '8px', padding: '14px 10px'
+                    }}>
+                        <div className="ct-sig-title" style={{ fontWeight: 700, fontSize: '12px', color: '#1E3A8A', marginBottom: '4px' }}>الطرف الثاني (الموظف)</div>
+                        <div className="ct-sig-line" style={{ borderBottom: '1px dashed #9CA3AF', margin: '28px 0 8px' }}></div>
+                        <div className="ct-sig-label" style={{ fontSize: '10px', color: '#6B7280', marginTop: '4px' }}>الاسم: ________________________</div>
+                        <div className="ct-sig-label" style={{ fontSize: '10px', color: '#6B7280', marginTop: '4px' }}>رقم الهوية: ____________________</div>
+                        <div className="ct-sig-label" style={{ fontSize: '10px', color: '#6B7280', marginTop: '4px' }}>التاريخ: ___ / ___ / ______</div>
                     </div>
                 </div>
 

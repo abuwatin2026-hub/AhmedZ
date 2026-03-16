@@ -217,25 +217,38 @@ const PrintableGuarantee: React.FC<Props> = ({ data, companyName, companyPhone, 
                     </div>
                 </div>
 
-                {/* SIGNATURES */}
-                <div className="gt-signatures" style={{ position: 'relative', zIndex: 10 }}>
-                    <div className="gt-sig-box">
-                        <div className="gt-sig-title">صاحب العمل</div>
-                        <div className="gt-sig-line"></div>
-                        <div className="gt-sig-label">التوقيع والختم</div>
-                        <div className="gt-sig-label">___ / ___ / ______</div>
+                {/* SIGNATURES — inline styles guarantee layout even if CSS classes don't load */}
+                <div className="gt-signatures" style={{
+                    display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px',
+                    marginTop: '20px', paddingTop: '14px', borderTop: '2px solid rgba(212,175,55,0.27)',
+                    position: 'relative', zIndex: 10
+                }}>
+                    <div className="gt-sig-box" style={{
+                        textAlign: 'center', width: '30%', border: '1px solid #E5E7EB',
+                        borderRadius: '8px', padding: '12px 8px'
+                    }}>
+                        <div className="gt-sig-title" style={{ fontWeight: 700, fontSize: '11px', color: '#7C1D1D', marginBottom: '4px' }}>صاحب العمل</div>
+                        <div className="gt-sig-line" style={{ borderBottom: '1px dashed #9CA3AF', margin: '26px 0 8px' }}></div>
+                        <div className="gt-sig-label" style={{ fontSize: '10px', color: '#6B7280', marginTop: '4px' }}>التوقيع والختم</div>
+                        <div className="gt-sig-label" style={{ fontSize: '10px', color: '#6B7280', marginTop: '4px' }}>___ / ___ / ______</div>
                     </div>
-                    <div className="gt-sig-box">
-                        <div className="gt-sig-title">الموظف (المكفول)</div>
-                        <div className="gt-sig-line"></div>
-                        <div className="gt-sig-label">التوقيع</div>
-                        <div className="gt-sig-label">___ / ___ / ______</div>
+                    <div className="gt-sig-box" style={{
+                        textAlign: 'center', width: '30%', border: '1px solid #E5E7EB',
+                        borderRadius: '8px', padding: '12px 8px'
+                    }}>
+                        <div className="gt-sig-title" style={{ fontWeight: 700, fontSize: '11px', color: '#7C1D1D', marginBottom: '4px' }}>الموظف (المكفول)</div>
+                        <div className="gt-sig-line" style={{ borderBottom: '1px dashed #9CA3AF', margin: '26px 0 8px' }}></div>
+                        <div className="gt-sig-label" style={{ fontSize: '10px', color: '#6B7280', marginTop: '4px' }}>التوقيع</div>
+                        <div className="gt-sig-label" style={{ fontSize: '10px', color: '#6B7280', marginTop: '4px' }}>___ / ___ / ______</div>
                     </div>
-                    <div className="gt-sig-box">
-                        <div className="gt-sig-title">الكفيل / الضامن</div>
-                        <div className="gt-sig-line"></div>
-                        <div className="gt-sig-label">التوقيع وبصمة الإبهام</div>
-                        <div className="gt-sig-label">___ / ___ / ______</div>
+                    <div className="gt-sig-box" style={{
+                        textAlign: 'center', width: '30%', border: '1px solid #E5E7EB',
+                        borderRadius: '8px', padding: '12px 8px'
+                    }}>
+                        <div className="gt-sig-title" style={{ fontWeight: 700, fontSize: '11px', color: '#7C1D1D', marginBottom: '4px' }}>الكفيل / الضامن</div>
+                        <div className="gt-sig-line" style={{ borderBottom: '1px dashed #9CA3AF', margin: '26px 0 8px' }}></div>
+                        <div className="gt-sig-label" style={{ fontSize: '10px', color: '#6B7280', marginTop: '4px' }}>التوقيع وبصمة الإبهام</div>
+                        <div className="gt-sig-label" style={{ fontSize: '10px', color: '#6B7280', marginTop: '4px' }}>___ / ___ / ______</div>
                     </div>
                 </div>
 

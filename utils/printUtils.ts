@@ -87,53 +87,12 @@ export const printContent = (content: string, title: string = 'طباعة', opti
 
   const html = buildPrintHtml(content, title, { ...options, extraStyles });
 
-  const openAndPrint = (targetWindow: Window, cleanup: () => void) => {
-    targetWindow.document.open();
-    targetWindow.document.write(html);
-    targetWindow.document.close();
 
-    let didTrigger = false;
-    const triggerPrint = () => {
-      if (didTrigger) return;
-      didTrigger = true;
-      try {
-        targetWindow.focus();
-        const maybePromise = (targetWindow as any).print?.();
-        if (maybePromise && typeof maybePromise.then === 'function' && typeof maybePromise.catch === 'function') {
-          maybePromise.catch(() => undefined);
-        }
-      } catch {
-        return;
-      }
-
-      targetWindow.addEventListener('afterprint', cleanup, { once: true });
-      setTimeout(cleanup, 60000);
-    };
-
-    targetWindow.addEventListener('load', () => setTimeout(triggerPrint, 50), { once: true });
-    setTimeout(triggerPrint, 250);
-  };
-
-  const printWindow = window.open(
-    'about:blank',
-    '_blank',
-    `noopener,noreferrer,width=${window.screen.availWidth},height=${window.screen.availHeight}`
-  );
-  if (printWindow) {
-    openAndPrint(printWindow, () => {
-      try { printWindow.close(); } catch { }
-    });
-    return;
-  }
-
+  // Always use a hidden iframe — never window.open('about:blank') which triggers
+  // the SPA router in a new tab and shows a blank white app screen.
   const iframe = document.createElement('iframe');
-  iframe.style.position = 'fixed';
-  iframe.style.right = '0';
-  iframe.style.bottom = '0';
-  iframe.style.width = '0';
-  iframe.style.height = '0';
-  iframe.style.border = '0';
-  iframe.style.visibility = 'hidden';
+  iframe.setAttribute('aria-hidden', 'true');
+  iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:0;height:0;border:0;visibility:hidden;';
   document.body.appendChild(iframe);
 
   const iframeWindow = iframe.contentWindow;
@@ -144,13 +103,30 @@ export const printContent = (content: string, title: string = 'طباعة', opti
   }
 
   const removeIframe = () => {
-    if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+    try { if (iframe.parentNode) iframe.parentNode.removeChild(iframe); } catch { }
   };
 
-  iframeWindow.addEventListener('afterprint', removeIframe, { once: true });
-  setTimeout(removeIframe, 60000);
+  iframeWindow.document.open();
+  iframeWindow.document.write(html);
+  iframeWindow.document.close();
 
-  openAndPrint(iframeWindow, removeIframe);
+  let didTrigger = false;
+  const triggerPrint = () => {
+    if (didTrigger) return;
+    didTrigger = true;
+    try {
+      iframeWindow.focus();
+      const maybePromise = (iframeWindow as any).print?.();
+      if (maybePromise && typeof maybePromise.then === 'function') {
+        maybePromise.catch(() => undefined);
+      }
+    } catch { return; }
+    iframeWindow.addEventListener('afterprint', removeIframe, { once: true });
+    setTimeout(removeIframe, 60_000);
+  };
+
+  iframeWindow.addEventListener('load', () => setTimeout(triggerPrint, 80), { once: true });
+  setTimeout(triggerPrint, 350);
 };
 
 /**
