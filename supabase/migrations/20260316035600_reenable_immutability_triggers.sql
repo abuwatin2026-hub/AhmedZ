@@ -1,0 +1,3 @@
+-- Re-enable immutability triggers after data fix
+alter table inventory_movements enable trigger trg_inventory_movements_forbid_modify_posted;
+alter table inventory_movements enable trigger trg_inventory_movements_purchase_in_immutable;
