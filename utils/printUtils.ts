@@ -15,11 +15,7 @@ export const buildPrintHtml = (content: string, title: string = 'طباعة', op
             margin: 0;
           }
         `
-    : `
-          @page {
-            margin: 0;
-          }
-        `;
+    : ``;
   return `
     <!DOCTYPE html>
     <html dir="rtl" lang="ar">
@@ -129,7 +125,7 @@ export const buildPrintHtml = (content: string, title: string = 'طباعة', op
         }
       </style>
     </head>
-    <body>
+    <body class="allow-full-print">
       ${content}
     </body>
     </html>

@@ -391,7 +391,7 @@ svg {
 
 @media print {
   @page {
-    size: A5;
+    size: auto;
     margin: 0;
   }
 
@@ -408,19 +408,19 @@ svg {
     background-color: white;
   }
 
-  /* Hide everything by default */
-  body * {
+  /* Hide everything by default in print-area mode only */
+  body:not(.allow-full-print) * {
     visibility: hidden;
   }
 
-  /* Show only the print area and its children */
-  #print-area,
-  #print-area * {
+  /* Show only the print area and its children in print-area mode */
+  body:not(.allow-full-print) #print-area,
+  body:not(.allow-full-print) #print-area * {
     visibility: visible;
   }
 
-  /* Position print area at top-left */
-  #print-area {
+  /* Position print area at top-left in print-area mode */
+  body:not(.allow-full-print) #print-area {
     position: absolute !important;
     left: 0 !important;
     top: 0 !important;
@@ -438,7 +438,7 @@ svg {
     max-width: 100% !important;
   }
 
-  #print-area>* {
+  body:not(.allow-full-print) #print-area>* {
     width: 100% !important;
     max-width: none !important;
     margin: 0 !important;
@@ -446,18 +446,18 @@ svg {
   }
 
   /* Reset some styles for print */
-  #print-area .shadow-md,
-  #print-area .shadow-lg,
-  #print-area .shadow-xl {
+  body:not(.allow-full-print) #print-area .shadow-md,
+  body:not(.allow-full-print) #print-area .shadow-lg,
+  body:not(.allow-full-print) #print-area .shadow-xl {
     box-shadow: none !important;
   }
 
-  #print-area button {
+  body:not(.allow-full-print) #print-area button {
     display: none !important;
   }
 
   /* Hide sub-text during print */
-  #print-area .print-hide-subtext {
+  body:not(.allow-full-print) #print-area .print-hide-subtext {
     display: none !important;
   }
 
