@@ -144,7 +144,7 @@ export default function EmployeeHRScreen() {
     const html = renderToString(
       <PrintableContract data={contractData} companyName={brand.name} companyPhone={brand.contactNumber} companyAddress={brand.address} logoUrl={brand.logoUrl} printNumber={pn} />
     );
-    printContent(html, `عقد عمل — ${emp?.full_name || ''}`);
+    printContent(html, `عقد عمل — ${emp?.full_name || ''}`, { page: 'auto' });
   };
 
   /* ── Async print: guarantee ── */
@@ -177,7 +177,7 @@ export default function EmployeeHRScreen() {
     const html = renderToString(
       <PrintableGuarantee data={guaranteeData} companyName={brand.name} companyPhone={brand.contactNumber} companyAddress={brand.address} logoUrl={brand.logoUrl} printNumber={pn} />
     );
-    printContent(html, `ضمان موظف — ${emp?.full_name || ''}`);
+    printContent(html, `ضمان موظف — ${emp?.full_name || ''}`, { page: 'auto' });
   };
 
   /* ── Print blank contract template ── */
@@ -204,7 +204,7 @@ export default function EmployeeHRScreen() {
     const html = renderToString(
       <PrintableContract data={blankData} companyName={brand.name} companyPhone={brand.contactNumber} companyAddress={brand.address} logoUrl={brand.logoUrl} />
     );
-    printContent(html, 'نموذج عقد عمل فارغ');
+    printContent(html, 'نموذج عقد عمل فارغ', { page: 'auto' });
   };
 
   /* ── Print blank guarantee template ── */
@@ -228,7 +228,7 @@ export default function EmployeeHRScreen() {
     const html = renderToString(
       <PrintableGuarantee data={blankData} companyName={brand.name} companyPhone={brand.contactNumber} companyAddress={brand.address} logoUrl={brand.logoUrl} />
     );
-    printContent(html, 'نموذج ضمان موظف فارغ');
+    printContent(html, 'نموذج ضمان موظف فارغ', { page: 'auto' });
   };
 
   const loadAll = useCallback(async () => {

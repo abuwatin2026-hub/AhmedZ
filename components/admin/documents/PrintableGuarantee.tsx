@@ -41,12 +41,13 @@ const PrintableGuarantee: React.FC<Props> = ({ data, companyName, companyPhone, 
     const today = new Date().toLocaleDateString('ar-EG-u-nu-latn', { year: 'numeric', month: 'long', day: 'numeric' });
 
     return (
-        <div className="bg-white relative font-sans print:w-full print:max-w-none print:m-0 print:p-0 overflow-hidden" dir="rtl">
+        <div className="bg-white relative font-sans print:w-full print:max-w-none print:m-0 print:p-0" dir="rtl">
             <style>{`
         @media print {
             @page { size: A4 portrait; margin: 8mm; }
-            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0; padding: 0; background: white; }
-            * { box-sizing: border-box; }
+            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0; padding: 0; background: white; overflow: visible !important; }
+            * { box-sizing: border-box; overflow: visible !important; }
+            .gt-doc { overflow: visible !important; }
         }
         .gt-doc {
             width: 100%; padding: 6mm 8mm 5mm 8mm;

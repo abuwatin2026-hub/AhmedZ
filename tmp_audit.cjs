@@ -6,26 +6,26 @@ const supabase = createClient(SUPABASE_URL, ANON_KEY);
 (async () => {
   await supabase.auth.signInWithPassword({ email: 'owner@azta.com', password: 'AhmedZ#123456' });
 
-  const { data: d10 } = await supabase.rpc('get_product_sales_report_v10', {
-    p_start_date: '2000-01-01T00:00:00Z', p_end_date: '2100-01-01T23:59:59Z' });
-
-  console.log('=== بعد إصلاح Scale Cap ===\n');
-  const sorted = (d10 || []).sort((a, b) => Number(b.total_sales) - Number(a.total_sales));
+  const { data: fd } = await supabase.rpc('debug_get_func_def');
+  const src = fd || '';
   
-  for (const row of sorted) {
-    const name = (row.item_name?.ar || '').substring(0, 40).padEnd(42);
-    const qty = Number(row.quantity_sold);
-    const sales = Number(row.total_sales);
-    const cost = Number(row.total_cost);
-    const profit = Number(row.total_profit);
-    const margin = sales > 0 ? ((profit/sales)*100).toFixed(0) : '-';
-    const perUnit = qty > 0 ? (sales/qty).toFixed(2) : '-';
-    
-    let flag = '✅';
-    if (sales === 0 && qty > 0) flag = '🔴';
-    else if (profit < 0) flag = '⚠️';
-
-    console.log(`${flag} ${name} | كمية:${String(qty).padStart(5)} | مبيعات:${String(sales.toFixed(0)).padStart(8)} | م/و:${String(perUnit).padStart(6)} | هامش:${String(margin).padStart(6)}%`);
+  // Extract returns_sales CTE
+  const idx = src.indexOf('returns_sales as');
+  const end = src.indexOf('returns_cost as');
+  if (idx >= 0 && end >= 0) {
+    console.log('=== returns_sales CTE ===');
+    console.log(src.substring(idx, end));
+  }
+  
+  // Also check what sales_lines looks like for زيت صلالة
+  // The sales_lines CTE uses order_item_net and order_totals
+  // Let's check if the issue is in sales_lines or returns_sales
+  const idxSl = src.indexOf('sales_lines as');
+  const idxRb = src.indexOf('returns_base as');
+  if (idxSl >= 0) {
+    const endSl = idxRb >= 0 ? idxRb : idxSl + 1000;
+    console.log('\n=== sales_lines CTE ===');
+    console.log(src.substring(idxSl, endSl).substring(0, 800));
   }
 
   await supabase.auth.signOut();
