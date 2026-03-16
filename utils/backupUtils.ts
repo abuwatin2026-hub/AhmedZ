@@ -46,20 +46,22 @@ export const checkBackupRestoreReadiness = async (): Promise<BackupReadinessRepo
         message: 'skipped in readiness check for safety',
     });
 
-    const bucketsProbe = await supabase.storage.listBuckets();
-    const hasAutomatedBucket = !bucketsProbe.error && Array.isArray(bucketsProbe.data) && bucketsProbe.data.some(b => b.name === 'automated_backups');
+    // Note: listBuckets() requires service_role and returns empty with the anon key.
+    // Instead, probe the bucket directly — succeeds even with 0 files if the bucket exists & is accessible.
+    const bucketProbe = await supabase.storage.from('automated_backups').list('', { limit: 1 });
+    const hasAutomatedBucket = !bucketProbe.error;
     checks.push({
         key: 'automated_backups_bucket',
-        ok: !!hasAutomatedBucket,
-        message: bucketsProbe.error ? bucketsProbe.error.message : (hasAutomatedBucket ? 'ok' : 'missing'),
+        ok: hasAutomatedBucket,
+        message: bucketProbe.error ? bucketProbe.error.message : 'ok',
     });
 
     if (hasAutomatedBucket) {
-        const objectsProbe = await supabase.storage.from('automated_backups').list('', { limit: 1, sortBy: { column: 'created_at', order: 'desc' } });
+        const objects = Array.isArray(bucketProbe.data) ? bucketProbe.data.length : 0;
         checks.push({
             key: 'automated_backups_latest_object',
-            ok: !objectsProbe.error && Array.isArray(objectsProbe.data) && objectsProbe.data.length > 0,
-            message: objectsProbe.error ? objectsProbe.error.message : `objects: ${Array.isArray(objectsProbe.data) ? objectsProbe.data.length : 0}`,
+            ok: objects > 0,
+            message: `objects: ${objects}`,
         });
     }
 
