@@ -128,9 +128,52 @@ const PurchaseOrderScreen: React.FC = () => {
         }
     };
 
+    const resolvePurchaseUomByItemId = async (items: any[]) => {
+        const out = new Map<string, string>();
+        const supabase = getSupabaseClient();
+        if (!supabase || !Array.isArray(items) || items.length === 0) return out;
+        const pairs = items
+            .map((it: any) => ({
+                itemId: String(it?.itemId || it?.item_id || '').trim(),
+                uomId: String(it?.uomId || it?.uom_id || '').trim(),
+            }))
+            .filter((x) => x.itemId && x.uomId);
+        if (!pairs.length) return out;
+        const uomIds = [...new Set(pairs.map((p) => p.uomId))];
+        try {
+            const { data: uomRows } = await supabase
+                .from('uom_units')
+                .select('id,code,data')
+                .in('id', uomIds);
+            const uomLabelById = new Map<string, string>();
+            for (const u of ((uomRows || []) as any[])) {
+                const uid = String((u as any)?.id || '').trim();
+                if (!uid) continue;
+                const d: any = (u as any)?.data || {};
+                const labelObj: any = d?.label && typeof d.label === 'object'
+                    ? d.label
+                    : (d?.name && typeof d.name === 'object' ? d.name : {});
+                const ar = typeof labelObj?.ar === 'string' ? labelObj.ar.trim() : '';
+                const code = String((u as any)?.code || '').trim();
+                const fallback = code ? String(getUnitLabel(code as any, 'ar') || code) : '';
+                const value = ar || fallback || code;
+                if (value) uomLabelById.set(uid, value);
+            }
+            for (const p of pairs) {
+                if (!out.has(p.itemId) && uomLabelById.has(p.uomId)) {
+                    out.set(p.itemId, String(uomLabelById.get(p.uomId) || ''));
+                }
+            }
+        } catch {
+            return out;
+        }
+        return out;
+    };
+
     const handlePrintPo = async (order: PurchaseOrder) => {
         const brand = resolveBrandingForWarehouseId(order.warehouseId);
         const branchHdr = await fetchBranchHeader(scope?.branchId);
+        const purchaseUomByItemId = await resolvePurchaseUomByItemId(order.items || []);
         const statusLabel = order.status === 'draft'
             ? 'Draft'
             : order.status === 'cancelled'
@@ -150,9 +193,11 @@ const PurchaseOrderScreen: React.FC = () => {
                 order={{
                     ...order,
                     items: (order.items || []).map((it: any) => {
+                        const itemId = String(it?.itemId || '').trim();
+                        const purchaseUom = purchaseUomByItemId.get(itemId) || '';
+                        if (purchaseUom) return { ...it, uomCode: purchaseUom };
                         const existingUom = String(it?.uomCode || it?.uom_code || it?.unit || '').trim();
                         if (existingUom && /[\u0600-\u06FF]/.test(existingUom)) return it;
-                        const itemId = String(it?.itemId || '').trim();
                         const mi = menuItems.find((m: any) => String(m?.id) === itemId);
                         const unitTypeKey = String((mi as any)?.unitType || (mi as any)?.unit_type || existingUom || '').trim();
                         if (!unitTypeKey) return it;
@@ -663,11 +708,11 @@ const PurchaseOrderScreen: React.FC = () => {
             }))).filter((x: any) => Number(x.quantity || 0) > 0);
 
         // Map uomCode from PO items to GRN items by itemId
-        const poUomByItemId = new Map<string, string>();
+        const poUomByItemId = await resolvePurchaseUomByItemId(po.items || []);
         for (const poItem of (po.items || [])) {
             const itemId = String((poItem as any)?.itemId || '').trim();
             const uomCode = String((poItem as any)?.uomCode || (poItem as any)?.uom_code || (poItem as any)?.unit || (poItem as any)?.uom || '').trim();
-            if (itemId && uomCode) poUomByItemId.set(itemId, uomCode);
+            if (itemId && uomCode && !poUomByItemId.has(itemId)) poUomByItemId.set(itemId, uomCode);
         }
         const grnItems = normalizedItems.map((it: any) => {
             const rawUom = poUomByItemId.get(String(it.itemId || '').trim()) || '';
