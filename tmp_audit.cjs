@@ -6,46 +6,27 @@ const supabase = createClient(SUPABASE_URL, ANON_KEY);
 (async () => {
   await supabase.auth.signInWithPassword({ email: 'owner@azta.com', password: 'AhmedZ#123456' });
 
-  // Check what fields the expanded_items uses for the report
-  // The SQL uses: ei.item->>'price' as price, ei.item->>'quantity' as quantity
-  // Let's examine the raw JSON for order 4ba327a6 (جوي سفن, scale=1.61)
+  const { data: d10 } = await supabase.rpc('get_product_sales_report_v10', {
+    p_start_date: '2000-01-01T00:00:00Z', p_end_date: '2100-01-01T23:59:59Z' });
 
-  const { data: orders } = await supabase.from('orders').select('*');
-  const o = (orders || []).find(o => o.id.startsWith('4ba327a6'));
-  if (!o) { console.log('Not found'); return; }
-
-  const d = o.data || {};
-  const snap = d.invoiceSnapshot || {};
+  console.log('=== بعد إصلاح Scale Cap ===\n');
+  const sorted = (d10 || []).sort((a, b) => Number(b.total_sales) - Number(a.total_sales));
   
-  console.log('=== Order 4ba327a6 Raw ===');
-  console.log('data keys:', Object.keys(d).join(', '));
-  console.log('snap keys:', Object.keys(snap).join(', '));
-  console.log('subtotal (data):', d.subtotal);
-  console.log('subtotal (snap):', snap.subtotal);
-  console.log('discount (data):', d.discount, d.discountAmount, d.discountTotal);
-  console.log('currency:', d.currency, o.currency);
-  console.log('fx_rate:', o.fx_rate);
+  for (const row of sorted) {
+    const name = (row.item_name?.ar || '').substring(0, 40).padEnd(42);
+    const qty = Number(row.quantity_sold);
+    const sales = Number(row.total_sales);
+    const cost = Number(row.total_cost);
+    const profit = Number(row.total_profit);
+    const margin = sales > 0 ? ((profit/sales)*100).toFixed(0) : '-';
+    const perUnit = qty > 0 ? (sales/qty).toFixed(2) : '-';
+    
+    let flag = '✅';
+    if (sales === 0 && qty > 0) flag = '🔴';
+    else if (profit < 0) flag = '⚠️';
 
-  const items = snap.items || d.items || [];
-  console.log('\nItems:');
-  for (const oi of items) {
-    const name = (oi.name?.ar || oi.name || '').substring(0, 30);
-    console.log(`  ${name}: qty=${oi.quantity}, price=${oi.price}, line_total=${oi.line_total}`);
+    console.log(`${flag} ${name} | كمية:${String(qty).padStart(5)} | مبيعات:${String(sales.toFixed(0)).padStart(8)} | م/و:${String(perUnit).padStart(6)} | هامش:${String(margin).padStart(6)}%`);
   }
-
-  // The report SQL reads:
-  // discount: nullif(o.data->>'discountAmount','')::numeric or discountTotal or discount
-  // subtotal: nullif(o.data->>'subtotal','')::numeric
-  // price from item: ei.item->>'price'
-  // quantity from item: ei.item->>'quantity'
-  // The items are from: jsonb_array_elements(jsonb_path_query_array(o.data, '$.items[*]') ||
-  //                                          jsonb_path_query_array(o.data, '$.invoiceSnapshot.items[*]'))
-
-  console.log('\nReport SQL would read:');
-  console.log('  discount = data.discountAmount =', d.discountAmount);
-  console.log('  discount = data.discountTotal =', d.discountTotal);
-  console.log('  discount = data.discount =', d.discount);
-  console.log('  subtotal = data.subtotal =', d.subtotal);
 
   await supabase.auth.signOut();
 })();
