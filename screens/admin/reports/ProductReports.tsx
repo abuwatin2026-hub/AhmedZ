@@ -201,7 +201,7 @@ const ProductReports: React.FC = () => {
                     let stockQuery = supabase
                         .from('stock_management')
                         .select('item_id,available_quantity,reserved_quantity,avg_cost');
-                    if (!zoneArg && warehouseId) {
+                    if (warehouseId) {
                         stockQuery = stockQuery.eq('warehouse_id', warehouseId);
                     }
                     const { data: stocks, error: smErr } = await stockQuery;

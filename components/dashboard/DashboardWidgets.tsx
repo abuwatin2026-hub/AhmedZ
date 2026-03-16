@@ -129,10 +129,14 @@ export const TodaySalesWidget: React.FC = () => {
     if (!canView) return null;
     if (loading) return <SkeletonCard />;
 
-    const revenue = Number(todayData?.total_sales_accrual || todayData?.total_collected || 0);
+    const revenueGross = Number(todayData?.total_sales_accrual || todayData?.total_collected || 0);
+    const revenueReturns = Number((todayData?.returns_total ?? todayData?.returns) || 0);
+    const revenue = revenueGross - revenueReturns;
     const orders = Number(todayData?.total_orders_accrual || todayData?.total_orders || 0);
     const avg = orders > 0 ? revenue / orders : 0;
-    const yesterdayRevenue = Number(yesterdayData?.total_sales_accrual || yesterdayData?.total_collected || 0);
+    const yesterdayRevenueGross = Number(yesterdayData?.total_sales_accrual || yesterdayData?.total_collected || 0);
+    const yesterdayRevenueReturns = Number((yesterdayData?.returns_total ?? yesterdayData?.returns) || 0);
+    const yesterdayRevenue = yesterdayRevenueGross - yesterdayRevenueReturns;
     const diff = yesterdayRevenue > 0 ? ((revenue - yesterdayRevenue) / yesterdayRevenue) * 100 : 0;
 
     return (
@@ -193,15 +197,14 @@ export const ProfitabilityWidget: React.FC = () => {
     if (loading) return <SkeletonCard />;
     if (!data) return null;
 
-    const revenue = Number(data.total_sales_accrual || data.total_collected || 0);
-    const grossSubtotal = Number(data.gross_subtotal || 0);
-    const discounts = Number(data.discounts || 0);
-    const returns = Number(data.returns || 0);
+    const revenueGross = Number(data.total_sales_accrual || data.total_collected || 0);
+    const returns = Number((data.returns_total ?? data.returns) || 0);
+    const revenue = revenueGross - returns;
     const cogs = Number(data.cogs || 0);
     const expenses = Number(data.expenses || 0);
     const wastage = Number(data.wastage || 0);
     const deliveryCost = Number(data.delivery_cost || 0);
-    const grossProfit = (grossSubtotal - discounts - returns) - cogs;
+    const grossProfit = revenue - cogs;
     const netProfit = grossProfit - wastage - expenses - deliveryCost;
     const grossMargin = revenue > 0 ? (grossProfit / revenue) * 100 : 0;
     const netMargin = revenue > 0 ? (netProfit / revenue) * 100 : 0;
