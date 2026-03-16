@@ -57,7 +57,6 @@ const ProductReports: React.FC = () => {
 
     const [reportData, setReportData] = useState<ProductSalesRow[]>([]);
     const [unifiedSummary, setUnifiedSummary] = useState<{ sales: number; orders: number; cogs: number } | null>(null);
-    const [quantitySourceFromMovements, setQuantitySourceFromMovements] = useState(false);
     const [allStockInventoryValue, setAllStockInventoryValue] = useState(0);
     const [recallBatchId, setRecallBatchId] = useState('');
     const [recallLoading, setRecallLoading] = useState(false);
@@ -129,11 +128,9 @@ const ProductReports: React.FC = () => {
             if (!supabase) return;
 
             setLoading(true);
-            setQuantitySourceFromMovements(false);
             try {
                 let p_start = '2000-01-01T00:00:00Z';
                 let p_end = '2100-01-01T23:59:59Z';
-                const allowMovementQtyOverride = Boolean((window as any)?.__PRODUCT_REPORT_USE_MOVEMENT_QTY__ === true);
 
                 if (range) {
                     p_start = range.start.toISOString();
@@ -305,38 +302,16 @@ const ProductReports: React.FC = () => {
                     }
                 }
 
-                const quantityFromMovements = new Map<string, number>();
-                if (allowMovementQtyOverride) {
-                    try {
-                        const { data: movData, error: movErr } = await supabase.rpc('get_product_sales_quantity_from_movements', {
-                            p_start_date: p_start,
-                            p_end_date: p_end,
-                            p_zone_id: zoneArg ?? null,
-                        });
-                        if (!movErr && Array.isArray(movData)) {
-                            for (const row of movData as any[]) {
-                                const id = String(row?.item_id ?? '');
-                                if (id) quantityFromMovements.set(id, parseNumber(row?.quantity_sold));
-                            }
-                        }
-                    } catch (_) { }
-                }
-
                 if (rpcRows) {
                     const merged = rpcRows.map((r) => {
                         const itemId = String(r.item_id || '');
                         const s = stockById.get(itemId);
-                        const qtyFromMov = quantityFromMovements.get(itemId);
-                        const base = s
+                        return s
                             ? { ...r, current_stock: s.current_stock, reserved_stock: s.reserved_stock, current_cost_price: s.current_cost_price }
                             : r;
-                        return allowMovementQtyOverride && qtyFromMov !== undefined
-                            ? { ...base, quantity_sold: qtyFromMov }
-                            : base;
                     });
                     if (active) {
                         setReportData(merged);
-                        setQuantitySourceFromMovements(allowMovementQtyOverride && quantityFromMovements.size > 0);
                     }
                     return;
                 }
@@ -919,11 +894,6 @@ const ProductReports: React.FC = () => {
                 </div>
                 <div className="text-xs text-gray-500 dark:text-gray-400 md:ml-auto flex flex-col gap-0.5">
                     <span>تاريخ التقرير: invoice_date → paid_at → delivered_at → created_at</span>
-                    {quantitySourceFromMovements && (
-                        <span className="text-green-600 dark:text-green-400" title="الكميات المباعة معتمدة من حركات المخزون (sale_out) كمصدر حقيقة واحد">
-                            الكميات المباعة من حركات المخزون (مصدر موحّد)
-                        </span>
-                    )}
                 </div>
                 <div className="flex items-center gap-2">
                     <label htmlFor="zone">منطقة:</label>
