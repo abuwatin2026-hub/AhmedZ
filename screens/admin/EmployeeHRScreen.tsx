@@ -5,7 +5,7 @@ import { useToast } from '../../contexts/ToastContext';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useAuth } from '../../contexts/AuthContext';
 import PageLoader from '../../components/PageLoader';
-import { printContent } from '../../utils/printUtils';
+import { printBlobDocument } from '../../utils/printUtils';
 import PrintableContract, { ContractPrintData } from '../../components/admin/documents/PrintableContract';
 import PrintableGuarantee, { GuaranteePrintData } from '../../components/admin/documents/PrintableGuarantee';
 
@@ -144,7 +144,7 @@ export default function EmployeeHRScreen() {
     const html = renderToString(
       <PrintableContract data={contractData} companyName={brand.name} companyPhone={brand.contactNumber} companyAddress={brand.address} logoUrl={brand.logoUrl} printNumber={pn} />
     );
-    printContent(html, `عقد عمل — ${emp?.full_name || ''}`, { page: 'auto', includeAppStyles: false });
+    printBlobDocument(html, `عقد عمل — ${emp?.full_name || ''}`);
   };
 
   /* ── Async print: guarantee ── */
@@ -177,7 +177,7 @@ export default function EmployeeHRScreen() {
     const html = renderToString(
       <PrintableGuarantee data={guaranteeData} companyName={brand.name} companyPhone={brand.contactNumber} companyAddress={brand.address} logoUrl={brand.logoUrl} printNumber={pn} />
     );
-    printContent(html, `ضمان موظف — ${emp?.full_name || ''}`, { page: 'auto', includeAppStyles: false });
+    printBlobDocument(html, `ضمان موظف — ${emp?.full_name || ''}`);
   };
 
   /* ── Print blank contract template ── */
@@ -204,7 +204,7 @@ export default function EmployeeHRScreen() {
     const html = renderToString(
       <PrintableContract data={blankData} companyName={brand.name} companyPhone={brand.contactNumber} companyAddress={brand.address} logoUrl={brand.logoUrl} />
     );
-    printContent(html, 'نموذج عقد عمل فارغ', { page: 'auto', includeAppStyles: false });
+    printBlobDocument(html, 'نموذج عقد عمل فارغ');
   };
 
   /* ── Print blank guarantee template ── */
@@ -228,7 +228,7 @@ export default function EmployeeHRScreen() {
     const html = renderToString(
       <PrintableGuarantee data={blankData} companyName={brand.name} companyPhone={brand.contactNumber} companyAddress={brand.address} logoUrl={brand.logoUrl} />
     );
-    printContent(html, 'نموذج ضمان موظف فارغ', { page: 'auto', includeAppStyles: false });
+    printBlobDocument(html, 'نموذج ضمان موظف فارغ');
   };
 
   const loadAll = useCallback(async () => {

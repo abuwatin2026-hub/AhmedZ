@@ -165,3 +165,71 @@ export const formatDateOnly = (dateString: string): string => {
     day: 'numeric',
   });
 };
+
+/**
+ * printBlobDocument — مخصص لطباعة المستندات المستقلة (عقود، ضمانات، ...).
+ *
+ * يعمل بثلاث خطوات:
+ *  1. استخراج <style> من HTML المُصيَّر ووضعه في <head>
+ *  2. تحويل HTML كاملاً إلى Blob URL (معزول تماماً عن التطبيق)
+ *  3. فتح popup window حقيقية (ليست tab) — لا يتدخل فيها SPA router أبداً
+ */
+export const printBlobDocument = (renderedHtml: string, title: string = 'طباعة'): void => {
+  // Hoist component <style> to <head>
+  const { hoistedCss, bodyHtml } = hoistComponentStyles(renderedHtml);
+
+  const fullHtml = `<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${title}</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: white; }
+    @media print {
+      html, body { width: 100%; height: auto; overflow: visible; }
+    }
+  </style>
+  ${hoistedCss ? `<style>\n${hoistedCss}\n</style>` : ''}
+</head>
+<body>
+${bodyHtml}
+<script>
+  window.addEventListener('load', function() {
+    setTimeout(function() {
+      window.focus();
+      window.print();
+      window.addEventListener('afterprint', function() { window.close(); });
+      setTimeout(function() { window.close(); }, 120000);
+    }, 250);
+  });
+<\/script>
+</body>
+</html>`;
+
+  const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8' });
+  const blobUrl = URL.createObjectURL(blob);
+
+  // Use popup window (not tab) — SPA router NEVER intercepts popup windows
+  const sw = window.screen.availWidth;
+  const sh = window.screen.availHeight;
+  const pw = Math.min(900, sw);
+  const ph = Math.min(1100, sh);
+  const left = Math.floor((sw - pw) / 2);
+  const top = Math.floor((sh - ph) / 2);
+
+  const popup = window.open(
+    blobUrl,
+    'azta_doc_print',
+    `width=${pw},height=${ph},left=${left},top=${top},toolbar=1,menubar=1,scrollbars=1,resizable=1`
+  );
+
+  // Revoke blob URL once the popup loads (browser already has the content)
+  const revoke = () => URL.revokeObjectURL(blobUrl);
+  if (popup) {
+    popup.addEventListener('load', revoke, { once: true });
+  }
+  // Fallback revoke after 30s even if popup is blocked
+  setTimeout(revoke, 30_000);
+};
