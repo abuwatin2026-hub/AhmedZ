@@ -132,13 +132,15 @@ export const buildPrintHtml = (content: string, title: string = 'طباعة', op
   `;
 };
 
-export const printContent = (content: string, title: string = 'طباعة', options?: { page?: 'A5' | 'auto' }) => {
+export const printContent = (content: string, title: string = 'طباعة', options?: { page?: 'A5' | 'auto', includeAppStyles?: boolean }) => {
   // Extract all current styles from the document to inject safely as text
   let extraStyles = '';
-  try {
-    const styleTags = document.querySelectorAll('style');
-    styleTags.forEach(tag => { extraStyles += tag.innerHTML + '\n'; });
-  } catch { }
+  if (options?.includeAppStyles !== false) {
+    try {
+      const styleTags = document.querySelectorAll('style');
+      styleTags.forEach(tag => { extraStyles += tag.innerHTML + '\n'; });
+    } catch { }
+  }
 
   const html = buildPrintHtml(content, title, { ...options, extraStyles });
 
@@ -169,7 +171,11 @@ export const printContent = (content: string, title: string = 'طباعة', opti
     setTimeout(triggerPrint, 250);
   };
 
-  const printWindow = window.open('about:blank', '_blank');
+  const printWindow = window.open(
+    'about:blank',
+    '_blank',
+    `noopener,noreferrer,width=${window.screen.availWidth},height=${window.screen.availHeight}`
+  );
   if (printWindow) {
     openAndPrint(printWindow, () => {
       try { printWindow.close(); } catch { }
