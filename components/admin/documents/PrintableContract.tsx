@@ -244,19 +244,29 @@ const PrintableContract: React.FC<Props> = ({ data, companyName, companyPhone, c
                     حُرر هذا العقد من نسختين أصليتين لكل طرف نسخة للعمل بموجبها.
                 </div>
 
-                {/* SIGNATURES — table guarantees side-by-side layout; ct-sig-table avoids page-break */}
-                <table className="ct-sig-table" style={{ position: 'relative', zIndex: 10 }}>
+                {/* SIGNATURES — all inline styles + table-layout:fixed ensures correct side-by-side rendering */}
+                <table style={{
+                    width: '100%',
+                    tableLayout: 'fixed',
+                    borderCollapse: 'collapse',
+                    marginTop: '10px',
+                    paddingTop: '8px',
+                    borderTop: '2px solid rgba(212,175,55,0.27)',
+                    pageBreakInside: 'avoid',
+                    position: 'relative',
+                    zIndex: 10,
+                } as React.CSSProperties}>
                     <tbody>
                         <tr>
-                            <td style={{ width: '49%', textAlign: 'center', border: '1px solid #E5E7EB', borderRadius: '6px', padding: '8px 8px', verticalAlign: 'top' }}>
+                            <td style={{ width: '48%', textAlign: 'center', border: '1px solid #E5E7EB', borderRadius: '6px', padding: '8px', verticalAlign: 'top' }}>
                                 <div style={{ fontWeight: 700, fontSize: '11px', color: '#1E3A8A', marginBottom: '3px' }}>الطرف الأول (صاحب العمل)</div>
                                 <div style={{ borderBottom: '1px dashed #9CA3AF', margin: '20px 0 6px' }}></div>
                                 <div style={{ fontSize: '9px', color: '#6B7280', marginTop: '3px' }}>الاسم: ________________________</div>
                                 <div style={{ fontSize: '9px', color: '#6B7280', marginTop: '3px' }}>التوقيع والختم</div>
                                 <div style={{ fontSize: '9px', color: '#6B7280', marginTop: '3px' }}>التاريخ: ___ / ___ / ______</div>
                             </td>
-                            <td style={{ width: '2%' }}></td>
-                            <td style={{ width: '49%', textAlign: 'center', border: '1px solid #E5E7EB', borderRadius: '6px', padding: '8px 8px', verticalAlign: 'top' }}>
+                            <td style={{ width: '4%' }}></td>
+                            <td style={{ width: '48%', textAlign: 'center', border: '1px solid #E5E7EB', borderRadius: '6px', padding: '8px', verticalAlign: 'top' }}>
                                 <div style={{ fontWeight: 700, fontSize: '11px', color: '#1E3A8A', marginBottom: '3px' }}>الطرف الثاني (الموظف)</div>
                                 <div style={{ borderBottom: '1px dashed #9CA3AF', margin: '20px 0 6px' }}></div>
                                 <div style={{ fontSize: '9px', color: '#6B7280', marginTop: '3px' }}>الاسم: ________________________</div>

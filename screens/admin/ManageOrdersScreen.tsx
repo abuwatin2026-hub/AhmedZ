@@ -5085,22 +5085,9 @@ const ManageOrdersScreen: React.FC = () => {
                                                         </div>
                                                     );
                                                 })()}
-                                                {order.status === 'delivered'
-                                                    && canVoidDelivered
-                                                    && !Boolean((order as any)?.voidedAt || (order as any)?.data?.voidedAt)
-                                                    && String((order as any).returnStatus || '').toLowerCase() !== 'full'
-                                                    && (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => {
-                                                                setVoidOrderId(order.id);
-                                                                setVoidReason('');
-                                                            }}
-                                                            className="mt-2 w-full px-3 py-2 bg-purple-700 text-white rounded-md hover:bg-purple-800 transition text-sm font-semibold"
-                                                        >
-                                                            🧾 إلغاء بعد التسليم (عكس)
-                                                        </button>
-                                                    )}
+                                                {/* Void-after-delivery button removed: post-delivery cancellations must go
+                                                    through the formal returns flow (📚 سجل المرتجعات / ↩️ استرجاع)
+                                                    which creates a proper sales_returns record for accounting transparency. */}
                                                 {isDeliveryOnly && !isInStoreOrder(order) && order.assignedDeliveryUserId === adminUser?.id && !order.deliveryAcceptedAt && order.status !== 'delivered' && order.status !== 'cancelled' && (
                                                     <button
                                                         type="button"
