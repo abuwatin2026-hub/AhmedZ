@@ -158,4 +158,51 @@ export const formatSourceRefAr = (sourceTable: string | null | undefined, source
   if (label && label !== '—') return `${label} • ${id}`;
   return id;
 };
+/** Translates template class names (e.g. 'PrintablePurchaseOrder') to Arabic */
+export const localizeTemplateAr = (template: string | null | undefined): string => {
+  const s = String(template || '').trim();
+  if (!s) return '—';
+  const map: Record<string, string> = {
+    PrintablePurchaseOrder:     'نموذج أمر شراء',
+    PrintableGrn:               'نموذج استلام بضاعة',
+    PrintableOrder:             'نموذج فاتورة مبيعات',
+    PrintableQuotation:         'نموذج عرض سعر',
+    PrintableReceipt:           'نموذج إيصال دفع',
+    PrintableWarehouseTransfer: 'نموذج تحويل مستودع',
+    PrintableContract:          'نموذج عقد موظف',
+    PrintableContractPDF:       'نموذج عقد موظف (PDF)',
+    PrintableGuarantee:         'نموذج ضمان موظف',
+    PrintableGuaranteePDF:      'نموذج ضمان موظف (PDF)',
+    PrintablePaymentVoucher:    'نموذج سند صرف',
+    PrintableReceiptVoucher:    'نموذج سند قبض',
+    PrintableJournalVoucher:    'نموذج قيد يومية',
+  };
+  return map[s] || s;
+};
+
+/**
+ * Translates auto-generated English detail strings to Arabic.
+ * e.g. 'Printed PO PO-MAIN-2026-000004' -> Arabic equivalent
+ */
+export const localizeDetailsAr = (details: string | null | undefined): string => {
+  const raw = String(details || '').trim();
+  if (!raw) return '—';
+  const patterns: [RegExp, string][] = [
+    [/^Printed PO (.+)$/i,         'طباعة أمر شراء رقم $1'],
+    [/^Printed GRN (.+)$/i,        'طباعة إشعار استلام رقم $1'],
+    [/^Printed Order (.+)$/i,      'طباعة فاتورة رقم $1'],
+    [/^Printed Quotation (.+)$/i,  'طباعة عرض سعر رقم $1'],
+    [/^Printed Receipt (.+)$/i,    'طباعة إيصال دفع رقم $1'],
+    [/^Printed Transfer (.+)$/i,   'طباعة تحويل مستودع رقم $1'],
+    [/^Printed Contract (.+)$/i,   'طباعة عقد موظف رقم $1'],
+    [/^Printed Guarantee (.+)$/i,  'طباعة ضمان موظف رقم $1'],
+    [/^Printed Voucher (.+)$/i,    'طباعة سند رقم $1'],
+    [/^Printed Journal (.+)$/i,    'طباعة قيد يومية رقم $1'],
+    [/^Printed document (.+)$/i,   'طباعة مستند رقم $1'],
+  ];
+  for (const [regex, replacement] of patterns) {
+    if (regex.test(raw)) return raw.replace(regex, replacement);
+  }
+  return raw;
+};
 
