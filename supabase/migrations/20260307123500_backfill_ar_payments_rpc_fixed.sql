@@ -14,6 +14,8 @@ declare
   v_fx_rate numeric;
   v_count int := 0;
   v_total_base numeric := 0;
+  v_data_total numeric;
+  v_amount numeric;
 begin
   for v_order in
     select o.id,
@@ -44,43 +46,41 @@ begin
 
     v_fx_rate := coalesce(v_order.fx_rate, 1);
     if v_fx_rate <= 0 then v_fx_rate := 1; end if;
-    
-    -- Some orders have 0 in the total column but data in the jsonb
-    declare
-      v_data_total numeric := coalesce((v_order.data->>'total')::numeric, 0);
-    begin
-      -- Determine base amount first
-      v_base_amount := case
-        when v_order.base_total is not null and v_order.base_total > 0 then v_order.base_total
-        when upper(coalesce(v_order.currency, '')) = upper(coalesce(v_order.base_currency, 'SAR')) then 
-          case when coalesce(v_order.total, 0) > 0 then v_order.total else v_data_total end
-        else 
-          case when coalesce(v_order.total, 0) > 0 then v_order.total * v_fx_rate else v_data_total * v_fx_rate end
-      end;
-      
-      -- Determine amount in order currency
-      declare
-        v_amount numeric := case
-          when coalesce(v_order.total, 0) > 0 then v_order.total
-          when v_data_total > 0 then v_data_total
-          when v_base_amount > 0 then v_base_amount / v_fx_rate
-          else 0
-        end;
-      begin
-        if v_amount <= 0 then
-           v_amount := v_base_amount; -- Failover just in case
-           if v_amount <= 0 then v_amount := 1; end if; -- Prevent constraint error at all costs for dummy orders
-        end;
 
-        insert into public.payments (
-          id, direction, method, amount, base_amount, currency,
-          shift_id, reference_table, reference_id,
-          occurred_at, created_by, idempotency_key, data
-        ) values (
-          gen_random_uuid(),
-          'in',
-          'ar',
-          v_amount,
+    -- Some orders have 0 in the total column but data in the jsonb
+    v_data_total := coalesce((v_order.data->>'total')::numeric, 0);
+
+    -- Determine base amount first
+    v_base_amount := case
+      when v_order.base_total is not null and v_order.base_total > 0 then v_order.base_total
+      when upper(coalesce(v_order.currency, '')) = upper(coalesce(v_order.base_currency, 'SAR')) then
+        case when coalesce(v_order.total, 0) > 0 then v_order.total else v_data_total end
+      else
+        case when coalesce(v_order.total, 0) > 0 then v_order.total * v_fx_rate else v_data_total * v_fx_rate end
+    end;
+
+    -- Determine amount in order currency
+    v_amount := case
+      when coalesce(v_order.total, 0) > 0 then v_order.total
+      when v_data_total > 0 then v_data_total
+      when v_base_amount > 0 then v_base_amount / v_fx_rate
+      else 0
+    end;
+
+    if v_amount <= 0 then
+       v_amount := v_base_amount; -- Failover just in case
+       if v_amount <= 0 then v_amount := 1; end if; -- Prevent constraint error at all costs for dummy orders
+    end if;
+
+    insert into public.payments (
+      id, direction, method, amount, base_amount, currency,
+      shift_id, reference_table, reference_id,
+      occurred_at, created_by, idempotency_key, data
+    ) values (
+      gen_random_uuid(),
+      'in',
+      'ar',
+      v_amount,
       v_base_amount,
       upper(coalesce(v_order.currency, 'YER')),
       v_shift_id,

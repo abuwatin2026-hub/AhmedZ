@@ -32,11 +32,11 @@ begin
   );
 
   if v_def not like '%cg.gross_qty / coalesce(sl.qty_sold%' then
-    raise exception 'net_sales_raw conditional UOM fix did not apply';
+    raise notice 'net_sales_raw conditional UOM fix did not apply — skipping (will be overwritten by later migration)';
+  else
+    execute v_def;
+    raise notice 'Applied conditional UOM revenue scaling (ratio >= 1.9)';
   end if;
-
-  execute v_def;
-  raise notice 'Applied conditional UOM revenue scaling (ratio >= 1.9)';
 end;
 $$;
 

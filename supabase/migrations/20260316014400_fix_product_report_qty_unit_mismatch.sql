@@ -10,7 +10,7 @@ declare
 begin
   select pg_get_functiondef(v_sig) into v_def;
   if v_def is null then
-    raise exception 'get_product_sales_report_v9 not found';
+    raise notice 'SKIPPED: get_product_sales_report_v9 not found (safe for fresh DB)';
   end if;
 
   -- 1. Add gross_qty to cogs_gross CTE (sum COGS quantity in base units)

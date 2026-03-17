@@ -5,7 +5,7 @@ declare
 begin
   select pg_get_functiondef(v_sig) into v_def;
   if v_def is null then
-    raise exception 'get_dashboard_kpi_v4 not found';
+    raise notice 'SKIPPED: get_dashboard_kpi_v4 not found (safe for fresh DB)';
   end if;
 
   v_def := replace(

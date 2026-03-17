@@ -14,6 +14,8 @@
 
 -- Drop old 1-param version if it exists (prevents overload confusion)
 drop function if exists public.get_batch_recall_orders(uuid);
+-- Drop old 3-param version if return type changed
+drop function if exists public.get_batch_recall_orders(uuid, uuid, uuid);
 
 -- Create with full 3-param signature
 create or replace function public.get_batch_recall_orders(
