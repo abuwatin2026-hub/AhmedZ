@@ -114,6 +114,47 @@ const ApprovalsScreen: React.FC = () => {
     return s ? s.slice(0, 8) : '';
   };
 
+  const localizeRequestType = (t: string) => {
+    const map: Record<string, string> = {
+      reconciliation_approval: 'موافقة تسوية أوفلاين',
+      journal_approval: 'موافقة قيد يومية',
+      voucher_approval: 'اعتماد سند',
+      payment_approval: 'موافقة دفعة',
+      expense_approval: 'موافقة مصروف',
+    };
+    return map[t] || t;
+  };
+
+  const localizeTargetTable = (t: string) => {
+    const map: Record<string, string> = {
+      offline_orders: 'طلبيات أوفلاين',
+      journal_entries: 'قيود يومية',
+      payments: 'دفعات',
+      purchase_orders: 'أوامر شراء',
+      expenses: 'مصاريف',
+    };
+    return map[t] || t;
+  };
+
+  const localizeApprovalStatus = (s: string) => {
+    if (s === 'pending') return 'بانتظار الموافقة';
+    if (s === 'approved') return 'معتمد';
+    if (s === 'rejected') return 'مرفوض';
+    return s;
+  };
+
+  const localizeApproverRole = (role: string) => {
+    const map: Record<string, string> = {
+      manager: 'مدير',
+      accountant: 'محاسب',
+      owner: 'مالك',
+      admin: 'مسؤول',
+      supervisor: 'مشرف',
+      finance: 'مالية',
+    };
+    return map[role] || role;
+  };
+
   const approveStep = async (requestId: string, stepNo: number) => {
     const supabase = getSupabaseClient();
     if (!supabase) return;
@@ -211,14 +252,14 @@ const ApprovalsScreen: React.FC = () => {
                 <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
                   <div>
                     <div className="text-sm text-gray-700 dark:text-gray-200">
-                      <span className="font-semibold">{r.request_type}</span>
+                      <span className="font-semibold">{localizeRequestType(r.request_type)}</span>
                       <span className="mx-2 text-gray-400">•</span>
-                      <span className="text-gray-600 dark:text-gray-300">{r.target_table}:{shortId(r.target_id)}</span>
+                      <span className="text-gray-600 dark:text-gray-300">{localizeTargetTable(r.target_table)} #{shortId(r.target_id)}</span>
                       <span className="mx-2 text-gray-400">•</span>
                       <span className="text-gray-600 dark:text-gray-300">طلب #{shortId(r.id)}</span>
                     </div>
                     <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                      الحالة: {r.status} • طالب: {shortId(r.requested_by)} • وقت: {r.created_at ? new Date(r.created_at).toLocaleString('ar-EG-u-nu-latn') : '-'}
+                      الحالة: {localizeApprovalStatus(r.status)} • طالب: {shortId(r.requested_by)} • وقت: {r.created_at ? new Date(r.created_at).toLocaleString('ar-EG-u-nu-latn') : '-'}
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -259,8 +300,8 @@ const ApprovalsScreen: React.FC = () => {
                         {reqSteps.map((s) => (
                           <tr key={s.id} className="border-t border-gray-100 dark:border-gray-700 text-gray-700 dark:text-gray-200">
                             <td className="py-2">{s.step_no}</td>
-                            <td className="py-2">{s.approver_role}</td>
-                            <td className="py-2">{s.status}</td>
+                            <td className="py-2">{localizeApproverRole(s.approver_role)}</td>
+                            <td className="py-2">{localizeApprovalStatus(s.status)}</td>
                             <td className="py-2">{s.action_by ? shortId(s.action_by) : '-'}</td>
                             <td className="py-2">{s.action_at ? new Date(s.action_at).toLocaleString('ar-EG-u-nu-latn') : '-'}</td>
                           </tr>

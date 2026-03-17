@@ -855,7 +855,9 @@ export default function PayrollScreen() {
                 ) : filteredRuns.map((r) => (
                   <tr key={r.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30">
                     <td className="p-3 text-sm dark:text-gray-200 border-r dark:border-gray-700" dir="ltr">{r.period_ym}</td>
-                    <td className="p-3 text-sm dark:text-gray-200 border-r dark:border-gray-700">{r.status}</td>
+                    <td className="p-3 text-sm dark:text-gray-200 border-r dark:border-gray-700">{{
+                       draft: 'مسودة', computed: 'محتسب', accrued: 'مترحل', paid: 'مدفوع'
+                     }[r.status] || r.status}</td>
                     <td className="p-3 text-sm font-mono dark:text-gray-200 border-r dark:border-gray-700" dir="ltr">{formatMoney(r.total_net)} YER</td>
                     <td className="p-3 text-sm text-gray-700 dark:text-gray-200 border-r dark:border-gray-700" dir="ltr">{formatTime(r.created_at)}</td>
                     <td className="p-3 text-sm">
@@ -1168,7 +1170,9 @@ export default function PayrollScreen() {
               <div className="p-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between gap-2">
                 <div className="min-w-0">
                   <div className="text-lg font-bold dark:text-white truncate">{`مسير رواتب ${selectedRun.period_ym}`}</div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400" dir="ltr">{`Status: ${selectedRun.status} · Total: ${formatMoney(selectedRun.total_net)} ${baseCurrencyCode}`}</div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400" dir="ltr">{`الحالة: ${{
+                    draft: 'مسودة', computed: 'محتسب', accrued: 'مترحل', paid: 'مدفوع'
+                  }[selectedRun.status] || selectedRun.status} · الإجمالي: ${formatMoney(selectedRun.total_net)} ${baseCurrencyCode}`}</div>
                 </div>
                 <div className="flex items-center gap-2">
                   <button type="button" onClick={() => void computeSelectedRun()} className="px-3 py-2 rounded-lg bg-indigo-600 text-white font-semibold">احتساب الرواتب</button>

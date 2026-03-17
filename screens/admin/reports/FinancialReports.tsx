@@ -2235,7 +2235,7 @@ const FinancialReports: React.FC = () => {
                                 <tr key={r.entry_id} className="border-b dark:border-gray-700">
                                   <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">{formatDateInput(r.entry_date)}</td>
                                   <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700 font-mono" dir="ltr">{r.shipment_id}</td>
-                                  <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700 font-mono" dir="ltr">{r.source_event}</td>
+                                  <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700">{localizeSourceEventAr(r.source_event) || r.source_event}</td>
                                   <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">{formatMoney(current)}</td>
                                   <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">{formatMoney(expected)}</td>
                                   <td className={`py-2 px-3 border-l dark:border-gray-700 font-semibold ${Math.abs(delta) <= 0.01 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`} dir="ltr">
@@ -3962,8 +3962,8 @@ const FinancialReports: React.FC = () => {
                 >
                   <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">{r.code}</td>
                   <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700">{r.name}</td>
-                  <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700">{r.account_type}</td>
-                  <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700">{r.normal_balance}</td>
+                  <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700">{({asset:'أصول',liability:'التزامات',equity:'حقوق ملكية',income:'إيرادات',expense:'مصروفات'} as Record<string,string>)[r.account_type]||r.account_type}</td>
+                  <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700">{r.normal_balance==='دينت'?'مدين':r.normal_balance==='debit'?'مدين':r.normal_balance==='credit'?'دائن':r.normal_balance}</td>
                   <td className="py-2 px-3 border-l dark:border-gray-700">
                     <span className={`px-2 py-1 rounded-full text-xs font-semibold ${r.is_active ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-200' : 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-300'}`}>
                       {r.is_active ? 'نشط' : 'معطل'}
@@ -4014,7 +4014,7 @@ const FinancialReports: React.FC = () => {
                 >
                   <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">{r.account_code}</td>
                   <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700">{r.account_name}</td>
-                  <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700">{r.account_type}</td>
+                  <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700">{({asset:'أصول',liability:'التزامات',equity:'حقوق ملكية',income:'إيرادات',expense:'مصروفات'} as Record<string,string>)[r.account_type]||r.account_type}</td>
                   <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700">{formatMoney(r.debit)}</td>
                   <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700">{formatMoney(r.credit)}</td>
                 </tr>
