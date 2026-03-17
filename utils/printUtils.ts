@@ -23,12 +23,10 @@ const hoistComponentStyles = (content: string): { hoistedCss: string; bodyHtml: 
  */
 export const buildPrintHtml = (content: string, title: string = 'طباعة', options?: { page?: 'A5' | 'A4' | 'auto', extraStyles?: string, includeAppStyles?: boolean }) => {
   const page = options?.page || 'A5';
-  // A4 and A5 both use margin:0 — the component handles its own internal padding.
-  // Using margin:0 prevents the browser from adding extra margins that cause overflow/clipping.
   const pageCss = page === 'A5'
     ? `@page { size: A5; margin: 0; }`
     : page === 'A4'
-    ? `@page { size: A4 portrait; margin: 0; }`
+    ? `@page { size: A4 portrait; margin: 8mm; }`
     : ``;
 
   // Hoist any <style> blocks from the component into <head> so they

@@ -103,7 +103,7 @@ export const InStoreUxWidget: React.FC = () => {
     return (
         <div className="glass-card rounded-2xl p-5 animate-slide-in-up h-full">
             <h3 className="font-bold text-gray-800 dark:text-gray-200 text-sm mb-4 flex items-center gap-2">
-                <Icons.ActivityIcon className={`w-4 h-4 ${statusColor}`} />
+                <Icons.TrendingUpIcon className={`w-4 h-4 ${statusColor}`} />
                 جودة أداء البيع (24 ساعة)
             </h3>
 

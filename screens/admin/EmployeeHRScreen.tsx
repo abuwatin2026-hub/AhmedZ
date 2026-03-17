@@ -44,6 +44,7 @@ type HrApprovalRow = {
   signature_name?: string | null;
   performed_at: string;
 };
+type PrintMode = 'full' | 'compact';
 
 const STATUS_LABELS: Record<string, string> = {
   draft: 'مسودة',
@@ -112,7 +113,7 @@ export default function EmployeeHRScreen() {
   }), [settings]);
 
   /* ── Async print: contract ── */
-  const handlePrintContract = async (c: Contract) => {
+  const handlePrintContract = async (c: Contract, mode: PrintMode = 'full') => {
     const s = getSupabaseClient();
     const emp = employees.find(e => e.id === c.employee_id);
     let pn: number | null = null;
@@ -142,13 +143,13 @@ export default function EmployeeHRScreen() {
       employeeCode: emp?.employee_code,
     };
     const html = renderToString(
-      <PrintableContract data={contractData} companyName={brand.name} companyPhone={brand.contactNumber} companyAddress={brand.address} logoUrl={brand.logoUrl} printNumber={pn} />
+      <PrintableContract data={contractData} companyName={brand.name} companyPhone={brand.contactNumber} companyAddress={brand.address} logoUrl={brand.logoUrl} printNumber={pn} printMode={mode} />
     );
-    printContent(html, `عقد عمل — ${emp?.full_name || ''}`, { page: 'A4', includeAppStyles: false });
+    printContent(html, `عقد عمل (${mode === 'compact' ? 'مضغوطة' : 'كاملة'}) — ${emp?.full_name || ''}`, { page: 'A4', includeAppStyles: false });
   };
 
   /* ── Async print: guarantee ── */
-  const handlePrintGuarantee = async (g: Guarantee) => {
+  const handlePrintGuarantee = async (g: Guarantee, mode: PrintMode = 'full') => {
     const s = getSupabaseClient();
     const emp = employees.find(e => e.id === g.employee_id);
     let pn: number | null = null;
@@ -175,13 +176,13 @@ export default function EmployeeHRScreen() {
       employeeCode: emp?.employee_code,
     };
     const html = renderToString(
-      <PrintableGuarantee data={guaranteeData} companyName={brand.name} companyPhone={brand.contactNumber} companyAddress={brand.address} logoUrl={brand.logoUrl} printNumber={pn} />
+      <PrintableGuarantee data={guaranteeData} companyName={brand.name} companyPhone={brand.contactNumber} companyAddress={brand.address} logoUrl={brand.logoUrl} printNumber={pn} printMode={mode} />
     );
-    printContent(html, `ضمان موظف — ${emp?.full_name || ''}`, { page: 'A4', includeAppStyles: false });
+    printContent(html, `ضمان موظف (${mode === 'compact' ? 'مضغوطة' : 'كاملة'}) — ${emp?.full_name || ''}`, { page: 'A4', includeAppStyles: false });
   };
 
   /* ── Print blank contract template ── */
-  const handlePrintBlankContract = () => {
+  const handlePrintBlankContract = (mode: PrintMode = 'full') => {
     const blankData: ContractPrintData = {
       contractNumber: '',
       contractType: 'indefinite',
@@ -202,13 +203,13 @@ export default function EmployeeHRScreen() {
       employeeCode: null,
     };
     const html = renderToString(
-      <PrintableContract data={blankData} companyName={brand.name} companyPhone={brand.contactNumber} companyAddress={brand.address} logoUrl={brand.logoUrl} />
+      <PrintableContract data={blankData} companyName={brand.name} companyPhone={brand.contactNumber} companyAddress={brand.address} logoUrl={brand.logoUrl} printMode={mode} />
     );
-    printContent(html, 'نموذج عقد عمل فارغ', { page: 'A4', includeAppStyles: false });
+    printContent(html, `نموذج عقد عمل فارغ (${mode === 'compact' ? 'مضغوطة' : 'كاملة'})`, { page: 'A4', includeAppStyles: false });
   };
 
   /* ── Print blank guarantee template ── */
-  const handlePrintBlankGuarantee = () => {
+  const handlePrintBlankGuarantee = (mode: PrintMode = 'full') => {
     const blankData: GuaranteePrintData = {
       guaranteeNumber: '',
       guaranteeType: 'personal',
@@ -226,9 +227,9 @@ export default function EmployeeHRScreen() {
       employeeCode: null,
     };
     const html = renderToString(
-      <PrintableGuarantee data={blankData} companyName={brand.name} companyPhone={brand.contactNumber} companyAddress={brand.address} logoUrl={brand.logoUrl} />
+      <PrintableGuarantee data={blankData} companyName={brand.name} companyPhone={brand.contactNumber} companyAddress={brand.address} logoUrl={brand.logoUrl} printMode={mode} />
     );
-    printContent(html, 'نموذج ضمان موظف فارغ', { page: 'A4', includeAppStyles: false });
+    printContent(html, `نموذج ضمان موظف فارغ (${mode === 'compact' ? 'مضغوطة' : 'كاملة'})`, { page: 'A4', includeAppStyles: false });
   };
 
   const loadAll = useCallback(async () => {
@@ -453,10 +454,14 @@ export default function EmployeeHRScreen() {
           {(tab === 'contracts' ? statusOptionsContracts : statusOptionsGuarantees).map(s => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
         </select>
         <div className="flex-1" />
-        <button type="button" onClick={tab === 'contracts' ? handlePrintBlankContract : handlePrintBlankGuarantee}
+        <button type="button" onClick={() => tab === 'contracts' ? handlePrintBlankContract('full') : handlePrintBlankGuarantee('full')}
           className={`${BTN} bg-amber-600 text-white`}
-          title={tab === 'contracts' ? 'طباعة نموذج عقد فارغ للتعبئة اليدوية' : 'طباعة نموذج ضمان فارغ للتعبئة اليدوية'}
-        >🖨️ {tab === 'contracts' ? 'نموذج عقد فارغ' : 'نموذج ضمان فارغ'}</button>
+          title={tab === 'contracts' ? 'طباعة نموذج عقد فارغ نسخة كاملة' : 'طباعة نموذج ضمان فارغ نسخة كاملة'}
+        >🖨️ {tab === 'contracts' ? 'نموذج عقد كامل' : 'نموذج ضمان كامل'}</button>
+        <button type="button" onClick={() => tab === 'contracts' ? handlePrintBlankContract('compact') : handlePrintBlankGuarantee('compact')}
+          className={`${BTN} bg-blue-600 text-white`}
+          title={tab === 'contracts' ? 'طباعة نموذج عقد فارغ نسخة مضغوطة' : 'طباعة نموذج ضمان فارغ نسخة مضغوطة'}
+        >🖨️ {tab === 'contracts' ? 'نموذج عقد مضغوط' : 'نموذج ضمان مضغوط'}</button>
         <button type="button" disabled={!canManageHr} onClick={() => tab === 'contracts' ? openCModal() : openGModal()} className={`${BTN} bg-emerald-600 text-white disabled:opacity-60`}>{tab === 'contracts' ? '+ عقد جديد' : '+ ضمان جديد'}</button>
       </div>
       {!canManageHr && canViewHr && <div className="text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2">وضع قراءة فقط: صلاحية الإدارة غير متاحة لهذا الحساب.</div>}
@@ -482,7 +487,8 @@ export default function EmployeeHRScreen() {
                     <td className="p-3 text-sm font-mono dark:text-gray-200 border-r dark:border-gray-700" dir="ltr">{fmtMoney(c.salary)} {c.currency}</td>
                     <td className="p-3 text-sm border-r dark:border-gray-700"><span className={`px-2 py-1 rounded-full text-xs font-medium ${statusColor(c.status)}`}>{STATUS_LABELS[c.status] || c.status}</span></td>
                     <td className="p-3 text-sm space-x-1 rtl:space-x-reverse">
-                      <button onClick={() => void handlePrintContract(c)} className="px-2 py-1 rounded bg-blue-600 text-white text-xs font-semibold">طباعة</button>
+                      <button onClick={() => void handlePrintContract(c, 'full')} className="px-2 py-1 rounded bg-blue-600 text-white text-xs font-semibold">طباعة كاملة</button>
+                      <button onClick={() => void handlePrintContract(c, 'compact')} className="px-2 py-1 rounded bg-sky-700 text-white text-xs font-semibold">طباعة مضغوطة</button>
                       <button disabled={!canManageHr} onClick={() => openCModal(c)} className="px-2 py-1 rounded bg-gray-700 text-white text-xs font-semibold disabled:opacity-60">تعديل</button>
                       <button disabled={!canManageHr} onClick={() => deleteContract(c.id)} className="px-2 py-1 rounded bg-red-600 text-white text-xs font-semibold disabled:opacity-60">حذف</button>
                       {canManageHr && c.status === 'draft' && <button onClick={() => void transitionDocument('contract', c.id, 'submit_review')} className="px-2 py-1 rounded bg-indigo-600 text-white text-xs font-semibold">إرسال للمراجعة</button>}
@@ -538,7 +544,8 @@ export default function EmployeeHRScreen() {
                     <td className="p-3 text-sm dark:text-gray-200 border-r dark:border-gray-700">{fmtDate(g.valid_until)}</td>
                     <td className="p-3 text-sm border-r dark:border-gray-700"><span className={`px-2 py-1 rounded-full text-xs font-medium ${statusColor(g.status)}`}>{STATUS_LABELS[g.status] || g.status}</span></td>
                     <td className="p-3 text-sm space-x-1 rtl:space-x-reverse">
-                      <button onClick={() => void handlePrintGuarantee(g)} className="px-2 py-1 rounded bg-blue-600 text-white text-xs font-semibold">طباعة</button>
+                      <button onClick={() => void handlePrintGuarantee(g, 'full')} className="px-2 py-1 rounded bg-blue-600 text-white text-xs font-semibold">طباعة كاملة</button>
+                      <button onClick={() => void handlePrintGuarantee(g, 'compact')} className="px-2 py-1 rounded bg-sky-700 text-white text-xs font-semibold">طباعة مضغوطة</button>
                       <button disabled={!canManageHr} onClick={() => openGModal(g)} className="px-2 py-1 rounded bg-gray-700 text-white text-xs font-semibold disabled:opacity-60">تعديل</button>
                       <button disabled={!canManageHr} onClick={() => deleteGuarantee(g.id)} className="px-2 py-1 rounded bg-red-600 text-white text-xs font-semibold disabled:opacity-60">حذف</button>
                       {canManageHr && g.status === 'draft' && <button onClick={() => void transitionDocument('guarantee', g.id, 'submit_review')} className="px-2 py-1 rounded bg-indigo-600 text-white text-xs font-semibold">إرسال للمراجعة</button>}

@@ -29,6 +29,7 @@ interface Props {
     logoUrl?: string;
     vatNumber?: string;
     printNumber?: number | null;
+    printMode?: 'full' | 'compact';
 }
 
 const CONTRACT_TYPES: Record<string, string> = { definite: 'محدد المدة', indefinite: 'غير محدد المدة', probation: 'تحت التجربة', part_time: 'دوام جزئي' };
@@ -36,7 +37,7 @@ const CONTRACT_TYPES: Record<string, string> = { definite: 'محدد المدة'
 const fmt = (n: number) => { try { return Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 }); } catch { return String(n); } };
 const fmtDate = (d?: string | null) => { if (!d) return '—'; try { return new Date(d).toLocaleDateString('ar-EG-u-nu-latn', { year: 'numeric', month: 'long', day: 'numeric' }); } catch { return d; } };
 
-const PrintableContract: React.FC<Props> = ({ data, companyName, companyPhone, companyAddress, logoUrl, vatNumber, printNumber }) => {
+const PrintableContract: React.FC<Props> = ({ data, companyName, companyPhone, companyAddress, logoUrl, vatNumber, printNumber, printMode = 'full' }) => {
     const systemName = AZTA_IDENTITY.tradeNameAr;
     const resolvedName = companyName || '';
     const branchName = resolvedName.trim();
@@ -49,9 +50,10 @@ const PrintableContract: React.FC<Props> = ({ data, companyName, companyPhone, c
         <div className="bg-white relative font-sans print:w-full print:max-w-none print:m-0 print:p-0" dir="rtl">
             <style>{`
         @media print {
-            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0; padding: 0; background: white; overflow: visible !important; }
+            html, body { width: 210mm; min-height: 297mm; margin: 0 auto !important; padding: 0 !important; }
+            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0 !important; background: white; overflow: visible !important; }
             * { box-sizing: border-box; overflow: visible !important; }
-            .ct-doc { overflow: visible !important; }
+            .ct-doc { width: 194mm !important; min-height: 281mm !important; margin: 0 auto !important; overflow: visible !important; }
             .ct-sig-table { page-break-inside: avoid !important; }
         }
         .ct-doc {
@@ -60,6 +62,19 @@ const PrintableContract: React.FC<Props> = ({ data, companyName, companyPhone, c
             color: #0F172A; line-height: 1.3;
             position: relative; background-color: #FAFAFA;
         }
+        .ct-doc.ct-compact {
+            padding: 3mm 4mm 2mm 4mm;
+            line-height: 1.2;
+        }
+        .ct-doc.ct-compact .ct-brand { font-size: 14px; }
+        .ct-doc.ct-compact .ct-title { font-size: 16px; }
+        .ct-doc.ct-compact .ct-title-sub { font-size: 6px; }
+        .ct-doc.ct-compact .ct-section-title { font-size: 10px; margin: 5px 0 3px; }
+        .ct-doc.ct-compact .ct-table td { font-size: 10px; padding: 2px 6px; }
+        .ct-doc.ct-compact .ct-preamble,
+        .ct-doc.ct-compact .ct-clause,
+        .ct-doc.ct-compact .ct-special-terms { font-size: 10px; line-height: 1.45; }
+        .ct-doc.ct-compact .ct-note-box { font-size: 9px; }
         .ct-doc::before {
             content: ''; position: absolute;
             top: 2mm; bottom: 2mm; left: 2mm; right: 2mm;
@@ -141,7 +156,7 @@ const PrintableContract: React.FC<Props> = ({ data, companyName, companyPhone, c
         .ct-sig-table { page-break-inside: avoid; width: 100%; border-collapse: collapse; margin-top: 10px; border-top: 2px solid rgba(212,175,55,0.27); }
       `}</style>
 
-            <div className="ct-doc" style={{ fontFamily: 'Tajawal, Cairo, sans-serif' }}>
+            <div className={`ct-doc ${printMode === 'compact' ? 'ct-compact' : ''}`} style={{ fontFamily: 'Tajawal, Cairo, sans-serif' }}>
                 <div className="ct-watermark">{AZTA_IDENTITY.tradeNameAr}</div>
 
                 {printNumber != null && printNumber > 0 && (

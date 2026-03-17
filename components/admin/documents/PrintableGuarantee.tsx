@@ -26,6 +26,7 @@ interface Props {
     logoUrl?: string;
     vatNumber?: string;
     printNumber?: number | null;
+    printMode?: 'full' | 'compact';
 }
 
 const GUARANTEE_TYPES: Record<string, string> = { personal: 'شخصي', financial: 'مالي', property: 'عيني' };
@@ -33,7 +34,7 @@ const GUARANTEE_TYPES: Record<string, string> = { personal: 'شخصي', financia
 const fmt = (n: number) => { try { return Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 }); } catch { return String(n); } };
 const fmtDate = (d?: string | null) => { if (!d) return '—'; try { return new Date(d).toLocaleDateString('ar-EG-u-nu-latn', { year: 'numeric', month: 'long', day: 'numeric' }); } catch { return d; } };
 
-const PrintableGuarantee: React.FC<Props> = ({ data, companyName, companyPhone, companyAddress, logoUrl, vatNumber, printNumber }) => {
+const PrintableGuarantee: React.FC<Props> = ({ data, companyName, companyPhone, companyAddress, logoUrl, vatNumber, printNumber, printMode = 'full' }) => {
     const systemName = AZTA_IDENTITY.tradeNameAr;
     const resolvedName = companyName || '';
     const branchName = resolvedName.trim();
@@ -44,9 +45,10 @@ const PrintableGuarantee: React.FC<Props> = ({ data, companyName, companyPhone, 
         <div className="bg-white relative font-sans print:w-full print:max-w-none print:m-0 print:p-0" dir="rtl">
             <style>{`
         @media print {
-            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0; padding: 0; background: white; overflow: visible !important; }
+            html, body { width: 210mm; min-height: 297mm; margin: 0 auto !important; padding: 0 !important; }
+            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0 !important; background: white; overflow: visible !important; }
             * { box-sizing: border-box; overflow: visible !important; }
-            .gt-doc { overflow: visible !important; }
+            .gt-doc { width: 194mm !important; min-height: 281mm !important; margin: 0 auto !important; overflow: visible !important; }
         }
         .gt-doc {
             width: 100%; padding: 6mm 8mm 5mm 8mm;
@@ -54,6 +56,18 @@ const PrintableGuarantee: React.FC<Props> = ({ data, companyName, companyPhone, 
             color: #0F172A; line-height: 1.4;
             position: relative; background-color: #FAFAFA;
         }
+        .gt-doc.gt-compact {
+            padding: 4mm 5mm 3mm 5mm;
+            line-height: 1.25;
+        }
+        .gt-doc.gt-compact .gt-brand { font-size: 15px; }
+        .gt-doc.gt-compact .gt-title { font-size: 18px; }
+        .gt-doc.gt-compact .gt-title-sub { font-size: 6px; }
+        .gt-doc.gt-compact .gt-section-title { font-size: 11px; margin: 8px 0 5px; }
+        .gt-doc.gt-compact .gt-table td { font-size: 10px; padding: 3px 6px; }
+        .gt-doc.gt-compact .gt-pledge-box,
+        .gt-doc.gt-compact .gt-special-terms { font-size: 10px; line-height: 1.55; padding: 8px 10px; }
+        .gt-doc.gt-compact .gt-sig-label { font-size: 9px; }
         .gt-doc::before {
             content: ''; position: absolute;
             top: 2mm; bottom: 2mm; left: 2mm; right: 2mm;
@@ -126,7 +140,7 @@ const PrintableGuarantee: React.FC<Props> = ({ data, companyName, companyPhone, 
         }
       `}</style>
 
-            <div className="gt-doc" style={{ fontFamily: 'Tajawal, Cairo, sans-serif' }}>
+            <div className={`gt-doc ${printMode === 'compact' ? 'gt-compact' : ''}`} style={{ fontFamily: 'Tajawal, Cairo, sans-serif' }}>
                 <div className="gt-watermark">{AZTA_IDENTITY.tradeNameAr}</div>
 
                 {printNumber != null && printNumber > 0 && (
