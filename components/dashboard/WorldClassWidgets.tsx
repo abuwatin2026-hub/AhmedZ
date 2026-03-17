@@ -37,11 +37,9 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const { scope } = useSessionScope();
     const defaultEnd = new Date();
     defaultEnd.setHours(23, 59, 59, 999);
-    const defaultStart = new Date();
-    defaultStart.setDate(defaultStart.getDate() - 30);
-    defaultStart.setHours(0, 0, 0, 0);
+    const defaultStart = new Date('2000-01-01T00:00:00Z'); // all-time default
 
-    const [dateRange, setDateRange] = useState<DateRange>({ start: defaultStart, end: defaultEnd, label: 'آخر 30 يوم' });
+    const [dateRange, setDateRange] = useState<DateRange>({ start: defaultStart, end: defaultEnd, label: 'الكل' });
     const [currency, setCurrency] = useState('ر.ي');
     const [refreshKey, setRefreshKey] = useState(0);
     const [kpiData, setKpiData] = useState<any>(null);
@@ -242,17 +240,25 @@ export const DashboardHeader: React.FC<{ title: string }> = ({ title }) => {
     }, [isOpen]);
 
     const presets = [
+        { label: 'الكل', mode: 'all' as const },
         { label: 'اليوم', days: 0 },
         { label: 'أمس', days: 1, offset: 1 },
         { label: 'آخر 7 أيام', days: 7 },
-        { label: 'آخر 30 يوم', days: 30 },
         { label: 'هذا الشهر', mode: 'month' as const },
+        { label: 'آخر 30 يوم', days: 30 },
         { label: 'آخر 90 يوم', days: 90 },
     ];
 
     const handleSelect = (p: any) => {
         const end = new Date(); end.setHours(23, 59, 59, 999);
         const start = new Date(); start.setHours(0, 0, 0, 0);
+        if (p.mode === 'all') {
+            const allStart = new Date('2000-01-01T00:00:00Z');
+            setDateRange({ start: allStart, end, label: 'الكل' });
+            setIsOpen(false);
+            triggerRefresh();
+            return;
+        }
         if (p.mode === 'month') { start.setDate(1); }
         else if (p.offset) { start.setDate(start.getDate() - p.offset); end.setDate(end.getDate() - p.offset); }
         else { start.setDate(start.getDate() - (p.days || 0)); }
@@ -409,7 +415,8 @@ export const KPIBar: React.FC = () => {
                     const summaryGross = Number(summary?.total_sales_accrual) || 0;
                     const summaryReturns = Number(summary?.returns_total) || 0;
                     unifiedSales = summaryGross - summaryReturns;
-                    unifiedOrders = Number(summary?.total_orders) || 0;
+                    // Use total_orders_accrual (all delivered orders) not total_orders (only paid/non-cash)
+                    unifiedOrders = Number(summary?.total_orders_accrual ?? summary?.total_orders) || 0;
                     unifiedCogs = Math.max(0, Number(summary?.cogs) || 0);
 
                     const { data: prevSummaryData, error: prevSummaryErr }: any = await supabase.rpc('get_sales_report_summary', {
@@ -422,7 +429,7 @@ export const KPIBar: React.FC = () => {
                     const prevSummaryGross = Number(prevSummary?.total_sales_accrual) || 0;
                     const prevSummaryReturns = Number(prevSummary?.returns_total) || 0;
                     prevUnifiedSales = prevSummaryGross - prevSummaryReturns;
-                    prevUnifiedOrders = Number(prevSummary?.total_orders) || 0;
+                    prevUnifiedOrders = Number(prevSummary?.total_orders_accrual ?? prevSummary?.total_orders) || 0;
                     prevUnifiedCogs = Math.max(0, Number(prevSummary?.cogs) || 0);
                 }
 

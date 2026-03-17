@@ -177,7 +177,7 @@ const ProductReports: React.FC = () => {
                         if (!summaryErr && summaryData && typeof summaryData === 'object') {
                             const summaryGross = Number((summaryData as any)?.total_sales_accrual) || 0;
                             const summaryReturns = Number((summaryData as any)?.returns_total) || 0;
-                            const summaryOrders = Number((summaryData as any)?.total_orders) || 0;
+                            const summaryOrders = Number((summaryData as any)?.total_orders_accrual ?? (summaryData as any)?.total_orders) || 0;
                             if (active) {
                                 setUnifiedSummary({
                                     sales: summaryGross - summaryReturns,
