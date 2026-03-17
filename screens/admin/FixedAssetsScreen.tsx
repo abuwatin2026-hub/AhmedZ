@@ -935,7 +935,9 @@ export default function FixedAssetsScreen() {
                       <td className="p-2 text-xs text-red-600 font-bold" dir="ltr">{fmtAmount(c.impairment_accumulated)}</td>
                       <td className="p-2 text-xs dark:text-gray-300">
                         <div className="flex items-center gap-2">
-                          <span>{c.status}</span>
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${c.status === 'active' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'}`}>
+                            {({active: 'نشط', disposed: 'مُستبعَد', replaced: 'مُستبدَل'} as Record<string,string>)[c.status] || c.status}
+                          </span>
                           {canManage && c.status === 'active' && (
                             <button
                               type="button"

@@ -1050,7 +1050,7 @@ const ShiftDetailsScreen: React.FC = () => {
                           {p.direction === 'in' ? 'داخل' : 'خارج'}
                         </span>
                       </td>
-                      <td className="p-4 text-sm dark:text-gray-300">{p.method}</td>
+                      <td className="p-4 text-sm dark:text-gray-300">{({cash:'\u0646\u0642\u062f\u0627\u064b',kuraimi:'\u062d\u0633\u0627\u0628\u0627\u062a \u0628\u0646\u0643\u064a\u0629',network:'\u062d\u0648\u0627\u0644\u0627\u062a',card:'\u0628\u0637\u0627\u0642\u0629',bank_transfer:'\u062a\u062d\u0648\u064a\u0644 \u0628\u0646\u0643\u064a'} as Record<string,string>)[p.method] || p.method}</td>
                       <td className="p-4 text-sm font-mono dark:text-gray-300">
                         <CurrencyDualAmount
                           amount={Number(p.amount) || 0}

@@ -3502,13 +3502,28 @@ const FinancialReports: React.FC = () => {
                   return (
                     <tr key={r.offline_id} className="border-b dark:border-gray-700">
                       <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700 font-mono" dir="ltr">{r.offline_id}</td>
-                      <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700 font-semibold" dir="ltr">{r.state}</td>
+                      <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700 font-semibold">
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+                          r.state === 'CONFLICT' ? 'bg-red-100 text-red-700' :
+                          r.state === 'FAILED' ? 'bg-orange-100 text-orange-700' :
+                          r.state === 'SYNCED' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'
+                        }`}>
+                          {({CONFLICT:'تعارض',FAILED:'فشل',SYNCED:'متزامن',PENDING:'معلق'} as Record<string,string>)[r.state] || r.state}
+                        </span>
+                      </td>
                       <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">{formatDateInput(r.created_at)}</td>
                       <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">{r.synced_at ? formatDateInput(r.synced_at) : '—'}</td>
                       <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700" dir="ltr">{r.created_by ? shortRef(r.created_by, 8) : '—'}</td>
                       <td className="py-2 px-3 dark:text-white border-l dark:border-gray-700">
                         <div className="flex flex-col gap-1">
-                          <div className="font-semibold" dir="ltr">{r.reconciliation_status}</div>
+                          <div className="font-semibold">
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+                              r.reconciliation_status === 'APPROVED' ? 'bg-green-100 text-green-700' :
+                              r.reconciliation_status === 'REJECTED' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
+                            }`}>
+                              {({PENDING:'بانتظار',APPROVED:'معتمد',REJECTED:'مرفوض'} as Record<string,string>)[r.reconciliation_status] || r.reconciliation_status || '—'}
+                            </span>
+                          </div>
                           {r.reconciliation_approval_request_id ? (
                             <div className="text-xs text-gray-500 dark:text-gray-400" dir="ltr">#{shortRef(r.reconciliation_approval_request_id, 8)}</div>
                           ) : null}
