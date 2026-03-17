@@ -77,7 +77,7 @@ export const buildPrintHtml = (content: string, title: string = 'طباعة', op
   `;
 };
 
-export const printContent = (content: string, title: string = 'طباعة', options?: { page?: 'A5' | 'A4' | 'auto', includeAppStyles?: boolean }) => {
+export const printContent = (content: string, title: string = 'طباعة', options?: { page?: 'A5' | 'A4' | 'auto', includeAppStyles?: boolean, extraStyles?: string }) => {
   let extraStyles = '';
   if (options?.includeAppStyles !== false) {
     try {
@@ -86,25 +86,85 @@ export const printContent = (content: string, title: string = 'طباعة', opti
     } catch { }
   }
 
-  const html = buildPrintHtml(content, title, { ...options, extraStyles });
+  // ── FOOLPROOF MAIN DOM PRINTING FOR A4 ──
+  // Chrome iframe printing has severe bugs with explicit physical units (like mm) 
+  // on computers with OS-level display scaling (e.g. 125% or 150% in Windows), 
+  // causing the document to explode in size and get chopped off.
+  // The only 100% reliable way to print A4 is using the main DOM.
+  if (options?.page === 'A4') {
+    const { hoistedCss, bodyHtml } = hoistComponentStyles(content);
+    
+    const container = document.createElement('div');
+    container.id = 'a4-print-portal';
+    
+    // This CSS completely hides the React App (#root) and all other body elements,
+    // and ONLY shows the print portal. It also forces `@page` to be exactly A4.
+    const portalCss = `
+      @media screen {
+        #a4-print-portal { display: none !important; }
+      }
+      @media print {
+        body > *:not(#a4-print-portal) { display: none !important; }
+        #a4-print-portal {
+          display: block !important;
+          position: absolute;
+          left: 0;
+          top: 0;
+          width: 100%;
+          margin: 0;
+          padding: 0;
+          background: white;
+        }
+        @page { size: A4 portrait; margin: 0; }
+        body { margin: 0; padding: 0; background: white; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      }
+    `;
+    
+    const styleEl = document.createElement('style');
+    // Important: Include all generic app styles, component specific extra styles, and hoisted inline component styles
+    styleEl.innerHTML = portalCss + '\n' + extraStyles + '\n' + (options?.extraStyles || '') + '\n' + hoistedCss;
+    
+    container.innerHTML = bodyHtml;
+    container.appendChild(styleEl);
+    
+    document.body.appendChild(container);
 
-  // ── FOOLPROOF IFRAME APPROACH ──
-  // Do not use popups (they get blocked). Do not use width:0 iframes (they crush layout).
-  // Use a fully-sized iframe that is transparent and unclickable.
-  // This forces the browser to layout the HTML at exact paper dimensions!
+    const cleanup = () => {
+      try { if (container.parentNode) container.parentNode.removeChild(container); } catch {}
+      window.removeEventListener('afterprint', cleanup);
+    };
+
+    window.addEventListener('afterprint', cleanup);
+
+    // Small delay to ensure styles are parsed and fonts are ready
+    setTimeout(() => {
+      try {
+        const ogTitle = document.title;
+        document.title = title;
+        window.print();
+        setTimeout(() => { document.title = ogTitle; }, 1000);
+      } catch {}
+      
+      // Fallback cleanup in case dialog ignores afterprint
+      setTimeout(cleanup, 120_000);
+    }, 300);
+    return;
+  }
+
+  // ── A5 / auto pages: use hidden iframe ──
+  // Works reliably at small sizes without extreme OS scaling overflow
+  const html = buildPrintHtml(content, title, { ...options, page: options?.page || 'A5', extraStyles });
+  printViaIframe(html);
+};
+
+/** Internal: print via hidden iframe (used for A5 and as fallback) */
+const printViaIframe = (html: string) => {
   const iframe = document.createElement('iframe');
   iframe.setAttribute('aria-hidden', 'true');
   
-  let iframeCss = 'position:fixed;right:0;bottom:0;border:0;opacity:0;pointer-events:none;z-index:-9999;';
-  if (options?.page === 'A4') {
-    iframeCss += 'width:210mm;height:297mm;';
-  } else if (options?.page === 'A5') {
-    iframeCss += 'width:148mm;height:210mm;';
-  } else {
-    iframeCss += 'width:100vw;height:100vh;';
-  }
+  // Use a completely unconstrained window-filling 100% iframe
+  iframe.style.cssText = 'position:fixed;top:0;left:0;border:0;opacity:0;pointer-events:none;z-index:-9999;width:100%;height:100%;';
   
-  iframe.style.cssText = iframeCss;
   document.body.appendChild(iframe);
 
   const iframeWindow = iframe.contentWindow;
