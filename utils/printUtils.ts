@@ -91,6 +91,8 @@ export const printContent = (content: string, title: string = 'طباعة', opti
   // The only 100% reliable way to print A4 is using the main DOM.
   if (options?.page === 'A4') {
     const { hoistedCss, bodyHtml } = hoistComponentStyles(content);
+    const hadAllowFullPrint = document.body.classList.contains('allow-full-print');
+    document.body.classList.add('allow-full-print');
     
     const container = document.createElement('div');
     container.id = 'a4-print-portal';
@@ -113,6 +115,8 @@ export const printContent = (content: string, title: string = 'طباعة', opti
           padding: 0;
           background: white;
         }
+        #a4-print-portal,
+        #a4-print-portal * { visibility: visible !important; }
         @page { size: A4 portrait; margin: 0; }
         body { margin: 0; padding: 0; background: white; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
       }
@@ -129,6 +133,9 @@ export const printContent = (content: string, title: string = 'طباعة', opti
 
     const cleanup = () => {
       try { if (container.parentNode) container.parentNode.removeChild(container); } catch {}
+      if (!hadAllowFullPrint) {
+        try { document.body.classList.remove('allow-full-print'); } catch {}
+      }
       window.removeEventListener('afterprint', cleanup);
     };
 
