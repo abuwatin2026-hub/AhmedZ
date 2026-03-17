@@ -88,33 +88,23 @@ export const printContent = (content: string, title: string = 'طباعة', opti
 
   const html = buildPrintHtml(content, title, { ...options, extraStyles });
 
-  // ── A4 pages: open as a normal browser tab so the user can preview + Ctrl+P / Save as PDF ──
-  // The tab gets a real full-width viewport, so content lays out at proper A4 width.
-  if (options?.page === 'A4') {
-    const blob = new Blob([html], { type: 'text/html; charset=utf-8' });
-    const blobUrl = URL.createObjectURL(blob);
-    // Open as a normal new tab (no size constraints) — guaranteed full viewport
-    const tab = window.open(blobUrl, '_blank');
-    if (!tab) {
-      // Popup blocked — fall back to iframe
-      URL.revokeObjectURL(blobUrl);
-      printViaIframe(html);
-      return;
-    }
-    // Revoke blob URL after the tab loads (content is already loaded into memory)
-    setTimeout(() => { try { URL.revokeObjectURL(blobUrl); } catch {} }, 10_000);
-    return;
-  }
-
-  // ── A5 / auto pages: use hidden iframe (works reliably at small sizes) ──
-  printViaIframe(html);
-};
-
-/** Internal: print via hidden iframe (used for A5 and as fallback) */
-const printViaIframe = (html: string) => {
+  // ── FOOLPROOF IFRAME APPROACH ──
+  // Do not use popups (they get blocked). Do not use width:0 iframes (they crush layout).
+  // Use a fully-sized iframe that is transparent and unclickable.
+  // This forces the browser to layout the HTML at exact paper dimensions!
   const iframe = document.createElement('iframe');
   iframe.setAttribute('aria-hidden', 'true');
-  iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:0;height:0;border:0;visibility:hidden;';
+  
+  let iframeCss = 'position:fixed;right:0;bottom:0;border:0;opacity:0;pointer-events:none;z-index:-9999;';
+  if (options?.page === 'A4') {
+    iframeCss += 'width:210mm;height:297mm;';
+  } else if (options?.page === 'A5') {
+    iframeCss += 'width:148mm;height:210mm;';
+  } else {
+    iframeCss += 'width:100vw;height:100vh;';
+  }
+  
+  iframe.style.cssText = iframeCss;
   document.body.appendChild(iframe);
 
   const iframeWindow = iframe.contentWindow;
