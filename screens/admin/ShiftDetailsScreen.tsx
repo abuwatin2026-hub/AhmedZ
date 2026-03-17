@@ -13,6 +13,7 @@ import { useSettings } from '../../contexts/SettingsContext';
 import CurrencyDualAmount from '../../components/common/CurrencyDualAmount';
 
 import { translateAccountName } from '../../utils/accountUtils';
+import { methodLabel, formatNumber, paymentDetails } from '../../utils/shiftUtils';
 
 type ShiftRow = {
   id: string;
@@ -70,57 +71,7 @@ type ManualVoucherRow = {
   lines: { account_name: string; debit: number; credit: number; currency_code: string | null; foreign_amount: number | null }[];
 };
 
-const methodLabel = (method: string) => {
-  const m = (method || '').toLowerCase();
-  if (m === 'cash') return 'نقد';
-  if (m === 'network') return 'حوالات';
-  if (m === 'kuraimi') return 'حسابات بنكية';
-  if (m === 'bank') return 'حسابات بنكية';
-  if (m === 'card') return 'حوالات';
-  if (m === 'ar') return 'آجل';
-  if (m === 'store_credit') return 'رصيد عميل';
-  return method || '-';
-};
-
-const formatNumber = (value: unknown) => {
-  const num = Number(value);
-  if (!Number.isFinite(num)) return '-';
-  return num.toFixed(2);
-};
-
-const shortId = (value: unknown, take: number = 6) => {
-  const s = String(value || '').trim();
-  if (!s) return '';
-  return s.slice(-take).toUpperCase();
-};
-
-const paymentDetails = (p: PaymentRow) => {
-  const refTable = String(p.reference_table || '').trim();
-  const refId = String(p.reference_id || '').trim();
-  const data = (p.data && typeof p.data === 'object' ? p.data : {}) as Record<string, unknown>;
-  const kind = String(data.kind || '').trim();
-  const reason = String(data.reason || '').trim();
-
-  if (refTable === 'cash_shifts' && kind === 'cash_movement') {
-    if (reason) return reason;
-    return p.direction === 'in' ? 'إيداع داخل الوردية' : p.direction === 'out' ? 'صرف داخل الوردية' : 'حركة نقدية';
-  }
-
-  if (refTable === 'orders' && refId) {
-    return `دفعة طلب ${shortId(refId)}`;
-  }
-
-  if (refTable === 'sales_returns' && refId) {
-    const orderId = String(data.orderId || '').trim();
-    if (orderId) return `مرتجع ${shortId(refId)} للطلب ${shortId(orderId)}`;
-    return `مرتجع ${shortId(refId)}`;
-  }
-
-  if (reason) return reason;
-  if (refTable && refId) return `${refTable}:${shortId(refId)}`;
-  if (refTable) return refTable;
-  return '-';
-};
+// methodLabel, formatNumber, shortId, paymentDetails imported from shiftUtils
 
 const ShiftDetailsScreen: React.FC = () => {
   const { shiftId } = useParams<{ shiftId: string }>();

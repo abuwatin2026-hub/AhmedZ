@@ -6,6 +6,7 @@ import { exportToXlsx } from '../../utils/export';
 import { buildXlsxBrandOptions } from '../../utils/branding';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useNavigate } from 'react-router-dom';
+import { methodLabel } from '../../utils/shiftUtils';
 
 /* ─── Types ─── */
 type Period = 'today' | 'yesterday' | 'week' | 'month' | 'custom';
@@ -72,15 +73,7 @@ const reviewStatusColor: Record<string, string> = {
     rejected: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
     pending: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400',
 };
-const methodLabel = (m: string) => {
-    const k = (m || '').toLowerCase();
-    if (k === 'cash') return 'نقد';
-    if (k === 'network' || k === 'card') return 'شبكة/بطاقة';
-    if (k === 'bank' || k === 'kuraimi') return 'حوالة بنكية';
-    if (k === 'ar') return 'آجل';
-    if (k === 'store_credit') return 'رصيد عميل';
-    return m || '-';
-};
+// methodLabel imported from shiftUtils
 const acctTypeLabel: Record<string, string> = {
     asset: 'أصول', liability: 'خصوم', equity: 'حقوق ملكية', income: 'إيرادات', expense: 'مصروفات',
 };

@@ -8,6 +8,9 @@ import { exportToXlsx, sharePdf } from '../../utils/export';
 import { buildPdfBrandOptions, buildXlsxBrandOptions } from '../../utils/branding';
 import { getInvoiceOrderView } from '../../utils/orderUtils';
 import { useSettings } from '../../contexts/SettingsContext';
+import { methodLabel, paymentDetails } from '../../utils/shiftUtils';
+
+const SHIFTS_PAGE_SIZE = 20;
 
 const ShiftReportsScreen: React.FC = () => {
     const [shifts, setShifts] = useState<CashShift[]>([]);
@@ -46,6 +49,8 @@ const ShiftReportsScreen: React.FC = () => {
     const navigate = useNavigate();
     const { settings } = useSettings();
     const [baseCode, setBaseCode] = useState('—');
+    const [shiftsPage, setShiftsPage] = useState(0);
+    const [hasMoreShifts, setHasMoreShifts] = useState(false);
 
     useEffect(() => {
         void getBaseCurrencyCode().then((c) => {
@@ -72,7 +77,7 @@ const ShiftReportsScreen: React.FC = () => {
                 .from('cash_shifts')
                 .select('*')
                 .order('opened_at', { ascending: false })
-                .limit(50); // Pagination later
+                .range(shiftsPage * SHIFTS_PAGE_SIZE, (shiftsPage + 1) * SHIFTS_PAGE_SIZE);
 
             if (error) {
                 console.error(error);
@@ -110,9 +115,10 @@ const ShiftReportsScreen: React.FC = () => {
                 }
             }
             setLoading(false);
+            setHasMoreShifts((data || []).length > SHIFTS_PAGE_SIZE);
         };
         loadShifts();
-    }, [supabase]);
+    }, [supabase, shiftsPage]);
 
     useEffect(() => {
         const loadCashiers = async () => {
@@ -144,7 +150,7 @@ const ShiftReportsScreen: React.FC = () => {
             .from('cash_shifts')
             .select('*')
             .order('opened_at', { ascending: false })
-            .limit(50);
+            .range(shiftsPage * SHIFTS_PAGE_SIZE, (shiftsPage + 1) * SHIFTS_PAGE_SIZE);
         if (error) {
             console.error(error);
             setLoading(false);
@@ -377,47 +383,7 @@ const ShiftReportsScreen: React.FC = () => {
         void loadReportExpected();
     }, [supabase, reportShiftId]);
 
-    const methodLabel = (method: string) => {
-        const m = (method || '').toLowerCase();
-        if (m === 'cash') return 'نقد';
-        if (m === 'network') return 'حوالات';
-        if (m === 'kuraimi') return 'حسابات بنكية';
-        if (m === 'bank') return 'حسابات بنكية';
-        if (m === 'card') return 'حوالات';
-        if (m === 'ar') return 'آجل';
-        if (m === 'store_credit') return 'رصيد عميل';
-        return method || '-';
-    };
-
-    const shortId = (value: unknown, take: number = 6) => {
-        const s = String(value || '').trim();
-        if (!s) return '';
-        return s.slice(-take).toUpperCase();
-    };
-
-    const paymentDetails = (p: any) => {
-        const refTable = String(p?.reference_table || '').trim();
-        const refId = String(p?.reference_id || '').trim();
-        const data = (p?.data && typeof p.data === 'object' ? p.data : {}) as Record<string, unknown>;
-        const kind = String((data as any)?.kind || '').trim();
-        const reason = String((data as any)?.reason || '').trim();
-        const direction = String(p?.direction || '').trim();
-
-        if (refTable === 'cash_shifts' && kind === 'cash_movement') {
-            if (reason) return reason;
-            return direction === 'in' ? 'إيداع داخل الوردية' : direction === 'out' ? 'صرف داخل الوردية' : 'حركة نقدية';
-        }
-        if (refTable === 'orders' && refId) return `دفعة طلب ${shortId(refId)}`;
-        if (refTable === 'sales_returns' && refId) {
-            const orderId = String((data as any)?.orderId || '').trim();
-            if (orderId) return `مرتجع ${shortId(refId)} للطلب ${shortId(orderId)}`;
-            return `مرتجع ${shortId(refId)}`;
-        }
-        if (reason) return reason;
-        if (refTable && refId) return `${refTable}:${shortId(refId)}`;
-        if (refTable) return refTable;
-        return '-';
-    };
+    // methodLabel, shortId, paymentDetails imported from shiftUtils
 
     useEffect(() => {
         if (!closeUseDenoms) return;
@@ -857,6 +823,29 @@ const ShiftReportsScreen: React.FC = () => {
                         </tbody>
                     </table>
                 </div>
+            </div>
+
+            {/* Pagination controls */}
+            <div className="flex items-center justify-between mt-4">
+                <button
+                    type="button"
+                    disabled={shiftsPage === 0}
+                    onClick={() => setShiftsPage(p => Math.max(0, p - 1))}
+                    className="px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                    ← السابق
+                </button>
+                <span className="text-sm text-gray-500 dark:text-gray-400">
+                    صفحة {shiftsPage + 1}{shifts.length > 0 ? ` (${shifts.length > SHIFTS_PAGE_SIZE ? SHIFTS_PAGE_SIZE : shifts.length} وردية)` : ''}
+                </span>
+                <button
+                    type="button"
+                    disabled={!hasMoreShifts}
+                    onClick={() => setShiftsPage(p => p + 1)}
+                    className="px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                    التالي →
+                </button>
             </div>
 
             {closeShiftId && (
