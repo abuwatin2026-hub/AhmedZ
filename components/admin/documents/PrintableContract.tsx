@@ -53,8 +53,8 @@ const PrintableContract: React.FC<Props> = ({ data, companyName, companyPhone, c
             @page { size: A4 portrait; margin: 0; }
             html, body { width: 210mm !important; min-height: 297mm !important; margin: 0 auto !important; padding: 0 !important; }
             body { -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0 !important; background: white; overflow: visible !important; }
-            * { box-sizing: border-box; overflow: visible !important; }
-            .ct-doc { width: 194mm !important; min-height: 281mm !important; margin: 0 auto !important; overflow: visible !important; }
+            * { box-sizing: border-box; }
+            .ct-doc { width: 194mm !important; min-height: 281mm !important; margin: 0 auto !important; overflow: hidden !important; }
             .ct-sig-table { page-break-inside: avoid !important; }
         }
         .ct-doc {
