@@ -383,7 +383,7 @@ export const KPIBar: React.FC = () => {
                     p_end_date: dateRange.end.toISOString(),
                     p_zone_id: null,
                     p_invoice_only: false,
-                    p_warehouse_id: warehouseId,
+                    p_warehouse_id: null, // all warehouses — not filtered by session
                 };
                 const { data: kpi, error: kpiErr }: any = await supabase.rpc(kpiRpc, payload as any);
                 if (kpiErr) throw kpiErr;
