@@ -76,7 +76,7 @@ const createPdfDataUriFromElement = async (
     const usePx = options?.unit ? options.unit === 'px' : isMobile;
     const headerTitle = options?.headerTitle ?? '';
     const headerSubtitle = options?.headerSubtitle ?? title;
-    const footerText = brandFooter || `تم الإنشاء: ${new Date().toLocaleString('ar-EG-u-nu-latn')}`;
+    const footerText = options?.footerText ?? brandFooter;
 
     // For A4 PDF: temporarily constrain element width to prevent clipping
     let savedWidth: string | null = null;
@@ -91,6 +91,12 @@ const createPdfDataUriFromElement = async (
         element.style.maxWidth = '520px';
         element.style.boxSizing = 'border-box';
     }
+
+    try {
+        const fontsApi = (document as any)?.fonts;
+        if (fontsApi?.ready) await fontsApi.ready;
+    } catch { }
+    await new Promise((r) => setTimeout(r, 80));
 
     const canvas = await html2canvas(element, {
         scale,
@@ -107,51 +113,67 @@ const createPdfDataUriFromElement = async (
         element.style.boxSizing = savedBoxSizing || '';
     }
 
-    const imgData = canvas.toDataURL('image/png');
-
     let dataUri = '';
     if (usePx) {
         const headerPx = Math.max(0, options?.headerHeight ?? 40);
         const footerPx = Math.max(0, options?.footerHeight ?? 24);
-        const pageSize = options?.pageSize || [canvas.width, canvas.height + headerPx + footerPx];
+        const pageSize = options?.pageSize || [canvas.width, Math.max(canvas.height + headerPx + footerPx, 1)];
         const orientation = pageSize[0] > pageSize[1] ? 'l' : 'p';
         const pdf = new jsPDF({ orientation, unit: 'px', format: pageSize });
         const pageWidth = pdf.internal.pageSize.getWidth();
         const pageHeight = pdf.internal.pageSize.getHeight();
-
-        // Add a small margin to prevent printer clipping on thermal
         const sideMargin = 4;
         const printWidth = pageWidth - (sideMargin * 2);
-
-        let headerTop = 8;
-        if (accent) {
-            pdf.setFillColor(accent.r, accent.g, accent.b);
-            pdf.rect(0, 0, pageWidth, headerPx, 'F');
+        const contentHeightPx = Math.max(1, pageHeight - headerPx - footerPx);
+        const mmPerPx = printWidth / canvas.width;
+        const sourceSliceHeight = Math.max(1, Math.floor(contentHeightPx / mmPerPx));
+        const totalPages = Math.max(1, Math.ceil(canvas.height / sourceSliceHeight));
+        const sliceCanvas = document.createElement('canvas');
+        const sliceContext = sliceCanvas.getContext('2d');
+        if (!sliceContext) throw new Error('Failed to initialize canvas context');
+        sliceCanvas.width = canvas.width;
+        let offset = 0;
+        let currentPage = 1;
+        while (offset < canvas.height) {
+            const sliceHeight = Math.min(sourceSliceHeight, canvas.height - offset);
+            sliceCanvas.height = sliceHeight;
+            sliceContext.clearRect(0, 0, sliceCanvas.width, sliceCanvas.height);
+            sliceContext.drawImage(canvas, 0, offset, sliceCanvas.width, sliceHeight, 0, 0, sliceCanvas.width, sliceCanvas.height);
+            const sliceData = sliceCanvas.toDataURL('image/png');
+            if (accent && headerPx > 0) {
+                pdf.setFillColor(accent.r, accent.g, accent.b);
+                pdf.rect(0, 0, pageWidth, headerPx, 'F');
+            }
+            if (logo && headerPx > 0) {
+                const lw = Math.min(logo.width, Math.round(pageWidth * 0.18));
+                const lh = logo.height;
+                const ly = Math.max(2, Math.min(headerPx - lh - 2, 6));
+                pdf.addImage(logo.data, logo.format, 12, ly, lw, lh);
+            }
+            const tonePx = textOn(accent) === 'light' ? { r: 255, g: 255, b: 255 } : { r: 30, g: 41, b: 59 };
+            if (headerTitle && headerPx > 0) {
+                pdf.setTextColor(tonePx.r, tonePx.g, tonePx.b);
+                pdf.setFontSize(14);
+                pdf.text(headerTitle, pageWidth / 2, Math.min(18, Math.max(12, headerPx - 18)), { align: 'center' as any });
+            }
+            if (headerSubtitle && headerPx > 0) {
+                pdf.setTextColor(tonePx.r, tonePx.g, tonePx.b);
+                pdf.setFontSize(11);
+                pdf.text(headerSubtitle, pageWidth / 2, Math.min(32, Math.max(22, headerPx - 6)), { align: 'center' as any });
+            }
+            pdf.setTextColor(0, 0, 0);
+            const renderedHeight = sliceHeight * mmPerPx;
+            pdf.addImage(sliceData, 'PNG', sideMargin, headerPx, printWidth, renderedHeight);
+            const pageLabelPx = options?.pageNumbers ? `${currentPage}/${totalPages}` : '';
+            const footerLinePx = [footerText, pageLabelPx].filter(Boolean).join(' • ');
+            if (footerLinePx && footerPx > 0) {
+                pdf.setFontSize(10);
+                pdf.text(footerLinePx, pageWidth / 2, pageHeight - 8, { align: 'center' as any });
+            }
+            offset += sliceHeight;
+            currentPage += 1;
+            if (offset < canvas.height) pdf.addPage();
         }
-        const tonePx = textOn(accent) === 'light' ? { r: 255, g: 255, b: 255 } : { r: 30, g: 41, b: 59 };
-        pdf.setTextColor(tonePx.r, tonePx.g, tonePx.b);
-        if (logo) {
-            const lw = Math.min(logo.width, Math.round(pageWidth * 0.18));
-            const lh = logo.height;
-            const ly = Math.min(headerPx - 10, headerTop);
-            pdf.addImage(logo.data, logo.format, 12, ly, lw, lh);
-        }
-        const titleY = Math.min(18, headerPx - 14);
-        const subtitleY = Math.min(32, headerPx - 6);
-        if (headerTitle) {
-            pdf.setFontSize(14);
-            pdf.text(headerTitle, pageWidth / 2, titleY, { align: 'center' as any });
-        }
-        if (headerSubtitle) {
-            pdf.setFontSize(11);
-            pdf.text(headerSubtitle, pageWidth / 2, subtitleY, { align: 'center' as any });
-        }
-        pdf.setTextColor(0, 0, 0);
-        pdf.addImage(imgData, 'PNG', sideMargin, headerPx, printWidth, pageHeight - headerPx - footerPx);
-        pdf.setFontSize(10);
-        const pageLabelPx = options?.pageNumbers ? `الصفحة 1 من 1` : '';
-        const footerLinePx = [footerText, pageLabelPx].filter(Boolean).join(' • ');
-        pdf.text(footerLinePx, pageWidth / 2, pageHeight - 8, { align: 'center' as any });
         dataUri = pdf.output('datauristring');
     } else {
         const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a5' });
