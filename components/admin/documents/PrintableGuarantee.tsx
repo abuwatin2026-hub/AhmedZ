@@ -128,7 +128,7 @@ const PrintableGuarantee: React.FC<Props> = ({ data, companyName, companyPhone, 
         }
       `}</style>
 
-            <div className="gt-doc" style={{ fontFamily: 'Tajawal, Cairo, sans-serif' }}>
+            <div className="gt-doc" style={{ fontFamily: 'Tajawal, Cairo, sans-serif', display: 'block' }}>
                 <div className="gt-watermark">{AZTA_IDENTITY.tradeNameAr}</div>
 
                 {printNumber != null && printNumber > 0 && (

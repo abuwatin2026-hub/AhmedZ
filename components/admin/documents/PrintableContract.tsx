@@ -143,7 +143,7 @@ const PrintableContract: React.FC<Props> = ({ data, companyName, companyPhone, c
         .ct-sig-table { page-break-inside: avoid; width: 100%; border-collapse: collapse; margin-top: 10px; border-top: 2px solid rgba(212,175,55,0.27); }
       `}</style>
 
-            <div className="ct-doc" style={{ fontFamily: 'Tajawal, Cairo, sans-serif' }}>
+            <div className="ct-doc" style={{ fontFamily: 'Tajawal, Cairo, sans-serif', display: 'block' }}>
                 <div className="ct-watermark">{AZTA_IDENTITY.tradeNameAr}</div>
 
                 {printNumber != null && printNumber > 0 && (
