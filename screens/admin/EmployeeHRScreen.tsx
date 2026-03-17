@@ -6,6 +6,7 @@ import { useSettings } from '../../contexts/SettingsContext';
 import { useAuth } from '../../contexts/AuthContext';
 import PageLoader from '../../components/PageLoader';
 import { printContent } from '../../utils/printUtils';
+import { sharePdf } from '../../utils/export';
 import PrintableContract, { ContractPrintData } from '../../components/admin/documents/PrintableContract';
 import PrintableGuarantee, { GuaranteePrintData } from '../../components/admin/documents/PrintableGuarantee';
 
@@ -112,6 +113,30 @@ export default function EmployeeHRScreen() {
     logoUrl: (settings.logoUrl || '').trim(),
   }), [settings]);
 
+  const exportRenderedHtmlPdf = async (html: string, title: string, filename: string) => {
+    const hostId = `hr-doc-pdf-export-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
+    const host = document.createElement('div');
+    host.id = hostId;
+    host.style.cssText = 'position:fixed;left:-10000px;top:0;width:794px;max-width:794px;background:#fff;z-index:-1;opacity:1;pointer-events:none;';
+    host.innerHTML = html;
+    document.body.appendChild(host);
+    try {
+      return await sharePdf(hostId, title, filename, {
+        unit: 'px',
+        pageSize: [794, 1123],
+        scale: 2,
+        headerHeight: 0,
+        footerHeight: 0,
+        headerTitle: '',
+        headerSubtitle: '',
+        footerText: '',
+        pageNumbers: false,
+      });
+    } finally {
+      try { if (host.parentNode) host.parentNode.removeChild(host); } catch { }
+    }
+  };
+
   /* ── Async print: contract ── */
   const handlePrintContract = async (c: Contract, mode: PrintMode = 'full') => {
     const s = getSupabaseClient();
@@ -148,6 +173,46 @@ export default function EmployeeHRScreen() {
     printContent(html, `عقد عمل (${mode === 'compact' ? 'مضغوطة' : 'كاملة'}) — ${emp?.full_name || ''}`, { page: 'A4', includeAppStyles: false });
   };
 
+  const handleExportContractPdf = async (c: Contract, mode: PrintMode = 'full') => {
+    const s = getSupabaseClient();
+    const emp = employees.find(e => e.id === c.employee_id);
+    let pn: number | null = null;
+    if (s) {
+      try {
+        const { data } = await s.rpc('track_document_print', { p_source_table: 'employee_contracts', p_source_id: c.id, p_template: 'PrintableContractPDF' });
+        pn = typeof data === 'number' ? data : null;
+      } catch { }
+    }
+    const contractData: ContractPrintData = {
+      contractNumber: c.contract_number || '',
+      contractType: c.contract_type,
+      startDate: c.start_date,
+      endDate: c.end_date,
+      jobTitle: c.job_title,
+      department: c.department,
+      workLocation: c.work_location,
+      salary: c.salary,
+      currency: c.currency,
+      salaryBreakdown: c.salary_breakdown || {},
+      probationDays: c.probation_days,
+      workingHoursPerDay: c.working_hours_per_day,
+      workingDaysPerWeek: c.working_days_per_week,
+      vacationDaysAnnual: c.vacation_days_annual,
+      specialTerms: c.special_terms,
+      employeeName: emp?.full_name || '',
+      employeeCode: emp?.employee_code,
+    };
+    const html = renderToString(
+      <PrintableContract data={contractData} companyName={brand.name} companyPhone={brand.contactNumber} companyAddress={brand.address} logoUrl={brand.logoUrl} printNumber={pn} printMode={mode} />
+    );
+    const ok = await exportRenderedHtmlPdf(
+      html,
+      `عقد عمل ${mode === 'compact' ? 'مضغوط' : 'كامل'}`,
+      `employee_contract_${(emp?.employee_code || c.id || '').toString().slice(-8)}_${mode}.pdf`
+    );
+    showNotification(ok ? 'تم تصدير PDF بنجاح' : 'تعذر تصدير PDF', ok ? 'success' : 'error');
+  };
+
   /* ── Async print: guarantee ── */
   const handlePrintGuarantee = async (g: Guarantee, mode: PrintMode = 'full') => {
     const s = getSupabaseClient();
@@ -181,6 +246,43 @@ export default function EmployeeHRScreen() {
     printContent(html, `ضمان موظف (${mode === 'compact' ? 'مضغوطة' : 'كاملة'}) — ${emp?.full_name || ''}`, { page: 'A4', includeAppStyles: false });
   };
 
+  const handleExportGuaranteePdf = async (g: Guarantee, mode: PrintMode = 'full') => {
+    const s = getSupabaseClient();
+    const emp = employees.find(e => e.id === g.employee_id);
+    let pn: number | null = null;
+    if (s) {
+      try {
+        const { data } = await s.rpc('track_document_print', { p_source_table: 'employee_guarantees', p_source_id: g.id, p_template: 'PrintableGuaranteePDF' });
+        pn = typeof data === 'number' ? data : null;
+      } catch { }
+    }
+    const guaranteeData: GuaranteePrintData = {
+      guaranteeNumber: g.guarantee_number || '',
+      guaranteeType: g.guarantee_type,
+      guarantorName: g.guarantor_name,
+      guarantorIdNumber: g.guarantor_id_number,
+      guarantorPhone: g.guarantor_phone,
+      guarantorAddress: g.guarantor_address,
+      guarantorRelationship: g.guarantor_relationship,
+      guaranteeAmount: g.guarantee_amount,
+      currency: g.currency,
+      validFrom: g.valid_from,
+      validUntil: g.valid_until,
+      specialTerms: g.special_terms,
+      employeeName: emp?.full_name || '',
+      employeeCode: emp?.employee_code,
+    };
+    const html = renderToString(
+      <PrintableGuarantee data={guaranteeData} companyName={brand.name} companyPhone={brand.contactNumber} companyAddress={brand.address} logoUrl={brand.logoUrl} printNumber={pn} printMode={mode} />
+    );
+    const ok = await exportRenderedHtmlPdf(
+      html,
+      `ضمان موظف ${mode === 'compact' ? 'مضغوط' : 'كامل'}`,
+      `employee_guarantee_${(emp?.employee_code || g.id || '').toString().slice(-8)}_${mode}.pdf`
+    );
+    showNotification(ok ? 'تم تصدير PDF بنجاح' : 'تعذر تصدير PDF', ok ? 'success' : 'error');
+  };
+
   /* ── Print blank contract template ── */
   const handlePrintBlankContract = (mode: PrintMode = 'full') => {
     const blankData: ContractPrintData = {
@@ -208,6 +310,33 @@ export default function EmployeeHRScreen() {
     printContent(html, `نموذج عقد عمل فارغ (${mode === 'compact' ? 'مضغوطة' : 'كاملة'})`, { page: 'A4', includeAppStyles: false });
   };
 
+  const handleExportBlankContractPdf = async (mode: PrintMode = 'full') => {
+    const blankData: ContractPrintData = {
+      contractNumber: '',
+      contractType: 'indefinite',
+      startDate: '',
+      endDate: null,
+      jobTitle: null,
+      department: null,
+      workLocation: null,
+      salary: 0,
+      currency: 'YER',
+      salaryBreakdown: {},
+      probationDays: 90,
+      workingHoursPerDay: 8,
+      workingDaysPerWeek: 6,
+      vacationDaysAnnual: 30,
+      specialTerms: null,
+      employeeName: '',
+      employeeCode: null,
+    };
+    const html = renderToString(
+      <PrintableContract data={blankData} companyName={brand.name} companyPhone={brand.contactNumber} companyAddress={brand.address} logoUrl={brand.logoUrl} printMode={mode} />
+    );
+    const ok = await exportRenderedHtmlPdf(html, `نموذج عقد عمل فارغ ${mode === 'compact' ? 'مضغوط' : 'كامل'}`, `blank_employee_contract_${mode}.pdf`);
+    showNotification(ok ? 'تم تصدير PDF بنجاح' : 'تعذر تصدير PDF', ok ? 'success' : 'error');
+  };
+
   /* ── Print blank guarantee template ── */
   const handlePrintBlankGuarantee = (mode: PrintMode = 'full') => {
     const blankData: GuaranteePrintData = {
@@ -230,6 +359,30 @@ export default function EmployeeHRScreen() {
       <PrintableGuarantee data={blankData} companyName={brand.name} companyPhone={brand.contactNumber} companyAddress={brand.address} logoUrl={brand.logoUrl} printMode={mode} />
     );
     printContent(html, `نموذج ضمان موظف فارغ (${mode === 'compact' ? 'مضغوطة' : 'كاملة'})`, { page: 'A4', includeAppStyles: false });
+  };
+
+  const handleExportBlankGuaranteePdf = async (mode: PrintMode = 'full') => {
+    const blankData: GuaranteePrintData = {
+      guaranteeNumber: '',
+      guaranteeType: 'personal',
+      guarantorName: '',
+      guarantorIdNumber: null,
+      guarantorPhone: null,
+      guarantorAddress: null,
+      guarantorRelationship: null,
+      guaranteeAmount: 0,
+      currency: 'YER',
+      validFrom: '',
+      validUntil: null,
+      specialTerms: null,
+      employeeName: '',
+      employeeCode: null,
+    };
+    const html = renderToString(
+      <PrintableGuarantee data={blankData} companyName={brand.name} companyPhone={brand.contactNumber} companyAddress={brand.address} logoUrl={brand.logoUrl} printMode={mode} />
+    );
+    const ok = await exportRenderedHtmlPdf(html, `نموذج ضمان موظف فارغ ${mode === 'compact' ? 'مضغوط' : 'كامل'}`, `blank_employee_guarantee_${mode}.pdf`);
+    showNotification(ok ? 'تم تصدير PDF بنجاح' : 'تعذر تصدير PDF', ok ? 'success' : 'error');
   };
 
   const loadAll = useCallback(async () => {
@@ -462,6 +615,14 @@ export default function EmployeeHRScreen() {
           className={`${BTN} bg-blue-600 text-white`}
           title={tab === 'contracts' ? 'طباعة نموذج عقد فارغ نسخة مضغوطة' : 'طباعة نموذج ضمان فارغ نسخة مضغوطة'}
         >🖨️ {tab === 'contracts' ? 'نموذج عقد مضغوط' : 'نموذج ضمان مضغوط'}</button>
+        <button type="button" onClick={() => tab === 'contracts' ? void handleExportBlankContractPdf('full') : void handleExportBlankGuaranteePdf('full')}
+          className={`${BTN} bg-indigo-600 text-white`}
+          title={tab === 'contracts' ? 'تصدير PDF نموذج عقد فارغ نسخة كاملة' : 'تصدير PDF نموذج ضمان فارغ نسخة كاملة'}
+        >PDF {tab === 'contracts' ? 'عقد كامل' : 'ضمان كامل'}</button>
+        <button type="button" onClick={() => tab === 'contracts' ? void handleExportBlankContractPdf('compact') : void handleExportBlankGuaranteePdf('compact')}
+          className={`${BTN} bg-sky-700 text-white`}
+          title={tab === 'contracts' ? 'تصدير PDF نموذج عقد فارغ نسخة مضغوطة' : 'تصدير PDF نموذج ضمان فارغ نسخة مضغوطة'}
+        >PDF {tab === 'contracts' ? 'عقد مضغوط' : 'ضمان مضغوط'}</button>
         <button type="button" disabled={!canManageHr} onClick={() => tab === 'contracts' ? openCModal() : openGModal()} className={`${BTN} bg-emerald-600 text-white disabled:opacity-60`}>{tab === 'contracts' ? '+ عقد جديد' : '+ ضمان جديد'}</button>
       </div>
       {!canManageHr && canViewHr && <div className="text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2">وضع قراءة فقط: صلاحية الإدارة غير متاحة لهذا الحساب.</div>}
@@ -489,6 +650,8 @@ export default function EmployeeHRScreen() {
                     <td className="p-3 text-sm space-x-1 rtl:space-x-reverse">
                       <button onClick={() => void handlePrintContract(c, 'full')} className="px-2 py-1 rounded bg-blue-600 text-white text-xs font-semibold">طباعة كاملة</button>
                       <button onClick={() => void handlePrintContract(c, 'compact')} className="px-2 py-1 rounded bg-sky-700 text-white text-xs font-semibold">طباعة مضغوطة</button>
+                      <button onClick={() => void handleExportContractPdf(c, 'full')} className="px-2 py-1 rounded bg-indigo-700 text-white text-xs font-semibold">PDF كامل</button>
+                      <button onClick={() => void handleExportContractPdf(c, 'compact')} className="px-2 py-1 rounded bg-cyan-700 text-white text-xs font-semibold">PDF مضغوط</button>
                       <button disabled={!canManageHr} onClick={() => openCModal(c)} className="px-2 py-1 rounded bg-gray-700 text-white text-xs font-semibold disabled:opacity-60">تعديل</button>
                       <button disabled={!canManageHr} onClick={() => deleteContract(c.id)} className="px-2 py-1 rounded bg-red-600 text-white text-xs font-semibold disabled:opacity-60">حذف</button>
                       {canManageHr && c.status === 'draft' && <button onClick={() => void transitionDocument('contract', c.id, 'submit_review')} className="px-2 py-1 rounded bg-indigo-600 text-white text-xs font-semibold">إرسال للمراجعة</button>}
@@ -546,6 +709,8 @@ export default function EmployeeHRScreen() {
                     <td className="p-3 text-sm space-x-1 rtl:space-x-reverse">
                       <button onClick={() => void handlePrintGuarantee(g, 'full')} className="px-2 py-1 rounded bg-blue-600 text-white text-xs font-semibold">طباعة كاملة</button>
                       <button onClick={() => void handlePrintGuarantee(g, 'compact')} className="px-2 py-1 rounded bg-sky-700 text-white text-xs font-semibold">طباعة مضغوطة</button>
+                      <button onClick={() => void handleExportGuaranteePdf(g, 'full')} className="px-2 py-1 rounded bg-indigo-700 text-white text-xs font-semibold">PDF كامل</button>
+                      <button onClick={() => void handleExportGuaranteePdf(g, 'compact')} className="px-2 py-1 rounded bg-cyan-700 text-white text-xs font-semibold">PDF مضغوط</button>
                       <button disabled={!canManageHr} onClick={() => openGModal(g)} className="px-2 py-1 rounded bg-gray-700 text-white text-xs font-semibold disabled:opacity-60">تعديل</button>
                       <button disabled={!canManageHr} onClick={() => deleteGuarantee(g.id)} className="px-2 py-1 rounded bg-red-600 text-white text-xs font-semibold disabled:opacity-60">حذف</button>
                       {canManageHr && g.status === 'draft' && <button onClick={() => void transitionDocument('guarantee', g.id, 'submit_review')} className="px-2 py-1 rounded bg-indigo-600 text-white text-xs font-semibold">إرسال للمراجعة</button>}
