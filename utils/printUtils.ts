@@ -23,17 +23,13 @@ const hoistComponentStyles = (content: string): { hoistedCss: string; bodyHtml: 
  */
 export const buildPrintHtml = (content: string, title: string = 'طباعة', options?: { page?: 'A5' | 'A4' | 'auto', extraStyles?: string, includeAppStyles?: boolean }) => {
   const page = options?.page || 'A5';
+  // A4 and A5 both use margin:0 — the component handles its own internal padding.
+  // Using margin:0 prevents the browser from adding extra margins that cause overflow/clipping.
   const pageCss = page === 'A5'
     ? `@page { size: A5; margin: 0; }`
     : page === 'A4'
-    ? `@page { size: A4 portrait; margin: 8mm; }`
+    ? `@page { size: A4 portrait; margin: 0; }`
     : ``;
-
-  // Body sizing: for A4 pages we must set an explicit width on the body
-  // so the content lays out at full A4 width even when the iframe is narrow.
-  const bodySizeCss = page === 'A4'
-    ? `body { width: 210mm; min-width: 210mm; margin: 0 auto; }`
-    : '';
 
   // Hoist any <style> blocks from the component into <head> so they
   // take precedence over the global reset below.
@@ -50,8 +46,7 @@ export const buildPrintHtml = (content: string, title: string = 'طباعة', op
       ${options?.extraStyles ? `<style>${options.extraStyles}</style>` : ''}
       <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Cairo', 'Arial', sans-serif; direction: rtl; padding: 0; margin: 0; }
-        ${bodySizeCss}
+        body { font-family: 'Cairo', 'Arial', sans-serif; direction: rtl; padding: 0; margin: 0; width: 100%; }
         @media print {
           body { padding: 0; }
           .no-print { display: none !important; }
@@ -93,30 +88,21 @@ export const printContent = (content: string, title: string = 'طباعة', opti
 
   const html = buildPrintHtml(content, title, { ...options, extraStyles });
 
-  // ── A4 pages: use a real popup window so the browser lays out at full A4 width ──
-  // Hidden iframes render content at narrow widths ignoring CSS `width:210mm`.
-  // A popup window has a real viewport that the browser respects for layout.
+  // ── A4 pages: open as a normal browser tab so the user can preview + Ctrl+P / Save as PDF ──
+  // The tab gets a real full-width viewport, so content lays out at proper A4 width.
   if (options?.page === 'A4') {
     const blob = new Blob([html], { type: 'text/html; charset=utf-8' });
     const blobUrl = URL.createObjectURL(blob);
-    // 794×1123 = exact A4 at 96dpi
-    const popup = window.open(blobUrl, '_blank', `width=794,height=1123,left=0,top=0,scrollbars=yes`);
-    if (!popup) {
+    // Open as a normal new tab (no size constraints) — guaranteed full viewport
+    const tab = window.open(blobUrl, '_blank');
+    if (!tab) {
       // Popup blocked — fall back to iframe
       URL.revokeObjectURL(blobUrl);
       printViaIframe(html);
       return;
     }
-    const cleanup = () => { try { URL.revokeObjectURL(blobUrl); } catch {} };
-    popup.addEventListener('afterprint', () => { cleanup(); setTimeout(() => { try { popup.close(); } catch {} }, 500); }, { once: true });
-    // Trigger print after content loads
-    popup.addEventListener('load', () => {
-      setTimeout(() => {
-        try { popup.focus(); popup.print(); } catch {}
-      }, 300);
-    }, { once: true });
-    // Safety: clean up after 2 minutes
-    setTimeout(() => { cleanup(); try { popup.close(); } catch {} }, 120_000);
+    // Revoke blob URL after the tab loads (content is already loaded into memory)
+    setTimeout(() => { try { URL.revokeObjectURL(blobUrl); } catch {} }, 10_000);
     return;
   }
 
