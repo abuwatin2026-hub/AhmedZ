@@ -184,7 +184,7 @@ export const formatDateOnly = (dateString: string): string => {
  *  2. تحويل HTML كاملاً إلى Blob URL (معزول تماماً عن التطبيق)
  *  3. فتح popup window حقيقية (ليست tab) — لا يتدخل فيها SPA router أبداً
  */
-export const printBlobDocument = (renderedHtml: string, title: string = 'طباعة'): void => {
+export const printBlobDocument = (renderedHtml: string, title: string = 'طباعة'): boolean => {
   // Hoist component <style> to <head>
   const { hoistedCss, bodyHtml } = hoistComponentStyles(renderedHtml);
 
@@ -240,7 +240,9 @@ ${bodyHtml}
   const revoke = () => URL.revokeObjectURL(blobUrl);
   if (popup) {
     popup.addEventListener('load', revoke, { once: true });
+    return true;
   }
   // Fallback revoke after 30s even if popup is blocked
   setTimeout(revoke, 30_000);
+  return false;
 };

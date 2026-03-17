@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { renderToString } from 'react-dom/server';
+import { Capacitor } from '@capacitor/core';
 import { getSupabaseClient } from '../../supabase';
 import { useToast } from '../../contexts/ToastContext';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useAuth } from '../../contexts/AuthContext';
 import PageLoader from '../../components/PageLoader';
-import { printContent } from '../../utils/printUtils';
+import { printContent, printBlobDocument } from '../../utils/printUtils';
 import { sharePdf } from '../../utils/export';
 import PrintableContract, { ContractPrintData } from '../../components/admin/documents/PrintableContract';
 import PrintableGuarantee, { GuaranteePrintData } from '../../components/admin/documents/PrintableGuarantee';
@@ -114,6 +115,10 @@ export default function EmployeeHRScreen() {
   }), [settings]);
 
   const exportRenderedHtmlPdf = async (html: string, title: string, filename: string) => {
+    if (!Capacitor.isNativePlatform()) {
+      const opened = printBlobDocument(html, title);
+      return opened;
+    }
     const hostId = `hr-doc-pdf-export-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
     const host = document.createElement('div');
     host.id = hostId;
@@ -211,7 +216,12 @@ export default function EmployeeHRScreen() {
       `عقد عمل ${mode === 'compact' ? 'مضغوط' : 'كامل'}`,
       `employee_contract_${(emp?.employee_code || c.id || '').toString().slice(-8)}_${mode}.pdf`
     );
-    showNotification(ok ? 'تم تصدير PDF بنجاح' : 'تعذر تصدير PDF', ok ? 'success' : 'error');
+    showNotification(
+      ok
+        ? (Capacitor.isNativePlatform() ? 'تم تصدير PDF بنجاح' : 'تم فتح نافذة الطباعة، اختر حفظ كـ PDF')
+        : 'تعذر تصدير PDF',
+      ok ? 'success' : 'error'
+    );
   };
 
   /* ── Async print: guarantee ── */
@@ -281,7 +291,12 @@ export default function EmployeeHRScreen() {
       `ضمان موظف ${mode === 'compact' ? 'مضغوط' : 'كامل'}`,
       `employee_guarantee_${(emp?.employee_code || g.id || '').toString().slice(-8)}_${mode}.pdf`
     );
-    showNotification(ok ? 'تم تصدير PDF بنجاح' : 'تعذر تصدير PDF', ok ? 'success' : 'error');
+    showNotification(
+      ok
+        ? (Capacitor.isNativePlatform() ? 'تم تصدير PDF بنجاح' : 'تم فتح نافذة الطباعة، اختر حفظ كـ PDF')
+        : 'تعذر تصدير PDF',
+      ok ? 'success' : 'error'
+    );
   };
 
   /* ── Print blank contract template ── */
@@ -335,7 +350,12 @@ export default function EmployeeHRScreen() {
       <PrintableContract data={blankData} companyName={brand.name} companyPhone={brand.contactNumber} companyAddress={brand.address} logoUrl={brand.logoUrl} printMode={mode} />
     );
     const ok = await exportRenderedHtmlPdf(html, `نموذج عقد عمل فارغ ${mode === 'compact' ? 'مضغوط' : 'كامل'}`, `blank_employee_contract_${mode}.pdf`);
-    showNotification(ok ? 'تم تصدير PDF بنجاح' : 'تعذر تصدير PDF', ok ? 'success' : 'error');
+    showNotification(
+      ok
+        ? (Capacitor.isNativePlatform() ? 'تم تصدير PDF بنجاح' : 'تم فتح نافذة الطباعة، اختر حفظ كـ PDF')
+        : 'تعذر تصدير PDF',
+      ok ? 'success' : 'error'
+    );
   };
 
   /* ── Print blank guarantee template ── */
@@ -383,7 +403,12 @@ export default function EmployeeHRScreen() {
       <PrintableGuarantee data={blankData} companyName={brand.name} companyPhone={brand.contactNumber} companyAddress={brand.address} logoUrl={brand.logoUrl} printMode={mode} />
     );
     const ok = await exportRenderedHtmlPdf(html, `نموذج ضمان موظف فارغ ${mode === 'compact' ? 'مضغوط' : 'كامل'}`, `blank_employee_guarantee_${mode}.pdf`);
-    showNotification(ok ? 'تم تصدير PDF بنجاح' : 'تعذر تصدير PDF', ok ? 'success' : 'error');
+    showNotification(
+      ok
+        ? (Capacitor.isNativePlatform() ? 'تم تصدير PDF بنجاح' : 'تم فتح نافذة الطباعة، اختر حفظ كـ PDF')
+        : 'تعذر تصدير PDF',
+      ok ? 'success' : 'error'
+    );
   };
 
   const loadAll = useCallback(async () => {
