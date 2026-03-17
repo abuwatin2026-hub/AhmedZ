@@ -21,11 +21,14 @@ const hoistComponentStyles = (content: string): { hoistedCss: string; bodyHtml: 
 /**
  * فتح نافذة الطباعة
  */
-export const buildPrintHtml = (content: string, title: string = 'طباعة', options?: { page?: 'A5' | 'auto', extraStyles?: string, includeAppStyles?: boolean }) => {
+export const buildPrintHtml = (content: string, title: string = 'طباعة', options?: { page?: 'A5' | 'A4' | 'auto', extraStyles?: string, includeAppStyles?: boolean }) => {
   const page = options?.page || 'A5';
   const pageCss = page === 'A5'
     ? `@page { size: A5; margin: 0; }`
+    : page === 'A4'
+    ? `@page { size: A4 portrait; margin: 8mm; }`
     : ``;
+
 
   // Hoist any <style> blocks from the component into <head> so they
   // take precedence over the global reset below.
@@ -73,7 +76,7 @@ export const buildPrintHtml = (content: string, title: string = 'طباعة', op
   `;
 };
 
-export const printContent = (content: string, title: string = 'طباعة', options?: { page?: 'A5' | 'auto', includeAppStyles?: boolean }) => {
+export const printContent = (content: string, title: string = 'طباعة', options?: { page?: 'A5' | 'A4' | 'auto', includeAppStyles?: boolean }) => {
   // By default, inject app styles for backward compatibility.
   // Pass includeAppStyles: false for self-contained document components (contracts, guarantees, etc.)
   // that already have their own complete CSS and must not be polluted by Tailwind/app overrides.
