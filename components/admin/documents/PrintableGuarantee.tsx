@@ -45,10 +45,10 @@ const PrintableGuarantee: React.FC<Props> = ({ data, companyName, companyPhone, 
         <div className="bg-white relative font-sans print:w-full print:max-w-none print:m-0 print:p-0" dir="rtl">
             <style>{`
         @media print {
-            html, body { width: 210mm; min-height: 297mm; margin: 0 auto !important; padding: 0 !important; }
+            html, body { margin: 0 !important; padding: 0 !important; }
             body { -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0 !important; background: white; overflow: visible !important; }
             * { box-sizing: border-box; overflow: visible !important; }
-            .gt-doc { width: 194mm !important; min-height: 281mm !important; margin: 0 auto !important; overflow: visible !important; }
+            .gt-doc { width: 100% !important; min-height: auto !important; margin: 0 !important; overflow: visible !important; }
         }
         .gt-doc {
             width: 100%; padding: 6mm 8mm 5mm 8mm;

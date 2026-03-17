@@ -112,12 +112,14 @@ export const printContent = (content: string, title: string = 'طباعة', opti
           top: 0;
           width: 100%;
           margin: 0;
-          padding: 0;
+          padding: 8mm;
           background: white;
+          box-sizing: border-box;
         }
         #a4-print-portal,
         #a4-print-portal * { visibility: visible !important; }
-        @page { size: A4 portrait; margin: 0; }
+        #a4-print-portal > * { width: 100% !important; max-width: none !important; }
+        @page { size: A4 portrait; margin: 8mm; }
         body { margin: 0; padding: 0; background: white; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
       }
     `;
