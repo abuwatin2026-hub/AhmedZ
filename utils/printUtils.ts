@@ -29,6 +29,11 @@ export const buildPrintHtml = (content: string, title: string = 'طباعة', op
     ? `@page { size: A4 portrait; margin: 8mm; }`
     : ``;
 
+  // Body sizing: for A4 pages we must set an explicit width on the body
+  // so the content lays out at full A4 width even when the iframe is narrow.
+  const bodySizeCss = page === 'A4'
+    ? `body { width: 210mm; min-width: 210mm; margin: 0 auto; }`
+    : '';
 
   // Hoist any <style> blocks from the component into <head> so they
   // take precedence over the global reset below.
@@ -46,6 +51,7 @@ export const buildPrintHtml = (content: string, title: string = 'طباعة', op
       <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'Cairo', 'Arial', sans-serif; direction: rtl; padding: 0; margin: 0; }
+        ${bodySizeCss}
         @media print {
           body { padding: 0; }
           .no-print { display: none !important; }
