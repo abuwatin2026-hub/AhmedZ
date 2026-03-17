@@ -935,6 +935,7 @@ export default function VoucherEntryScreen() {
           <select value={historyFilter} onChange={(e) => setHistoryFilter(e.target.value as any)} className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm">
             <option value="all">كل الحالات</option>
             <option value="draft">مسودة</option>
+            <option value="pending_approval">بانتظار الاعتماد</option>
             <option value="posted">مُرحّل</option>
             <option value="voided">مبطل</option>
           </select>
@@ -995,11 +996,42 @@ export default function VoucherEntryScreen() {
                           طباعة
                         </button>
                         {(h.status === 'draft' || h.status === 'pending_approval') && canApprove ? (
-                          <button type="button" onClick={() => void approveHistoryEntry(h.id, h.status)} className={`px-2 py-1 rounded text-xs text-white hover:opacity-90 ${
-                            h.status === 'draft' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-green-600 hover:bg-green-700'
-                          }`}>
+                          <button type="button" onClick={() => void approveHistoryEntry(h.id, h.status)}
+                            className={`px-2 py-1 rounded text-xs text-white hover:opacity-90 ${
+                              h.status === 'draft' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-green-600 hover:bg-green-700'
+                            }`}>
                             {h.status === 'draft' ? 'إرسال للاعتماد' : 'اعتماد وترحيل'}
-                            اعتماد
+                          </button>
+                        ) : null}
+                        {h.status === 'pending_approval' && canApprove ? (
+                          <button type="button" onClick={async () => {
+                            const reason = window.prompt('سبب الرفض؟');
+                            if (!reason?.trim()) return;
+                            const supabase = getSupabaseClient();
+                            if (!supabase) return;
+                            try {
+                              const { error } = await supabase.rpc('reject_voucher', { p_entry_id: h.id, p_reason: reason.trim() } as any);
+                              if (error) throw error;
+                              showNotification('تم رفض السند وإعادته للمسودة.', 'success');
+                              void fetchHistory();
+                            } catch (e: any) { showNotification(String(e?.message || 'تعذر الرفض.'), 'error'); }
+                          }} className="px-2 py-1 rounded text-xs bg-red-500 text-white hover:bg-red-600">
+                            رفض
+                          </button>
+                        ) : null}
+                        {h.status === 'pending_approval' && h.createdBy === userId ? (
+                          <button type="button" onClick={async () => {
+                            if (!window.confirm('سحب السند وإعادته للمسودة؟')) return;
+                            const supabase = getSupabaseClient();
+                            if (!supabase) return;
+                            try {
+                              const { error } = await supabase.rpc('recall_voucher', { p_entry_id: h.id } as any);
+                              if (error) throw error;
+                              showNotification('تم سحب السند وإعادته للمسودة.', 'success');
+                              void fetchHistory();
+                            } catch (e: any) { showNotification(String(e?.message || 'تعذر السحب.'), 'error'); }
+                          }} className="px-2 py-1 rounded text-xs bg-gray-400 text-white hover:bg-gray-500">
+                            سحب
                           </button>
                         ) : null}
                         {(h.status === 'draft' || h.status === 'posted') && canVoid ? (

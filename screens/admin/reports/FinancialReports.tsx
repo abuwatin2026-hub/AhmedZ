@@ -885,7 +885,7 @@ const FinancialReports: React.FC = () => {
     try {
       const [{ data: tbData, error: tbError }, { data: isData, error: isError }, { data: bsData, error: bsError }, { data: tbEnt, error: tbEntErr }, { data: cbData, error: cbError }] = await Promise.all([
         callTrialBalanceCompat(periodRangeParams),
-        supabase.rpc('income_statement', periodRangeParams),
+        supabase.rpc('income_statement_with_oci', periodRangeParams),
         supabase.rpc('balance_sheet', {
           p_as_of: appliedFilters.asOfDate || null,
           p_cost_center_id: appliedFilters.costCenterId ? appliedFilters.costCenterId : null,
@@ -1135,11 +1135,10 @@ const FinancialReports: React.FC = () => {
       const now = new Date(appliedFilters.startDate || toYmdLocal(new Date()));
       const { start, end } = getPreviousMonthRange(now);
       const [{ data: isData, error: isError }] = await Promise.all([
-        supabase.rpc('income_statement', {
-          p_start: start || null,
-          p_end: end || null,
+        supabase.rpc('income_statement_with_oci', {
+          p_from: start || null,
+          p_to: end || null,
           p_cost_center_id: appliedFilters.costCenterId ? appliedFilters.costCenterId : null,
-          p_journal_id: appliedFilters.journalId ? appliedFilters.journalId : null,
         }),
       ]);
       if (isError) throw isError;
