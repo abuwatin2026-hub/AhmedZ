@@ -142,21 +142,18 @@ const PurchaseOrderScreen: React.FC = () => {
         const uomIds = [...new Set(pairs.map((p) => p.uomId))];
         try {
             const { data: uomRows } = await supabase
-                .from('uom_units')
-                .select('id,code,data')
+                .from('uom')
+                .select('id,code,name')
                 .in('id', uomIds);
             const uomLabelById = new Map<string, string>();
             for (const u of ((uomRows || []) as any[])) {
                 const uid = String((u as any)?.id || '').trim();
                 if (!uid) continue;
-                const d: any = (u as any)?.data || {};
-                const labelObj: any = d?.label && typeof d.label === 'object'
-                    ? d.label
-                    : (d?.name && typeof d.name === 'object' ? d.name : {});
-                const ar = typeof labelObj?.ar === 'string' ? labelObj.ar.trim() : '';
+                // The `uom` table stores the name as a plain string in the `name` column
+                const name = String((u as any)?.name || '').trim();
                 const code = String((u as any)?.code || '').trim();
-                const fallback = code ? String(getUnitLabel(code as any, 'ar') || code) : '';
-                const value = ar || fallback || code;
+                const fallbackLabel = code ? String(getUnitLabel(code as any, 'ar') || code) : '';
+                const value = name || fallbackLabel || code;
                 if (value) uomLabelById.set(uid, value);
             }
             for (const p of pairs) {
