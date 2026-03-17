@@ -51,7 +51,6 @@ const PrintableGuarantee: React.FC<Props> = ({ data, companyName, companyPhone, 
         }
         .gt-doc {
             width: 100%; padding: 6mm 8mm 5mm 8mm;
-            display: flex; flex-direction: column;
             font-family: 'Tajawal', 'Cairo', 'Dubai', sans-serif;
             color: #0F172A; line-height: 1.4;
             position: relative; background-color: #FAFAFA;
@@ -128,7 +127,7 @@ const PrintableGuarantee: React.FC<Props> = ({ data, companyName, companyPhone, 
         }
       `}</style>
 
-            <div className="gt-doc" style={{ fontFamily: 'Tajawal, Cairo, sans-serif', display: 'block' }}>
+            <div className="gt-doc" style={{ fontFamily: 'Tajawal, Cairo, sans-serif' }}>
                 <div className="gt-watermark">{AZTA_IDENTITY.tradeNameAr}</div>
 
                 {printNumber != null && printNumber > 0 && (
@@ -217,27 +216,28 @@ const PrintableGuarantee: React.FC<Props> = ({ data, companyName, companyPhone, 
                     </div>
                 </div>
 
-                {/* SIGNATURES — float layout: 3 boxes side by side */}
+                {/* SIGNATURES — inline-block layout: immune to any flex overrides */}
                 <div style={{
                     width: '100%',
-                    overflow: 'hidden',
                     marginTop: '10px',
                     paddingTop: '8px',
                     borderTop: '2px solid rgba(212,175,55,0.27)',
+                    textAlign: 'center',
+                    fontSize: 0,
                 } as React.CSSProperties}>
-                    <div style={{ float: 'right', width: '31%', textAlign: 'center', border: '1px solid #E5E7EB', borderRadius: '6px', padding: '8px', boxSizing: 'border-box' }}>
+                    <div style={{ display: 'inline-block', width: '30%', textAlign: 'center', border: '1px solid #E5E7EB', borderRadius: '6px', padding: '8px', boxSizing: 'border-box', verticalAlign: 'top', fontSize: '11px', marginLeft: '1.5%' }}>
                         <div style={{ fontWeight: 700, fontSize: '11px', color: '#7C1D1D', marginBottom: '3px' }}>صاحب العمل</div>
                         <div style={{ borderBottom: '1px dashed #9CA3AF', margin: '20px 0 6px' }}></div>
                         <div style={{ fontSize: '9px', color: '#6B7280', marginTop: '3px' }}>التوقيع والختم</div>
                         <div style={{ fontSize: '9px', color: '#6B7280', marginTop: '3px' }}>___ / ___ / ______</div>
                     </div>
-                    <div style={{ float: 'right', width: '31%', marginRight: '3.5%', textAlign: 'center', border: '1px solid #E5E7EB', borderRadius: '6px', padding: '8px', boxSizing: 'border-box' }}>
+                    <div style={{ display: 'inline-block', width: '30%', textAlign: 'center', border: '1px solid #E5E7EB', borderRadius: '6px', padding: '8px', boxSizing: 'border-box', verticalAlign: 'top', fontSize: '11px', margin: '0 1.5%' }}>
                         <div style={{ fontWeight: 700, fontSize: '11px', color: '#7C1D1D', marginBottom: '3px' }}>الموظف (المكفول)</div>
                         <div style={{ borderBottom: '1px dashed #9CA3AF', margin: '20px 0 6px' }}></div>
                         <div style={{ fontSize: '9px', color: '#6B7280', marginTop: '3px' }}>التوقيع</div>
                         <div style={{ fontSize: '9px', color: '#6B7280', marginTop: '3px' }}>___ / ___ / ______</div>
                     </div>
-                    <div style={{ float: 'left', width: '31%', textAlign: 'center', border: '1px solid #E5E7EB', borderRadius: '6px', padding: '8px', boxSizing: 'border-box' }}>
+                    <div style={{ display: 'inline-block', width: '30%', textAlign: 'center', border: '1px solid #E5E7EB', borderRadius: '6px', padding: '8px', boxSizing: 'border-box', verticalAlign: 'top', fontSize: '11px', marginRight: '1.5%' }}>
                         <div style={{ fontWeight: 700, fontSize: '11px', color: '#7C1D1D', marginBottom: '3px' }}>الكفيل / الضامن</div>
                         <div style={{ borderBottom: '1px dashed #9CA3AF', margin: '20px 0 6px' }}></div>
                         <div style={{ fontSize: '9px', color: '#6B7280', marginTop: '3px' }}>التوقيع وبصمة الإبهام</div>

@@ -57,7 +57,6 @@ const PrintableContract: React.FC<Props> = ({ data, companyName, companyPhone, c
         }
         .ct-doc {
             width: 100%; padding: 4mm 6mm 3mm 6mm;
-            display: flex; flex-direction: column;
             font-family: 'Tajawal', 'Cairo', 'Dubai', sans-serif;
             color: #0F172A; line-height: 1.3;
             position: relative; background-color: #FAFAFA;
@@ -143,7 +142,7 @@ const PrintableContract: React.FC<Props> = ({ data, companyName, companyPhone, c
         .ct-sig-table { page-break-inside: avoid; width: 100%; border-collapse: collapse; margin-top: 10px; border-top: 2px solid rgba(212,175,55,0.27); }
       `}</style>
 
-            <div className="ct-doc" style={{ fontFamily: 'Tajawal, Cairo, sans-serif', display: 'block' }}>
+            <div className="ct-doc" style={{ fontFamily: 'Tajawal, Cairo, sans-serif' }}>
                 <div className="ct-watermark">{AZTA_IDENTITY.tradeNameAr}</div>
 
                 {printNumber != null && printNumber > 0 && (
@@ -244,22 +243,23 @@ const PrintableContract: React.FC<Props> = ({ data, companyName, companyPhone, c
                     حُرر هذا العقد من نسختين أصليتين لكل طرف نسخة للعمل بموجبها.
                 </div>
 
-                {/* SIGNATURES — float layout: oldest, most reliable in all browsers and print contexts */}
+                {/* SIGNATURES — inline-block layout: immune to any flex overrides */}
                 <div style={{
                     width: '100%',
-                    overflow: 'hidden',
                     marginTop: '10px',
                     paddingTop: '8px',
                     borderTop: '2px solid rgba(212,175,55,0.27)',
+                    textAlign: 'center',
+                    fontSize: 0,
                 } as React.CSSProperties}>
-                    <div style={{ float: 'right', width: '48%', textAlign: 'center', border: '1px solid #E5E7EB', borderRadius: '6px', padding: '8px', boxSizing: 'border-box' }}>
+                    <div style={{ display: 'inline-block', width: '47%', textAlign: 'center', border: '1px solid #E5E7EB', borderRadius: '6px', padding: '8px', boxSizing: 'border-box', verticalAlign: 'top', fontSize: '11px', marginLeft: '2%' }}>
                         <div style={{ fontWeight: 700, fontSize: '11px', color: '#1E3A8A', marginBottom: '3px' }}>الطرف الأول (صاحب العمل)</div>
                         <div style={{ borderBottom: '1px dashed #9CA3AF', margin: '20px 0 6px' }}></div>
                         <div style={{ fontSize: '9px', color: '#6B7280', marginTop: '3px' }}>الاسم: ________________________</div>
                         <div style={{ fontSize: '9px', color: '#6B7280', marginTop: '3px' }}>التوقيع والختم</div>
                         <div style={{ fontSize: '9px', color: '#6B7280', marginTop: '3px' }}>التاريخ: ___ / ___ / ______</div>
                     </div>
-                    <div style={{ float: 'left', width: '48%', textAlign: 'center', border: '1px solid #E5E7EB', borderRadius: '6px', padding: '8px', boxSizing: 'border-box' }}>
+                    <div style={{ display: 'inline-block', width: '47%', textAlign: 'center', border: '1px solid #E5E7EB', borderRadius: '6px', padding: '8px', boxSizing: 'border-box', verticalAlign: 'top', fontSize: '11px', marginRight: '2%' }}>
                         <div style={{ fontWeight: 700, fontSize: '11px', color: '#1E3A8A', marginBottom: '3px' }}>الطرف الثاني (الموظف)</div>
                         <div style={{ borderBottom: '1px dashed #9CA3AF', margin: '20px 0 6px' }}></div>
                         <div style={{ fontSize: '9px', color: '#6B7280', marginTop: '3px' }}>الاسم: ________________________</div>
@@ -269,7 +269,7 @@ const PrintableContract: React.FC<Props> = ({ data, companyName, companyPhone, c
                 </div>
 
                 {/* FOOTER */}
-                <div className="ct-footer" style={{ position: 'relative', zIndex: 10 }}>
+                <div className="ct-footer" style={{ position: 'relative', zIndex: 10, textAlign: 'center', fontSize: '7px', color: '#4B5563', paddingTop: '4px', marginTop: '4px' }}>
                     <div className="ct-footer-line"></div>
                     <div className="ct-gold" style={{ fontWeight: 700, fontSize: '8px', marginTop: '2px' }}>نموذج نظام مرخص — LICENSED SYSTEM FORM</div>
                     <div style={{ color: '#94A3B8' }}>{AZTA_IDENTITY.tradeNameAr}</div>
