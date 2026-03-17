@@ -53,12 +53,13 @@ const PrintableContract: React.FC<Props> = ({ data, companyName, companyPhone, c
             body { -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0; padding: 0; background: white; overflow: visible !important; }
             * { box-sizing: border-box; overflow: visible !important; }
             .ct-doc { overflow: visible !important; }
+            .ct-sig-table { page-break-inside: avoid !important; }
         }
         .ct-doc {
-            width: 100%; padding: 6mm 8mm 5mm 8mm;
+            width: 100%; padding: 4mm 6mm 3mm 6mm;
             display: flex; flex-direction: column;
             font-family: 'Tajawal', 'Cairo', 'Dubai', sans-serif;
-            color: #0F172A; line-height: 1.4;
+            color: #0F172A; line-height: 1.3;
             position: relative; background-color: #FAFAFA;
         }
         .ct-doc::before {
@@ -82,47 +83,47 @@ const PrintableContract: React.FC<Props> = ({ data, companyName, companyPhone, c
         }
         .ct-header {
             display: flex; justify-content: space-between; align-items: center;
-            border-bottom: 2pt solid #1E3A8A; padding-bottom: 6px; margin-bottom: 10px;
+            border-bottom: 2pt solid #1E3A8A; padding-bottom: 4px; margin-bottom: 6px;
         }
-        .ct-brand { font-size: 18px; font-weight: 900; color: #0F172A; line-height: 1; }
-        .ct-title { font-size: 22px; font-weight: 800; color: #D4AF37; line-height: 0.9; letter-spacing: -0.5px; }
-        .ct-title-sub { font-size: 8px; font-weight: 800; letter-spacing: 1.5px; color: #0F172A; text-transform: uppercase; border-top: 0.5pt solid #D4AF37; padding-top: 2px; margin-top: 2px; text-align: center; }
+        .ct-brand { font-size: 16px; font-weight: 900; color: #0F172A; line-height: 1; }
+        .ct-title { font-size: 20px; font-weight: 800; color: #D4AF37; line-height: 0.9; letter-spacing: -0.5px; }
+        .ct-title-sub { font-size: 7px; font-weight: 800; letter-spacing: 1.5px; color: #0F172A; text-transform: uppercase; border-top: 0.5pt solid #D4AF37; padding-top: 2px; margin-top: 2px; text-align: center; }
         .ct-section-title {
-            font-size: 14px; font-weight: 800; color: #1E3A8A;
-            border-bottom: 2px solid #D4AF3744; padding-bottom: 4px;
-            margin: 14px 0 8px;
+            font-size: 12px; font-weight: 800; color: #1E3A8A;
+            border-bottom: 1px solid #D4AF3744; padding-bottom: 2px;
+            margin: 6px 0 4px;
         }
-        .ct-table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+        .ct-table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
         .ct-table th {
-            background: #0F172A; color: #fff; padding: 5px 10px;
-            font-size: 11px; font-weight: 600; text-align: right; border: none;
+            background: #0F172A; color: #fff; padding: 3px 8px;
+            font-size: 10px; font-weight: 600; text-align: right; border: none;
         }
         .ct-table td {
-            padding: 5px 10px; font-size: 12px; border-bottom: 0.5pt solid #E5E7EB;
+            padding: 3px 8px; font-size: 11px; border-bottom: 0.5pt solid #E5E7EB;
         }
         .ct-table tr:nth-child(even) td { background: #F9FAFB; }
         .ct-table .ct-label { width: 38%; font-weight: 600; color: #374151; background: #F3F4F6; }
-        .ct-table .ct-total td { background: #1E3A8A !important; color: #fff; font-weight: 700; font-size: 13px; }
+        .ct-table .ct-total td { background: #1E3A8A !important; color: #fff; font-weight: 700; font-size: 12px; }
         .ct-preamble {
-            background: #F3F4F6; border: 0.5pt solid #E5E7EB; border-radius: 6px;
-            padding: 10px 14px; font-size: 12px; line-height: 1.8; color: #374151; margin-bottom: 10px;
+            background: #F3F4F6; border: 0.5pt solid #E5E7EB; border-radius: 4px;
+            padding: 5px 10px; font-size: 11px; line-height: 1.6; color: #374151; margin-bottom: 6px;
         }
-        .ct-clause { font-size: 12px; line-height: 2; color: #374151; padding: 0 6px; margin-bottom: 8px; }
-        .ct-clause div { margin-bottom: 3px; }
+        .ct-clause { font-size: 11px; line-height: 1.6; color: #374151; padding: 0 4px; margin-bottom: 4px; }
+        .ct-clause div { margin-bottom: 2px; }
         .ct-signatures {
-            display: flex; justify-content: space-between; margin-top: 20px;
-            padding-top: 14px; border-top: 2px solid #D4AF3744;
+            display: flex; justify-content: space-between; margin-top: 10px;
+            padding-top: 8px; border-top: 2px solid #D4AF3744;
         }
         .ct-sig-box {
             text-align: center; width: 45%; border: 1px solid #E5E7EB;
-            border-radius: 8px; padding: 14px 10px;
+            border-radius: 6px; padding: 8px 8px;
         }
-        .ct-sig-title { font-weight: 700; font-size: 12px; color: #1E3A8A; margin-bottom: 4px; }
-        .ct-sig-line { border-bottom: 1px dashed #9CA3AF; margin: 28px 0 8px; }
-        .ct-sig-label { font-size: 10px; color: #6B7280; margin-top: 4px; }
+        .ct-sig-title { font-weight: 700; font-size: 11px; color: #1E3A8A; margin-bottom: 3px; }
+        .ct-sig-line { border-bottom: 1px dashed #9CA3AF; margin: 20px 0 6px; }
+        .ct-sig-label { font-size: 9px; color: #6B7280; margin-top: 3px; }
         .ct-footer {
-            margin-top: auto; text-align: center; font-size: 7px; color: #4B5563;
-            padding-top: 6px; display: flex; flex-direction: column; align-items: center; gap: 1px;
+            margin-top: 4px; text-align: center; font-size: 7px; color: #4B5563;
+            padding-top: 4px; display: flex; flex-direction: column; align-items: center; gap: 1px;
         }
         .ct-footer-line { width: 40px; height: 0.5pt; background: #D4AF37; margin: 1px 0; }
         .ct-gold { color: #D4AF37; }
@@ -132,13 +133,14 @@ const PrintableContract: React.FC<Props> = ({ data, companyName, companyPhone, c
             padding: 1px 6px; border-radius: 2px; z-index: 60;
         }
         .ct-special-terms {
-            border: 0.5pt dashed #D4AF37; background: #FFFBEB; border-radius: 6px;
-            padding: 10px 14px; font-size: 12px; white-space: pre-wrap; line-height: 1.8; color: #374151;
+            border: 0.5pt dashed #D4AF37; background: #FFFBEB; border-radius: 4px;
+            padding: 5px 10px; font-size: 11px; white-space: pre-wrap; line-height: 1.6; color: #374151;
         }
         .ct-note-box {
-            background: #F0FFF4; border: 1px solid #86EFAC; border-radius: 6px;
-            padding: 10px; font-size: 11px; color: #166534; text-align: center; line-height: 1.8; margin-top: 10px;
+            background: #F0FFF4; border: 1px solid #86EFAC; border-radius: 4px;
+            padding: 5px 8px; font-size: 10px; color: #166534; text-align: center; line-height: 1.6; margin-top: 6px;
         }
+        .ct-sig-table { page-break-inside: avoid; width: 100%; border-collapse: collapse; margin-top: 10px; border-top: 2px solid rgba(212,175,55,0.27); }
       `}</style>
 
             <div className="ct-doc" style={{ fontFamily: 'Tajawal, Cairo, sans-serif' }}>
@@ -242,24 +244,24 @@ const PrintableContract: React.FC<Props> = ({ data, companyName, companyPhone, c
                     حُرر هذا العقد من نسختين أصليتين لكل طرف نسخة للعمل بموجبها.
                 </div>
 
-                {/* SIGNATURES — table layout is universally reliable in print */}
-                <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '20px', borderTop: '2px solid rgba(212,175,55,0.27)', paddingTop: '14px', position: 'relative', zIndex: 10 } as React.CSSProperties}>
+                {/* SIGNATURES — table guarantees side-by-side layout; ct-sig-table avoids page-break */}
+                <table className="ct-sig-table" style={{ position: 'relative', zIndex: 10 }}>
                     <tbody>
                         <tr>
-                            <td style={{ width: '50%', textAlign: 'center', border: '1px solid #E5E7EB', borderRadius: '8px', padding: '14px 10px', verticalAlign: 'top' }}>
-                                <div style={{ fontWeight: 700, fontSize: '12px', color: '#1E3A8A', marginBottom: '4px' }}>الطرف الأول (صاحب العمل)</div>
-                                <div style={{ borderBottom: '1px dashed #9CA3AF', margin: '28px 0 8px' }}></div>
-                                <div style={{ fontSize: '10px', color: '#6B7280', marginTop: '4px' }}>الاسم: ________________________</div>
-                                <div style={{ fontSize: '10px', color: '#6B7280', marginTop: '4px' }}>التوقيع والختم</div>
-                                <div style={{ fontSize: '10px', color: '#6B7280', marginTop: '4px' }}>التاريخ: ___ / ___ / ______</div>
+                            <td style={{ width: '49%', textAlign: 'center', border: '1px solid #E5E7EB', borderRadius: '6px', padding: '8px 8px', verticalAlign: 'top' }}>
+                                <div style={{ fontWeight: 700, fontSize: '11px', color: '#1E3A8A', marginBottom: '3px' }}>الطرف الأول (صاحب العمل)</div>
+                                <div style={{ borderBottom: '1px dashed #9CA3AF', margin: '20px 0 6px' }}></div>
+                                <div style={{ fontSize: '9px', color: '#6B7280', marginTop: '3px' }}>الاسم: ________________________</div>
+                                <div style={{ fontSize: '9px', color: '#6B7280', marginTop: '3px' }}>التوقيع والختم</div>
+                                <div style={{ fontSize: '9px', color: '#6B7280', marginTop: '3px' }}>التاريخ: ___ / ___ / ______</div>
                             </td>
-                            <td style={{ width: '8px' }}></td>
-                            <td style={{ width: '50%', textAlign: 'center', border: '1px solid #E5E7EB', borderRadius: '8px', padding: '14px 10px', verticalAlign: 'top' }}>
-                                <div style={{ fontWeight: 700, fontSize: '12px', color: '#1E3A8A', marginBottom: '4px' }}>الطرف الثاني (الموظف)</div>
-                                <div style={{ borderBottom: '1px dashed #9CA3AF', margin: '28px 0 8px' }}></div>
-                                <div style={{ fontSize: '10px', color: '#6B7280', marginTop: '4px' }}>الاسم: ________________________</div>
-                                <div style={{ fontSize: '10px', color: '#6B7280', marginTop: '4px' }}>رقم الهوية: ____________________</div>
-                                <div style={{ fontSize: '10px', color: '#6B7280', marginTop: '4px' }}>التاريخ: ___ / ___ / ______</div>
+                            <td style={{ width: '2%' }}></td>
+                            <td style={{ width: '49%', textAlign: 'center', border: '1px solid #E5E7EB', borderRadius: '6px', padding: '8px 8px', verticalAlign: 'top' }}>
+                                <div style={{ fontWeight: 700, fontSize: '11px', color: '#1E3A8A', marginBottom: '3px' }}>الطرف الثاني (الموظف)</div>
+                                <div style={{ borderBottom: '1px dashed #9CA3AF', margin: '20px 0 6px' }}></div>
+                                <div style={{ fontSize: '9px', color: '#6B7280', marginTop: '3px' }}>الاسم: ________________________</div>
+                                <div style={{ fontSize: '9px', color: '#6B7280', marginTop: '3px' }}>رقم الهوية: ____________________</div>
+                                <div style={{ fontSize: '9px', color: '#6B7280', marginTop: '3px' }}>التاريخ: ___ / ___ / ______</div>
                             </td>
                         </tr>
                     </tbody>
