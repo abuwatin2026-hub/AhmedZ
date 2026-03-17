@@ -459,6 +459,16 @@ const ManageOrdersScreen: React.FC = () => {
             window.removeEventListener('in_store_sale_ux_metric', handler as EventListener);
         };
     }, [flushInStoreUxMetricQueue]);
+
+    // ── Server-side date filter: when user sets date range, refetch from DB ──
+    // This ensures ALL orders in the date range are loaded (no row-count limit when date is set)
+    useEffect(() => {
+        if (!filterDateFrom && !filterDateTo) return; // no date filter — already loaded via initial fetch
+        const timer = setTimeout(() => {
+            void fetchOrders({ dateFrom: filterDateFrom || undefined, dateTo: filterDateTo || undefined });
+        }, 600); // debounce 600ms to avoid firing on every keystroke
+        return () => clearTimeout(timer);
+    }, [filterDateFrom, filterDateTo, fetchOrders]);
     const inStoreUxStats = useMemo(() => {
         if (!inStoreUxMetrics.length) {
             return { total: 0, slowCount: 0, detachedCount: 0, p95Ms: 0, lastMs: 0 };

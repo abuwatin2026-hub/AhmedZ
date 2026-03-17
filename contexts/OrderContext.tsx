@@ -107,7 +107,7 @@ interface OrderContextType {
   acceptDeliveryAssignment: (orderId: string) => Promise<void>;
   getOrderById: (orderId: string) => Order | undefined;
   fetchRemoteOrderById: (orderId: string) => Promise<Order | undefined>;
-  fetchOrders: () => Promise<void>;
+  fetchOrders: (opts?: { dateFrom?: string; dateTo?: string }) => Promise<void>;
   awardPointsForReviewedOrder: (orderId: string) => Promise<boolean>;
   incrementInvoicePrintCount: (orderId: string) => Promise<void>;
   markOrderPaid: (orderId: string) => Promise<void>;
@@ -1211,7 +1211,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const isFetchingRef = useRef(false);
   const invoiceEnsureAttemptedRef = useRef<Set<string>>(new Set());
-  const fetchOrders = useCallback(async () => {
+  const fetchOrders = useCallback(async (opts?: { dateFrom?: string; dateTo?: string }) => {
     if (isFetchingRef.current) return;
     isFetchingRef.current = true;
     const startedAt = Date.now();
@@ -1236,22 +1236,37 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             const conn: any = (typeof navigator !== 'undefined' && (navigator as any).connection) ? (navigator as any).connection : null;
             const eff: string = typeof conn?.effectiveType === 'string' ? conn.effectiveType : '';
             const isSlow = eff === 'slow-2g' || eff === '2g';
+            // When a date range is provided, filter by date on the server — no row limit needed.
+            // When no date range is given, use a safety cap to avoid loading thousands of records.
             const hardLimit = isSlow ? 200 : 500;
+            const hasDateFilter = !!(opts?.dateFrom || opts?.dateTo);
+            const applyDateFilters = (q: any) => {
+              if (opts?.dateFrom) q = q.gte('created_at', opts.dateFrom);
+              if (opts?.dateTo) {
+                // End of day for dateTo
+                const end = new Date(opts.dateTo);
+                end.setHours(23, 59, 59, 999);
+                q = q.lte('created_at', end.toISOString());
+              }
+              return q;
+            };
             const queryWithZone = () => {
-              const baseQuery = supabase
+              let baseQuery = supabase
                 .from('orders')
                 .select('id,status,created_at,delivery_zone_id,warehouse_id,currency,fx_rate,base_total,data,order_events(action,actor_id)')
-                .order('created_at', { ascending: false })
-                .limit(hardLimit);
+                .order('created_at', { ascending: false });
+              if (!hasDateFilter) baseQuery = baseQuery.limit(hardLimit);
+              baseQuery = applyDateFilters(baseQuery);
               if (shouldLoadAll) return baseQuery;
               return baseQuery.eq('customer_auth_user_id', currentUser!.id);
             };
             const queryWithoutZone = () => {
-              const baseQuery = supabase
+              let baseQuery = supabase
                 .from('orders')
                 .select('id,status,created_at,warehouse_id,currency,fx_rate,base_total,data,order_events(action,actor_id)')
-                .order('created_at', { ascending: false })
-                .limit(hardLimit);
+                .order('created_at', { ascending: false });
+              if (!hasDateFilter) baseQuery = baseQuery.limit(hardLimit);
+              baseQuery = applyDateFilters(baseQuery);
               if (shouldLoadAll) return baseQuery;
               return baseQuery.eq('customer_auth_user_id', currentUser!.id);
             };
