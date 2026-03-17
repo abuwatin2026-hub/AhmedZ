@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { getSupabaseClient } from '../../supabase';
 import { useToast } from '../../contexts/ToastContext';
 import PageLoader from '../../components/PageLoader';
-import { localizeDocStatusAr, localizeDocTypeAr, localizeSourceTableAr, shortId } from '../../utils/displayLabels';
+import { localizeDocStatusAr, localizeDocTypeAr, localizeSourceTableAr, localizeTemplateAr, localizeDetailsAr, shortId } from '../../utils/displayLabels';
 
 type Row = {
   id: string;
@@ -153,8 +153,8 @@ export default function PrintedDocumentsScreen() {
                 <td className="p-3 text-sm dark:text-gray-200 border-r dark:border-gray-700">
                   {r.sourceTable ? `${localizeSourceTableAr(r.sourceTable)} • ${shortId(r.sourceId)}` : '—'}
                 </td>
-                <td className="p-3 text-sm dark:text-gray-200 border-r dark:border-gray-700">{r.template || '—'}</td>
-                <td className="p-3 text-sm text-gray-700 dark:text-gray-200">{r.details || '—'}</td>
+                <td className="p-3 text-sm dark:text-gray-200 border-r dark:border-gray-700">{localizeTemplateAr(r.template)}</td>
+                <td className="p-3 text-sm text-gray-700 dark:text-gray-200">{localizeDetailsAr(r.details)}</td>
               </tr>
             ))}
           </tbody>
