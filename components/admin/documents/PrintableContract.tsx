@@ -58,10 +58,12 @@ const PrintableContract: React.FC<Props> = ({ data, companyName, companyPhone, c
             .ct-sig-table { page-break-inside: avoid !important; }
         }
         .ct-doc {
-            width: 100%; padding: 4mm 6mm 3mm 6mm;
+            width: 194mm; max-width: 194mm; min-height: 281mm; margin: 0 auto; overflow: hidden;
+            padding: 4mm 6mm 3mm 6mm;
             font-family: 'Tajawal', 'Cairo', 'Dubai', sans-serif;
-            color: #0F172A; line-height: 1.3;
+            color: #0F172A; line-height: 1.35;
             position: relative; background-color: #FAFAFA;
+            -webkit-font-smoothing: antialiased; text-rendering: geometricPrecision;
         }
         .ct-doc.ct-compact {
             padding: 3mm 4mm 2mm 4mm;
@@ -113,7 +115,7 @@ const PrintableContract: React.FC<Props> = ({ data, companyName, companyPhone, c
             font-size: 10px; font-weight: 600; text-align: right; border: none;
         }
         .ct-table td {
-            padding: 3px 8px; font-size: 11px; border-bottom: 0.5pt solid #E5E7EB;
+            padding: 3px 8px; font-size: 11px; line-height: 1.5; border-bottom: 0.5pt solid #E5E7EB;
         }
         .ct-table tr:nth-child(even) td { background: #F9FAFB; }
         .ct-table .ct-label { width: 38%; font-weight: 600; color: #374151; background: #F3F4F6; }

@@ -52,10 +52,12 @@ const PrintableGuarantee: React.FC<Props> = ({ data, companyName, companyPhone, 
             .gt-doc { width: 202mm !important; min-height: 289mm !important; margin: 0 auto !important; overflow: hidden !important; }
         }
         .gt-doc {
-            width: 100%; padding: 6mm 8mm 5mm 8mm;
+            width: 194mm; max-width: 194mm; min-height: 281mm; margin: 0 auto; overflow: hidden;
+            padding: 6mm 8mm 5mm 8mm;
             font-family: 'Tajawal', 'Cairo', 'Dubai', sans-serif;
             color: #0F172A; line-height: 1.4;
             position: relative; background-color: #FAFAFA;
+            -webkit-font-smoothing: antialiased; text-rendering: geometricPrecision;
         }
         .gt-doc.gt-compact {
             padding: 4mm 5mm 3mm 5mm;
@@ -102,7 +104,7 @@ const PrintableGuarantee: React.FC<Props> = ({ data, companyName, companyPhone, 
         }
         .gt-table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
         .gt-table td {
-            padding: 5px 10px; font-size: 12px; border-bottom: 0.5pt solid #E5E7EB;
+            padding: 5px 10px; font-size: 12px; line-height: 1.5; border-bottom: 0.5pt solid #E5E7EB;
         }
         .gt-table tr:nth-child(even) td { background: #F9FAFB; }
         .gt-table .gt-label { width: 38%; font-weight: 600; color: #374151; background: #FDF2F2; }

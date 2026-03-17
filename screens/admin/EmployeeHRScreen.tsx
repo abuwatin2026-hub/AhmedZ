@@ -117,14 +117,15 @@ export default function EmployeeHRScreen() {
     const hostId = `hr-doc-pdf-export-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
     const host = document.createElement('div');
     host.id = hostId;
-    host.style.cssText = 'position:fixed;left:-10000px;top:0;width:794px;max-width:794px;background:#fff;z-index:-1;opacity:1;pointer-events:none;';
+    host.style.cssText = 'position:fixed;left:-10000px;top:0;width:210mm;max-width:210mm;background:#fff;z-index:-1;opacity:1;pointer-events:none;contain:layout style paint;';
     host.innerHTML = html;
     document.body.appendChild(host);
     try {
+      await new Promise((r) => setTimeout(r, 60));
       return await sharePdf(hostId, title, filename, {
-        unit: 'px',
-        pageSize: [794, 1123],
-        scale: 2,
+        unit: 'mm',
+        pageFormat: 'a4',
+        scale: 2.8,
         headerHeight: 0,
         footerHeight: 0,
         headerTitle: '',

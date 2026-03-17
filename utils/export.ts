@@ -7,6 +7,7 @@ const createPdfDataUriFromElement = async (
     title: string,
     options?: {
         pageSize?: [number, number];
+        pageFormat?: 'a4' | 'a5';
         scale?: number;
         unit?: 'mm' | 'px';
         headerTitle?: string;
@@ -72,8 +73,9 @@ const createPdfDataUriFromElement = async (
     };
     const logo = await prepareLogoData(options?.logoUrl);
     const isMobile = /Mobi|Android/i.test(navigator.userAgent) || Capacitor.isNativePlatform();
-    const scale = options?.scale ?? (isMobile ? 1.5 : 2);
+    const scale = options?.scale ?? (isMobile ? 1.8 : 2.6);
     const usePx = options?.unit ? options.unit === 'px' : isMobile;
+    const pageFormat = String(options?.pageFormat || 'a4').toLowerCase() === 'a5' ? 'a5' : 'a4';
     const headerTitle = options?.headerTitle ?? '';
     const headerSubtitle = options?.headerSubtitle ?? title;
     const footerText = options?.footerText ?? brandFooter;
@@ -82,13 +84,13 @@ const createPdfDataUriFromElement = async (
     let savedWidth: string | null = null;
     let savedMaxWidth: string | null = null;
     let savedBoxSizing: string | null = null;
+    const targetCaptureWidth = pageFormat === 'a4' ? 794 : 520;
     if (!usePx) {
-        // A5 width = 148mm ≈ 559px at 96dpi. We use 520px to account for margins.
         savedWidth = element.style.width;
         savedMaxWidth = element.style.maxWidth;
         savedBoxSizing = element.style.boxSizing;
-        element.style.width = '520px';
-        element.style.maxWidth = '520px';
+        element.style.width = `${targetCaptureWidth}px`;
+        element.style.maxWidth = `${targetCaptureWidth}px`;
         element.style.boxSizing = 'border-box';
     }
 
@@ -100,10 +102,12 @@ const createPdfDataUriFromElement = async (
 
     const canvas = await html2canvas(element, {
         scale,
-        width: !usePx ? 520 : undefined,
+        width: !usePx ? targetCaptureWidth : undefined,
         useCORS: true,
         logging: false,
         imageTimeout: 0,
+        backgroundColor: '#ffffff',
+        foreignObjectRendering: true,
     });
 
     // Restore original styles
@@ -176,15 +180,14 @@ const createPdfDataUriFromElement = async (
         }
         dataUri = pdf.output('datauristring');
     } else {
-        const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a5' });
+        const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: pageFormat });
         const pageWidth = pdf.internal.pageSize.getWidth();
         const pageHeight = pdf.internal.pageSize.getHeight();
         const headerMm = Math.max(0, options?.headerHeight ?? 10);
         const footerMm = Math.max(0, options?.footerHeight ?? 8);
         const contentHeightMm = Math.max(0.1, pageHeight - headerMm - footerMm);
 
-        // Add 10mm margin for A5 to avoid printer clipping
-        const sideMarginMm = 10;
+        const sideMarginMm = pageFormat === 'a4' ? 8 : 10;
         const printableWidthMm = pageWidth - (sideMarginMm * 2);
 
         const imgDataPxWidth = canvas.width;
@@ -257,6 +260,7 @@ export const sharePdf = async (
     filename: string,
     options?: {
         pageSize?: [number, number];
+        pageFormat?: 'a4' | 'a5';
         scale?: number;
         unit?: 'mm' | 'px';
         headerTitle?: string;
@@ -320,6 +324,7 @@ export const printPdfFromElement = async (
     title: string,
     options?: {
         pageSize?: [number, number];
+        pageFormat?: 'a4' | 'a5';
         scale?: number;
         unit?: 'mm' | 'px';
         headerTitle?: string;
