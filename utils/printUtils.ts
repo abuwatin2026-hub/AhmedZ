@@ -84,77 +84,8 @@ export const printContent = (content: string, title: string = 'طباعة', opti
     } catch { }
   }
 
-  // ── FOOLPROOF MAIN DOM PRINTING FOR A4 ──
-  // Chrome iframe printing has severe bugs with explicit physical units (like mm) 
-  // on computers with OS-level display scaling (e.g. 125% or 150% in Windows), 
-  // causing the document to explode in size and get chopped off.
-  // The only 100% reliable way to print A4 is using the main DOM.
   if (options?.page === 'A4') {
-    const { hoistedCss, bodyHtml } = hoistComponentStyles(content);
-    const hadAllowFullPrint = document.body.classList.contains('allow-full-print');
-    document.body.classList.add('allow-full-print');
-    
-    const container = document.createElement('div');
-    container.id = 'a4-print-portal';
-    
-    // This CSS completely hides the React App (#root) and all other body elements,
-    // and ONLY shows the print portal. It also forces `@page` to be exactly A4.
-    const portalCss = `
-      @media screen {
-        #a4-print-portal { display: none !important; }
-      }
-      @media print {
-        body > *:not(#a4-print-portal) { display: none !important; }
-        #a4-print-portal {
-          display: block !important;
-          position: absolute;
-          left: 0;
-          top: 0;
-          width: 100%;
-          margin: 0;
-          padding: 8mm;
-          background: white;
-          box-sizing: border-box;
-        }
-        #a4-print-portal,
-        #a4-print-portal * { visibility: visible !important; }
-        #a4-print-portal > * { width: 100% !important; max-width: none !important; }
-        @page { size: A4 portrait; margin: 8mm; }
-        body { margin: 0; padding: 0; background: white; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-      }
-    `;
-    
-    const styleEl = document.createElement('style');
-    // Important: Include all generic app styles, component specific extra styles, and hoisted inline component styles
-    styleEl.innerHTML = portalCss + '\n' + extraStyles + '\n' + (options?.extraStyles || '') + '\n' + hoistedCss;
-    
-    container.innerHTML = bodyHtml;
-    container.appendChild(styleEl);
-    
-    document.body.appendChild(container);
-
-    const cleanup = () => {
-      try { if (container.parentNode) container.parentNode.removeChild(container); } catch {}
-      if (!hadAllowFullPrint) {
-        try { document.body.classList.remove('allow-full-print'); } catch {}
-      }
-      window.removeEventListener('afterprint', cleanup);
-    };
-
-    window.addEventListener('afterprint', cleanup);
-
-    // Small delay to ensure styles are parsed and fonts are ready
-    setTimeout(() => {
-      try {
-        const ogTitle = document.title;
-        document.title = title;
-        window.print();
-        setTimeout(() => { document.title = ogTitle; }, 1000);
-      } catch {}
-      
-      // Fallback cleanup in case dialog ignores afterprint
-      setTimeout(cleanup, 120_000);
-    }, 300);
+    printBlobDocument(content, title);
     return;
   }
 
@@ -265,9 +196,10 @@ export const printBlobDocument = (renderedHtml: string, title: string = 'طبا�
   <title>${title}</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { background: white; }
+    html, body { margin: 0; padding: 0; background: white; }
     @media print {
-      html, body { width: 100%; height: auto; overflow: visible; }
+      @page { size: A4 portrait; margin: 8mm; }
+      html, body { width: 100%; height: auto; overflow: visible; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     }
   </style>
   ${hoistedCss ? `<style>\n${hoistedCss}\n</style>` : ''}
