@@ -49,7 +49,7 @@ const PrintableGuarantee: React.FC<Props> = ({ data, companyName, companyPhone, 
             html, body { width: 210mm !important; min-height: 297mm !important; margin: 0 auto !important; padding: 0 !important; }
             body { -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0 !important; background: white; overflow: visible !important; }
             * { box-sizing: border-box; }
-            .gt-doc { width: 194mm !important; min-height: 281mm !important; margin: 0 auto !important; overflow: hidden !important; }
+            .gt-doc { width: 202mm !important; min-height: 289mm !important; margin: 0 auto !important; overflow: hidden !important; }
         }
         .gt-doc {
             width: 100%; padding: 6mm 8mm 5mm 8mm;
