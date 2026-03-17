@@ -1236,7 +1236,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             const conn: any = (typeof navigator !== 'undefined' && (navigator as any).connection) ? (navigator as any).connection : null;
             const eff: string = typeof conn?.effectiveType === 'string' ? conn.effectiveType : '';
             const isSlow = eff === 'slow-2g' || eff === '2g';
-            const hardLimit = isSlow ? 60 : 150;
+            const hardLimit = isSlow ? 200 : 500;
             const queryWithZone = () => {
               const baseQuery = supabase
                 .from('orders')
