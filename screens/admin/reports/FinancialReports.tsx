@@ -64,6 +64,10 @@ type BalanceSheetRow = {
   assets: number;
   liabilities: number;
   equity: number;
+  net_income: number;
+  oci_gain: number;
+  oci_loss: number;
+  total_equity: number;
 };
 
 type LedgerRow = {
@@ -967,7 +971,15 @@ const FinancialReports: React.FC = () => {
       setIncomeStatement(isRow ? { income: Number(isRow.income) || 0, expenses: Number(isRow.expenses) || 0, net_profit: Number(isRow.net_profit) || 0 } : null);
 
       const bsRow = ((bsData as any[]) || [])[0];
-      setBalanceSheet(bsRow ? { assets: Number(bsRow.assets) || 0, liabilities: Number(bsRow.liabilities) || 0, equity: Number(bsRow.equity) || 0 } : null);
+      setBalanceSheet(bsRow ? {
+        assets: Number(bsRow.assets) || 0,
+        liabilities: Number(bsRow.liabilities) || 0,
+        equity: Number(bsRow.equity) || 0,
+        net_income: Number(bsRow.net_income) || 0,
+        oci_gain: Number(bsRow.oci_gain) || 0,
+        oci_loss: Number(bsRow.oci_loss) || 0,
+        total_equity: Number(bsRow.total_equity) || 0,
+      } : null);
       const entFirst = ((tbEnt as any[]) || [])[0];
       if (entFirst && typeof entFirst.currency_code === 'string' && entFirst.currency_code.trim()) {
         setBaseCode(String(entFirst.currency_code).toUpperCase());
@@ -1496,7 +1508,16 @@ const FinancialReports: React.FC = () => {
       });
       if (bsError) throw bsError;
       const bsRow = ((bsData as any[]) || [])[0];
-      setPrevBalanceSheet(bsRow ? { assets: Number(bsRow.assets) || 0, liabilities: Number(bsRow.liabilities) || 0, equity: Number(bsRow.equity) || 0 } : null);
+      setPrevBalanceSheet(bsRow ? {
+        assets: Number(bsRow.assets) || 0,
+        liabilities: Number(bsRow.liabilities) || 0,
+        equity: Number(bsRow.equity) || 0,
+        net_income: Number(bsRow.net_income) || 0,
+        oci_gain: Number(bsRow.oci_gain) || 0,
+        oci_loss: Number(bsRow.oci_loss) || 0,
+        total_equity: Number(bsRow.total_equity) || 0,
+      } : null);
+
     } catch {
       setPrevBalanceSheet(null);
     }

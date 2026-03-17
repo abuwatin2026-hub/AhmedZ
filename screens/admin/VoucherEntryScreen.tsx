@@ -155,7 +155,7 @@ export default function VoucherEntryScreen() {
   // History
   const [history, setHistory] = useState<VoucherHistoryRow[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
-  const [historyFilter, setHistoryFilter] = useState<'all' | 'draft' | 'posted' | 'voided'>('all');
+  const [historyFilter, setHistoryFilter] = useState<'all' | 'draft' | 'pending_approval' | 'posted' | 'voided'>('all');
   const [historyTypeFilter, setHistoryTypeFilter] = useState<'all' | 'receipt' | 'payment' | 'journal'>('all');
 
   useEffect(() => {
@@ -513,14 +513,25 @@ export default function VoucherEntryScreen() {
     }
   };
 
-  const approveHistoryEntry = async (entryId: string) => {
+  const approveHistoryEntry = async (entryId: string, currentStatus: string) => {
     if (!canApprove) { showNotification('ليس لديك صلاحية اعتماد السندات.', 'error'); return; }
     const supabase = getSupabaseClient();
     if (!supabase) return;
     try {
-      const { error } = await supabase.rpc('approve_journal_entry', { p_entry_id: entryId } as any);
-      if (error) throw error;
-      showNotification('تم اعتماد السند.', 'success');
+      if (currentStatus === 'draft') {
+        // Step 1: Submit for approval (Maker)
+        const { error } = await supabase.rpc('submit_voucher_for_approval', { p_entry_id: entryId, p_notes: null } as any);
+        if (error) throw error;
+        showNotification('تم إرسال السند لاعتماد المدير.', 'success');
+      } else if (currentStatus === 'pending_approval') {
+        // Step 2: Approve (Checker — must be different user)
+        const { error } = await supabase.rpc('approve_voucher', { p_entry_id: entryId, p_notes: null } as any);
+        if (error) throw error;
+        showNotification('تم اعتماد وترحيل السند.', 'success');
+      } else {
+        showNotification('لا يمكن اعتماد هذا السند في حالته الحالية.', 'error');
+        return;
+      }
       void fetchHistory();
     } catch (e: any) {
       showNotification(String(e?.message || 'تعذر اعتماد السند.'), 'error');
@@ -546,18 +557,25 @@ export default function VoucherEntryScreen() {
   const approveLast = async () => {
     if (!lastEntryId) return;
     if (!canApprove) { showNotification('ليس لديك صلاحية اعتماد السندات.', 'error'); return; }
-    if (userId && lastEntryCreatedBy && userId === lastEntryCreatedBy) {
-      showNotification('لا يمكن اعتماد سند أنشأته أنت.', 'error');
-      return;
-    }
     const supabase = getSupabaseClient();
     if (!supabase) return;
     setBusy(true);
     try {
-      const { error } = await supabase.rpc('approve_journal_entry', { p_entry_id: lastEntryId } as any);
-      if (error) throw error;
-      await loadEntryMeta(lastEntryId);
-      showNotification('تم اعتماد السند.', 'success');
+      if (lastEntryStatus === 'draft') {
+        // Submit for approval — any authorized user can do this
+        const { error } = await supabase.rpc('submit_voucher_for_approval', { p_entry_id: lastEntryId, p_notes: null } as any);
+        if (error) throw error;
+        await loadEntryMeta(lastEntryId);
+        showNotification('تم إرسال السند لاعتماد المدير (pending_approval).', 'success');
+      } else if (lastEntryStatus === 'pending_approval') {
+        // Maker ≠ Checker check happens in DB function
+        const { error } = await supabase.rpc('approve_voucher', { p_entry_id: lastEntryId, p_notes: null } as any);
+        if (error) throw error;
+        await loadEntryMeta(lastEntryId);
+        showNotification('تم اعتماد وترحيل السند.', 'success');
+      } else {
+        showNotification(`لا يمكن اعتماد السند في الحالة '${lastEntryStatus}'.`, 'error');
+      }
       void fetchHistory();
     } catch (e: any) {
       showNotification(String(e?.message || 'تعذر اعتماد السند.'), 'error');
@@ -665,8 +683,10 @@ export default function VoucherEntryScreen() {
   };
   const statusLabel = (s: string) => {
     if (s === 'draft') return 'مسودة';
+    if (s === 'pending_approval') return 'بانتظار الاعتماد';
     if (s === 'posted') return 'مُرحّل';
     if (s === 'voided') return 'مبطل';
+    if (s === 'rejected') return 'مرفوض';
     return s;
   };
   const statusColor = (s: string) => {
@@ -885,7 +905,13 @@ export default function VoucherEntryScreen() {
           </div>
           <div className="flex items-center gap-2">
             <button type="button" onClick={() => void printLast()} disabled={!lastEntryId} className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm disabled:opacity-60">طباعة</button>
-            <button type="button" onClick={() => void approveLast()} disabled={!lastEntryId || busy || !canApprove} className="px-3 py-2 rounded-lg bg-green-600 text-white text-sm font-semibold disabled:opacity-60">اعتماد</button>
+            <button type="button" onClick={() => void approveLast()}
+              disabled={!lastEntryId || busy || !canApprove || (lastEntryStatus !== 'draft' && lastEntryStatus !== 'pending_approval')}
+              className={`px-3 py-2 rounded-lg text-white text-sm font-semibold disabled:opacity-60 ${
+                lastEntryStatus === 'pending_approval' ? 'bg-green-600' : 'bg-blue-600'
+              }`}>
+              {lastEntryStatus === 'pending_approval' ? 'اعتماد وترحيل' : 'إرسال للاعتماد'}
+            </button>
             <button type="button" onClick={() => void cancelDraftLast()} disabled={!lastEntryId || busy || !canManage} className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm disabled:opacity-60">إلغاء مسودة</button>
             <button type="button" onClick={() => void voidLast()} disabled={!lastEntryId || busy || !canVoid} className="px-3 py-2 rounded-lg bg-red-600 text-white text-sm font-semibold disabled:opacity-60">إبطال/عكس</button>
           </div>
@@ -968,8 +994,11 @@ export default function VoucherEntryScreen() {
                         <button type="button" onClick={() => void printHistoryEntry(h.id, h.sourceEvent)} className="px-2 py-1 rounded text-xs border border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700">
                           طباعة
                         </button>
-                        {h.status === 'draft' && canApprove ? (
-                          <button type="button" onClick={() => void approveHistoryEntry(h.id)} className="px-2 py-1 rounded text-xs bg-green-600 text-white hover:bg-green-700">
+                        {(h.status === 'draft' || h.status === 'pending_approval') && canApprove ? (
+                          <button type="button" onClick={() => void approveHistoryEntry(h.id, h.status)} className={`px-2 py-1 rounded text-xs text-white hover:opacity-90 ${
+                            h.status === 'draft' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-green-600 hover:bg-green-700'
+                          }`}>
+                            {h.status === 'draft' ? 'إرسال للاعتماد' : 'اعتماد وترحيل'}
                             اعتماد
                           </button>
                         ) : null}
