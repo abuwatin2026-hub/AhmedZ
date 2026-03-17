@@ -83,9 +83,6 @@ export const buildPrintHtml = (content: string, title: string = 'طباعة', op
 };
 
 export const printContent = (content: string, title: string = 'طباعة', options?: { page?: 'A5' | 'A4' | 'auto', includeAppStyles?: boolean }) => {
-  // By default, inject app styles for backward compatibility.
-  // Pass includeAppStyles: false for self-contained document components (contracts, guarantees, etc.)
-  // that already have their own complete CSS and must not be polluted by Tailwind/app overrides.
   let extraStyles = '';
   if (options?.includeAppStyles !== false) {
     try {
@@ -96,14 +93,42 @@ export const printContent = (content: string, title: string = 'طباعة', opti
 
   const html = buildPrintHtml(content, title, { ...options, extraStyles });
 
+  // ── A4 pages: use a real popup window so the browser lays out at full A4 width ──
+  // Hidden iframes render content at narrow widths ignoring CSS `width:210mm`.
+  // A popup window has a real viewport that the browser respects for layout.
+  if (options?.page === 'A4') {
+    const blob = new Blob([html], { type: 'text/html; charset=utf-8' });
+    const blobUrl = URL.createObjectURL(blob);
+    // 794×1123 = exact A4 at 96dpi
+    const popup = window.open(blobUrl, '_blank', `width=794,height=1123,left=0,top=0,scrollbars=yes`);
+    if (!popup) {
+      // Popup blocked — fall back to iframe
+      URL.revokeObjectURL(blobUrl);
+      printViaIframe(html);
+      return;
+    }
+    const cleanup = () => { try { URL.revokeObjectURL(blobUrl); } catch {} };
+    popup.addEventListener('afterprint', () => { cleanup(); setTimeout(() => { try { popup.close(); } catch {} }, 500); }, { once: true });
+    // Trigger print after content loads
+    popup.addEventListener('load', () => {
+      setTimeout(() => {
+        try { popup.focus(); popup.print(); } catch {}
+      }, 300);
+    }, { once: true });
+    // Safety: clean up after 2 minutes
+    setTimeout(() => { cleanup(); try { popup.close(); } catch {} }, 120_000);
+    return;
+  }
 
-  // Always use a hidden iframe — never window.open('about:blank') which triggers
-  // the SPA router in a new tab and shows a blank white app screen.
+  // ── A5 / auto pages: use hidden iframe (works reliably at small sizes) ──
+  printViaIframe(html);
+};
+
+/** Internal: print via hidden iframe (used for A5 and as fallback) */
+const printViaIframe = (html: string) => {
   const iframe = document.createElement('iframe');
   iframe.setAttribute('aria-hidden', 'true');
-  // Giving the iframe actual dimensions (A4 size) instead of 0x0 ensures the browser 
-  // doesn't clip or shrink the content width before handing it to the print spooler.
-  iframe.style.cssText = 'position:fixed;top:-1000vw;left:-1000vh;width:210mm;height:297mm;border:0;visibility:hidden;z-index:-9999;';
+  iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:0;height:0;border:0;visibility:hidden;';
   document.body.appendChild(iframe);
 
   const iframeWindow = iframe.contentWindow;
