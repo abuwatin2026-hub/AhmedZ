@@ -95,7 +95,9 @@ export const printContent = (content: string, title: string = 'طباعة', opti
   // the SPA router in a new tab and shows a blank white app screen.
   const iframe = document.createElement('iframe');
   iframe.setAttribute('aria-hidden', 'true');
-  iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:0;height:0;border:0;visibility:hidden;';
+  // Giving the iframe actual dimensions (A4 size) instead of 0x0 ensures the browser 
+  // doesn't clip or shrink the content width before handing it to the print spooler.
+  iframe.style.cssText = 'position:fixed;top:-1000vw;left:-1000vh;width:210mm;height:297mm;border:0;visibility:hidden;z-index:-9999;';
   document.body.appendChild(iframe);
 
   const iframeWindow = iframe.contentWindow;
