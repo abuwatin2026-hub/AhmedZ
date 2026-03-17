@@ -244,38 +244,35 @@ const PrintableContract: React.FC<Props> = ({ data, companyName, companyPhone, c
                     حُرر هذا العقد من نسختين أصليتين لكل طرف نسخة للعمل بموجبها.
                 </div>
 
-                {/* SIGNATURES — all inline styles + table-layout:fixed ensures correct side-by-side rendering */}
-                <table style={{
+                {/* SIGNATURES — flex wrapper div inside ct-doc column, two equal flex children */}
+                <div style={{
+                    display: 'flex',
+                    flexDirection: 'row',
+                    justifyContent: 'space-between',
+                    alignItems: 'stretch',
+                    gap: '8px',
                     width: '100%',
-                    tableLayout: 'fixed',
-                    borderCollapse: 'collapse',
                     marginTop: '10px',
                     paddingTop: '8px',
                     borderTop: '2px solid rgba(212,175,55,0.27)',
                     pageBreakInside: 'avoid',
-                    position: 'relative',
-                    zIndex: 10,
+                    boxSizing: 'border-box',
                 } as React.CSSProperties}>
-                    <tbody>
-                        <tr>
-                            <td style={{ width: '48%', textAlign: 'center', border: '1px solid #E5E7EB', borderRadius: '6px', padding: '8px', verticalAlign: 'top' }}>
-                                <div style={{ fontWeight: 700, fontSize: '11px', color: '#1E3A8A', marginBottom: '3px' }}>الطرف الأول (صاحب العمل)</div>
-                                <div style={{ borderBottom: '1px dashed #9CA3AF', margin: '20px 0 6px' }}></div>
-                                <div style={{ fontSize: '9px', color: '#6B7280', marginTop: '3px' }}>الاسم: ________________________</div>
-                                <div style={{ fontSize: '9px', color: '#6B7280', marginTop: '3px' }}>التوقيع والختم</div>
-                                <div style={{ fontSize: '9px', color: '#6B7280', marginTop: '3px' }}>التاريخ: ___ / ___ / ______</div>
-                            </td>
-                            <td style={{ width: '4%' }}></td>
-                            <td style={{ width: '48%', textAlign: 'center', border: '1px solid #E5E7EB', borderRadius: '6px', padding: '8px', verticalAlign: 'top' }}>
-                                <div style={{ fontWeight: 700, fontSize: '11px', color: '#1E3A8A', marginBottom: '3px' }}>الطرف الثاني (الموظف)</div>
-                                <div style={{ borderBottom: '1px dashed #9CA3AF', margin: '20px 0 6px' }}></div>
-                                <div style={{ fontSize: '9px', color: '#6B7280', marginTop: '3px' }}>الاسم: ________________________</div>
-                                <div style={{ fontSize: '9px', color: '#6B7280', marginTop: '3px' }}>رقم الهوية: ____________________</div>
-                                <div style={{ fontSize: '9px', color: '#6B7280', marginTop: '3px' }}>التاريخ: ___ / ___ / ______</div>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
+                    <div style={{ flex: '1', textAlign: 'center', border: '1px solid #E5E7EB', borderRadius: '6px', padding: '8px', boxSizing: 'border-box' }}>
+                        <div style={{ fontWeight: 700, fontSize: '11px', color: '#1E3A8A', marginBottom: '3px' }}>الطرف الأول (صاحب العمل)</div>
+                        <div style={{ borderBottom: '1px dashed #9CA3AF', margin: '20px 0 6px' }}></div>
+                        <div style={{ fontSize: '9px', color: '#6B7280', marginTop: '3px' }}>الاسم: ________________________</div>
+                        <div style={{ fontSize: '9px', color: '#6B7280', marginTop: '3px' }}>التوقيع والختم</div>
+                        <div style={{ fontSize: '9px', color: '#6B7280', marginTop: '3px' }}>التاريخ: ___ / ___ / ______</div>
+                    </div>
+                    <div style={{ flex: '1', textAlign: 'center', border: '1px solid #E5E7EB', borderRadius: '6px', padding: '8px', boxSizing: 'border-box' }}>
+                        <div style={{ fontWeight: 700, fontSize: '11px', color: '#1E3A8A', marginBottom: '3px' }}>الطرف الثاني (الموظف)</div>
+                        <div style={{ borderBottom: '1px dashed #9CA3AF', margin: '20px 0 6px' }}></div>
+                        <div style={{ fontSize: '9px', color: '#6B7280', marginTop: '3px' }}>الاسم: ________________________</div>
+                        <div style={{ fontSize: '9px', color: '#6B7280', marginTop: '3px' }}>رقم الهوية: ____________________</div>
+                        <div style={{ fontSize: '9px', color: '#6B7280', marginTop: '3px' }}>التاريخ: ___ / ___ / ______</div>
+                    </div>
+                </div>
 
                 {/* FOOTER */}
                 <div className="ct-footer" style={{ position: 'relative', zIndex: 10 }}>

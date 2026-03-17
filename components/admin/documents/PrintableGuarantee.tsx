@@ -217,33 +217,39 @@ const PrintableGuarantee: React.FC<Props> = ({ data, companyName, companyPhone, 
                     </div>
                 </div>
 
-                {/* SIGNATURES — table layout is universally reliable in print */}
-                <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '20px', borderTop: '2px solid rgba(212,175,55,0.27)', paddingTop: '14px', position: 'relative', zIndex: 10 } as React.CSSProperties}>
-                    <tbody>
-                        <tr>
-                            <td style={{ width: '33%', textAlign: 'center', border: '1px solid #E5E7EB', borderRadius: '8px', padding: '12px 8px', verticalAlign: 'top' }}>
-                                <div style={{ fontWeight: 700, fontSize: '11px', color: '#7C1D1D', marginBottom: '4px' }}>صاحب العمل</div>
-                                <div style={{ borderBottom: '1px dashed #9CA3AF', margin: '26px 0 8px' }}></div>
-                                <div style={{ fontSize: '10px', color: '#6B7280', marginTop: '4px' }}>التوقيع والختم</div>
-                                <div style={{ fontSize: '10px', color: '#6B7280', marginTop: '4px' }}>___ / ___ / ______</div>
-                            </td>
-                            <td style={{ width: '6px' }}></td>
-                            <td style={{ width: '33%', textAlign: 'center', border: '1px solid #E5E7EB', borderRadius: '8px', padding: '12px 8px', verticalAlign: 'top' }}>
-                                <div style={{ fontWeight: 700, fontSize: '11px', color: '#7C1D1D', marginBottom: '4px' }}>الموظف (المكفول)</div>
-                                <div style={{ borderBottom: '1px dashed #9CA3AF', margin: '26px 0 8px' }}></div>
-                                <div style={{ fontSize: '10px', color: '#6B7280', marginTop: '4px' }}>التوقيع</div>
-                                <div style={{ fontSize: '10px', color: '#6B7280', marginTop: '4px' }}>___ / ___ / ______</div>
-                            </td>
-                            <td style={{ width: '6px' }}></td>
-                            <td style={{ width: '33%', textAlign: 'center', border: '1px solid #E5E7EB', borderRadius: '8px', padding: '12px 8px', verticalAlign: 'top' }}>
-                                <div style={{ fontWeight: 700, fontSize: '11px', color: '#7C1D1D', marginBottom: '4px' }}>الكفيل / الضامن</div>
-                                <div style={{ borderBottom: '1px dashed #9CA3AF', margin: '26px 0 8px' }}></div>
-                                <div style={{ fontSize: '10px', color: '#6B7280', marginTop: '4px' }}>التوقيع وبصمة الإبهام</div>
-                                <div style={{ fontSize: '10px', color: '#6B7280', marginTop: '4px' }}>___ / ___ / ______</div>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
+                {/* SIGNATURES — flex wrapper, 3 equal children */}
+                <div style={{
+                    display: 'flex',
+                    flexDirection: 'row',
+                    justifyContent: 'space-between',
+                    alignItems: 'stretch',
+                    gap: '6px',
+                    width: '100%',
+                    marginTop: '10px',
+                    paddingTop: '8px',
+                    borderTop: '2px solid rgba(212,175,55,0.27)',
+                    pageBreakInside: 'avoid',
+                    boxSizing: 'border-box',
+                } as React.CSSProperties}>
+                    <div style={{ flex: '1', textAlign: 'center', border: '1px solid #E5E7EB', borderRadius: '6px', padding: '8px', boxSizing: 'border-box' }}>
+                        <div style={{ fontWeight: 700, fontSize: '11px', color: '#7C1D1D', marginBottom: '3px' }}>صاحب العمل</div>
+                        <div style={{ borderBottom: '1px dashed #9CA3AF', margin: '20px 0 6px' }}></div>
+                        <div style={{ fontSize: '9px', color: '#6B7280', marginTop: '3px' }}>التوقيع والختم</div>
+                        <div style={{ fontSize: '9px', color: '#6B7280', marginTop: '3px' }}>___ / ___ / ______</div>
+                    </div>
+                    <div style={{ flex: '1', textAlign: 'center', border: '1px solid #E5E7EB', borderRadius: '6px', padding: '8px', boxSizing: 'border-box' }}>
+                        <div style={{ fontWeight: 700, fontSize: '11px', color: '#7C1D1D', marginBottom: '3px' }}>الموظف (المكفول)</div>
+                        <div style={{ borderBottom: '1px dashed #9CA3AF', margin: '20px 0 6px' }}></div>
+                        <div style={{ fontSize: '9px', color: '#6B7280', marginTop: '3px' }}>التوقيع</div>
+                        <div style={{ fontSize: '9px', color: '#6B7280', marginTop: '3px' }}>___ / ___ / ______</div>
+                    </div>
+                    <div style={{ flex: '1', textAlign: 'center', border: '1px solid #E5E7EB', borderRadius: '6px', padding: '8px', boxSizing: 'border-box' }}>
+                        <div style={{ fontWeight: 700, fontSize: '11px', color: '#7C1D1D', marginBottom: '3px' }}>الكفيل / الضامن</div>
+                        <div style={{ borderBottom: '1px dashed #9CA3AF', margin: '20px 0 6px' }}></div>
+                        <div style={{ fontSize: '9px', color: '#6B7280', marginTop: '3px' }}>التوقيع وبصمة الإبهام</div>
+                        <div style={{ fontSize: '9px', color: '#6B7280', marginTop: '3px' }}>___ / ___ / ______</div>
+                    </div>
+                </div>
 
                 {/* FOOTER */}
                 <div className="gt-footer" style={{ position: 'relative', zIndex: 10 }}>
