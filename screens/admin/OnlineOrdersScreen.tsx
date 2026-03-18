@@ -194,9 +194,9 @@ function OrderCard({ order, deliveryUsers, onStatusChange, onAssignDriver, busy,
   const elapsed = createdAt ? formatElapsed(createdAt) : '';
 
   // Visual urgency indicator with countdown
-  const diffMin  = createdAt ? (nowMs - new Date(createdAt).getTime()) / 60000 : 0;
-  const urgentMs = Math.max(0, 10 * 60000 - (nowMs - new Date(createdAt || nowMs).getTime()));
-  const warnMs   = Math.max(0,  3 * 60000 - (nowMs - new Date(createdAt || nowMs).getTime()));
+  const diffMin = createdAt ? (nowMs - new Date(createdAt).getTime()) / 60000 : 0;
+  const warnMs  = Math.max(0, 3 * 60000 - (nowMs - new Date(createdAt || nowMs).getTime()));
+
 
   return (
     <div className={`bg-gray-800 rounded-2xl border overflow-hidden transition-all ${
