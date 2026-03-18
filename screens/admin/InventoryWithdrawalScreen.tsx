@@ -73,9 +73,20 @@ export default function InventoryWithdrawalScreen() {
   const loadItems = useCallback(async () => {
     const supabase = getSupabaseClient();
     if (!supabase) return;
-    const { data } = await supabase.from('menu_items').select('id,name').eq('is_active', true).order('name').limit(300);
-    setItems((data || []).map((r:any) => ({ id: r.id, name: typeof r.name === 'object' ? (r.name?.ar || r.name?.en || '') : r.name })));
-  }, []);
+    try {
+      const modern = await supabase.from('menu_items').select('id,name').eq('is_active', true).order('name').limit(300);
+      if (modern.error) {
+        const legacy = await supabase.from('menu_items').select('id,name,status').eq('status', 'active').order('name').limit(300);
+        if (legacy.error) throw legacy.error;
+        setItems((legacy.data || []).map((r: any) => ({ id: r.id, name: typeof r.name === 'object' ? (r.name?.ar || r.name?.en || '') : r.name })));
+      } else {
+        setItems((modern.data || []).map((r: any) => ({ id: r.id, name: typeof r.name === 'object' ? (r.name?.ar || r.name?.en || '') : r.name })));
+      }
+    } catch (e: any) {
+      showNotification(e.message || 'تعذر تحميل الأصناف', 'error');
+      setItems([]);
+    }
+  }, [showNotification]);
 
   const loadRequests = useCallback(async () => {
     const supabase = getSupabaseClient();

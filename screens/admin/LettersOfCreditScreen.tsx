@@ -83,9 +83,26 @@ export default function LettersOfCreditScreen() {
   const loadSuppliers = useCallback(async () => {
     const supabase = getSupabaseClient();
     if (!supabase) return;
-    const { data } = await supabase.from('suppliers').select('id,name').eq('is_active',true).order('name');
-    setSuppliers(data||[]);
-  }, []);
+    try {
+      const modern = await supabase.from('suppliers').select('id,name').eq('is_active', true).order('name');
+      if (modern.error) {
+        const legacy = await supabase.from('suppliers').select('id,name').order('name');
+        if (legacy.error) throw legacy.error;
+        setSuppliers((legacy.data || []).map((r: any) => ({
+          id: String(r.id),
+          name: typeof r.name === 'object' ? String(r.name?.ar || r.name?.en || '') : String(r.name || ''),
+        })));
+      } else {
+        setSuppliers((modern.data || []).map((r: any) => ({
+          id: String(r.id),
+          name: typeof r.name === 'object' ? String(r.name?.ar || r.name?.en || '') : String(r.name || ''),
+        })));
+      }
+    } catch (e: any) {
+      showNotification(e.message || 'تعذر تحميل الموردين', 'error');
+      setSuppliers([]);
+    }
+  }, [showNotification]);
 
   const loadLCs = useCallback(async () => {
     const supabase = getSupabaseClient();
