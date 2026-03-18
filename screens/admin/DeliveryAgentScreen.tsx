@@ -11,6 +11,8 @@ import { useToast } from '../../contexts/ToastContext';
 
 type TrackingStatus = 'idle' | 'tracking' | 'error';
 
+const TRACKING_KEY = 'driver_tracking_active';
+
 export default function DeliveryAgentScreen() {
   const { user } = useAuth();
   const { showNotification } = useToast();
@@ -23,6 +25,7 @@ export default function DeliveryAgentScreen() {
   const watchIdRef = useRef<number | null>(null);
   const sendIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const latestPosRef = useRef<GeolocationPosition | null>(null);
+  const autoStartedRef = useRef(false);
 
   const sendLocation = useCallback(async (pos: GeolocationPosition) => {
     if (!supabase) return;
@@ -47,6 +50,7 @@ export default function DeliveryAgentScreen() {
       return;
     }
 
+    localStorage.setItem(TRACKING_KEY, '1');
     setStatus('tracking');
     setErrorMsg('');
 
@@ -89,6 +93,7 @@ export default function DeliveryAgentScreen() {
   }, [sendLocation]);
 
   const stopTracking = useCallback(async () => {
+    localStorage.removeItem(TRACKING_KEY);
     if (watchIdRef.current !== null) {
       navigator.geolocation.clearWatch(watchIdRef.current);
       watchIdRef.current = null;
@@ -106,6 +111,16 @@ export default function DeliveryAgentScreen() {
     setLastSent(null);
     showNotification('تم إيقاف مشاركة الموقع.', 'info');
   }, [supabase, showNotification]);
+
+  // Auto-resume tracking if it was active before page reload
+  useEffect(() => {
+    if (autoStartedRef.current) return;
+    autoStartedRef.current = true;
+    if (localStorage.getItem(TRACKING_KEY) === '1') {
+      // Small delay to ensure component is fully mounted
+      setTimeout(() => startTracking(), 500);
+    }
+  }, [startTracking]);
 
   // Cleanup on unmount
   useEffect(() => {

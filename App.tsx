@@ -341,7 +341,7 @@ const App: React.FC = () => {
                     <Route path="invoice/:orderId" element={<AdminProtectedRoute permissions={['orders.view']}><InvoiceScreen /></AdminProtectedRoute>} />
                     <Route path="delivery-zones" element={<AdminProtectedRoute permissions={['deliveryZones.manage']}><ManageDeliveryZonesScreen /></AdminProtectedRoute>} />
                     <Route path="driver-map" element={<AdminProtectedRoute permissions={['orders.view']}><LiveDriverMapScreen /></AdminProtectedRoute>} />
-                    <Route path="driver-location" element={<AdminProtectedRoute permissions={['orders.updateStatus.all']}><DeliveryAgentScreen /></AdminProtectedRoute>} />
+                    <Route path="driver-location" element={<AdminProtectedRoute permissions={['orders.updateStatus.delivery']}><DeliveryAgentScreen /></AdminProtectedRoute>} />
                     <Route path="items" element={<AdminProtectedRoute permissions={['items.manage']}><ManageItemsScreen /></AdminProtectedRoute>} />
                     <Route path="addons" element={<AdminProtectedRoute permissions={['addons.manage']}><ManageAddonsScreen /></AdminProtectedRoute>} />
                     <Route path="ads" element={<AdminProtectedRoute permissions={['ads.manage']}><ManageAdsScreen /></AdminProtectedRoute>} />
