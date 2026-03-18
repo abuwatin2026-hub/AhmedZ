@@ -34,8 +34,17 @@ begin
     raise exception 'username_too_long';
   end if;
 
-  -- 2. Generate the fake email (same hash as frontend uses)
-  v_email := 'u_' || encode(extensions.digest(v_username, 'sha256'), 'hex') || '@aztapp.com';
+  -- 2. Generate the fake email (base64url of sha256 — must match frontend sha256Base64Url)
+  v_email := 'u_' || rtrim(
+    replace(
+      replace(
+        encode(extensions.digest(v_username, 'sha256'), 'base64'),
+        '+', '-'
+      ),
+      '/', '_'
+    ),
+    '='
+  ) || '@aztapp.com';
 
   -- 3. Check if user already exists
   select id into v_existing_id from auth.users where email = v_email limit 1;
@@ -124,7 +133,7 @@ begin
     created_at,
     updated_at
   ) values (
-    v_user_id::text,
+    v_user_id,
     v_user_id,
     v_user_id::text,
     'email',
