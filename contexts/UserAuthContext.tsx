@@ -400,8 +400,6 @@ export const UserAuthProvider: React.FC<{ children: ReactNode }> = ({ children }
         return { success: false, message: passwordError };
       }
 
-      const fullName = normalizeLoginIdentifier(usernameValidation.data);
-      const referralCode = (data.referralCode || '').trim();
       const supabase = getSupabaseClient();
       if (!supabase) {
         return { success: false, message: 'لم يتم تكوين قاعدة البيانات' };
@@ -412,113 +410,47 @@ export const UserAuthProvider: React.FC<{ children: ReactNode }> = ({ children }
         return { success: false, message: 'اسم المستخدم هذا مستخدم بالفعل' };
       }
 
-      try {
-        const { data: existing, error: existingError } = await supabase
-          .from('customers')
-          .select('auth_user_id')
-          .filter('data->>loginIdentifier', 'eq', username)
-          .maybeSingle();
-        if (!existingError && existing) {
+      // Use direct registration RPC (bypasses Supabase email rate limits)
+      const { data: result, error: rpcError } = await supabase.rpc('register_customer_direct', {
+        p_username: username,
+        p_password: data.password,
+        p_phone: (data.phoneNumber || '').trim() || null,
+        p_referral_code: (data.referralCode || '').trim() || null,
+      } as any);
+
+      if (rpcError) {
+        const msg = String(rpcError.message || '');
+        if (msg.includes('user_already_registered')) {
           return { success: false, message: 'اسم المستخدم هذا مستخدم بالفعل' };
         }
-      } catch (error) {
-        logger.warn('Username uniqueness check failed', { error: (error as any)?.message || String(error) });
-      }
-
-      const email = await toAuthEmailFromUsername(username);
-      const signUpResult = await supabase.auth.signUp({ email, password: data.password });
-      if (signUpResult.error) {
-        const msg = localizeAuthProviderError(signUpResult.error.message, 'register');
-        const base = withArabicCodeSuffix(msg, signUpResult.error);
-        return { success: false, message: `${base} (${maskUsernameForDisplay(username)})` };
-      }
-
-      const sessionUserId = signUpResult.data.session?.user?.id || null;
-      const userId = signUpResult.data.user?.id || null;
-
-      if (!sessionUserId && userId) {
-        return { success: false, message: 'تأكيد البريد الإلكتروني مفعل' };
-      }
-
-      let authUserId = sessionUserId || userId;
-      if (!authUserId) {
-        const signInResult = await supabase.auth.signInWithPassword({ email, password: data.password });
-        if (signInResult.error) {
-          const msg = localizeAuthProviderError(signInResult.error.message, 'register');
-          const base = withArabicCodeSuffix(msg, signInResult.error);
-          return { success: false, message: `${base} (${maskUsernameForDisplay(username)})` };
+        if (msg.includes('username_too_short')) {
+          return { success: false, message: 'اسم المستخدم قصير جداً (3 أحرف على الأقل)' };
         }
-        authUserId = signInResult.data.user?.id ?? null;
+        if (msg.includes('username_too_long')) {
+          return { success: false, message: 'اسم المستخدم طويل جداً (30 حرف كحد أقصى)' };
+        }
+        return { success: false, message: withArabicCodeSuffix('فشل إنشاء الحساب', rpcError) };
       }
 
-      if (!authUserId) {
+      const rpcResult = (typeof result === 'string' ? JSON.parse(result) : result) as any;
+      if (!rpcResult?.success || !rpcResult?.email) {
         return { success: false, message: 'فشل إنشاء الحساب' };
       }
 
-      const referral = referralCode ? referralCode.toUpperCase() : null;
-      const phone = (data.phoneNumber || '').trim();
-      const normalizedPhone = phone ? normalizeYemenPhoneToE164(phone) : null;
-      if (phone && !normalizedPhone) {
-        return { success: false, message: 'رقم الهاتف غير صالح' };
-      }
-
-      const makeCustomer = (referralCodeValue: string): Customer => ({
-        id: authUserId,
-        fullName,
-        phoneNumber: normalizedPhone || undefined,
-        email: undefined,
-        authProvider: 'password' as const,
-        passwordSalt: '',
-        passwordHash: '',
-        requirePasskey: false,
-        loyaltyPoints: 0,
-        loyaltyTier: 'regular' as const,
-        totalSpent: 0,
-        referralCode: referralCodeValue,
-        referredBy: referral || undefined,
-        firstOrderDiscountApplied: false,
-        avatarUrl: undefined,
-        loginIdentifier: username,
+      // Sign in immediately with the created account
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: rpcResult.email,
+        password: data.password,
       });
-
-      let attempts = 0;
-      while (attempts < 5) {
-        attempts += 1;
-        const customer = makeCustomer(generateReferralCode());
-        const { error } = await supabase.from('customers').insert({
-          auth_user_id: authUserId,
-          full_name: customer.fullName ?? null,
-          phone_number: normalizedPhone,
-          email: customer.email ?? null,
-          auth_provider: customer.authProvider,
-          password_salt: null,
-          password_hash: null,
-          referral_code: customer.referralCode ?? null,
-          referred_by: customer.referredBy ?? null,
-          loyalty_points: customer.loyaltyPoints ?? 0,
-          loyalty_tier: customer.loyaltyTier ?? 'regular',
-          total_spent: customer.totalSpent ?? 0,
-          first_order_discount_applied: Boolean(customer.firstOrderDiscountApplied ?? false),
-          avatar_url: customer.avatarUrl ?? null,
-          data: customer,
-        });
-        if (!error) {
-          setCurrentUser(customer);
-          await fetchCustomers();
-          logger.info('User registered successfully', { userId: authUserId });
-          return { success: true };
-        }
-        if (String((error as any).code) === '23505') {
-          const details = `${String((error as any).details || '')} ${String((error as any).message || '')}`.toLowerCase();
-          if (details.includes('referral') || details.includes('referral_code')) continue;
-        }
-        return {
-          success: false,
-          message: withArabicCodeSuffix(localizeDatabaseError(error), error),
-        };
+      if (signInError) {
+        logger.warn('Post-registration sign-in failed', { error: signInError.message });
+        return { success: false, message: 'تم إنشاء الحساب بنجاح — سجل الدخول يدوياً' };
       }
 
-      return { success: false, message: 'فشل إنشاء الحساب' };
+      await hydrateCurrentUser(rpcResult.user_id);
+      await fetchCustomers();
+      logger.info('User registered successfully (direct)', { userId: rpcResult.user_id });
+      return { success: true };
     } catch (error) {
       logger.error('Registration error', error as Error);
       return { success: false, message: withArabicCodeSuffix('فشل إنشاء الحساب', error) };
