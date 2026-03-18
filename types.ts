@@ -961,6 +961,7 @@ export type AdminPermission =
   | 'approvals.manage'
   | 'adminUsers.manage'
   | 'challenges.manage'
+  | 'attendance.punch'
   | 'expenses.manage'
   | 'accounting.view'
   | 'accounting.manage'
@@ -1011,6 +1012,7 @@ export const ADMIN_PERMISSION_DEFS: Array<{ key: AdminPermission; labelAr: strin
   { key: 'approvals.manage', labelAr: 'إدارة الموافقات' },
   { key: 'adminUsers.manage', labelAr: 'إدارة مستخدمي لوحة التحكم' },
   { key: 'challenges.manage', labelAr: 'إدارة التحديات' },
+  { key: 'attendance.punch', labelAr: 'تسجيل بصمة الحضور' },
   { key: 'expenses.manage', labelAr: 'إدارة المصاريف' },
   { key: 'accounting.view', labelAr: 'عرض المحاسبة' },
   { key: 'accounting.manage', labelAr: 'إدارة المحاسبة' },
@@ -1046,9 +1048,10 @@ export const defaultAdminPermissionsForRole = (role: AdminRole): AdminPermission
     'cashShifts.closeSelf',
     'cashShifts.cashIn',
     'cashShifts.cashOut',
+    'attendance.punch',
   ];
 
-  return ['dashboard.view', 'profile.view', 'orders.view', 'orders.markPaid'];
+  return ['dashboard.view', 'profile.view', 'orders.view', 'orders.markPaid', 'attendance.punch'];
 };
 
 export type RolePreset =
@@ -1070,6 +1073,7 @@ export const UI_ROLE_PRESET_DEFS: Array<{ key: RolePreset; labelAr: string; perm
       'reports.view',
       'shipments.view',
       'inventory.view',
+      'attendance.punch',
     ],
   },
   {
@@ -1084,6 +1088,7 @@ export const UI_ROLE_PRESET_DEFS: Array<{ key: RolePreset; labelAr: string; perm
       'cashShifts.cashIn',
       'cashShifts.cashOut',
       'reports.view',
+      'attendance.punch',
     ],
   },
   {

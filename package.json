@@ -52,7 +52,9 @@
     "orders:sla:probe": "node scripts/orders-sla-probe-prod.mjs",
     "orders:sla:check": "node scripts/orders-sla-probe-prod.mjs && node scripts/run-orders-sla-alert-prod.mjs",
     "orders:sla:alert": "node scripts/run-orders-sla-alert-prod.mjs",
-    "orders:sla:schedule": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\register-orders-sla-task.ps1"
+    "orders:sla:schedule": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\register-orders-sla-task.ps1",
+    "attendance:activate:prod": "node scripts/activate-attendance-prod.mjs",
+    "attendance:activate:prod:dry": "node scripts/activate-attendance-prod.mjs --dry-run"
   },
   "dependencies": {
     "@capacitor-community/file-opener": "^6.0.1",

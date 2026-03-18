@@ -407,7 +407,7 @@ const App: React.FC = () => {
                     <Route path="document-templates" element={<AdminProtectedRoute permissions={['accounting.view']}><DocumentTemplatesScreen /></AdminProtectedRoute>} />
                     <Route path="payroll" element={<AdminProtectedRoute permissions={['expenses.manage', 'accounting.manage']} requireAllPermissions={false}><PayrollScreen /></AdminProtectedRoute>} />
                     <Route path="attendance" element={<AdminProtectedRoute permissions={['expenses.manage', 'accounting.manage']} requireAllPermissions={false}><AttendanceScreen /></AdminProtectedRoute>} />
-                    <Route path="attendance-punch" element={<AdminProtectedRoute permissions={['expenses.manage', 'accounting.manage']} requireAllPermissions={false}><AttendancePunchScreen /></AdminProtectedRoute>} />
+                    <Route path="attendance-punch" element={<AdminProtectedRoute permissions={['attendance.punch', 'expenses.manage', 'accounting.manage']} requireAllPermissions={false}><AttendancePunchScreen /></AdminProtectedRoute>} />
                     <Route path="leave-management" element={<AdminProtectedRoute permissions={['expenses.manage', 'accounting.manage']} requireAllPermissions={false}><LeaveManagementScreen /></AdminProtectedRoute>} />
                     <Route path="employee-hr" element={<AdminProtectedRoute permissions={['hr.contracts.view', 'hr.contracts.manage', 'hr.contracts.approve', 'expenses.manage']} requireAllPermissions={false}><EmployeeHRScreen /></AdminProtectedRoute>} />
                     <Route path="chart-of-accounts" element={<AdminProtectedRoute roles={['owner']}><ChartOfAccountsScreen /></AdminProtectedRoute>} />
@@ -477,7 +477,7 @@ const App: React.FC = () => {
                   <Route
                     path="/attendance-punch"
                     element={
-                      <AdminProtectedRoute permissions={['expenses.manage', 'accounting.manage']} requireAllPermissions={false}>
+                      <AdminProtectedRoute permissions={['attendance.punch', 'expenses.manage', 'accounting.manage']} requireAllPermissions={false}>
                         <AttendancePunchScreen />
                       </AdminProtectedRoute>
                     }

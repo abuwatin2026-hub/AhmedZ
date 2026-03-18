@@ -4,7 +4,21 @@ import PageLoader from '../../components/PageLoader';
 import { useToast } from '../../contexts/ToastContext';
 import { useNavigate } from 'react-router-dom';
 
-type Employee = { id: string; full_name: string; employee_code?: string | null; is_active: boolean; pin?: string | null };
+function bufToBase64url(buf: ArrayBuffer): string {
+    const bytes = new Uint8Array(buf);
+    let s = '';
+    bytes.forEach(b => (s += String.fromCharCode(b)));
+    return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+type Employee = {
+    id: string;
+    full_name: string;
+    employee_code?: string | null;
+    is_active: boolean;
+    has_pin: boolean;
+    webauthn_registered: boolean;
+};
 type AttendanceRow = {
     id: string; employee_id: string; work_date: string; hours_worked: number;
     overtime_hours: number; overtime_rate_multiplier: number; absence_days: number; employee_name?: string;
@@ -16,6 +30,7 @@ type PunchRow = {
 type AttendanceConfig = {
     id: string; allowed_ips: string[]; work_start_time: string; work_end_time: string;
     work_hours_per_day: number; late_threshold_minutes: number; overtime_rate_multiplier: number;
+    allowed_origins: string[]; weekend_days: number[];
 };
 
 export default function AttendanceScreen() {
@@ -42,6 +57,10 @@ export default function AttendanceScreen() {
     const [config, setConfig] = useState<AttendanceConfig | null>(null);
     const [configDraft, setConfigDraft] = useState<Partial<AttendanceConfig>>({});
     const [newIp, setNewIp] = useState('');
+    const [newOrigin, setNewOrigin] = useState('');
+    const [pinEmployeeId, setPinEmployeeId] = useState('');
+    const [pinDraft, setPinDraft] = useState('');
+    const [webauthnEmployeeId, setWebauthnEmployeeId] = useState('');
 
     // Manual add
     const [manualEmpId, setManualEmpId] = useState('');
@@ -57,11 +76,13 @@ export default function AttendanceScreen() {
 
     const loadEmployees = useCallback(async () => {
         if (!supabase) return;
-        const { data, error } = await supabase.from('payroll_employees').select('id,full_name,employee_code,is_active,pin').order('full_name');
+        const { data, error } = await supabase.from('payroll_employees').select('id,full_name,employee_code,is_active,pin_hash,pin_fingerprint,webauthn_credential_id').order('full_name');
         if (error) throw error;
         setEmployees((Array.isArray(data) ? data : []).map((e: any) => ({
             id: String(e.id), full_name: String(e.full_name || ''), employee_code: e.employee_code ? String(e.employee_code) : null,
-            is_active: Boolean(e.is_active), pin: e.pin ? String(e.pin) : null,
+            is_active: Boolean(e.is_active),
+            has_pin: Boolean(e.pin_hash || e.pin_fingerprint),
+            webauthn_registered: Boolean(e.webauthn_credential_id),
         })));
     }, [supabase]);
 
@@ -114,6 +135,8 @@ export default function AttendanceScreen() {
                 work_start_time: String((data as any).work_start_time || '08:00'), work_end_time: String((data as any).work_end_time || '17:00'),
                 work_hours_per_day: Number((data as any).work_hours_per_day || 8), late_threshold_minutes: Number((data as any).late_threshold_minutes || 15),
                 overtime_rate_multiplier: Number((data as any).overtime_rate_multiplier || 1.5),
+                allowed_origins: Array.isArray((data as any).allowed_origins) ? (data as any).allowed_origins : [],
+                weekend_days: Array.isArray((data as any).weekend_days) ? (data as any).weekend_days.map((x: any) => Number(x)).filter((x: number) => Number.isInteger(x) && x >= 0 && x <= 6) : [5],
             };
             setConfig(c);
             setConfigDraft(c);
@@ -177,11 +200,73 @@ export default function AttendanceScreen() {
                 work_hours_per_day: Number(configDraft.work_hours_per_day || 8),
                 late_threshold_minutes: Number(configDraft.late_threshold_minutes || 15),
                 overtime_rate_multiplier: Number(configDraft.overtime_rate_multiplier || 1.5),
+                allowed_origins: configDraft.allowed_origins || [],
+                weekend_days: configDraft.weekend_days || [5],
                 updated_at: new Date().toISOString(),
             }).eq('id', config.id);
             if (error) throw error;
             showNotification('تم حفظ إعدادات الحضور', 'success'); await loadConfig();
         } catch (e: any) { showNotification(String(e?.message || 'تعذر الحفظ'), 'error'); }
+    };
+
+    const saveEmployeePin = async () => {
+        if (!supabase || !pinEmployeeId) { showNotification('اختر الموظف أولاً', 'error'); return; }
+        if (!/^\d{4}$/.test(pinDraft.trim())) { showNotification('PIN يجب أن يكون 4 أرقام', 'error'); return; }
+        try {
+            const { error } = await supabase.rpc('set_employee_pin', { p_employee_id: pinEmployeeId, p_pin: pinDraft.trim() } as any);
+            if (error) throw error;
+            showNotification('تم ضبط PIN المشفر للموظف بنجاح', 'success');
+            setPinDraft('');
+            await loadEmployees();
+        } catch (e: any) { showNotification(String(e?.message || 'تعذر ضبط PIN'), 'error'); }
+    };
+
+    const clearEmployeePin = async () => {
+        if (!supabase || !pinEmployeeId) { showNotification('اختر الموظف أولاً', 'error'); return; }
+        try {
+            const { error } = await supabase.rpc('clear_employee_pin', { p_employee_id: pinEmployeeId } as any);
+            if (error) throw error;
+            showNotification('تم حذف PIN للموظف', 'success');
+            await loadEmployees();
+        } catch (e: any) { showNotification(String(e?.message || 'تعذر حذف PIN'), 'error'); }
+    };
+
+    const registerEmployeeWebauthn = async () => {
+        if (!supabase || !webauthnEmployeeId) { showNotification('اختر الموظف أولاً', 'error'); return; }
+        if (!(window.PublicKeyCredential && navigator.credentials?.create)) {
+            showNotification('المتصفح لا يدعم WebAuthn', 'error');
+            return;
+        }
+        try {
+            const employee = employees.find(e => e.id === webauthnEmployeeId);
+            const challenge = crypto.getRandomValues(new Uint8Array(32));
+            const userId = crypto.getRandomValues(new Uint8Array(16));
+            const credential = await navigator.credentials.create({
+                publicKey: {
+                    challenge,
+                    rp: { name: 'Attendance Device', id: window.location.hostname },
+                    user: {
+                        id: userId,
+                        name: `${employee?.employee_code || webauthnEmployeeId}@attendance.local`,
+                        displayName: employee?.full_name || 'Employee',
+                    },
+                    pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
+                    authenticatorSelection: { userVerification: 'required' },
+                    timeout: 60000,
+                    attestation: 'none',
+                },
+            }) as PublicKeyCredential | null;
+            if (!credential) throw new Error('تم إلغاء التسجيل');
+            const credentialId = bufToBase64url(credential.rawId);
+            const { error } = await supabase.rpc('register_employee_webauthn', {
+                p_employee_id: webauthnEmployeeId,
+                p_credential_id: credentialId,
+                p_public_key: null,
+            } as any);
+            if (error) throw error;
+            showNotification('تم تسجيل بصمة WebAuthn للموظف', 'success');
+            await loadEmployees();
+        } catch (e: any) { showNotification(String(e?.message || 'تعذر تسجيل البصمة'), 'error'); }
     };
 
     const addRecord = async () => {
@@ -451,6 +536,76 @@ export default function AttendanceScreen() {
                             <div className="flex gap-2">
                                 <input value={newIp} onChange={e => setNewIp(e.target.value)} className={inputCls + ' max-w-xs font-mono'} dir="ltr" placeholder="مثال: 192.168.1.100" />
                                 <button type="button" onClick={() => { if (newIp.trim()) { setConfigDraft(prev => ({ ...prev, allowed_ips: [...(prev.allowed_ips || []), newIp.trim()] })); setNewIp(''); } }} className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold">إضافة IP</button>
+                            </div>
+                        </div>
+
+                        <div className="mt-6">
+                            <div className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">Allowed Origins لـ WebAuthn</div>
+                            <div className="flex flex-wrap gap-2 mb-2">
+                                {(configDraft.allowed_origins || []).map((origin, i) => (
+                                    <span key={i} className="inline-flex items-center gap-1 px-3 py-1 rounded-lg bg-indigo-100 dark:bg-indigo-800 text-indigo-700 dark:text-indigo-200 text-sm font-mono">
+                                        {origin}
+                                        <button type="button" onClick={() => setConfigDraft(prev => ({ ...prev, allowed_origins: (prev.allowed_origins || []).filter((_, idx) => idx !== i) }))} className="text-red-500 hover:text-red-700 font-bold">×</button>
+                                    </span>
+                                ))}
+                            </div>
+                            <div className="flex gap-2">
+                                <input value={newOrigin} onChange={e => setNewOrigin(e.target.value)} className={inputCls + ' max-w-xl font-mono'} dir="ltr" placeholder="https://app.example.com" />
+                                <button type="button" onClick={() => { if (newOrigin.trim()) { setConfigDraft(prev => ({ ...prev, allowed_origins: [...(prev.allowed_origins || []), newOrigin.trim()] })); setNewOrigin(''); } }} className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold">إضافة Origin</button>
+                            </div>
+                        </div>
+
+                        <div className="mt-6">
+                            <div className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">أيام الإجازة الأسبوعية</div>
+                            <div className="flex flex-wrap gap-2">
+                                {[
+                                    { v: 0, t: 'الأحد' }, { v: 1, t: 'الإثنين' }, { v: 2, t: 'الثلاثاء' }, { v: 3, t: 'الأربعاء' },
+                                    { v: 4, t: 'الخميس' }, { v: 5, t: 'الجمعة' }, { v: 6, t: 'السبت' },
+                                ].map(d => {
+                                    const selected = (configDraft.weekend_days || []).includes(d.v);
+                                    return (
+                                        <button
+                                            key={d.v}
+                                            type="button"
+                                            onClick={() => setConfigDraft(prev => {
+                                                const set = new Set(prev.weekend_days || []);
+                                                if (set.has(d.v)) set.delete(d.v); else set.add(d.v);
+                                                return { ...prev, weekend_days: Array.from(set).sort((a, b) => a - b) };
+                                            })}
+                                            className={`px-3 py-1 rounded-lg text-sm font-semibold ${selected ? 'bg-orange-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200'}`}
+                                        >
+                                            {d.t}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        <div className="mt-8 border-t border-gray-200 dark:border-gray-700 pt-6">
+                            <div className="font-semibold text-gray-700 dark:text-gray-200 mb-3">إدارة بيانات البصمة للموظفين</div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-3">
+                                    <div className="text-xs text-gray-500 dark:text-gray-400">ضبط PIN مشفر</div>
+                                    <select value={pinEmployeeId} onChange={e => setPinEmployeeId(e.target.value)} className={inputCls}>
+                                        <option value="">اختر موظف...</option>
+                                        {activeEmployees.map(e => <option key={e.id} value={e.id}>{e.full_name} {e.has_pin ? '• PIN ✅' : '• PIN ❌'}</option>)}
+                                    </select>
+                                    <input type="password" inputMode="numeric" maxLength={4} value={pinDraft} onChange={e => setPinDraft(e.target.value.replace(/\D/g, ''))} className={inputCls + ' font-mono tracking-widest'} dir="ltr" placeholder="4 digits" />
+                                    <div className="flex gap-2">
+                                        <button type="button" onClick={() => void saveEmployeePin()} className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold">حفظ PIN</button>
+                                        <button type="button" onClick={() => void clearEmployeePin()} className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-semibold">حذف PIN</button>
+                                    </div>
+                                </div>
+                                <div className="space-y-3">
+                                    <div className="text-xs text-gray-500 dark:text-gray-400">تسجيل بصمة WebAuthn للموظف</div>
+                                    <select value={webauthnEmployeeId} onChange={e => setWebauthnEmployeeId(e.target.value)} className={inputCls}>
+                                        <option value="">اختر موظف...</option>
+                                        {activeEmployees.map(e => <option key={e.id} value={e.id}>{e.full_name} {e.webauthn_registered ? '• WebAuthn ✅' : '• WebAuthn ❌'}</option>)}
+                                    </select>
+                                    <button type="button" onClick={() => void registerEmployeeWebauthn()} className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold">
+                                        تسجيل بصمة الآن
+                                    </button>
+                                </div>
                             </div>
                         </div>
 

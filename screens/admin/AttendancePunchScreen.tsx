@@ -120,6 +120,11 @@ export default function AttendancePunchScreen() {
         if (!supabase || !webauthnAvailable) return;
         setProcessing(true);
         try {
+            const { data: challengeData, error: challengeError } = await supabase.rpc('issue_attendance_webauthn_challenge');
+            if (challengeError) throw challengeError;
+            const challenge = String(challengeData || '');
+            if (!challenge) throw new Error('failed to issue challenge');
+
             // Get all registered credentials
             const { data: creds } = await supabase.rpc('get_attendance_webauthn_credentials');
             const credList = (Array.isArray(creds) ? creds : (creds as any) || []) as any[];
@@ -139,7 +144,7 @@ export default function AttendancePunchScreen() {
             // Request fingerprint
             const assertion = await navigator.credentials.get({
                 publicKey: {
-                    challenge: crypto.getRandomValues(new Uint8Array(32)),
+                    challenge: base64urlToBuf(challenge),
                     allowCredentials,
                     timeout: 30000,
                     userVerification: 'required',
@@ -153,6 +158,10 @@ export default function AttendancePunchScreen() {
             }
 
             const credentialId = bufToBase64url(assertion.rawId);
+            const response = assertion.response as AuthenticatorAssertionResponse;
+            const clientDataJson = bufToBase64url(response.clientDataJSON);
+            const authenticatorData = bufToBase64url(response.authenticatorData);
+            const signature = bufToBase64url(response.signature);
 
             // Send to server
             const ip = await getClientIp();
@@ -160,6 +169,10 @@ export default function AttendancePunchScreen() {
                 p_credential_id: credentialId,
                 p_type: punchType,
                 p_ip: ip,
+                p_challenge: challenge,
+                p_client_data_json: clientDataJson,
+                p_authenticator_data: authenticatorData,
+                p_signature: signature,
             } as any);
             if (error) throw error;
             const result = data as unknown as PunchResult;
@@ -176,6 +189,10 @@ export default function AttendancePunchScreen() {
                 showNotification('تم إلغاء البصمة أو رفض الإذن', 'error');
             } else if (msg.includes('credential not registered')) {
                 showNotification('البصمة غير مسجلة — يرجى تسجيلها أولاً', 'error');
+            } else if (msg.includes('invalid or expired challenge')) {
+                showNotification('انتهت صلاحية جلسة التحقق — حاول مجددًا', 'error');
+            } else if (msg.includes('incomplete webauthn assertion')) {
+                showNotification('فشل التحقق من بيانات البصمة', 'error');
             } else if (msg.includes('not allowed from this location')) {
                 showNotification('غير مسموح من هذا الموقع', 'error');
             } else {

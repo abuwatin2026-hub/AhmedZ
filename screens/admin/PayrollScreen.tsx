@@ -26,7 +26,7 @@ type PayrollEmployee = {
   party_id?: string | null;
   auto_deduct_ar?: boolean;
   credit_limit_multiplier?: number;
-  pin?: string | null;
+  has_pin?: boolean;
 };
 
 type PayrollRun = {
@@ -284,7 +284,7 @@ export default function PayrollScreen() {
     setLoading(true);
     try {
       const [{ data: emps, error: eErr }, { data: rs, error: rErr }, { data: cc, error: cErr }] = await Promise.all([
-        supabase.from('payroll_employees').select('id,full_name,employee_code,is_active,monthly_salary,currency,notes,hired_date,phone,national_id,bank_account,job_title,party_id,auto_deduct_ar,credit_limit_multiplier,pin').order('full_name', { ascending: true }),
+        supabase.from('payroll_employees').select('id,full_name,employee_code,is_active,monthly_salary,currency,notes,hired_date,phone,national_id,bank_account,job_title,party_id,auto_deduct_ar,credit_limit_multiplier,pin_hash,pin_fingerprint').order('full_name', { ascending: true }),
         supabase.from('payroll_runs').select('*').order('period_ym', { ascending: false }).limit(120),
         supabase.from('cost_centers').select('id,name,code').order('name', { ascending: true }),
       ]);
@@ -307,7 +307,7 @@ export default function PayrollScreen() {
         party_id: e.party_id ? String(e.party_id) : null,
         auto_deduct_ar: e.auto_deduct_ar ?? true,
         credit_limit_multiplier: Number(e.credit_limit_multiplier ?? 2),
-        pin: e.pin ? String(e.pin) : null,
+        has_pin: Boolean(e.pin_hash || e.pin_fingerprint),
       })));
       setRuns((Array.isArray(rs) ? rs : []).map((r: any) => ({
         id: String(r.id),
@@ -451,7 +451,7 @@ export default function PayrollScreen() {
         job_title: String(emp.job_title || ''),
         auto_deduct_ar: emp.auto_deduct_ar ?? true,
         credit_limit_multiplier: Number(emp.credit_limit_multiplier ?? 2),
-        pin: String(emp.pin || ''),
+        pin: '',
       });
     } else {
       setEmployeeEditing(null);
@@ -477,7 +477,6 @@ export default function PayrollScreen() {
       job_title: String(employeeForm.job_title || '').trim() || null,
       auto_deduct_ar: Boolean(employeeForm.auto_deduct_ar),
       credit_limit_multiplier: Number(employeeForm.credit_limit_multiplier || 2),
-      pin: String(employeeForm.pin || '').trim() || null,
     };
     if (!payload.full_name) {
       showNotification('يرجى إدخال اسم الموظف.', 'error');
@@ -488,12 +487,21 @@ export default function PayrollScreen() {
       return;
     }
     try {
+      let targetEmployeeId = employeeEditing?.id || '';
       if (employeeEditing) {
         const { error } = await supabase.from('payroll_employees').update(payload).eq('id', employeeEditing.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from('payroll_employees').insert(payload);
+        const { data: inserted, error } = await supabase.from('payroll_employees').insert(payload).select('id').single();
         if (error) throw error;
+        targetEmployeeId = String((inserted as any)?.id || '');
+      }
+      if (targetEmployeeId && String(employeeForm.pin || '').trim()) {
+        const { error: pinError } = await supabase.rpc('set_employee_pin', {
+          p_employee_id: targetEmployeeId,
+          p_pin: String(employeeForm.pin || '').trim(),
+        } as any);
+        if (pinError) throw pinError;
       }
       setEmployeeModalOpen(false);
       setEmployeeEditing(null);
@@ -1138,7 +1146,7 @@ export default function PayrollScreen() {
                 </div>
                 <div>
                   <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">رمز PIN للبصمة</div>
-                  <input type="text" inputMode="numeric" maxLength={6} value={employeeForm.pin} onChange={(e) => setEmployeeForm(prev => ({ ...prev, pin: e.target.value.replace(/\D/g, '') }))} className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 font-mono tracking-widest" dir="ltr" placeholder="مثال: 1234" />
+                  <input type="text" inputMode="numeric" maxLength={4} value={employeeForm.pin} onChange={(e) => setEmployeeForm(prev => ({ ...prev, pin: e.target.value.replace(/\D/g, '') }))} className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 font-mono tracking-widest" dir="ltr" placeholder="4 أرقام — يترك فارغاً دون تغيير" />
                 </div>
                 <div>
                   <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">مضاعف حد الائتمان للراتب</div>
