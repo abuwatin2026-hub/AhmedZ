@@ -56,6 +56,8 @@ const ManageReviewsScreen = lazy(() => import('./screens/admin/ManageReviewsScre
 const ManageStockScreen = lazy(() => import('./screens/admin/ManageStockScreen'));
 const ManagePricesScreen = lazy(() => import('./screens/admin/ManagePricesScreen'));
 const ManageDeliveryZonesScreen = lazy(() => import('./screens/admin/ManageDeliveryZonesScreen'));
+const LiveDriverMapScreen = lazy(() => import('./screens/admin/LiveDriverMapScreen'));
+const DeliveryAgentScreen = lazy(() => import('./screens/admin/DeliveryAgentScreen'));
 const ManageCostCentersScreen = lazy(() => import('./screens/admin/ManageCostCentersScreen'));
 const ManageExpensesScreen = lazy(() => import('./screens/admin/ManageExpensesScreen'));
 const ReportsScreen = lazy(() => import('./screens/admin/ReportsScreen'));
@@ -338,6 +340,8 @@ const App: React.FC = () => {
                     <Route path="orders" element={<AdminProtectedRoute permissions={['orders.view']}><ManageOrdersScreen /></AdminProtectedRoute>} />
                     <Route path="invoice/:orderId" element={<AdminProtectedRoute permissions={['orders.view']}><InvoiceScreen /></AdminProtectedRoute>} />
                     <Route path="delivery-zones" element={<AdminProtectedRoute permissions={['deliveryZones.manage']}><ManageDeliveryZonesScreen /></AdminProtectedRoute>} />
+                    <Route path="driver-map" element={<AdminProtectedRoute permissions={['orders.view']}><LiveDriverMapScreen /></AdminProtectedRoute>} />
+                    <Route path="driver-location" element={<AdminProtectedRoute permissions={['orders.updateStatus.all']}><DeliveryAgentScreen /></AdminProtectedRoute>} />
                     <Route path="items" element={<AdminProtectedRoute permissions={['items.manage']}><ManageItemsScreen /></AdminProtectedRoute>} />
                     <Route path="addons" element={<AdminProtectedRoute permissions={['addons.manage']}><ManageAddonsScreen /></AdminProtectedRoute>} />
                     <Route path="ads" element={<AdminProtectedRoute permissions={['ads.manage']}><ManageAdsScreen /></AdminProtectedRoute>} />
