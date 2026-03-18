@@ -115,6 +115,12 @@ const LeaveManagementScreen = lazy(() => import('./screens/admin/LeaveManagement
 const EmployeeHRScreen = lazy(() => import('./screens/admin/EmployeeHRScreen'));
 const FixedAssetsScreen = lazy(() => import('./screens/admin/FixedAssetsScreen'));
 const QuotationsScreen = lazy(() => import('./screens/admin/QuotationsScreen'));
+const EOSBScreen = lazy(() => import('./screens/admin/EOSBScreen'));
+const RecruitmentScreen = lazy(() => import('./screens/admin/RecruitmentScreen'));
+const KittingScreen = lazy(() => import('./screens/admin/KittingScreen'));
+const InventoryWithdrawalScreen = lazy(() => import('./screens/admin/InventoryWithdrawalScreen'));
+const SalesRepresentativesScreen = lazy(() => import('./screens/admin/SalesRepresentativesScreen'));
+const LettersOfCreditScreen = lazy(() => import('./screens/admin/LettersOfCreditScreen'));
 
 const CustomerLayout: React.FC = () => {
   const { settings } = useSettings();
@@ -418,6 +424,13 @@ const App: React.FC = () => {
                     <Route path="advances" element={<AdminProtectedRoute permissions={['accounting.manage']}><AdvanceManagementScreen /></AdminProtectedRoute>} />
                     <Route path="fixed-assets" element={<AdminProtectedRoute permissions={['accounting.manage']}><FixedAssetsScreen /></AdminProtectedRoute>} />
                     <Route path="quotations" element={<AdminProtectedRoute permissions={['quotations.view', 'orders.view']} requireAllPermissions={false}><QuotationsScreen /></AdminProtectedRoute>} />
+                    {/* ======================== الشاشات الجديدة — إغلاق الفجوات ======================== */}
+                    <Route path="eosb" element={<AdminProtectedRoute permissions={['expenses.manage', 'accounting.manage']} requireAllPermissions={false}><EOSBScreen /></AdminProtectedRoute>} />
+                    <Route path="recruitment" element={<AdminProtectedRoute permissions={['hr.contracts.manage', 'expenses.manage']} requireAllPermissions={false}><RecruitmentScreen /></AdminProtectedRoute>} />
+                    <Route path="kitting" element={<AdminProtectedRoute permissions={['stock.manage', 'inventory.manage']} requireAllPermissions={false}><KittingScreen /></AdminProtectedRoute>} />
+                    <Route path="inventory-withdrawal" element={<AdminProtectedRoute permissions={['stock.manage', 'inventory.manage']} requireAllPermissions={false}><InventoryWithdrawalScreen /></AdminProtectedRoute>} />
+                    <Route path="sales-reps" element={<AdminProtectedRoute permissions={['orders.view', 'expenses.manage']} requireAllPermissions={false}><SalesRepresentativesScreen /></AdminProtectedRoute>} />
+                    <Route path="letters-of-credit" element={<AdminProtectedRoute permissions={['accounting.manage', 'stock.manage']} requireAllPermissions={false}><LettersOfCreditScreen /></AdminProtectedRoute>} />
                     <Route
                       path="reports/party-aging"
                       element={
