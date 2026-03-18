@@ -10,7 +10,9 @@ import { useAuth } from '../../contexts/AuthContext';
 type WithdrawalRequest = {
   id: string;
   reference_number: string;
+  request_number?: string;
   warehouse_name: string;
+  warehouse_id?: string;
   purpose?: string | null;
   department?: string | null;
   status: string;
@@ -41,7 +43,7 @@ const statusColor: Record<string,string> = {
 export default function InventoryWithdrawalScreen() {
   const { showNotification } = useToast();
   const { hasPermission } = useAuth();
-  const canManage = hasPermission?.('inventory.manage');
+  const canManage = hasPermission?.('inventory.manage') || hasPermission?.('stock.manage');
   const canApprove = hasPermission?.('accounting.manage') || canManage;
 
   const [requests, setRequests] = useState<WithdrawalRequest[]>([]);
@@ -80,22 +82,44 @@ export default function InventoryWithdrawalScreen() {
     if (!supabase) return;
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      const modern = await supabase
         .from('inventory_withdrawal_requests')
-        .select('id,reference_number,purpose,department,status,required_date,created_at,warehouses(name)')
+        .select('id,reference_number,purpose,department,status,required_date,created_at,warehouse_id,warehouses(name)')
         .order('created_at', { ascending: false })
         .limit(100);
-      if (error) throw error;
-      setRequests((data||[]).map((r:any)=>({
-        id: r.id,
-        reference_number: r.reference_number,
-        warehouse_name: typeof r.warehouses?.name === 'object' ? (r.warehouses.name?.ar||r.warehouses.name?.en||'') : (r.warehouses?.name||'—'),
-        purpose: r.purpose,
-        department: r.department,
-        status: r.status,
-        required_date: r.required_date,
-        created_at: r.created_at,
-      })));
+      if (modern.error) {
+        const legacy = await supabase
+          .from('inventory_withdrawal_requests')
+          .select('id,request_number,purpose,department,status,created_at,warehouse_id,warehouses(name)')
+          .order('created_at', { ascending: false })
+          .limit(100);
+        if (legacy.error) throw legacy.error;
+        setRequests((legacy.data || []).map((r: any) => ({
+          id: r.id,
+          reference_number: String(r.request_number || r.id),
+          request_number: r.request_number ?? null,
+          warehouse_id: r.warehouse_id ?? null,
+          warehouse_name: typeof r.warehouses?.name === 'object' ? (r.warehouses.name?.ar || r.warehouses.name?.en || '') : (r.warehouses?.name || '—'),
+          purpose: r.purpose,
+          department: r.department,
+          status: r.status,
+          required_date: null,
+          created_at: r.created_at,
+        })));
+      } else {
+        setRequests((modern.data || []).map((r: any) => ({
+          id: r.id,
+          reference_number: String(r.reference_number || r.request_number || r.id),
+          request_number: r.request_number ?? null,
+          warehouse_id: r.warehouse_id ?? null,
+          warehouse_name: typeof r.warehouses?.name === 'object' ? (r.warehouses.name?.ar || r.warehouses.name?.en || '') : (r.warehouses?.name || '—'),
+          purpose: r.purpose,
+          department: r.department,
+          status: r.status,
+          required_date: r.required_date,
+          created_at: r.created_at,
+        })));
+      }
     } catch(e:any){ showNotification(e.message,'error'); }
     finally{ setLoading(false); }
   }, [showNotification]);
@@ -130,11 +154,21 @@ export default function InventoryWithdrawalScreen() {
     if (validLines.length === 0) { showNotification('أضف صنفاً واحداً على الأقل','error'); return; }
     setActing(true);
     try {
-      const { data: req, error: re } = await supabase
+      let req: any = null;
+      const modernInsert = await supabase
         .from('inventory_withdrawal_requests')
-        .insert({ warehouse_id: newForm.warehouse_id, purpose: newForm.purpose||null, department: newForm.department||null, required_date: newForm.required_date||null })
+        .insert({ warehouse_id: newForm.warehouse_id, purpose: newForm.purpose || null, department: newForm.department || null, required_date: newForm.required_date || null })
         .select('id').single();
-      if (re) throw re;
+      if (modernInsert.error) {
+        const legacyInsert = await supabase
+          .from('inventory_withdrawal_requests')
+          .insert({ warehouse_id: newForm.warehouse_id, purpose: newForm.purpose || null, department: newForm.department || null })
+          .select('id').single();
+        if (legacyInsert.error) throw legacyInsert.error;
+        req = legacyInsert.data;
+      } else {
+        req = modernInsert.data;
+      }
       const reqId = req.id;
       for (const line of validLines) {
         await supabase.from('inventory_withdrawal_items').insert({
@@ -162,11 +196,22 @@ export default function InventoryWithdrawalScreen() {
         reject: 'reject_withdrawal_request',
         fulfill: 'fulfill_withdrawal_request',
       };
-      const params: any = { p_request_id: selectedId };
-      if (action === 'approve') params.p_approver_id = null;
-      if (action === 'reject')  params.p_rejector_id = null;
-      const { error } = await supabase.rpc(fnMap[action], params);
-      if (error) throw error;
+      if (action === 'approve') {
+        const r1 = await supabase.rpc(fnMap[action], { p_request_id: selectedId, p_approved_by: null } as any);
+        if (r1.error) {
+          const r2 = await supabase.rpc(fnMap[action], { p_request_id: selectedId, p_approver_id: null } as any);
+          if (r2.error) throw r2.error;
+        }
+      } else if (action === 'reject') {
+        const r1 = await supabase.rpc(fnMap[action], { p_request_id: selectedId, p_reason: 'Rejected', p_rejected_by: null } as any);
+        if (r1.error) {
+          const r2 = await supabase.rpc(fnMap[action], { p_request_id: selectedId, p_rejector_id: null } as any);
+          if (r2.error) throw r2.error;
+        }
+      } else {
+        const { error } = await supabase.rpc(fnMap[action], { p_request_id: selectedId } as any);
+        if (error) throw error;
+      }
       const labels = { submit:'تقديم للاعتماد', approve:'اعتماد', reject:'رفض', fulfill:'تنفيذ الصرف' };
       showNotification(`تم ${labels[action]} بنجاح`,'success');
       await loadRequests();
