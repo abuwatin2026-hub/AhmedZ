@@ -357,6 +357,7 @@ export const importSystemBackup = async (
             'payments',
             'supplier_credit_notes',
             // ── Tier 10: HR/Payroll ──
+            'payroll_employees',
             'payroll_runs',
             'payroll_lines',
             'allowance_types',
@@ -366,6 +367,11 @@ export const importSystemBackup = async (
             'attendance_records',
             'employee_contracts',
             'employee_guarantees',
+            // ── Tier 10b: Attendance ──
+            'attendance_config',
+            'attendance_punches',
+            'attendance_webauthn_challenges',
+            'payroll_attendance',
             // ── Tier 11: Other ──
             'supplier_contracts',
             'supplier_evaluations',
