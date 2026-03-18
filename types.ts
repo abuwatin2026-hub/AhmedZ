@@ -1061,7 +1061,8 @@ export type RolePreset =
   | 'procurement'
   | 'accountant_preset'
   | 'branchManager'
-  | 'viewer';
+  | 'viewer'
+  | 'onlineOrdersDispatcher';
 
 export const UI_ROLE_PRESET_DEFS: Array<{ key: RolePreset; labelAr: string; permissions: AdminPermission[] }> = [
   {
@@ -1148,6 +1149,18 @@ export const UI_ROLE_PRESET_DEFS: Array<{ key: RolePreset; labelAr: string; perm
       'reports.view',
       'shipments.view',
       'inventory.view',
+    ],
+  },
+  {
+    key: 'onlineOrdersDispatcher',
+    labelAr: 'مشغّل الطلبات الأونلاين',
+    permissions: [
+      'profile.view',
+      'orders.view',
+      'orders.updateStatus.all',
+      'orders.cancel',
+      'customers.manage',
+      'attendance.punch',
     ],
   },
 ];
