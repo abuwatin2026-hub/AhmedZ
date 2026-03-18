@@ -160,6 +160,7 @@ const ManageOrdersScreen: React.FC = () => {
     const { isWeightBasedUnit, getUnitLabel } = useItemMeta();
     const { guardPosting } = useGovernance();
     const [filterStatus, setFilterStatus] = useState<OrderStatus | 'all' | 'delivered_no_returns'>('all');
+    const [filterSource, setFilterSource] = useState<'all' | 'online' | 'in_store'>('all');
     const [filterPaymentMethod, setFilterPaymentMethod] = useState<string>('all');
     const [filterCurrency, setFilterCurrency] = useState<string>('all');
     const [filterDateFrom, setFilterDateFrom] = useState('');
@@ -3000,6 +3001,16 @@ const ManageOrdersScreen: React.FC = () => {
             }
         }
 
+        // ── Source filter: online vs in-store (حضوري vs أونلاين) ──
+        if (filterSource !== 'all') {
+            processedOrders = processedOrders.filter(order => {
+                const inStore = isInStoreOrder(order);
+                if (filterSource === 'in_store') return inStore;
+                if (filterSource === 'online') return !inStore;
+                return true;
+            });
+        }
+
         if (filterPaymentMethod !== 'all') {
             processedOrders = processedOrders.filter(order => {
                 const method = String(order.paymentMethod || '').toLowerCase();
@@ -3105,7 +3116,7 @@ const ManageOrdersScreen: React.FC = () => {
         });
 
         return processedOrders;
-    }, [adminUser?.id, customerUserIdFilter, customerNameFilter, filterStatus, filterPaymentMethod, filterCurrency, filterDateFrom, filterDateTo, filterShiftId, isDeliveryOnly, orders, returnsOnly, autoCandidatesOnly, sortOrder, baseCode, recentShifts, paidSumByOrderId, pendingPurgeByOrderId, effectiveWarehouseView, getOrderWarehouseId]);
+    }, [adminUser?.id, customerUserIdFilter, customerNameFilter, filterStatus, filterSource, filterPaymentMethod, filterCurrency, filterDateFrom, filterDateTo, filterShiftId, isDeliveryOnly, orders, returnsOnly, autoCandidatesOnly, sortOrder, baseCode, recentShifts, paidSumByOrderId, pendingPurgeByOrderId, effectiveWarehouseView, getOrderWarehouseId]);
 
     const availableInStoreDestinations = useMemo(() => {
         const currency = String(inStoreTransactionCurrency || '').toUpperCase();
@@ -4280,6 +4291,27 @@ const ManageOrdersScreen: React.FC = () => {
                                 مسح
                             </button>
                         )}
+                    </div>
+                    {/* ── Order Source Tabs ── */}
+                    <div className="flex items-center gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-lg">
+                        {([
+                            { key: 'all', label: '🔀 الكل' },
+                            { key: 'online', label: '🌐 أونلاين' },
+                            { key: 'in_store', label: '🏪 حضوري' },
+                        ] as const).map(tab => (
+                            <button
+                                key={tab.key}
+                                type="button"
+                                onClick={() => setFilterSource(tab.key)}
+                                className={`px-3 py-1.5 rounded-md text-sm font-semibold transition-all ${
+                                    filterSource === tab.key
+                                        ? 'bg-white dark:bg-gray-700 text-orange-600 dark:text-orange-400 shadow-sm'
+                                        : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+                                }`}
+                            >
+                                {tab.label}
+                            </button>
+                        ))}
                     </div>
                     <div>
                         <label htmlFor="statusFilter" className="text-sm font-medium dark:text-gray-300 mx-2">فلترة حسب الحالة:</label>
