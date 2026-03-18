@@ -51,6 +51,12 @@ const ManageCustomersScreen: React.FC = () => {
   const [deleteCustomerId, setDeleteCustomerId] = useState<string | null>(null);
   const [isDeletingCustomer, setIsDeletingCustomer] = useState(false);
   const [adminUserIds, setAdminUserIds] = useState<Set<string>>(new Set());
+  const [resetPasswordOpen, setResetPasswordOpen] = useState(false);
+  const [resetPasswordValue, setResetPasswordValue] = useState('');
+  const [resetPasswordConfirm, setResetPasswordConfirm] = useState('');
+  const [resetPasswordLoading, setResetPasswordLoading] = useState(false);
+  const [resetPasswordShow, setResetPasswordShow] = useState(false);
+
   const [newCustomerModalOpen, setNewCustomerModalOpen] = useState(false);
   const [newCustomerDraft, setNewCustomerDraft] = useState<{ fullName: string; phone: string; customerType: 'retail' | 'wholesale'; creditLimit?: number; notes?: string }>({
     fullName: '',
@@ -297,7 +303,12 @@ const ManageCustomersScreen: React.FC = () => {
     const latest = customers.find(c => c.id === selectedCustomer.id);
     if (!latest) return;
     setSelectedCustomer(latest);
+    // Reset password form when switching customers
+    setResetPasswordOpen(false);
+    setResetPasswordValue('');
+    setResetPasswordConfirm('');
   }, [customers, selectedCustomer?.id]);
+
 
   const customerOrderStats = useMemo(() => {
     const count = customerOrders.length;
@@ -1171,12 +1182,126 @@ const ManageCustomersScreen: React.FC = () => {
                   </div>
 
                   <div className="bg-gray-50 dark:bg-gray-700/40 rounded-xl p-5">
-                    <div className="text-sm font-bold text-gray-900 dark:text-white mb-4">ملاحظات</div>
+                    <div className="text-sm font-bold text-gray-900 dark:text-white mb-1">ملاحظات</div>
                     <div className="text-sm text-gray-700 dark:text-gray-300 space-y-2">
                       <div>العناوين داخل الطلبات مشفرة على جهاز العميل، لذلك قد لا تظهر نصاً واضحاً هنا.</div>
                       <div>يمكنك إدارة نقاط الولاء من زر إدارة النقاط.</div>
                     </div>
                   </div>
+
+                  {/* Password Reset Card */}
+                  {selectedCustomer.authProvider === 'password' && canManageCustomers && (
+                    <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl p-5">
+                      <div className="text-sm font-bold text-amber-900 dark:text-amber-200 mb-3">🔑 إعادة تعيين كلمة المرور</div>
+
+                      {!resetPasswordOpen ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setResetPasswordOpen(true);
+                            setResetPasswordValue('');
+                            setResetPasswordConfirm('');
+                            setResetPasswordShow(false);
+                          }}
+                          className="px-4 py-2 rounded-lg bg-amber-600 text-white text-sm font-semibold hover:bg-amber-700"
+                        >
+                          تعيين كلمة مرور جديدة
+                        </button>
+                      ) : (
+                        <div className="space-y-3">
+                          <div>
+                            <label className="block text-xs text-amber-800 dark:text-amber-300 mb-1">كلمة المرور الجديدة</label>
+                            <div className="relative">
+                              <input
+                                type={resetPasswordShow ? 'text' : 'password'}
+                                value={resetPasswordValue}
+                                onChange={(e) => setResetPasswordValue(e.target.value)}
+                                placeholder="6 أحرف على الأقل"
+                                className="w-full p-3 border border-amber-300 dark:border-amber-600 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition text-sm"
+                                dir="ltr"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setResetPasswordShow(v => !v)}
+                                className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs"
+                              >
+                                {resetPasswordShow ? '🙈' : '👁'}
+                              </button>
+                            </div>
+                          </div>
+                          <div>
+                            <label className="block text-xs text-amber-800 dark:text-amber-300 mb-1">تأكيد كلمة المرور</label>
+                            <input
+                              type={resetPasswordShow ? 'text' : 'password'}
+                              value={resetPasswordConfirm}
+                              onChange={(e) => setResetPasswordConfirm(e.target.value)}
+                              placeholder="أعد كتابة كلمة المرور"
+                              className="w-full p-3 border border-amber-300 dark:border-amber-600 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition text-sm"
+                              dir="ltr"
+                            />
+                          </div>
+                          {resetPasswordValue && resetPasswordConfirm && resetPasswordValue !== resetPasswordConfirm && (
+                            <div className="text-red-600 dark:text-red-400 text-xs font-semibold">كلمتا المرور غير متطابقتين</div>
+                          )}
+                          <div className="flex gap-2 pt-1">
+                            <button
+                              type="button"
+                              disabled={
+                                resetPasswordLoading ||
+                                resetPasswordValue.length < 6 ||
+                                resetPasswordValue !== resetPasswordConfirm
+                              }
+                              onClick={async () => {
+                                const supabase = getSupabaseClient();
+                                if (!supabase) { showNotification('تعذر الوصول للخادم.', 'error'); return; }
+                                setResetPasswordLoading(true);
+                                try {
+                                  const { error } = await supabase.rpc('admin_reset_customer_password', {
+                                    p_user_id: selectedCustomer.id,
+                                    p_new_password: resetPasswordValue,
+                                  });
+                                  if (error) {
+                                    const msg = (error as any)?.message || String(error);
+                                    const localized = msg.includes('permission_denied') ? 'ليس لديك صلاحية.' :
+                                      msg.includes('password_too_short') ? 'كلمة المرور قصيرة جداً (6 أحرف على الأقل).' :
+                                      msg.includes('customer_not_found') ? 'العميل غير موجود.' :
+                                      msg.includes('auth_user_not_found') ? 'حساب المستخدم غير موجود في نظام المصادقة.' :
+                                      `فشل إعادة التعيين: ${msg}`;
+                                    showNotification(localized, 'error');
+                                    return;
+                                  }
+                                  showNotification('تم تعيين كلمة المرور الجديدة بنجاح ✓', 'success');
+                                  setResetPasswordOpen(false);
+                                  setResetPasswordValue('');
+                                  setResetPasswordConfirm('');
+                                } catch (err) {
+                                  const raw = err instanceof Error ? err.message : String(err || '');
+                                  showNotification(raw || 'فشل إعادة تعيين كلمة المرور.', 'error');
+                                } finally {
+                                  setResetPasswordLoading(false);
+                                }
+                              }}
+                              className="px-4 py-2 rounded-lg bg-amber-600 text-white text-sm font-semibold hover:bg-amber-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                            >
+                              {resetPasswordLoading ? 'جاري التعيين...' : 'تأكيد'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setResetPasswordOpen(false);
+                                setResetPasswordValue('');
+                                setResetPasswordConfirm('');
+                              }}
+                              className="px-4 py-2 rounded-lg bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-100 text-sm font-semibold hover:bg-gray-300 dark:hover:bg-gray-500"
+                            >
+                              إلغاء
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   
                   <div className="bg-gray-50 dark:bg-gray-700/40 rounded-xl p-5">
                     <div className="text-sm font-bold text-gray-900 dark:text-white mb-4">الائتمان</div>
