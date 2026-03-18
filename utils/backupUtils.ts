@@ -16,11 +16,77 @@ export interface BackupReadinessReport {
     checks: Array<{ key: string; ok: boolean; message: string }>;
 }
 
+type BackupManifest = {
+    format_version: '2.0';
+    generated_at: string;
+    source: string;
+    schema_migration_count: number;
+    schema_migration_latest: string | null;
+    table_count: number;
+    row_counts: Record<string, number>;
+    storage_files: Array<{ bucket: string; path: string; size?: number | null }>;
+};
+
+const chunkArray = <T,>(input: T[], chunkSize: number): T[][] => {
+    const out: T[][] = [];
+    for (let i = 0; i < input.length; i += chunkSize) out.push(input.slice(i, i + chunkSize));
+    return out;
+};
+
+const listStorageFilesRecursively = async (supabase: any, bucket: string): Promise<Array<{ bucket: string; path: string; size?: number | null }>> => {
+    const results: Array<{ bucket: string; path: string; size?: number | null }> = [];
+    const walk = async (prefix: string) => {
+        let offset = 0;
+        const limit = 100;
+        while (true) {
+            const { data, error } = await supabase.storage.from(bucket).list(prefix, { limit, offset, sortBy: { column: 'name', order: 'asc' } });
+            if (error) throw error;
+            const entries = Array.isArray(data) ? data : [];
+            for (const entry of entries) {
+                const name = String((entry as any)?.name || '');
+                if (!name || name === '.emptyFolderPlaceholder') continue;
+                const entryPath = prefix ? `${prefix}/${name}` : name;
+                const isFolder = (entry as any)?.id == null;
+                if (isFolder) await walk(entryPath);
+                else {
+                    results.push({
+                        bucket,
+                        path: entryPath,
+                        size: typeof (entry as any)?.metadata?.size === 'number' ? (entry as any).metadata.size : null,
+                    });
+                }
+            }
+            if (entries.length < limit) break;
+            offset += limit;
+        }
+    };
+    await walk('');
+    return results;
+};
+
 export const checkBackupRestoreReadiness = async (): Promise<BackupReadinessReport> => {
     const supabase = getSupabaseClient();
     if (!supabase) throw new Error('Supabase client not initialized');
 
     const checks: Array<{ key: string; ok: boolean; message: string }> = [];
+
+    const deepHealth = await supabase.rpc('admin_backup_health_report');
+    if (!deepHealth.error && deepHealth.data && typeof deepHealth.data === 'object') {
+        const payload = deepHealth.data as any;
+        if (Array.isArray(payload.checks)) {
+            for (const c of payload.checks) {
+                checks.push({
+                    key: String(c?.key || 'unknown'),
+                    ok: Boolean(c?.ok),
+                    message: String(c?.message || ''),
+                });
+            }
+            return {
+                ok: checks.every(c => c.ok),
+                checks,
+            };
+        }
+    }
 
     const tableProbe = await supabase.rpc('admin_get_all_tables');
     checks.push({
@@ -85,6 +151,7 @@ export const exportFullSystemBackup = async (
 
     const totalTables = tables.length;
     const backupData: Record<string, any[]> = {};
+    const rowCounts: Record<string, number> = {};
 
     for (let i = 0; i < totalTables; i++) {
         const table = tables[i];
@@ -116,12 +183,13 @@ export const exportFullSystemBackup = async (
         }
 
         backupData[table] = tableData;
+        rowCounts[table] = tableData.length;
     }
 
     onProgress({ status: 'generating_file', currentTable: '', tableProgress: 100, tablesCompleted: totalTables, totalTables, message: 'جاري تشفير وتجميع الملف...' });
 
     const finalObject = {
-        version: '1.0',
+        version: '2.0',
         timestamp: new Date().toISOString(),
         source: 'AhmedZ ERP System Backup',
         data: backupData
@@ -133,26 +201,55 @@ export const exportFullSystemBackup = async (
 
     const zip = new JSZip();
     zip.file('database.json', jsonString);
+    const storageManifest: Array<{ bucket: string; path: string; size?: number | null }> = [];
 
     try {
-        const { data: buckets } = await supabase.storage.listBuckets();
-        if (buckets && buckets.length > 0) {
-            for (const bucket of buckets) {
-                const { data: files } = await supabase.storage.from(bucket.name).list();
-                if (files && files.length > 0) {
-                    for (const file of files) {
-                        if (file.name === '.emptyFolderPlaceholder') continue;
-                        const { data: fileData, error: downloadError } = await supabase.storage.from(bucket.name).download(file.name);
-                        if (fileData && !downloadError) {
-                            zip.file(`storage/${bucket.name}/${file.name}`, fileData);
-                        }
-                    }
+        const configuredBuckets = (() => {
+            const appSettingsRows = Array.isArray(backupData.app_settings) ? backupData.app_settings : [];
+            const row = appSettingsRows.find((r: any) => String(r?.id || '') === 'backup_storage_buckets');
+            const list = Array.isArray(row?.data?.buckets) ? row.data.buckets : [];
+            return list.map((x: any) => String(x || '').trim()).filter(Boolean);
+        })();
+        const fetchedBuckets = await supabase.storage.listBuckets();
+        const directBuckets = !fetchedBuckets.error && Array.isArray(fetchedBuckets.data)
+            ? fetchedBuckets.data.map((b: any) => String(b?.name || '').trim()).filter(Boolean)
+            : [];
+        const bucketSet = new Set<string>(['automated_backups', ...configuredBuckets, ...directBuckets]);
+        for (const bucket of Array.from(bucketSet)) {
+            try {
+                const objects = await listStorageFilesRecursively(supabase, bucket);
+                storageManifest.push(...objects);
+            } catch {
+            }
+        }
+        for (const group of chunkArray(storageManifest, 50)) {
+            for (const obj of group) {
+                const { data: fileData, error: downloadError } = await supabase.storage.from(obj.bucket).download(obj.path);
+                if (fileData && !downloadError) {
+                    zip.file(`storage/${obj.bucket}/${obj.path}`, fileData);
                 }
             }
         }
     } catch (storageError) {
         console.warn('Failed to backup some storage files', storageError);
     }
+
+    const schemaMigrations = Array.isArray(backupData.schema_migrations) ? backupData.schema_migrations : [];
+    const migrationStrings = schemaMigrations
+        .map((x: any) => String(x?.version || x?.name || x?.id || '').trim())
+        .filter(Boolean)
+        .sort();
+    const manifest: BackupManifest = {
+        format_version: '2.0',
+        generated_at: new Date().toISOString(),
+        source: 'AhmedZ ERP System Backup',
+        schema_migration_count: migrationStrings.length,
+        schema_migration_latest: migrationStrings.length > 0 ? migrationStrings[migrationStrings.length - 1] : null,
+        table_count: Object.keys(backupData).length,
+        row_counts: rowCounts,
+        storage_files: storageManifest,
+    };
+    zip.file('manifest.json', JSON.stringify(manifest));
 
     onProgress({ status: 'generating_file', currentTable: '', tableProgress: 100, tablesCompleted: totalTables, totalTables, message: 'جاري ضغط الملف النهائي للنسخة الاحتياطية...' });
 
@@ -271,6 +368,13 @@ export const importSystemBackup = async (
 
         if (!parsed.version || !parsed.data) {
             throw new Error('الملف غير صالح للاسترداد أو أنه تالف.');
+        }
+        let manifest: BackupManifest | null = null;
+        if (zip && zip.file('manifest.json')) {
+            manifest = JSON.parse(await zip.file('manifest.json')!.async('string')) as BackupManifest;
+            if (manifest.format_version !== '2.0') {
+                throw new Error('صيغة manifest غير مدعومة في هذه النسخة.');
+            }
         }
 
         const criticalTables = ['warehouses', 'admin_users', 'menu_items', 'stock_management', 'batches', 'inventory_movements', 'orders', 'purchase_orders'];
@@ -407,10 +511,10 @@ export const importSystemBackup = async (
 
             onProgress({ status: 'fetching_data', currentTable: table, tableProgress: 0, tablesCompleted: i, totalTables, message: `جاري استرداد جدول: ${table} (${dataArray.length} سجل)` });
 
-            // Chunking injection for large tables to not hit request limits
             const chunkSize = 2000;
-            for (let j = 0; j < dataArray.length; j += chunkSize) {
-                const chunk = dataArray.slice(j, j + chunkSize);
+            const chunks = chunkArray(dataArray, chunkSize);
+            for (let j = 0; j < chunks.length; j++) {
+                const chunk = chunks[j];
 
                 const { data: res, error } = await supabase.rpc('admin_import_table_data', {
                     p_table: table,
@@ -422,7 +526,8 @@ export const importSystemBackup = async (
                     throw new Error(`تعذر استرداد جدول ${table}. التفاصيل: ${error?.message || res?.message}`);
                 }
 
-                onProgress({ status: 'fetching_data', currentTable: table, tableProgress: Math.min(100, ((j + chunkSize) / dataArray.length) * 100), tablesCompleted: i, totalTables, message: `جاري استرداد بيانات ${table} (${Math.min(dataArray.length, j + chunkSize)} / ${dataArray.length})` });
+                const imported = Math.min(dataArray.length, (j + 1) * chunkSize);
+                onProgress({ status: 'fetching_data', currentTable: table, tableProgress: Math.min(100, (imported / dataArray.length) * 100), tablesCompleted: i, totalTables, message: `جاري استرداد بيانات ${table} (${imported} / ${dataArray.length})` });
             }
         }
 
@@ -442,8 +547,13 @@ export const importSystemBackup = async (
             }
         }
 
-        // Post-restore: resync computed fields (batch costs, avg_cost)
-        // since triggers were disabled during import
+        if (manifest && manifest.table_count > 0) {
+            const restoredTables = Object.keys(parsed.data || {}).length;
+            if (restoredTables < Math.min(manifest.table_count, 5)) {
+                throw new Error('نتيجة الاستعادة أقل من المتوقع مقارنة ببيانات manifest.');
+            }
+        }
+
         onProgress({ status: 'generating_file', currentTable: '', tableProgress: 90, tablesCompleted: totalTables, totalTables, message: 'جاري إعادة حساب التكاليف والأرصدة...' });
         try {
             await supabase.rpc('admin_post_restore_resync');

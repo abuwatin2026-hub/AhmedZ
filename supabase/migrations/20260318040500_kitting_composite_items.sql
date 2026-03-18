@@ -7,8 +7,8 @@
 -- 1. Bill of Materials (BOM) — قوائم المكونات
 CREATE TABLE IF NOT EXISTS public.item_bom (
   id               UUID    PRIMARY KEY DEFAULT gen_random_uuid(),
-  parent_item_id   UUID    NOT NULL REFERENCES public.menu_items(id) ON DELETE CASCADE,
-  component_item_id UUID   NOT NULL REFERENCES public.menu_items(id) ON DELETE CASCADE,
+  parent_item_id   TEXT    NOT NULL REFERENCES public.menu_items(id) ON DELETE CASCADE,
+  component_item_id TEXT   NOT NULL REFERENCES public.menu_items(id) ON DELETE CASCADE,
   quantity         NUMERIC(15,6) NOT NULL DEFAULT 1 CHECK (quantity > 0),
   uom_code         TEXT,   -- وحدة قياس المكوّن
   notes            TEXT,
@@ -28,13 +28,13 @@ COMMENT ON TABLE public.item_bom IS 'قائمة المكونات — تعريف 
 CREATE TABLE IF NOT EXISTS public.kitting_operations (
   id              UUID    PRIMARY KEY DEFAULT gen_random_uuid(),
   operation_type  TEXT    NOT NULL CHECK (operation_type IN ('assemble','disassemble')),
-  kit_item_id     UUID    NOT NULL REFERENCES public.menu_items(id) ON DELETE RESTRICT,
+  kit_item_id     TEXT    NOT NULL REFERENCES public.menu_items(id) ON DELETE RESTRICT,
   warehouse_id    UUID    NOT NULL REFERENCES public.warehouses(id) ON DELETE RESTRICT,
   quantity        NUMERIC(15,6) NOT NULL DEFAULT 1 CHECK (quantity > 0),
   status          TEXT    NOT NULL DEFAULT 'completed'
                     CHECK (status IN ('draft','completed','reversed')),
   journal_entry_id UUID   REFERENCES public.journal_entries(id) ON DELETE SET NULL,
-  performed_by    UUID    REFERENCES public.admin_users(id) ON DELETE SET NULL,
+  performed_by    UUID    REFERENCES public.admin_users(auth_user_id) ON DELETE SET NULL,
   notes           TEXT,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -53,7 +53,7 @@ COMMENT ON COLUMN public.menu_items.is_composite IS 'صنف مركب يُجمَ�
 -- 4. Function: assemble kit
 -- Consumes components from warehouse, creates assembled kit units
 CREATE OR REPLACE FUNCTION public.assemble_kit(
-  p_kit_item_id  UUID,
+  p_kit_item_id  TEXT,
   p_quantity     NUMERIC,
   p_warehouse_id UUID,
   p_performed_by UUID DEFAULT NULL,
@@ -126,7 +126,7 @@ COMMENT ON FUNCTION public.assemble_kit IS 'تجميع صنف مركب من مك
 
 -- 5. Function: disassemble kit (reverse)
 CREATE OR REPLACE FUNCTION public.disassemble_kit(
-  p_kit_item_id  UUID,
+  p_kit_item_id  TEXT,
   p_quantity     NUMERIC,
   p_warehouse_id UUID,
   p_performed_by UUID DEFAULT NULL,

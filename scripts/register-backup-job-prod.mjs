@@ -24,54 +24,44 @@ const supabaseUrl = String(process.env.VITE_SUPABASE_URL || '').trim()
 const supabaseAnon = String(process.env.VITE_SUPABASE_ANON_KEY || '').trim()
 const ownerEmail = String(process.env.OWNER_EMAIL || process.env.BACKUP_OWNER_EMAIL || '').trim()
 const ownerPassword = String(process.env.OWNER_PASSWORD || process.env.BACKUP_OWNER_PASSWORD || '').trim()
+const cronToken = String(process.env.BACKUP_CRON_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim()
+const cronExpr = String(process.env.BACKUP_CRON || '0 3 * * *').trim()
 
-if (!supabaseUrl || !supabaseAnon || !ownerEmail || !ownerPassword) {
-  console.error('Missing required env keys: VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY, OWNER_EMAIL, OWNER_PASSWORD')
+if (!supabaseUrl || !supabaseAnon || !ownerEmail || !ownerPassword || !cronToken) {
+  console.error('Missing required env keys for backup scheduler setup')
   process.exit(1)
 }
 
+const functionUrl = String(process.env.BACKUP_FUNCTION_URL || `${supabaseUrl.replace('.supabase.co', '.functions.supabase.co')}/automated-backup`).trim()
 const supabase = createClient(supabaseUrl, supabaseAnon, { auth: { persistSession: false } })
 
-async function main() {
+const main = async () => {
   const login = await supabase.auth.signInWithPassword({ email: ownerEmail, password: ownerPassword })
   if (login.error) throw new Error(`login failed: ${login.error.message}`)
 
-  const report = {
-    generatedAt: new Date().toISOString(),
-    checks: [],
-    health: null,
-    probes: {},
-  }
-
   const health = await supabase.rpc('admin_backup_health_report')
-  if (health.error) throw new Error(`health rpc failed: ${health.error.message}`)
-  report.health = health.data || null
-  if (Array.isArray((health.data || {}).checks)) {
-    for (const c of health.data.checks) {
-      report.checks.push({
-        key: String(c?.key || 'unknown'),
-        ok: Boolean(c?.ok),
-        value: c?.message || null,
-      })
-    }
-  }
+  if (health.error) throw new Error(`health check failed: ${health.error.message}`)
 
-  for (const table of ['warehouses', 'admin_users', 'menu_items', 'stock_management', 'batches', 'inventory_movements']) {
-    const probe = await supabase.rpc('admin_export_table_data', { p_table: table, p_offset: 0, p_limit: 1 })
-    report.probes[table] = {
-      ok: !probe.error,
-      hasRows: Array.isArray(probe.data) && probe.data.length > 0,
-      error: probe.error?.message || null,
-    }
-  }
+  const schedule = await supabase.rpc('admin_register_automated_backup_job', {
+    p_function_url: functionUrl,
+    p_bearer_token: cronToken,
+    p_cron: cronExpr,
+  })
+  if (schedule.error) throw new Error(`register schedule failed: ${schedule.error.message}`)
 
-  report.ok = report.checks.every((c) => c.ok)
-  const outPath = path.join(process.cwd(), 'backups', `backup_dr_readiness_${new Date().toISOString().replace(/[:.]/g, '-')}.json`)
-  fs.writeFileSync(outPath, JSON.stringify(report, null, 2), 'utf8')
-  console.log(JSON.stringify({ ok: report.ok, outPath }, null, 2))
+  const verify = await supabase.rpc('admin_backup_health_report')
+  if (verify.error) throw new Error(`verify health check failed: ${verify.error.message}`)
+
+  console.log(JSON.stringify({
+    ok: true,
+    functionUrl,
+    cron: cronExpr,
+    scheduleResult: schedule.data,
+    healthOk: Boolean(verify.data?.ok),
+  }, null, 2))
 }
 
 main().catch((e) => {
-  console.error(String(e?.message || e))
+  console.error(JSON.stringify({ ok: false, error: String(e?.message || e) }, null, 2))
   process.exit(1)
 })

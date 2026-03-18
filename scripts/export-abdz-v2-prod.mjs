@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import JSZip from 'jszip'
 import { createClient } from '@supabase/supabase-js'
 
 const loadEnv = (filePath) => {
@@ -25,46 +26,33 @@ const supabaseAnon = String(process.env.VITE_SUPABASE_ANON_KEY || '').trim()
 const ownerEmail = String(process.env.OWNER_EMAIL || process.env.BACKUP_OWNER_EMAIL || '').trim()
 const ownerPassword = String(process.env.OWNER_PASSWORD || process.env.BACKUP_OWNER_PASSWORD || '').trim()
 
-if (!supabaseUrl || !supabaseAnon) {
-  console.error('Missing Supabase URL or anon key in .env.production')
-  process.exit(1)
-}
-if (!ownerEmail || !ownerPassword) {
-  console.error('Missing OWNER_EMAIL/OWNER_PASSWORD or BACKUP_OWNER_EMAIL/BACKUP_OWNER_PASSWORD')
+if (!supabaseUrl || !supabaseAnon || !ownerEmail || !ownerPassword) {
+  console.error('Missing required env keys for export-abdz-v2')
   process.exit(1)
 }
 
-const supabase = createClient(supabaseUrl, supabaseAnon)
+const supabase = createClient(supabaseUrl, supabaseAnon, { auth: { persistSession: false } })
 
-async function main() {
-  const login = await supabase.auth.signInWithPassword({
-    email: ownerEmail,
-    password: ownerPassword,
-  })
+const main = async () => {
+  const login = await supabase.auth.signInWithPassword({ email: ownerEmail, password: ownerPassword })
   if (login.error) throw new Error(`login failed: ${login.error.message}`)
 
   const health = await supabase.rpc('admin_backup_health_report')
-  if (health.error) throw new Error(`backup health check failed: ${health.error.message}`)
-  const checks = Array.isArray(health.data?.checks) ? health.data.checks : []
-  const failed = checks.filter((c) => !c?.ok)
-  if (failed.length > 0) throw new Error(`backup health checks failed: ${failed.map((x) => x.key).join(', ')}`)
+  if (health.error) throw new Error(`health check failed: ${health.error.message}`)
+  const failed = Array.isArray(health.data?.checks) ? health.data.checks.filter((c) => !c?.ok) : []
+  if (failed.length > 0) throw new Error(`health checks failed: ${failed.map((x) => x.key).join(', ')}`)
 
   const tablesRes = await supabase.rpc('admin_get_all_tables')
-  if (tablesRes.error || !Array.isArray(tablesRes.data)) {
-    throw new Error(`table scan failed: ${tablesRes.error?.message || 'invalid response'}`)
-  }
+  if (tablesRes.error || !Array.isArray(tablesRes.data)) throw new Error(`table scan failed: ${tablesRes.error?.message || 'invalid response'}`)
 
   const backupData = {}
+  const rowCounts = {}
   for (const table of tablesRes.data) {
     let offset = 0
     const limit = 2000
     const rows = []
     while (true) {
-      const r = await supabase.rpc('admin_export_table_data', {
-        p_table: table,
-        p_offset: offset,
-        p_limit: limit,
-      })
+      const r = await supabase.rpc('admin_export_table_data', { p_table: table, p_offset: offset, p_limit: limit })
       if (r.error) throw new Error(`export ${table} failed: ${r.error.message}`)
       const arr = Array.isArray(r.data) ? r.data : []
       rows.push(...arr)
@@ -72,6 +60,7 @@ async function main() {
       offset += limit
     }
     backupData[table] = rows
+    rowCounts[table] = rows.length
   }
 
   const migrationRows = Array.isArray(backupData.schema_migrations) ? backupData.schema_migrations : []
@@ -79,38 +68,33 @@ async function main() {
     .map((x) => String(x?.version || x?.name || x?.id || '').trim())
     .filter(Boolean)
     .sort()
+
   const payload = {
     version: '2.0',
     timestamp: new Date().toISOString(),
-    source: 'Manual automated backup fallback',
-    manifest: {
-      format_version: '2.0',
-      schema_migration_count: migrationStrings.length,
-      schema_migration_latest: migrationStrings.length ? migrationStrings[migrationStrings.length - 1] : null,
-      table_count: Object.keys(backupData).length,
-    },
+    source: 'ABDZ v2 export script',
     data: backupData,
   }
 
-  const fileName = `automated-backup-manual-${new Date().toISOString().replace(/[:.]/g, '-')}.json`
-  const upload = await supabase.storage
-    .from('automated_backups')
-    .upload(fileName, Buffer.from(JSON.stringify(payload)), {
-      contentType: 'application/json',
-      upsert: false,
-    })
-
-  if (upload.error) throw new Error(`upload failed: ${upload.error.message}`)
-
-  const report = {
-    ok: true,
-    fileName,
-    tables: tablesRes.data.length,
-    generatedAt: payload.timestamp,
+  const manifest = {
+    format_version: '2.0',
+    generated_at: payload.timestamp,
+    source: payload.source,
+    schema_migration_count: migrationStrings.length,
+    schema_migration_latest: migrationStrings.length ? migrationStrings[migrationStrings.length - 1] : null,
+    table_count: Object.keys(backupData).length,
+    row_counts: rowCounts,
+    storage_files: [],
   }
-  const outPath = path.join(process.cwd(), 'backups', `manual_automated_backup_report_${new Date().toISOString().replace(/[:.]/g, '-')}.json`)
-  fs.writeFileSync(outPath, JSON.stringify(report, null, 2), 'utf8')
-  console.log(JSON.stringify({ ...report, outPath }, null, 2))
+
+  const zip = new JSZip()
+  zip.file('database.json', JSON.stringify(payload))
+  zip.file('manifest.json', JSON.stringify(manifest))
+  const buf = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE', compressionOptions: { level: 6 } })
+  const fileName = `AhmedZ_Full_Backup_v2_${new Date().toISOString().replace(/[:.]/g, '-')}.abdz`
+  const outPath = path.join(process.cwd(), 'backups', fileName)
+  fs.writeFileSync(outPath, buf)
+  console.log(JSON.stringify({ ok: true, outPath, tableCount: manifest.table_count }, null, 2))
 }
 
 main().catch((e) => {

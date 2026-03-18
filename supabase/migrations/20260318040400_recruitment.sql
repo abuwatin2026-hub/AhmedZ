@@ -19,8 +19,8 @@ CREATE TABLE IF NOT EXISTS public.recruitment_requests (
   salary_range_max NUMERIC(15,4),
   currency         TEXT    NOT NULL DEFAULT 'YER',
   target_date      DATE,   -- التاريخ المستهدف للتعيين
-  created_by       UUID    REFERENCES public.admin_users(id) ON DELETE SET NULL,
-  approved_by      UUID    REFERENCES public.admin_users(id) ON DELETE SET NULL,
+  created_by       UUID    REFERENCES public.admin_users(auth_user_id) ON DELETE SET NULL,
+  approved_by      UUID    REFERENCES public.admin_users(auth_user_id) ON DELETE SET NULL,
   approved_at      TIMESTAMPTZ,
   filled_count     INT     NOT NULL DEFAULT 0,  -- عدد المعينين فعلياً
   notes            TEXT,
@@ -56,7 +56,7 @@ CREATE TABLE IF NOT EXISTS public.recruitment_applicants (
   offer_currency   TEXT,
   hired_date       DATE,
   rejection_reason TEXT,
-  reviewed_by      UUID    REFERENCES public.admin_users(id) ON DELETE SET NULL,
+  reviewed_by      UUID    REFERENCES public.admin_users(auth_user_id) ON DELETE SET NULL,
   notes            TEXT,
   created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()

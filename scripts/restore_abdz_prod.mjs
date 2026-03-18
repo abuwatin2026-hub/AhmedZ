@@ -9,12 +9,35 @@ if (!backupPath) {
   process.exit(1)
 }
 
-const envVars = fs.readFileSync('.env.production', 'utf8')
-const supabaseUrl = (envVars.match(/VITE_SUPABASE_URL=(.*)/) || [])[1]?.trim() || ''
-const supabaseAnon = (envVars.match(/VITE_SUPABASE_ANON_KEY=(.*)/) || [])[1]?.trim() || ''
+const loadEnv = (filePath) => {
+  try {
+    const raw = fs.readFileSync(filePath, 'utf8')
+    for (const line of raw.split(/\r?\n/)) {
+      const t = line.trim()
+      if (!t || t.startsWith('#') || !t.includes('=')) continue
+      const i = t.indexOf('=')
+      const k = t.slice(0, i).trim()
+      let v = t.slice(i + 1).trim()
+      if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) v = v.slice(1, -1)
+      if (!process.env[k]) process.env[k] = v
+    }
+  } catch {}
+}
+
+loadEnv(path.join(process.cwd(), '.env.production'))
+loadEnv(path.join(process.cwd(), '.env.local'))
+
+const supabaseUrl = String(process.env.VITE_SUPABASE_URL || '').trim()
+const supabaseAnon = String(process.env.VITE_SUPABASE_ANON_KEY || '').trim()
+const ownerEmail = String(process.env.OWNER_EMAIL || process.env.BACKUP_OWNER_EMAIL || '').trim()
+const ownerPassword = String(process.env.OWNER_PASSWORD || process.env.BACKUP_OWNER_PASSWORD || '').trim()
 
 if (!supabaseUrl || !supabaseAnon) {
   console.error('Missing supabase URL/anon key in .env.production')
+  process.exit(1)
+}
+if (!ownerEmail || !ownerPassword) {
+  console.error('Missing OWNER_EMAIL/OWNER_PASSWORD or BACKUP_OWNER_EMAIL/BACKUP_OWNER_PASSWORD')
   process.exit(1)
 }
 
@@ -94,8 +117,8 @@ const priorityOrder = [
 
 async function login() {
   const { data, error } = await supabase.auth.signInWithPassword({
-    email: 'owner@azta.com',
-    password: 'AhmedZ#123456',
+    email: ownerEmail,
+    password: ownerPassword,
   })
   if (error) throw error
   return data.user
@@ -139,6 +162,12 @@ async function restoreFromAbdz() {
   if (!dbFile) throw new Error('database.json not found in abdz')
   const parsed = JSON.parse(await dbFile.async('string'))
   if (!parsed?.data) throw new Error('invalid backup content')
+  if (parsed?.version && String(parsed.version) !== '2.0') {
+    throw new Error('backup format is not supported by production restore runner')
+  }
+  if (parsed?.manifest?.format_version && String(parsed.manifest.format_version) !== '2.0') {
+    throw new Error('backup manifest format is not supported')
+  }
   const tablesData = parsed.data
 
   const tables = Object.keys(tablesData)
@@ -206,6 +235,11 @@ async function main() {
   saveStatus({ stage: 'start', backupPath })
   const user = await login()
   saveStatus({ stage: 'logged_in', userId: user?.id || null })
+  const health = await supabase.rpc('admin_backup_health_report')
+  if (health.error) throw new Error(`backup health check failed: ${health.error.message}`)
+  const checks = Array.isArray(health.data?.checks) ? health.data.checks : []
+  const failed = checks.filter((c) => !c?.ok)
+  if (failed.length > 0) throw new Error(`backup health checks failed: ${failed.map((x) => x.key).join(', ')}`)
   const snapshotPath = await exportEmergencySnapshot()
   saveStatus({ stage: 'snapshot_done', snapshotPath })
   const result = await restoreFromAbdz()

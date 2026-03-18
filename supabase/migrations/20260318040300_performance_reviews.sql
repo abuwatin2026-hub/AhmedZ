@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS public.performance_reviews (
   review_period   CHAR(7)     NOT NULL,   -- e.g. '2026-Q1' or '2026-01'
   review_type     TEXT        NOT NULL DEFAULT 'monthly'
                     CHECK (review_type IN ('monthly','quarterly','annual','probation')),
-  reviewer_id     UUID        REFERENCES public.admin_users(id) ON DELETE SET NULL,
+  reviewer_id     UUID        REFERENCES public.admin_users(auth_user_id) ON DELETE SET NULL,
   scores          JSONB       NOT NULL DEFAULT '{}',  -- {criteria_id: score}
   weighted_total  NUMERIC(6,3) NOT NULL DEFAULT 0,
   max_possible    NUMERIC(6,3) NOT NULL DEFAULT 0,
@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS public.performance_reviews (
                     CHECK (status IN ('draft','submitted','approved')),
   submitted_at    TIMESTAMPTZ,
   approved_at     TIMESTAMPTZ,
-  approved_by     UUID        REFERENCES public.admin_users(id) ON DELETE SET NULL,
+  approved_by     UUID        REFERENCES public.admin_users(auth_user_id) ON DELETE SET NULL,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );

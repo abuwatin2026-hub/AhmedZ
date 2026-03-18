@@ -10,9 +10,9 @@ CREATE TABLE IF NOT EXISTS public.inventory_withdrawal_requests (
   reference_number TEXT    NOT NULL DEFAULT ('WD-' || TO_CHAR(now(), 'YYYYMMDD-') || UPPER(SUBSTRING(gen_random_uuid()::TEXT, 1, 6))),
   warehouse_id     UUID    NOT NULL REFERENCES public.warehouses(id) ON DELETE RESTRICT,
   branch_id        UUID    REFERENCES public.branches(id) ON DELETE SET NULL,
-  requested_by     UUID    REFERENCES public.admin_users(id) ON DELETE SET NULL,
-  approved_by      UUID    REFERENCES public.admin_users(id) ON DELETE SET NULL,
-  rejected_by      UUID    REFERENCES public.admin_users(id) ON DELETE SET NULL,
+  requested_by     UUID    REFERENCES public.admin_users(auth_user_id) ON DELETE SET NULL,
+  approved_by      UUID    REFERENCES public.admin_users(auth_user_id) ON DELETE SET NULL,
+  rejected_by      UUID    REFERENCES public.admin_users(auth_user_id) ON DELETE SET NULL,
   status           TEXT    NOT NULL DEFAULT 'draft'
                      CHECK (status IN ('draft','pending_approval','approved','rejected','fulfilled','cancelled')),
   purpose          TEXT,   -- الغرض من الصرف
@@ -36,7 +36,7 @@ COMMENT ON TABLE public.inventory_withdrawal_requests IS 'طلبات صرف ال
 CREATE TABLE IF NOT EXISTS public.inventory_withdrawal_items (
   id               UUID    PRIMARY KEY DEFAULT gen_random_uuid(),
   request_id       UUID    NOT NULL REFERENCES public.inventory_withdrawal_requests(id) ON DELETE CASCADE,
-  item_id          UUID    NOT NULL REFERENCES public.menu_items(id) ON DELETE RESTRICT,
+  item_id          TEXT    NOT NULL REFERENCES public.menu_items(id) ON DELETE RESTRICT,
   requested_qty    NUMERIC(15,6) NOT NULL DEFAULT 0 CHECK (requested_qty > 0),
   approved_qty     NUMERIC(15,6),   -- قد تختلف عن المطلوبة
   fulfilled_qty    NUMERIC(15,6) NOT NULL DEFAULT 0,

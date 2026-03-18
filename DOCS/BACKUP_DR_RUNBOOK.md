@@ -11,6 +11,11 @@ npm run backup:dr:readiness
 
 3. راجع آخر تقرير داخل مجلد `backups` باسم:
    - `backup_dr_readiness_*.json`
+4. بعد أول إعداد أو تغيير مفاتيح الجدولة، أعد تسجيل مهمة النسخ الآلي:
+
+```bash
+npm run backup:job:register
+```
 
 ## شروط الجاهزية قبل اعتماد النظام
 
@@ -22,6 +27,7 @@ npm run backup:dr:readiness
   - `admin_post_restore_resync`
 - Bucket النسخ الآلي `automated_backups` موجود.
 - يوجد كائن حديث داخل `automated_backups`.
+- فحص `admin_backup_health_report` نتيجته `ok=true`.
 
 ## إجراء الطوارئ عند فقد بيانات
 
@@ -40,6 +46,11 @@ npm run backup:dr:readiness
    - purchase_orders
    - payments
 6. راجع العينات الأخيرة من الطلبات والمشتريات للتأكد من رجوع النشاط.
+7. نفّذ فحص قابلية النقل لملف النسخة:
+
+```bash
+npm run backup:portable:validate -- "C:\path\backup.abdz"
+```
 
 ## تحقق ما بعد الاستعادة
 
@@ -53,3 +64,5 @@ npm run backup:dr:readiness
 - فحص الجاهزية يوميًا.
 - اختبار استعادة عملي أسبوعيًا على بيئة معزولة.
 - الاحتفاظ بنسخة خارجية مستقلة بالإضافة إلى النسخ الداخلية.
+- اعتماد صيغة النسخة `2.0` فقط للنقل بين المشاريع.
+- عند النقل لمشروع جديد: تطبيق migrations أولًا ثم استعادة `.abdz`.

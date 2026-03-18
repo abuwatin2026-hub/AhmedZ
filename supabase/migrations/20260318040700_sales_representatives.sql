@@ -92,14 +92,14 @@ BEGIN
       v_total_comm NUMERIC := 0;
     BEGIN
       FOR v_order IN
-        SELECT o.id, o.total_amount, o.created_at
+        SELECT o.id, o.total, o.created_at
         FROM public.orders o
         WHERE o.sales_rep_id = v_rep.id
           AND o.status = 'delivered'
           AND o.created_at BETWEEN v_period_start AND v_period_end
       LOOP
         CASE v_rep.commission_type
-          WHEN 'percentage'      THEN v_comm := ROUND(v_order.total_amount * v_rep.commission_rate / 100, 4);
+          WHEN 'percentage'      THEN v_comm := ROUND(v_order.total * v_rep.commission_rate / 100, 4);
           WHEN 'fixed_per_order' THEN v_comm := v_rep.commission_rate;
           ELSE v_comm := 0;
         END CASE;
@@ -109,13 +109,13 @@ BEGIN
           rep_id, order_id, period_ym, order_net_amount,
           commission_amount, currency, status
         ) VALUES (
-          v_rep.id, v_order.id, p_period_ym, v_order.total_amount,
+          v_rep.id, v_order.id, p_period_ym, v_order.total,
           v_comm, v_rep.currency, 'pending'
         )
         ON CONFLICT DO NOTHING;
 
         v_count     := v_count + 1;
-        v_total_net  := v_total_net + v_order.total_amount;
+        v_total_net  := v_total_net + v_order.total;
         v_total_comm := v_total_comm + v_comm;
       END LOOP;
 
@@ -147,10 +147,10 @@ SECURITY DEFINER
 AS $$
   SELECT
     COUNT(DISTINCT o.id),
-    COALESCE(SUM(o.total_amount), 0),
+    COALESCE(SUM(o.total), 0),
     sr.target_monthly,
     CASE WHEN sr.target_monthly > 0
-         THEN ROUND(SUM(o.total_amount) / sr.target_monthly * 100, 2)
+         THEN ROUND(SUM(o.total) / sr.target_monthly * 100, 2)
          ELSE 0 END,
     COALESCE(SUM(c.commission_amount), 0)
   FROM public.sales_representatives sr

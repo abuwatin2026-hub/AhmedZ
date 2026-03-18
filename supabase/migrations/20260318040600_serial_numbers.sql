@@ -6,7 +6,7 @@
 -- 1. Serial numbers table
 CREATE TABLE IF NOT EXISTS public.item_serial_numbers (
   id               UUID    PRIMARY KEY DEFAULT gen_random_uuid(),
-  item_id          UUID    NOT NULL REFERENCES public.menu_items(id) ON DELETE CASCADE,
+  item_id          TEXT    NOT NULL REFERENCES public.menu_items(id) ON DELETE CASCADE,
   serial_number    TEXT    NOT NULL,
   batch_id         UUID    REFERENCES public.batches(id) ON DELETE SET NULL,
   warehouse_id     UUID    REFERENCES public.warehouses(id) ON DELETE SET NULL,
@@ -45,7 +45,7 @@ COMMENT ON COLUMN public.menu_items.requires_serial IS 'يتطلب تتبعاً 
 
 -- 3. Function: register serials on purchase receipt
 CREATE OR REPLACE FUNCTION public.register_serial_numbers(
-  p_item_id        UUID,
+  p_item_id        TEXT,
   p_serial_numbers TEXT[],
   p_warehouse_id   UUID,
   p_batch_id       UUID DEFAULT NULL,
@@ -88,7 +88,7 @@ COMMENT ON FUNCTION public.register_serial_numbers IS 'يسجل أرقاماً �
 
 -- 4. Function: record serial sale
 CREATE OR REPLACE FUNCTION public.record_serial_sale(
-  p_item_id     UUID,
+  p_item_id     TEXT,
   p_serial      TEXT,
   p_order_id    UUID
 )
@@ -116,13 +116,13 @@ $$;
 -- 5. Function: search serials
 CREATE OR REPLACE FUNCTION public.search_serial_numbers(
   p_serial_query TEXT,
-  p_item_id      UUID DEFAULT NULL,
+  p_item_id      TEXT DEFAULT NULL,
   p_status       TEXT DEFAULT NULL,
   p_limit        INT  DEFAULT 50
 )
 RETURNS TABLE (
   id            UUID,
-  item_id       UUID,
+  item_id       TEXT,
   item_name     TEXT,
   serial_number TEXT,
   status        TEXT,
