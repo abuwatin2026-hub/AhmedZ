@@ -3,10 +3,16 @@
  * ─────────────────────
  * Dedicated screen for the Online Orders Dispatcher role.
  * Shows ONLY online delivery orders (no in-store/POS).
- * Workflow: pending → confirmed → preparing → out_for_delivery → delivered
+ * Workflow: pending → preparing → out_for_delivery → delivered
  *
  * Route: /admin/online-orders
  * Permission: orders.updateStatus.all
+ *
+ * Best practices implemented:
+ * ✅ Supabase Realtime subscription (instant push, no polling)
+ * ✅ Web Audio API alert sound for new pending orders
+ * ✅ Live countdown timer per order card (ticks every second)
+ * ✅ assignOrderToDelivery from OrderContext (correct fallback)
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useOrders } from '../../contexts/OrderContext';
@@ -21,7 +27,6 @@ const IN_STORE_ZONE_ID = '11111111-1111-4111-8111-111111111111';
 
 const STATUS_LABEL: Record<string, string> = {
   pending:           'قيد الانتظار',
-  confirmed:         'مؤكد',
   preparing:         'قيد التجهيز',
   out_for_delivery:  'في الطريق',
   delivered:         'تم التسليم',
@@ -31,7 +36,6 @@ const STATUS_LABEL: Record<string, string> = {
 
 const STATUS_COLOR: Record<string, string> = {
   pending:           'bg-yellow-500/20 text-yellow-300 border-yellow-500/40',
-  confirmed:         'bg-blue-500/20 text-blue-300 border-blue-500/40',
   preparing:         'bg-purple-500/20 text-purple-300 border-purple-500/40',
   out_for_delivery:  'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
   delivered:         'bg-gray-500/20 text-gray-400 border-gray-600',
@@ -39,30 +43,55 @@ const STATUS_COLOR: Record<string, string> = {
   cancelled:         'bg-red-500/20 text-red-400 border-red-500/40',
 };
 
-// Workflow: pending → preparing → out_for_delivery → delivered
-// Note: OrderStatus = 'pending'|'preparing'|'out_for_delivery'|'delivered'|'scheduled'|'cancelled'
+// OrderStatus = 'pending'|'preparing'|'out_for_delivery'|'delivered'|'scheduled'|'cancelled'
 const ACTIVE_STATUSES: OrderStatus[] = ['pending', 'preparing', 'out_for_delivery', 'scheduled'];
 const DONE_STATUSES:   OrderStatus[] = ['delivered', 'cancelled'];
+
+// ─── Web Audio Alert (no external library) ───────────────────────────────────
+
+function playNewOrderAlert(): void {
+  try {
+    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    // Three-tone ascending chime
+    [[0, 523.25], [0.18, 659.25], [0.36, 783.99]].forEach(([delay, freq]) => {
+      const osc  = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      const t = ctx.currentTime + delay;
+      gain.gain.setValueAtTime(0, t);
+      gain.gain.linearRampToValueAtTime(0.35, t + 0.05);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
+      osc.start(t);
+      osc.stop(t + 0.4);
+    });
+  } catch {
+    // Silently fail if AudioContext is blocked
+  }
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function isOnlineOrder(order: Order): boolean {
-  const src  = String((order as any).orderSource || (order as any).data?.orderSource || '').trim();
+  const src  = String((order as any).orderSource  || (order as any).data?.orderSource  || '').trim();
   const zone = String((order as any).deliveryZoneId || (order as any).data?.deliveryZoneId || '').trim();
-  const addr = String((order as any).address || (order as any).data?.address || '').trim();
-  if (src === 'in_store') return false;
-  if (zone === IN_STORE_ZONE_ID) return false;
-  if (addr === 'داخل المحل') return false;
+  const addr = String((order as any).address      || (order as any).data?.address      || '').trim();
+  if (src === 'in_store')          return false;
+  if (zone === IN_STORE_ZONE_ID)   return false;
+  if (addr === 'داخل المحل')       return false;
   return true;
 }
 
-function timeSince(isoString: string): string {
-  const diffMs  = Date.now() - new Date(isoString).getTime();
-  const diffMin = Math.floor(diffMs / 60000);
-  if (diffMin < 1)  return 'الآن';
-  if (diffMin < 60) return `منذ ${diffMin}د`;
-  const hrs = Math.floor(diffMin / 60);
-  return `منذ ${hrs}س`;
+/** Live elapsed time — updates every second via a tick prop */
+function formatElapsed(isoString: string): string {
+  const diffMs  = Math.max(0, Date.now() - new Date(isoString).getTime());
+  const diffSec = Math.floor(diffMs / 1000);
+  if (diffSec < 60)  return `${diffSec}ث`;
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60)  return `${diffMin}د ${diffSec % 60}ث`;
+  return `${Math.floor(diffMin / 60)}س ${diffMin % 60}د`;
 }
 
 function getOrderCustomerName(order: Order): string {
@@ -100,35 +129,28 @@ function getOrderTotal(order: Order): string {
 function getOrderItemsSummary(order: Order): string {
   const items: any[] = (order as any).items || (order as any).data?.items || [];
   if (!Array.isArray(items) || items.length === 0) return '';
-  return items
+  const parts = items
     .slice(0, 3)
     .map(i => {
       const name = String(i.name?.ar || i.name?.en || i.name || i.itemName || '').trim();
       const qty  = Number(i.quantity || i.qty || 1);
       return name ? `${qty}× ${name}` : '';
     })
-    .filter(Boolean)
-    .join('، ') + (items.length > 3 ? ` +${items.length - 3}` : '');
+    .filter(Boolean);
+  return parts.join('، ') + (items.length > 3 ? ` +${items.length - 3}` : '');
 }
 
 // ─── Next Action Button ───────────────────────────────────────────────────────
 
-type NextAction = {
-  label: string;
-  icon: string;
-  nextStatus: OrderStatus;
-  color: string;
-};
+type NextAction = { label: string; icon: string; nextStatus: OrderStatus; color: string };
 
 function getNextAction(order: Order): NextAction | null {
   const s = order.status as OrderStatus;
   if (s === 'pending')          return { label: 'قبول وتجهيز',     icon: '✅', nextStatus: 'preparing',        color: 'bg-blue-600 hover:bg-blue-500' };
   if (s === 'preparing')        return { label: 'أرسل مع المندوب', icon: '🚀', nextStatus: 'out_for_delivery', color: 'bg-emerald-600 hover:bg-emerald-500' };
-  if (s === 'out_for_delivery') return { label: 'تم التسليم',      icon: '🏠', nextStatus: 'delivered',         color: 'bg-gray-600 hover:bg-gray-500' };
+  if (s === 'out_for_delivery') return { label: 'تم التسليم',      icon: '🏠', nextStatus: 'delivered',        color: 'bg-gray-600 hover:bg-gray-500' };
   return null;
 }
-
-// ─── Pending Alert Badge ──────────────────────────────────────────────────────
 
 function urgencyLevel(order: Order): 'urgent' | 'warn' | null {
   if (order.status !== 'pending') return null;
@@ -146,19 +168,19 @@ interface OrderCardProps {
   onStatusChange: (orderId: string, status: OrderStatus) => Promise<void>;
   onAssignDriver: (orderId: string, driverId: string) => Promise<void>;
   busy: Set<string>;
+  nowMs: number; // live timestamp tick
 }
 
-function OrderCard({ order, deliveryUsers, onStatusChange, onAssignDriver, busy }: OrderCardProps) {
-  const nextAction     = getNextAction(order);
-  const assignedId     = getAssignedDriverId(order);
-  const urgency        = urgencyLevel(order);
-  const isBusy         = busy.has(order.id);
-  const itemsSummary   = getOrderItemsSummary(order);
-  const address        = getOrderAddress(order);
-  const customerName   = getOrderCustomerName(order);
+function OrderCard({ order, deliveryUsers, onStatusChange, onAssignDriver, busy, nowMs }: OrderCardProps) {
+  const nextAction   = getNextAction(order);
+  const assignedId   = getAssignedDriverId(order);
+  const urgency      = urgencyLevel(order);
+  const isBusy       = busy.has(order.id);
+  const itemsSummary = getOrderItemsSummary(order);
+  const address      = getOrderAddress(order);
+  const customerName = getOrderCustomerName(order);
   const [driverId, setDriverId] = useState(assignedId);
 
-  // Sync if order updates
   useEffect(() => { setDriverId(assignedId); }, [assignedId]);
 
   const handleAssign = async (newId: string) => {
@@ -168,29 +190,62 @@ function OrderCard({ order, deliveryUsers, onStatusChange, onAssignDriver, busy 
 
   const orderShortId = order.id.slice(-6).toUpperCase();
   const createdAt    = String((order as any).createdAt || '');
+  // Live elapsed using parent's nowMs tick (no internal setInterval per card)
+  const elapsed = createdAt ? formatElapsed(createdAt) : '';
+
+  // Visual urgency indicator with countdown
+  const diffMin  = createdAt ? (nowMs - new Date(createdAt).getTime()) / 60000 : 0;
+  const urgentMs = Math.max(0, 10 * 60000 - (nowMs - new Date(createdAt || nowMs).getTime()));
+  const warnMs   = Math.max(0,  3 * 60000 - (nowMs - new Date(createdAt || nowMs).getTime()));
 
   return (
-    <div
-      className={`bg-gray-800 rounded-2xl border overflow-hidden transition-all ${
-        urgency === 'urgent'
-          ? 'border-red-500 shadow-red-500/20 shadow-lg animate-pulse'
-          : urgency === 'warn'
-          ? 'border-yellow-500/60'
-          : 'border-gray-700'
-      }`}
-    >
+    <div className={`bg-gray-800 rounded-2xl border overflow-hidden transition-all ${
+      urgency === 'urgent'
+        ? 'border-red-500 shadow-red-900/40 shadow-xl ring-1 ring-red-500/50'
+        : urgency === 'warn'
+        ? 'border-yellow-500/70'
+        : 'border-gray-700'
+    }`}>
+
+      {/* Urgency progress bar at top */}
+      {order.status === 'pending' && diffMin < 15 && (
+        <div className="h-1 bg-gray-700 overflow-hidden">
+          <div
+            className={`h-full transition-all ${urgency === 'urgent' ? 'bg-red-500' : urgency === 'warn' ? 'bg-yellow-500' : 'bg-emerald-500'}`}
+            style={{ width: `${Math.min(100, (diffMin / 15) * 100)}%` }}
+          />
+        </div>
+      )}
+
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700 bg-gray-800/80">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700">
         <div className="flex items-center gap-2">
-          {urgency === 'urgent' && <span className="text-red-400 text-lg animate-bounce">🔴</span>}
-          {urgency === 'warn'   && <span className="text-yellow-400 text-lg">🟡</span>}
-          <span className="text-white font-bold text-sm">#{orderShortId}</span>
+          {urgency === 'urgent' && <span className="text-red-400 text-base animate-bounce">🔴</span>}
+          {urgency === 'warn'   && <span className="text-yellow-400 text-base">🟡</span>}
+          <span className="text-white font-bold text-sm font-mono">#{orderShortId}</span>
           <span className={`text-xs border px-2 py-0.5 rounded-full font-semibold ${STATUS_COLOR[order.status] || 'bg-gray-700 text-gray-300 border-gray-600'}`}>
             {STATUS_LABEL[order.status] || order.status}
           </span>
         </div>
-        <div className="text-gray-500 text-xs">{createdAt ? timeSince(createdAt) : ''}</div>
+        {/* Live elapsed timer */}
+        <div className={`text-xs font-mono font-semibold ${
+          urgency === 'urgent' ? 'text-red-400' : urgency === 'warn' ? 'text-yellow-400' : 'text-gray-500'
+        }`}>
+          ⏱ {elapsed}
+        </div>
       </div>
+
+      {/* Urgency countdown ribbon */}
+      {urgency === 'warn' && warnMs > 0 && (
+        <div className="bg-yellow-900/30 border-b border-yellow-700/40 px-3 py-1 text-yellow-300 text-xs">
+          ⚠️ تجاوز {Math.floor(diffMin)}د — يحتاج تأكيداً عاجلاً
+        </div>
+      )}
+      {urgency === 'urgent' && (
+        <div className="bg-red-900/40 border-b border-red-700/40 px-3 py-1 text-red-300 text-xs font-semibold animate-pulse">
+          🚨 تأخر {Math.floor(diffMin)}د — يجب التصرف الآن!
+        </div>
+      )}
 
       {/* Body */}
       <div className="p-4 space-y-3">
@@ -198,7 +253,12 @@ function OrderCard({ order, deliveryUsers, onStatusChange, onAssignDriver, busy 
         <div className="flex items-start justify-between gap-2">
           <div>
             <div className="text-white font-semibold text-sm">{customerName}</div>
-            {address && <div className="text-gray-400 text-xs mt-0.5 flex items-center gap-1"><span>📍</span>{address}</div>}
+            {address && (
+              <div className="text-gray-400 text-xs mt-0.5 flex items-start gap-1">
+                <span>📍</span>
+                <span className="leading-tight">{address}</span>
+              </div>
+            )}
           </div>
           <div className="text-emerald-400 font-bold text-base whitespace-nowrap">{getOrderTotal(order)}</div>
         </div>
@@ -234,14 +294,10 @@ function OrderCard({ order, deliveryUsers, onStatusChange, onAssignDriver, busy 
             onClick={() => void onStatusChange(order.id, nextAction.nextStatus)}
             className={`w-full py-2.5 rounded-xl text-white font-bold text-sm transition-all flex items-center justify-center gap-2 ${nextAction.color} disabled:opacity-50 disabled:cursor-not-allowed`}
           >
-            {isBusy ? (
-              <span className="animate-spin text-lg">⏳</span>
-            ) : (
-              <>
-                <span className="text-lg">{nextAction.icon}</span>
-                {nextAction.label}
-              </>
-            )}
+            {isBusy
+              ? <span className="animate-spin">⏳</span>
+              : <><span className="text-lg">{nextAction.icon}</span>{nextAction.label}</>
+            }
           </button>
         )}
 
@@ -268,48 +324,76 @@ type Tab = typeof TABS[number]['key'];
 export default function OnlineOrdersScreen() {
   const { orders, updateOrderStatus, assignOrderToDelivery, fetchOrders, loading } = useOrders();
   const { showNotification } = useToast();
-  const { listAdminUsers } = useAuth();
+  const { listAdminUsers }   = useAuth();
 
-  const [deliveryUsers, setDeliveryUsers]     = useState<AdminUser[]>([]);
-  const [tab, setTab]                          = useState<Tab>('active');
-  const [busy, setBusy]                        = useState<Set<string>>(new Set());
-  const [search, setSearch]                    = useState('');
-  const [tick, setTick]                        = useState(0);
-  const prevPendingCountRef                    = useRef(0);
+  const [deliveryUsers, setDeliveryUsers] = useState<AdminUser[]>([]);
+  const [tab, setTab]                     = useState<Tab>('active');
+  const [busy, setBusy]                   = useState<Set<string>>(new Set());
+  const [search, setSearch]               = useState('');
+  const [nowMs, setNowMs]                 = useState(Date.now()); // ← live tick for all cards
+  const prevPendingIdsRef                 = useRef<Set<string>>(new Set());
+  const realtimeConnectedRef              = useRef(false);
 
-  // Refresh relative timestamps every 30s
+  // ── Live clock: tick every second for countdown timers ────────────────────
   useEffect(() => {
-    const t = setInterval(() => setTick(n => n + 1), 30000);
+    const t = setInterval(() => setNowMs(Date.now()), 1000);
     return () => clearInterval(t);
-  }, [tick]);
+  }, []);
 
-  // Load delivery agents
+  // ── Load delivery agents ──────────────────────────────────────────────────
   useEffect(() => {
     void listAdminUsers().then(users => {
-      const drivers = users.filter(u => u.role === 'delivery' && u.isActive);
-      setDeliveryUsers(drivers);
+      setDeliveryUsers(users.filter(u => u.role === 'delivery' && u.isActive));
     });
   }, [listAdminUsers]);
 
-  // Auto-refresh every 45s
+  // ── Supabase Realtime subscription (instant push) ─────────────────────────
   useEffect(() => {
-    const t = setInterval(() => void fetchOrders(), 45000);
+    const supabase = getSupabaseClient();
+    if (!supabase || realtimeConnectedRef.current) return;
+    realtimeConnectedRef.current = true;
+
+    const channel = supabase
+      .channel('online_orders_dispatcher')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'orders' },
+        () => { void fetchOrders(); }
+      )
+      .subscribe();
+
+    return () => {
+      realtimeConnectedRef.current = false;
+      void supabase.removeChannel(channel);
+    };
+  }, [fetchOrders]);
+
+  // ── Fallback: poll every 60s in case Realtime misses something ────────────
+  useEffect(() => {
+    const t = setInterval(() => void fetchOrders(), 60000);
     return () => clearInterval(t);
   }, [fetchOrders]);
 
-  // Filter: online orders only
+  // ── Filter: online orders only ────────────────────────────────────────────
   const onlineOrders = useMemo(() => orders.filter(isOnlineOrder), [orders]);
 
-  // Alert on new pending orders
+  // ── Sound + visual alert on new pending orders ────────────────────────────
   useEffect(() => {
-    const pendingCount = onlineOrders.filter(o => o.status === 'pending').length;
-    if (pendingCount > prevPendingCountRef.current) {
-      showNotification(`🔔 طلب جديد! لديك ${pendingCount} طلب قيد الانتظار`, 'info');
+    const currentPendingIds = new Set(
+      onlineOrders.filter(o => o.status === 'pending').map(o => o.id)
+    );
+    const newOnes = [...currentPendingIds].filter(id => !prevPendingIdsRef.current.has(id));
+    if (newOnes.length > 0) {
+      playNewOrderAlert();
+      showNotification(
+        `🔔 ${newOnes.length > 1 ? `${newOnes.length} طلبات جديدة!` : 'طلب جديد!'}`,
+        'info'
+      );
     }
-    prevPendingCountRef.current = pendingCount;
+    prevPendingIdsRef.current = currentPendingIds;
   }, [onlineOrders, showNotification]);
 
-  // Split into tabs
+  // ── Split tabs ────────────────────────────────────────────────────────────
   const activeOrders = useMemo(() =>
     onlineOrders.filter(o => (ACTIVE_STATUSES as string[]).includes(o.status)),
     [onlineOrders]
@@ -319,36 +403,43 @@ export default function OnlineOrdersScreen() {
     [onlineOrders]
   );
 
-  // Search filter
+  // ── Search ────────────────────────────────────────────────────────────────
   const searchFilter = useCallback((list: Order[]) => {
     const q = search.trim().toLowerCase();
     if (!q) return list;
     return list.filter(o => {
-      const name = getOrderCustomerName(o).toLowerCase();
-      const id   = o.id.toLowerCase();
-      return name.includes(q) || id.includes(q);
+      const name  = getOrderCustomerName(o).toLowerCase();
+      const shortId = o.id.slice(-6).toLowerCase();
+      return name.includes(q) || shortId.includes(q);
     });
   }, [search]);
 
   const displayOrders = useMemo(() =>
     searchFilter(tab === 'active' ? activeOrders : doneOrders)
-      .sort((a, b) => new Date((b as any).createdAt || '').getTime() - new Date((a as any).createdAt || '').getTime()),
+      .sort((a, b) => {
+        // Sort: pending first among active, then by newest
+        if (tab === 'active') {
+          if (a.status === 'pending' && b.status !== 'pending') return -1;
+          if (b.status === 'pending' && a.status !== 'pending') return 1;
+        }
+        return new Date((b as any).createdAt || '').getTime() - new Date((a as any).createdAt || '').getTime();
+      }),
     [tab, activeOrders, doneOrders, searchFilter]
   );
 
-  // Stat counts
+  // ── Stats ─────────────────────────────────────────────────────────────────
   const pendingCount  = activeOrders.filter(o => o.status === 'pending').length;
   const inProgressCnt = activeOrders.filter(o => o.status !== 'pending').length;
 
-  // Actions
-  const setBusyFor = (id: string, value: boolean) =>
-    setBusy(prev => { const s = new Set(prev); value ? s.add(id) : s.delete(id); return s; });
+  // ── Actions ───────────────────────────────────────────────────────────────
+  const setBusyFor = (id: string, v: boolean) =>
+    setBusy(prev => { const s = new Set(prev); v ? s.add(id) : s.delete(id); return s; });
 
   const handleStatusChange = useCallback(async (orderId: string, newStatus: OrderStatus) => {
     setBusyFor(orderId, true);
     try {
       await updateOrderStatus(orderId, newStatus);
-      showNotification(`تم تغيير حالة الطلب إلى "${STATUS_LABEL[newStatus]}"`, 'success');
+      showNotification(`تم تغيير الحالة إلى "${STATUS_LABEL[newStatus] || newStatus}"`, 'success');
     } catch (e: any) {
       showNotification(String(e?.message || 'حدث خطأ'), 'error');
     } finally {
@@ -359,33 +450,17 @@ export default function OnlineOrdersScreen() {
   const handleAssignDriver = useCallback(async (orderId: string, driverId: string) => {
     setBusyFor(orderId, true);
     try {
-      const supabase = getSupabaseClient();
-      if (!supabase) throw new Error('no_supabase');
+      await assignOrderToDelivery(orderId, driverId);
       const driver = deliveryUsers.find(u => u.id === driverId);
-      const driverName = driver?.fullName || driver?.username || '';
-      const { error } = await supabase.rpc('assign_order_to_delivery' as any, {
-        p_order_id: orderId,
-        p_delivery_user_id: driverId,
-        p_delivery_user_name: driverName,
-      });
-      if (error) throw error;
-      showNotification(`تم تعيين المندوب ${driverName}`, 'success');
-      void fetchOrders();
+      showNotification(`تم تعيين المندوب ${driver?.fullName || driver?.username || ''}`, 'success');
     } catch (e: any) {
-      // fallback: use context method
-      try {
-        await assignOrderToDelivery(orderId, driverId);
-        showNotification('تم تعيين المندوب', 'success');
-      } catch (e2: any) {
-        showNotification(String(e2?.message || 'تعذر تعيين المندوب'), 'error');
-      }
+      showNotification(String(e?.message || 'تعذر تعيين المندوب'), 'error');
     } finally {
       setBusyFor(orderId, false);
     }
-  }, [deliveryUsers, assignOrderToDelivery, fetchOrders, showNotification]);
+  }, [deliveryUsers, assignOrderToDelivery, showNotification]);
 
   // ── Render ────────────────────────────────────────────────────────────────
-
   return (
     <div className="flex flex-col h-full min-h-screen bg-gray-900" dir="rtl">
 
@@ -395,11 +470,13 @@ export default function OnlineOrdersScreen() {
           <span className="text-2xl">🌐</span>
           <div>
             <h1 className="text-white font-bold text-lg">الطلبات الأونلاين</h1>
-            <p className="text-gray-400 text-xs">مشغّل التوصيل — تحديث كل 45 ثانية</p>
+            <div className="flex items-center gap-2 mt-0.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              <p className="text-emerald-400 text-xs font-semibold">Realtime • تحديث فوري</p>
+            </div>
           </div>
         </div>
         <div className="flex items-center gap-3 flex-wrap justify-end">
-          {/* Stats */}
           {pendingCount > 0 && (
             <div className="flex items-center gap-1.5 bg-red-900/40 border border-red-600 px-3 py-1.5 rounded-full animate-pulse">
               <span className="w-2 h-2 rounded-full bg-red-500" />
@@ -422,7 +499,7 @@ export default function OnlineOrdersScreen() {
         </div>
       </div>
 
-      {/* Search + Tabs */}
+      {/* Tabs + Search */}
       <div className="bg-gray-800/50 border-b border-gray-700 px-4 py-2 flex items-center gap-3 flex-shrink-0">
         <div className="flex items-center gap-1 bg-gray-800 rounded-lg p-0.5">
           {TABS.map(t => (
@@ -431,9 +508,7 @@ export default function OnlineOrdersScreen() {
               type="button"
               onClick={() => setTab(t.key)}
               className={`px-4 py-1.5 rounded-md text-sm font-semibold transition-all ${
-                tab === t.key
-                  ? 'bg-gray-700 text-white shadow'
-                  : 'text-gray-400 hover:text-gray-200'
+                tab === t.key ? 'bg-gray-700 text-white shadow' : 'text-gray-400 hover:text-gray-200'
               }`}
             >
               {t.label}
@@ -445,14 +520,14 @@ export default function OnlineOrdersScreen() {
         </div>
         <input
           type="search"
-          placeholder="ابحث باسم العميل أو رقم الطلب..."
+          placeholder="ابحث باسم العميل أو آخر 6 أرقام من رقم الطلب..."
           value={search}
           onChange={e => setSearch(e.target.value)}
           className="flex-1 bg-gray-700 border border-gray-600 text-white text-sm rounded-lg px-3 py-1.5 placeholder-gray-500 focus:ring-1 focus:ring-orange-500 focus:border-orange-500"
         />
       </div>
 
-      {/* Order Cards Grid */}
+      {/* Cards */}
       <div className="flex-1 overflow-y-auto p-4">
         {loading && displayOrders.length === 0 && (
           <div className="flex flex-col items-center justify-center h-48 gap-3">
@@ -460,7 +535,6 @@ export default function OnlineOrdersScreen() {
             <div className="text-gray-400 text-sm">جاري تحميل الطلبات...</div>
           </div>
         )}
-
         {!loading && displayOrders.length === 0 && (
           <div className="flex flex-col items-center justify-center h-64 gap-3">
             <div className="text-6xl">{tab === 'active' ? '🎉' : '📭'}</div>
@@ -468,11 +542,10 @@ export default function OnlineOrdersScreen() {
               {tab === 'active' ? 'لا توجد طلبات نشطة' : 'لا توجد طلبات منتهية'}
             </div>
             <div className="text-gray-400 text-sm">
-              {tab === 'active' ? 'ستظهر الطلبات الجديدة هنا فوراً' : 'الطلبات المسلّمة والملغية ستظهر هنا'}
+              {tab === 'active' ? 'ستظهر الطلبات الجديدة هنا فوراً عبر Realtime' : 'الطلبات المسلّمة والملغية ستظهر هنا'}
             </div>
           </div>
         )}
-
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {displayOrders.map(order => (
             <OrderCard
@@ -482,6 +555,7 @@ export default function OnlineOrdersScreen() {
               onStatusChange={handleStatusChange}
               onAssignDriver={handleAssignDriver}
               busy={busy}
+              nowMs={nowMs}
             />
           ))}
         </div>
