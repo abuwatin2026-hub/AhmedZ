@@ -12,21 +12,61 @@ const getEnv = (name: string): string => {
 const SUPABASE_URL = (getEnv('AZTA_SUPABASE_URL') || getEnv('SUPABASE_URL')).trim();
 const SUPABASE_SERVICE_KEY = (getEnv('AZTA_SUPABASE_SERVICE_ROLE_KEY') || getEnv('SUPABASE_SERVICE_ROLE_KEY')).trim();
 const SUPABASE_ANON_KEY = (getEnv('AZTA_SUPABASE_ANON_KEY') || getEnv('SUPABASE_ANON_KEY')).trim();
+const RP_ID = (getEnv('AZTA_PASSKEY_RP_ID') || 'ahmedzangah.pages.dev').trim();
+const ORIGIN = (getEnv('AZTA_PASSKEY_ORIGIN') || `https://${RP_ID}`).trim();
 
-const RP_ID = 'ahmedzangah.pages.dev';
-const ORIGIN = 'https://ahmedzangah.pages.dev';
+function getAllowedOrigin(origin: string | null): string {
+  const raw = (getEnv('AZTA_ALLOWED_ORIGINS') || '').trim();
+  if (!origin) {
+    if (!raw) return '*';
+    const first = raw.split(',').map(s => s.trim()).filter(Boolean)[0];
+    return first || '*';
+  }
 
-const cors = (origin: string | null) => ({
-  'Access-Control-Allow-Origin': origin || '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-user-token',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Vary': 'Origin',
-});
+  const originUrl = (() => { try { return new URL(origin); } catch { return null; } })();
+  const host = originUrl?.hostname || '';
+  const isLocal = host === 'localhost' || host === '127.0.0.1';
+  const isPrivateIp = /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[0-1])\.)/.test(host);
+  if (!raw) return origin;
+
+  const list = raw.split(',').map(s => s.trim()).filter(Boolean);
+  if (list.includes('*')) return origin;
+  if (isLocal || isPrivateIp) return origin;
+
+  const matches = (allowed: string) => {
+    if (!allowed) return false;
+    if (allowed === origin) return true;
+    if (allowed.startsWith('*.')) {
+      const suffix = allowed.slice(1);
+      return host.endsWith(suffix) && host.length > suffix.length;
+    }
+    if (!allowed.includes('://')) return host === allowed;
+    const allowedUrl = (() => { try { return new URL(allowed); } catch { return null; } })();
+    if (!allowedUrl) return false;
+    if (allowedUrl.hostname !== host) return false;
+    if (allowedUrl.port && originUrl?.port && allowedUrl.port !== originUrl.port) return false;
+    return true;
+  };
+
+  return list.some(matches) ? origin : 'null';
+}
+
+function buildCors(origin: string | null, req?: Request) {
+  const allowOrigin = getAllowedOrigin(origin);
+  const requestHeaders = (req?.headers.get('access-control-request-headers') || '').trim();
+  const allowHeaders = requestHeaders || 'authorization, x-client-info, apikey, content-type, x-user-token, x-supabase-api-version, x-supabase-user-agent';
+  return {
+    'Access-Control-Allow-Origin': allowOrigin,
+    'Access-Control-Allow-Headers': allowHeaders,
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Vary': 'Origin, Access-Control-Request-Headers',
+  } as Record<string, string>;
+}
 
 const json = (body: unknown, status = 200, origin: string | null = null) =>
   new Response(JSON.stringify(body), {
     status,
-    headers: { ...cors(origin), 'Content-Type': 'application/json' },
+    headers: { ...buildCors(origin), 'Content-Type': 'application/json' },
   });
 
 const dbFetch = (path: string, opts: RequestInit = {}) =>
@@ -42,10 +82,18 @@ const dbFetch = (path: string, opts: RequestInit = {}) =>
 
 const handler = async (req: Request): Promise<Response> => {
   const origin = req.headers.get('origin');
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: cors(origin) });
+  const corsHeaders = buildCors(origin, req);
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   if (req.method !== 'POST') return json({ error: 'Method Not Allowed' }, 405, origin);
 
   try {
+    if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY || !SUPABASE_ANON_KEY || !RP_ID || !ORIGIN) {
+      return new Response(JSON.stringify({ error: 'missing_function_env' }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     // 1. Authenticate the caller
     const token = (() => {
       const h = req.headers.get('Authorization') || req.headers.get('x-user-token') || '';
@@ -86,7 +134,7 @@ const handler = async (req: Request): Promise<Response> => {
       expectedChallenge: storedChallenge,
       expectedOrigin: ORIGIN,
       expectedRPID: RP_ID,
-      requireUserVerification: false,
+      requireUserVerification: true,
     });
 
     if (!verification.verified || !verification.registrationInfo) {

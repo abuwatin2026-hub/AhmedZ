@@ -3,7 +3,10 @@ Param(
   [string]$ApiUrl,
   [string]$AnonKey,
   [string]$ServiceRoleKey,
-  [string]$AllowedOrigins = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174"
+  [string]$AllowedOrigins = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174",
+  [string]$PasskeyRpId = "ahmedzangah.pages.dev",
+  [string]$PasskeyOrigin = "https://ahmedzangah.pages.dev",
+  [string]$PasskeyRpName = "مؤسسة أحمد زنقاح للتجارة والتوكيلات"
 )
 
 if (-not $ApiUrl -or -not $AnonKey -or -not $ServiceRoleKey) {
@@ -17,6 +20,9 @@ npx supabase secrets set AZTA_SUPABASE_URL=$ApiUrl
 npx supabase secrets set AZTA_SUPABASE_ANON_KEY=$AnonKey
 npx supabase secrets set AZTA_SUPABASE_SERVICE_ROLE_KEY=$ServiceRoleKey
 npx supabase secrets set AZTA_ALLOWED_ORIGINS=$AllowedOrigins
+npx supabase secrets set AZTA_PASSKEY_RP_ID=$PasskeyRpId
+npx supabase secrets set AZTA_PASSKEY_ORIGIN=$PasskeyOrigin
+npx supabase secrets set AZTA_PASSKEY_RP_NAME=$PasskeyRpName
 
 npx supabase secrets list
 
@@ -24,3 +30,5 @@ npx supabase functions deploy create-admin-user
 npx supabase functions deploy create-admin-customer
 npx supabase functions deploy reset-admin-password
 npx supabase functions deploy delete-admin-user
+npx supabase functions deploy passkey-register-options
+npx supabase functions deploy passkey-register-verify
