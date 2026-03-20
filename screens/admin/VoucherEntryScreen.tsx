@@ -19,6 +19,7 @@ type VoucherHistoryRow = {
   totalDebit: number;
   currency: string;
   createdBy: string;
+  voidReason?: string;
 };
 type VoucherLine = {
   accountCode: string;
@@ -130,6 +131,7 @@ export default function VoucherEntryScreen() {
   const [occurredAt, setOccurredAt] = useState(() => toDateTimeLocalInputValue(new Date()));
   const [memo, setMemo] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<string>('cash');
+  const [referenceNumber, setReferenceNumber] = useState<string>('');
   const [destinationAccountCode, setDestinationAccountCode] = useState<string>('');
   const [costCenterId, setCostCenterId] = useState<string>('');
 
@@ -150,13 +152,14 @@ export default function VoucherEntryScreen() {
   const [busy, setBusy] = useState(false);
   const [lastEntryId, setLastEntryId] = useState<string>('');
   const [lastEntryStatus, setLastEntryStatus] = useState<string>('');
-  const [lastEntryCreatedBy, setLastEntryCreatedBy] = useState<string>('');
 
   // History
   const [history, setHistory] = useState<VoucherHistoryRow[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyFilter, setHistoryFilter] = useState<'all' | 'draft' | 'pending_approval' | 'posted' | 'voided'>('all');
   const [historyTypeFilter, setHistoryTypeFilter] = useState<'all' | 'receipt' | 'payment' | 'journal'>('all');
+  const [historyDateFrom, setHistoryDateFrom] = useState<string>('');
+  const [historyDateTo, setHistoryDateTo] = useState<string>('');
 
   useEffect(() => {
     const supabase = getSupabaseClient();
@@ -357,7 +360,6 @@ export default function VoucherEntryScreen() {
     const { data, error } = await supabase.from('journal_entries').select('id,status,created_by').eq('id', entryId).maybeSingle();
     if (error) throw error;
     setLastEntryStatus(String((data as any)?.status || ''));
-    setLastEntryCreatedBy(String((data as any)?.created_by || ''));
   };
 
   // ═══ ATTACHMENT UPLOAD ═══
@@ -414,7 +416,8 @@ export default function VoucherEntryScreen() {
       if (attachmentFile) uploadedUrl = await uploadAttachment();
 
       const entryDateIso = occurredAt ? new Date(occurredAt).toISOString() : new Date().toISOString();
-      const fullMemo = [paymentMethod !== 'cash' ? `[${paymentMethodLabel(paymentMethod)}]` : '', memo].filter(Boolean).join(' ').trim() || null;
+      const refPart = referenceNumber.trim() ? `[${referenceNumber.trim()}]` : '';
+      const fullMemo = [paymentMethod !== 'cash' ? `[${paymentMethodLabel(paymentMethod)}]` : '', refPart, memo].filter(Boolean).join(' ').trim() || null;
       const { data, error } = await supabase.rpc('create_manual_voucher', {
         p_voucher_type: voucherType,
         p_entry_date: entryDateIso,
@@ -428,6 +431,7 @@ export default function VoucherEntryScreen() {
       await loadEntryMeta(entryId);
       if (uploadedUrl) setAttachmentUrl(uploadedUrl);
       setAttachmentFile(null);
+      setReferenceNumber('');
       showNotification(`تم إنشاء ${voucherTypeLabel} (مسودة).`, 'success');
       void fetchHistory();
     } catch (e: any) {
@@ -445,12 +449,14 @@ export default function VoucherEntryScreen() {
     try {
       let query = supabase
         .from('journal_entries')
-        .select('id,entry_date,memo,status,source_event,document_id,created_by,journal_lines(debit,credit,currency_code,foreign_amount),accounting_documents(document_number)')
+        .select('id,entry_date,memo,status,source_event,document_id,created_by,void_reason,journal_lines(debit,credit,currency_code,foreign_amount),accounting_documents(document_number)')
         .eq('source_table', 'manual')
         .order('entry_date', { ascending: false })
-        .limit(50);
+        .limit(100);
       if (historyFilter !== 'all') query = query.eq('status', historyFilter);
       if (historyTypeFilter !== 'all') query = query.eq('source_event', historyTypeFilter);
+      if (historyDateFrom) query = query.gte('entry_date', historyDateFrom);
+      if (historyDateTo) query = query.lte('entry_date', historyDateTo + 'T23:59:59');
       const { data: rows, error } = await query;
       if (error) throw error;
       const mapped: VoucherHistoryRow[] = (rows || []).map((r: any) => {
@@ -484,6 +490,7 @@ export default function VoucherEntryScreen() {
           totalDebit: tDebit,
           currency: String(cur || '').toUpperCase(),
           createdBy: String(r.created_by || ''),
+          voidReason: String(r.void_reason || ''),
         };
       });
       setHistory(mapped);
@@ -492,7 +499,7 @@ export default function VoucherEntryScreen() {
     } finally {
       setHistoryLoading(false);
     }
-  }, [canView, historyFilter, historyTypeFilter, showNotification]);
+  }, [canView, historyFilter, historyTypeFilter, historyDateFrom, historyDateTo, showNotification]);
 
   useEffect(() => { void fetchHistory(); }, [fetchHistory]);
 
@@ -662,6 +669,34 @@ export default function VoucherEntryScreen() {
     showNotification('تم تصدير الملف بنجاح.', 'success');
   };
 
+  // ═══ EXPORT XLSX ═══
+  const exportXlsx = () => {
+    if (history.length === 0) { showNotification('لا توجد بيانات للتصدير.', 'error'); return; }
+    // Build HTML table for Excel compatibility (no external lib needed)
+    const rows = history.map(h => [
+      h.documentNumber || h.id.slice(-8),
+      eventLabel(h.sourceEvent),
+      (() => { try { return new Date(h.entryDate).toLocaleDateString('ar-SA'); } catch { return h.entryDate; } })(),
+      h.memo || '—',
+      h.totalDebit,
+      h.currency || baseCurrencyCode,
+      statusLabel(h.status),
+    ]);
+    const headers = ['رقم الوثيقة', 'النوع', 'التاريخ', 'البيان', 'المبلغ', 'العملة', 'الحالة'];
+    const table = `<table><thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${
+      rows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join('')}</tr>`).join('')
+    }</tbody></table>`;
+    const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="UTF-8"></head><body dir="rtl">${table}</body></html>`;
+    const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `vouchers_${new Date().toISOString().slice(0, 10)}.xls`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showNotification('تم تصدير ملف Excel بنجاح.', 'success');
+  };
+
   // ═══ HELPERS ═══
   const paymentMethodLabel = (m: string) => {
     if (m === 'cash') return 'نقد';
@@ -681,18 +716,27 @@ export default function VoucherEntryScreen() {
     if (e === 'journal') return 'قيد';
     return e;
   };
-  const statusLabel = (s: string) => {
+  const statusLabel = (s: string, voidReason?: string) => {
     if (s === 'draft') return 'مسودة';
     if (s === 'pending_approval') return 'بانتظار الاعتماد';
     if (s === 'posted') return 'مُرحّل';
-    if (s === 'voided') return 'مبطل';
+    if (s === 'voided') {
+      // Distinguish between cancelled draft vs. truly voided posted entry
+      if (voidReason === 'CANCEL_DRAFT' || voidReason?.includes('إلغاء')) return 'ملغاة';
+      return 'مبطل';
+    }
     if (s === 'rejected') return 'مرفوض';
     return s;
   };
-  const statusColor = (s: string) => {
+  const statusColor = (s: string, voidReason?: string) => {
     if (s === 'draft') return 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200';
     if (s === 'posted') return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-200';
-    if (s === 'voided') return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-200';
+    if (s === 'voided') {
+      if (voidReason === 'CANCEL_DRAFT' || voidReason?.includes('إلغاء')) return 'bg-gray-100 text-gray-600 dark:bg-gray-700/50 dark:text-gray-400';
+      return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-200';
+    }
+    if (s === 'pending_approval') return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-200';
+    if (s === 'rejected') return 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-200';
     return 'bg-gray-100 text-gray-800';
   };
   const fxSourceLabel = useMemo(() => {
@@ -744,13 +788,27 @@ export default function VoucherEntryScreen() {
           </div>
           <div>
             <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">طريقة الدفع</div>
-            <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+            <select value={paymentMethod} onChange={(e) => { setPaymentMethod(e.target.value); setReferenceNumber(''); }} className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
               <option value="cash">نقد</option>
               <option value="check">شيك</option>
               <option value="bank_transfer">تحويل بنكي</option>
               <option value="network">شبكة</option>
             </select>
           </div>
+          {(paymentMethod === 'check' || paymentMethod === 'bank_transfer') && (
+            <div>
+              <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                {paymentMethod === 'check' ? 'رقم الشيك' : 'رقم الحوالة / المرجع'}
+              </div>
+              <input
+                type="text"
+                value={referenceNumber}
+                onChange={(e) => setReferenceNumber(e.target.value)}
+                placeholder={paymentMethod === 'check' ? 'مثال: 001234' : 'مثال: TRF-20260321'}
+                className="w-full px-3 py-2 rounded-lg border border-blue-300 dark:border-blue-600 bg-blue-50 dark:bg-blue-900/20 font-mono text-sm"
+              />
+            </div>
+          )}
           <div>
             <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">الحساب المالي الوجهة</div>
             <select
@@ -923,8 +981,11 @@ export default function VoucherEntryScreen() {
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-bold dark:text-white">سجل السندات</h2>
           <div className="flex items-center gap-2">
+            <button type="button" onClick={exportXlsx} disabled={history.length === 0} className="px-3 py-1.5 rounded-lg border border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-200 text-sm disabled:opacity-60">
+              📊 Excel
+            </button>
             <button type="button" onClick={exportCsv} disabled={history.length === 0} className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm disabled:opacity-60">
-              📥 تصدير CSV
+              📥 CSV
             </button>
             <button type="button" onClick={() => void fetchHistory()} disabled={historyLoading} className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm disabled:opacity-60">
               {historyLoading ? 'جارٍ...' : 'تحديث'}
@@ -937,7 +998,7 @@ export default function VoucherEntryScreen() {
             <option value="draft">مسودة</option>
             <option value="pending_approval">بانتظار الاعتماد</option>
             <option value="posted">مُرحّل</option>
-            <option value="voided">مبطل</option>
+            <option value="voided">مبطل / ملغاة</option>
           </select>
           <select value={historyTypeFilter} onChange={(e) => setHistoryTypeFilter(e.target.value as any)} className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm">
             <option value="all">كل الأنواع</option>
@@ -945,6 +1006,23 @@ export default function VoucherEntryScreen() {
             <option value="payment">سند صرف</option>
             <option value="journal">قيد يومية</option>
           </select>
+          {/* Date range filter */}
+          <div className="flex items-center gap-1">
+            <span className="text-xs text-gray-500 dark:text-gray-400">من:</span>
+            <input type="date" value={historyDateFrom} onChange={(e) => setHistoryDateFrom(e.target.value)}
+              className="px-2 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-mono" />
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="text-xs text-gray-500 dark:text-gray-400">إلى:</span>
+            <input type="date" value={historyDateTo} onChange={(e) => setHistoryDateTo(e.target.value)}
+              className="px-2 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-mono" />
+          </div>
+          {(historyDateFrom || historyDateTo) && (
+            <button type="button" onClick={() => { setHistoryDateFrom(''); setHistoryDateTo(''); }}
+              className="text-xs text-red-500 hover:text-red-700 px-2 py-1 rounded border border-red-200 dark:border-red-800">
+              ✕ مسح الفترة
+            </button>
+          )}
         </div>
         {historyLoading ? (
           <div className="text-xs text-gray-500 dark:text-gray-400 py-4 text-center">جاري تحميل السجل...</div>
@@ -988,7 +1066,9 @@ export default function VoucherEntryScreen() {
                       {h.currency && h.totalDebit > 0 && <span className="text-xs text-gray-400 mr-1">{h.currency}</span>}
                     </td>
                     <td className="py-2 px-2">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${statusColor(h.status)}`}>{statusLabel(h.status)}</span>
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${statusColor(h.status, h.voidReason)}`}>
+                        {statusLabel(h.status, h.voidReason)}
+                      </span>
                     </td>
                     <td className="py-2 px-2">
                       <div className="flex items-center justify-center gap-1">
