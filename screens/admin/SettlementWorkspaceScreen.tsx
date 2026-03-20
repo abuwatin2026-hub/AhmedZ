@@ -83,6 +83,7 @@ export default function SettlementWorkspaceScreen() {
   const [backfilling, setBackfilling] = useState(false);
   const [lastBackfillCount, setLastBackfillCount] = useState<number | null>(null);
   const didAutoBackfillRef = useRef(false);
+  const [helpOpen, setHelpOpen] = useState(false);
 
   const loadParties = async () => {
     const supabase = getSupabaseClient();
@@ -424,10 +425,18 @@ export default function SettlementWorkspaceScreen() {
     <div className="p-6 max-w-7xl mx-auto space-y-4">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold dark:text-white">Settlement Workspace</h1>
-          <div className="text-sm text-gray-500 dark:text-gray-400">تسوية/تخصيص عناصر الطرف (AR/AP/Advances)</div>
+          <h1 className="text-2xl font-bold dark:text-white">مساحة التسويات المالية</h1>
+          <div className="text-sm text-gray-500 dark:text-gray-400">مطابقة وتخصيص الدفعات والفواتير (ذمم مدينة / دائنة / سلف)</div>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setHelpOpen(v => !v)}
+            className="px-3 py-2 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 text-sm text-blue-700 dark:text-blue-200 flex items-center gap-1"
+            title="مركز المساعدة"
+          >
+            <Icons.InfoIcon className="w-4 h-4" />
+            {helpOpen ? 'إخفاء الدليل' : 'دليل الاستخدام'}
+          </button>
           <button
             onClick={() => void loadOpenItems()}
             disabled={!canView}
@@ -449,6 +458,99 @@ export default function SettlementWorkspaceScreen() {
           ) : null}
         </div>
       </div>
+
+      {/* ═══════════ مركز المساعدة ═══════════ */}
+      {helpOpen && (
+        <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-2xl p-5 space-y-5 text-sm text-gray-800 dark:text-gray-200" dir="rtl">
+          <div className="flex items-center gap-2 mb-1">
+            <Icons.InfoIcon className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0" />
+            <span className="text-lg font-bold text-blue-800 dark:text-blue-200">دليل مساحة التسويات المالية</span>
+          </div>
+
+          {/* ما هو */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-blue-100 dark:border-blue-800 space-y-2">
+            <div className="font-bold text-blue-700 dark:text-blue-300">📌 ما هذا القسم؟</div>
+            <p className="text-gray-700 dark:text-gray-300 leading-relaxed">
+              عند إنشاء سند قبض أو صرف، تُسجَّل الدفعة كـ <strong>«مفتوحة»</strong> — أي مبلغ موجود في النظام لكنه غير مرتبط بفاتورة بعينها.
+              مساحة التسويات هي المكان الذي <strong>تُطابق فيه كل دفعة مع الفاتورة أو المستحق الذي تسدِّده.</strong>
+            </p>
+            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg px-3 py-2 text-amber-800 dark:text-amber-200 text-xs">
+              ⚠️ بدون التسوية: الأرصدة ضخمة وغير واضحة، وتقارير الذمم تُظهر أرقاماً غير دقيقة.
+            </div>
+          </div>
+
+          {/* متى تستخدم */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-blue-100 dark:border-blue-800">
+            <div className="font-bold text-blue-700 dark:text-blue-300 mb-3">📅 متى تستخدمه؟</div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              {[
+                ['💰 دفعت لمورّد', 'بعد صدور سند الصرف مباشرةً — اربط الدفعة بالفاتورة.'],
+                ['🧾 وصلت فاتورة ولديك دفعة مقدمة', 'طبّق الدفعة المقدمة القديمة على الفاتورة الجديدة.'],
+                ['📥 عميل دفع مبلغاً يغطي فاتورتين', 'وزّع سند القبض على أكثر من فاتورة.'],
+                ['📆 إغلاق الشهر المحاسبي', 'قبل إغلاق الدورة، سوِّ جميع الدفعات المفتوحة.'],
+              ].map(([title, desc]) => (
+                <div key={title} className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3">
+                  <div className="font-semibold text-gray-800 dark:text-gray-100 text-xs mb-1">{title}</div>
+                  <div className="text-gray-600 dark:text-gray-300 text-xs leading-relaxed">{desc}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* كيفية الاستخدام */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-blue-100 dark:border-blue-800 space-y-3">
+            <div className="font-bold text-blue-700 dark:text-blue-300">🔧 كيف تعمل الشاشة؟</div>
+            <div className="space-y-2">
+              {[
+                { step: '١', title: 'اختر الطرف المالي', desc: 'من القائمة أعلاه — مورّد أو عميل. ستظهر عناصره المفتوحة تلقائياً.' },
+                { step: '٢', title: 'اختر العملة (اختياري)', desc: 'فلتَر العناصر بعملة معينة إذا كان الطرف يتعامل بأكثر من عملة.' },
+                { step: '٣', title: 'العناصر المدينة (Debits)', desc: 'الجدول الأيسر — ما هو مستحق عليك أو ما قدّمته من فواتير (للعملاء). انقر على الصف لتحديده.' },
+                { step: '٤', title: 'العناصر الدائنة (Credits)', desc: 'الجدول الأيمن — الدفعات والمدفوعات المُستلمة أو المُرسلة. انقر على الصف لتحديده.' },
+                { step: '٥', title: 'تخصيص يدوي', desc: 'بعد تحديد عنصر مدين + دائن، يظهر المبلغ المقترح تلقائياً. اضغط «إضافة تخصيص» ثم «إنشاء Settlement».' },
+                { step: '٦', title: 'Auto Match (FIFO)', desc: 'يُطابق النظام تلقائياً الدفعات مع الفواتير بترتيب الأقدم فالأحدث. مفيد للتسوية السريعة.' },
+              ].map(({ step, title, desc }) => (
+                <div key={step} className="flex gap-3 items-start">
+                  <div className="w-7 h-7 rounded-full bg-blue-600 dark:bg-blue-500 text-white text-xs flex items-center justify-center flex-shrink-0 font-bold">{step}</div>
+                  <div>
+                    <div className="font-semibold text-gray-800 dark:text-gray-100 text-xs">{title}</div>
+                    <div className="text-gray-600 dark:text-gray-300 text-xs leading-relaxed">{desc}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* مصطلحات */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-blue-100 dark:border-blue-800">
+            <div className="font-bold text-blue-700 dark:text-blue-300 mb-3">📖 دليل المصطلحات</div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              {[
+                ['مفتوح (Open)', 'دفعة أو فاتورة لم تُطابَق بعد مع أي مقابل.'],
+                ['مُسوَّى جزئياً', 'طُبِّق جزء من المبلغ، والباقي لا يزال معلّقاً.'],
+                ['مُسوَّى بالكامل', 'الفاتورة مسدَّدة 100% وأُغلق العنصر.'],
+                ['Auto Match FIFO', 'مطابقة تلقائية بدءاً من أقدم فاتورة/دفعة.'],
+                ['عكس التسوية', 'إلغاء تسوية خاطئة — يعود العنصران إلى حالة «مفتوح».'],
+                ['تحديث العناصر المفتوحة', 'يُعيد حساب أرصدة العناصر من القيود المرحّلة.'],
+              ].map(([term, def]) => (
+                <div key={term} className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-2">
+                  <span className="font-mono text-blue-700 dark:text-blue-300 text-xs">{term}: </span>
+                  <span className="text-gray-600 dark:text-gray-300 text-xs">{def}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* نصيحة */}
+          <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-700 rounded-xl p-4">
+            <div className="font-bold text-emerald-700 dark:text-emerald-300 mb-1">💡 نصيحة ذهبية</div>
+            <p className="text-emerald-800 dark:text-emerald-200 text-xs leading-relaxed">
+              قبل طباعة أي كشف حساب لطرف مالي، تأكد من إتمام التسويات أولاً.
+              كشف الحساب غير المُسوَّى يُعطي أرصدة مضخَّمة لا تعكس الواقع.
+              التسوية الشهرية قبل إغلاق الدورة المحاسبية ضرورة، وليست خياراً.
+            </p>
+          </div>
+        </div>
+      )}
       {!canView ? (
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow border border-gray-100 dark:border-gray-700 p-6 text-center text-gray-500 dark:text-gray-400 font-semibold">
           لا تملك صلاحية عرض التسويات.
