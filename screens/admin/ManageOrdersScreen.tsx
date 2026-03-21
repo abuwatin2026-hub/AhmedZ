@@ -87,7 +87,7 @@ type InStoreSaleUxMetric = {
 const ManageOrdersScreen: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
-    const { orders, updateOrderStatus, assignOrderToDelivery, acceptDeliveryAssignment, createInStoreSale, resumeInStorePendingOrder, cancelInStorePendingOrder, loading, markOrderPaid, recordOrderPaymentPartial, issueInvoiceNow, fetchOrders, fetchRemoteOrderById } = useOrders();
+    const { orders, updateOrderStatus, assignOrderToDelivery, acceptDeliveryAssignment, createInStoreSale, resumeInStorePendingOrder, cancelInStorePendingOrder, loading, markOrderPaid, recordOrderPaymentPartial, issueInvoiceNow, fetchOrders, fetchRemoteOrderById, refreshOrderFromServer } = useOrders();
     const { createReturn, processReturn, getReturnsByOrder } = useSalesReturn();
     const { showNotification } = useToast();
     const language = 'ar';
@@ -1127,7 +1127,7 @@ const ManageOrdersScreen: React.FC = () => {
                 belowCostOverrideReason: belowCostOverrideReason ? String(belowCostOverrideReason).trim() : undefined,
             });
             showNotification(`تم إتمام البيع المعلّق #${order.id.slice(-6).toUpperCase()}`, 'success');
-            try { await fetchOrders(); } catch { }
+            try { await refreshOrderFromServer(order.id); } catch { }
         } catch (error: any) {
             const raw = String(error?.message || '');
             const isBelowCostReason = /يلزم إدخال سبب/i.test(raw) || /تحت التكلفة/i.test(raw) || /below_cost/i.test(raw);
@@ -2056,7 +2056,7 @@ const ManageOrdersScreen: React.FC = () => {
             setPurgePaymentReason('');
             setPurgePaymentReasonCategory('misapplied_payment');
             try {
-                await fetchOrders();
+                await refreshOrderFromServer(purgePaymentOrderId);
             } catch { }
             await Promise.all([
                 loadPaidSums(filteredAndSortedOrders.map(o => o.id)),
@@ -2077,6 +2077,18 @@ const ManageOrdersScreen: React.FC = () => {
             setIsPurgingPayment(false);
         }
     };
+
+    const refreshOrdersByIds = useCallback(async (ids: string[]) => {
+        const unique = Array.from(new Set((ids || []).map((x) => String(x || '').trim()).filter(Boolean)));
+        if (!unique.length) return;
+        const chunkSize = 4;
+        for (let i = 0; i < unique.length; i += chunkSize) {
+            const chunk = unique.slice(i, i + chunkSize);
+            await Promise.all(chunk.map(async (orderId) => {
+                try { await refreshOrderFromServer(orderId); } catch { }
+            }));
+        }
+    }, [refreshOrderFromServer]);
 
     const executeApprovePurge = async () => {
         if (!approvePurgeRequestId || isApprovingPurge) return;
@@ -2099,12 +2111,11 @@ const ManageOrdersScreen: React.FC = () => {
             });
             if (error) throw error;
             const reversed = Number((result as any)?.reversedJournals || 0);
+            const affectedOrderId = purgeDashboardRows.find((r) => r.id === approvePurgeRequestId)?.order_id || '';
             showNotification(`تم اعتماد الطلب وتنفيذ عكس محاسبي بعدد ${reversed} قيود.`, 'success');
             setApprovePurgeRequestId(null);
             setPurgeApprovalNote('');
-            try {
-                await fetchOrders();
-            } catch { }
+            await refreshOrdersByIds(affectedOrderId ? [affectedOrderId] : []);
             await Promise.all([
                 loadPaidSums(filteredAndSortedOrders.map(o => o.id)),
                 loadPendingPurgeRequests(filteredAndSortedOrders.map(o => o.id)),
@@ -2139,6 +2150,10 @@ const ManageOrdersScreen: React.FC = () => {
             .filter(r => r.status === 'requested')
             .filter(r => !currentAdminAuthId || r.requested_by !== currentAdminAuthId)
             .map(r => r.id);
+        const affectedOrderIds = purgeDashboardRows
+            .filter(r => r.status === 'requested')
+            .filter(r => !currentAdminAuthId || r.requested_by !== currentAdminAuthId)
+            .map(r => r.order_id);
         if (eligibleIds.length === 0) {
             showNotification('لا توجد طلبات قابلة للاعتماد الجماعي حالياً.', 'error');
             return;
@@ -2156,9 +2171,7 @@ const ManageOrdersScreen: React.FC = () => {
             const failed = Number((data as any)?.failed || 0);
             const reversedTotal = Number((data as any)?.reversedJournalsTotal || 0);
             showNotification(`تم اعتماد ${approved} طلب، فشل ${failed}، وإجمالي القيود المعكوسة ${reversedTotal}.`, failed > 0 ? 'error' : 'success');
-            try {
-                await fetchOrders();
-            } catch { }
+            await refreshOrdersByIds(affectedOrderIds);
             await Promise.all([
                 loadPaidSums(filteredAndSortedOrders.map(o => o.id)),
                 loadPendingPurgeRequests(filteredAndSortedOrders.map(o => o.id)),
@@ -3582,7 +3595,7 @@ const ManageOrdersScreen: React.FC = () => {
         } finally {
             setIsCreatingReturn(false);
             if (stableOrderId) {
-                try { void fetchOrders(); } catch { }
+                try { void refreshOrderFromServer(stableOrderId); } catch { }
                 try { void refreshReturnsForOrder(stableOrderId); } catch { }
             }
         }
@@ -3879,7 +3892,7 @@ const ManageOrdersScreen: React.FC = () => {
                                     try {
                                         await cancelInStorePendingOrder(order.id);
                                         showNotification('تم حذف الطلب المعلّق.', 'success');
-                                        try { await fetchOrders(); } catch { }
+                                        try { await refreshOrderFromServer(order.id); } catch { }
                                     } catch (e: any) {
                                         showNotification(String(e?.message || 'تعذر حذف الطلب المعلّق.'), 'error');
                                     }
@@ -5019,7 +5032,7 @@ const ManageOrdersScreen: React.FC = () => {
                                                                         try {
                                                                             await cancelInStorePendingOrder(order.id);
                                                                             showNotification('تم حذف الطلب المعلّق.', 'success');
-                                                                            try { await fetchOrders(); } catch { }
+                                                                            try { await refreshOrderFromServer(order.id); } catch { }
                                                                         } catch (e: any) {
                                                                             showNotification(String(e?.message || 'تعذر حذف الطلب المعلّق.'), 'error');
                                                                         }

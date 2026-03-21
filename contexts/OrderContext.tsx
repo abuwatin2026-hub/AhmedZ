@@ -107,6 +107,7 @@ interface OrderContextType {
   acceptDeliveryAssignment: (orderId: string) => Promise<void>;
   getOrderById: (orderId: string) => Order | undefined;
   fetchRemoteOrderById: (orderId: string) => Promise<Order | undefined>;
+  refreshOrderFromServer: (orderId: string) => Promise<void>;
   fetchOrders: (opts?: { dateFrom?: string; dateTo?: string }) => Promise<void>;
   awardPointsForReviewedOrder: (orderId: string) => Promise<boolean>;
   incrementInvoicePrintCount: (orderId: string) => Promise<void>;
@@ -676,7 +677,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       const trySelectWithDeliveryZoneId = async () => {
         return await supabase
           .from('orders')
-          .select('id,status,created_at,delivery_zone_id,currency,fx_rate,base_total,data,order_events(action,actor_id)')
+          .select('id,status,created_at,delivery_zone_id,currency,fx_rate,base_total,data')
           .eq('id', orderId)
           .maybeSingle();
       };
@@ -687,7 +688,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       if (error && isSchemaCacheMissingColumnError(error, 'delivery_zone_id')) {
         ({ data: row, error } = await supabase
           .from('orders')
-          .select('id,status,created_at,currency,fx_rate,base_total,data,order_events(action,actor_id)')
+          .select('id,status,created_at,currency,fx_rate,base_total,data')
           .eq('id', orderId)
           .maybeSingle());
       }
@@ -702,9 +703,13 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       const currency = colCurrency || dataCurrency;
       const fxRate = typeof (row as any)?.fx_rate === 'number' ? (row as any).fx_rate : (Number((base as any)?.fxRate) || Number((base as any)?.fx_rate) || undefined);
       const baseTotal = typeof (row as any)?.base_total === 'number' ? (row as any).base_total : (Number((base as any)?.baseTotal) || Number((base as any)?.base_total) || undefined);
-      const events = typeof row?.order_events === 'object' && row.order_events !== null ? (Array.isArray(row.order_events) ? row.order_events : [row.order_events]) : [];
-      const createdEvent = events.find((e: any) => String(e?.action || '') === 'order.created');
-      const _createdBy = createdEvent?.actor_id ? String(createdEvent.actor_id) : undefined;
+      const _createdBy = String(
+        (base as any)?._createdBy
+        || (base as any)?.createdByAdminId
+        || (base as any)?.createdBy
+        || (base as any)?.createdByUserId
+        || ''
+      ).trim() || undefined;
       const enriched: Order = {
         ...base,
         id: String(row.id),
@@ -734,6 +739,21 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     if (error) throw error;
     return (rows || []).reduce((sum: number, r: any) => sum + (Number(r.amount) || 0), 0);
   }, []);
+
+  const refreshOrderFromServer = useCallback(async (orderId: string) => {
+    const fresh = await fetchRemoteOrderById(orderId);
+    if (fresh) {
+      const resolved = await resolveOrderAddress(fresh);
+      setOrders((prev) => {
+        const exists = prev.some((o) => o.id === resolved.id);
+        const next = exists ? prev.map((o) => (o.id === resolved.id ? resolved : o)) : [resolved, ...prev];
+        next.sort((a, b) => (String(b.createdAt || '')).localeCompare(String(a.createdAt || '')));
+        return next;
+      });
+      return;
+    }
+    setOrders((prev) => prev.filter((o) => o.id !== orderId));
+  }, [fetchRemoteOrderById, resolveOrderAddress]);
 
   const updateRemoteOrder = useCallback(async (order: Order, options?: { includeStatus?: boolean }) => {
     try {
@@ -1210,10 +1230,12 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   }, [addOrderEvent, adminUser?.id, isAdminAuthenticated, isInvoiceEligible, updateRemoteOrder, getSupabaseClient]);
 
   const isFetchingRef = useRef(false);
+  const fetchGenerationRef = useRef(0);
   const invoiceEnsureAttemptedRef = useRef<Set<string>>(new Set());
   const fetchOrders = useCallback(async (opts?: { dateFrom?: string; dateTo?: string }) => {
     if (isFetchingRef.current) return;
     isFetchingRef.current = true;
+    const fetchGeneration = ++fetchGenerationRef.current;
     const startedAt = Date.now();
     let failed = false;
     let fetchedRows = 0;
@@ -1226,7 +1248,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         if (!shouldLoadAll && !currentUser) {
           nextOrders = [];
         } else {
-          const loadRemote = async () => {
+          const loadRemote = async (paging?: { limit?: number; offset?: number }) => {
             const isSchemaCacheMissingColumnError = (err: any, column: string) => {
               const code = String(err?.code || '');
               const msg = String(err?.message || '');
@@ -1250,23 +1272,33 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
               }
               return q;
             };
+            const applyPaging = (q: any) => {
+              if (typeof paging?.offset === 'number' && typeof paging?.limit === 'number' && paging.limit > 0) {
+                return q.range(paging.offset, paging.offset + paging.limit - 1);
+              }
+              if (typeof paging?.limit === 'number' && paging.limit > 0) {
+                return q.limit(paging.limit);
+              }
+              if (!hasDateFilter) return q.limit(hardLimit);
+              return q;
+            };
             const queryWithZone = () => {
               let baseQuery = supabase
                 .from('orders')
-                .select('id,status,created_at,delivery_zone_id,warehouse_id,currency,fx_rate,base_total,data,order_events(action,actor_id)')
+                .select('id,status,created_at,delivery_zone_id,warehouse_id,currency,fx_rate,base_total,data')
                 .order('created_at', { ascending: false });
-              if (!hasDateFilter) baseQuery = baseQuery.limit(hardLimit);
               baseQuery = applyDateFilters(baseQuery);
+              baseQuery = applyPaging(baseQuery);
               if (shouldLoadAll) return baseQuery;
               return baseQuery.eq('customer_auth_user_id', currentUser!.id);
             };
             const queryWithoutZone = () => {
               let baseQuery = supabase
                 .from('orders')
-                .select('id,status,created_at,warehouse_id,currency,fx_rate,base_total,data,order_events(action,actor_id)')
+                .select('id,status,created_at,warehouse_id,currency,fx_rate,base_total,data')
                 .order('created_at', { ascending: false });
-              if (!hasDateFilter) baseQuery = baseQuery.limit(hardLimit);
               baseQuery = applyDateFilters(baseQuery);
+              baseQuery = applyPaging(baseQuery);
               if (shouldLoadAll) return baseQuery;
               return baseQuery.eq('customer_auth_user_id', currentUser!.id);
             };
@@ -1281,58 +1313,94 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             if (result.error && isSchemaCacheMissingColumnError(result.error, 'delivery_zone_id')) {
               result = await queryWithoutZone();
             }
-            return result;
+            return { ...result, hardLimit, hasDateFilter };
+          };
+
+          const mapRowToOrder = (r: any): Order => {
+            const base = (r?.data || {}) as Order;
+            const colStatus = (r?.status as OrderStatus) || undefined;
+            const dataStatus = (base as any).status as OrderStatus | undefined;
+            const resolvedStatus: OrderStatus = colStatus || dataStatus || 'pending';
+            const colCurrency = typeof r?.currency === 'string' ? String(r.currency).toUpperCase() : '';
+            const dataCurrency = typeof (base as any)?.currency === 'string' ? String((base as any).currency).toUpperCase() : '';
+            const currency = colCurrency || dataCurrency;
+            const fxRate = typeof r?.fx_rate === 'number' ? r.fx_rate : (Number((base as any)?.fxRate) || Number((base as any)?.fx_rate) || undefined);
+            const baseTotal = typeof r?.base_total === 'number' ? r.base_total : (Number((base as any)?.baseTotal) || Number((base as any)?.base_total) || undefined);
+            const _createdBy = String(
+              (base as any)?._createdBy
+              || (base as any)?.createdByAdminId
+              || (base as any)?.createdBy
+              || (base as any)?.createdByUserId
+              || ''
+            ).trim() || undefined;
+            const enriched: Order = {
+              ...base,
+              id: String(r.id),
+              status: resolvedStatus,
+              createdAt: typeof r.created_at === 'string' ? r.created_at : (base.createdAt || new Date().toISOString()),
+              deliveryZoneId: typeof r.delivery_zone_id === 'string' ? r.delivery_zone_id : base.deliveryZoneId,
+              ...(r.warehouse_id ? { warehouseId: r.warehouse_id } : {}),
+              ...(currency ? { currency } : {}),
+              ...(_createdBy ? { _createdBy } : {}),
+            };
+            if (fxRate != null && Number.isFinite(Number(fxRate))) (enriched as any).fxRate = Number(fxRate);
+            if (baseTotal != null && Number.isFinite(Number(baseTotal))) (enriched as any).baseTotal = Number(baseTotal);
+            return enriched;
           };
 
           if (typeof navigator !== 'undefined' && navigator.onLine === false) {
             nextOrders = [];
           } else {
-            // Race remote with a short timeout to avoid UI hanging
-            const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-            const timeoutId = controller ? setTimeout(() => controller.abort(), 6000) : null;
-            const { data: rows, error } = await loadRemote();
-            if (timeoutId) clearTimeout(timeoutId);
+            const firstPageLimit = 120;
+            const { data: firstRows, error, hardLimit, hasDateFilter } = await loadRemote(
+              !opts?.dateFrom && !opts?.dateTo ? { limit: firstPageLimit, offset: 0 } : undefined,
+            );
             if (error) throw error;
-            const merged: Order[] = (rows || []).map((r: any) => {
-              const base = (r?.data || {}) as Order;
-              const colStatus = (r?.status as OrderStatus) || undefined;
-              const dataStatus = (base as any).status as OrderStatus | undefined;
-              const resolvedStatus: OrderStatus =
-                colStatus || dataStatus || 'pending';
-              const colCurrency = typeof r?.currency === 'string' ? String(r.currency).toUpperCase() : '';
-              const dataCurrency = typeof (base as any)?.currency === 'string' ? String((base as any).currency).toUpperCase() : '';
-              const currency = colCurrency || dataCurrency;
-              const fxRate = typeof r?.fx_rate === 'number' ? r.fx_rate : (Number((base as any)?.fxRate) || Number((base as any)?.fx_rate) || undefined);
-              const baseTotal = typeof r?.base_total === 'number' ? r.base_total : (Number((base as any)?.baseTotal) || Number((base as any)?.base_total) || undefined);
-              const events = typeof r?.order_events === 'object' && r.order_events !== null ? (Array.isArray(r.order_events) ? r.order_events : [r.order_events]) : [];
-              const createdEvent = events.find((e: any) => String(e?.action || '') === 'order.created');
-              const _createdBy = createdEvent?.actor_id ? String(createdEvent.actor_id) : undefined;
-              const enriched: Order = {
-                ...base,
-                id: String(r.id),
-                status: resolvedStatus,
-                createdAt: typeof r.created_at === 'string' ? r.created_at : (base.createdAt || new Date().toISOString()),
-                deliveryZoneId: typeof r.delivery_zone_id === 'string' ? r.delivery_zone_id : base.deliveryZoneId,
-                ...(r.warehouse_id ? { warehouseId: r.warehouse_id } : {}),
-                ...(currency ? { currency } : {}),
-                ...(_createdBy ? { _createdBy } : {}),
-              };
-              if (fxRate != null && Number.isFinite(Number(fxRate))) (enriched as any).fxRate = Number(fxRate);
-              if (baseTotal != null && Number.isFinite(Number(baseTotal))) (enriched as any).baseTotal = Number(baseTotal);
-              return enriched;
-            }).filter(Boolean);
+            const merged: Order[] = (firstRows || []).map((r: any) => mapRowToOrder(r)).filter(Boolean);
             merged.sort((a, b) => (String(b.createdAt || '')).localeCompare(String(a.createdAt || '')));
             fetchedRows = merged.length;
-            setOrders(merged);
+            if (fetchGeneration === fetchGenerationRef.current) {
+              setOrders(merged);
+            }
             void (async () => {
               try {
                 const remoteOrders = await Promise.all(merged.map((o) => resolveOrderAddress(o)));
                 remoteOrders.sort((a, b) => (String(b.createdAt || '')).localeCompare(String(a.createdAt || '')));
-                setOrders(remoteOrders);
+                if (fetchGeneration === fetchGenerationRef.current) {
+                  setOrders(remoteOrders);
+                }
               } catch {
               }
             })();
             nextOrders = merged;
+
+            const canLazyLoadRest = !hasDateFilter && merged.length >= Math.min(firstPageLimit, hardLimit);
+            if (canLazyLoadRest) {
+              void (async () => {
+                try {
+                  const restLimit = Math.max(0, hardLimit - firstPageLimit);
+                  if (restLimit <= 0) return;
+                  const { data: restRows, error: restError } = await loadRemote({ limit: restLimit, offset: firstPageLimit });
+                  if (restError || !Array.isArray(restRows) || restRows.length === 0) return;
+                  const restMapped = restRows.map((r: any) => mapRowToOrder(r)).filter(Boolean);
+                  const fullMergedMap = new Map<string, Order>();
+                  for (const o of merged) fullMergedMap.set(o.id, o);
+                  for (const o of restMapped) fullMergedMap.set(o.id, o);
+                  const fullMerged = Array.from(fullMergedMap.values()).sort((a, b) => (String(b.createdAt || '')).localeCompare(String(a.createdAt || '')));
+                  fetchedRows = fullMerged.length;
+                  nextOrders = fullMerged;
+                  if (fetchGeneration !== fetchGenerationRef.current) return;
+                  setOrders(fullMerged);
+                  try {
+                    const resolved = await Promise.all(fullMerged.map((o) => resolveOrderAddress(o)));
+                    resolved.sort((a, b) => (String(b.createdAt || '')).localeCompare(String(a.createdAt || '')));
+                    if (fetchGeneration === fetchGenerationRef.current) {
+                      setOrders(resolved);
+                    }
+                  } catch {}
+                } catch {}
+              })();
+            }
           }
 
           // Process missing invoices in the background without blocking or re-fetching
@@ -1399,19 +1467,89 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     };
     init();
 
-    const onOffline = () => setOrders([]);
+    const onOffline = () => { };
     if (typeof window !== 'undefined') {
       window.addEventListener('offline', onOffline);
     }
 
+    const POLL_MIN_MS = 12000;
+    const POLL_MIN_WHEN_REALTIME_OK_MS = 60000;
+    const POLL_MAX_MS = 90000;
+    let pollTimer: number | null = null;
+    let pollBusy = false;
+    let disposed = false;
+    let realtimeBroken = true;
+    let pollDelayMs = POLL_MIN_MS;
+
+    const clearPollTimer = () => {
+      if (pollTimer != null) {
+        window.clearTimeout(pollTimer);
+        pollTimer = null;
+      }
+    };
+
+    const schedulePoll = (delayMs?: number) => {
+      if (typeof window === 'undefined' || disposed) return;
+      clearPollTimer();
+      const d = Math.max(1000, Math.round(delayMs ?? pollDelayMs));
+      pollTimer = window.setTimeout(() => {
+        void runPoll();
+      }, d);
+    };
+
+    const runPoll = async () => {
+      if (disposed || pollBusy) return;
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        pollDelayMs = Math.min(POLL_MAX_MS, Math.round(pollDelayMs * 1.6));
+        schedulePoll();
+        return;
+      }
+      if (typeof document !== 'undefined' && document.hidden) {
+        pollDelayMs = Math.min(POLL_MAX_MS, Math.max(pollDelayMs, realtimeBroken ? 30000 : POLL_MIN_WHEN_REALTIME_OK_MS));
+        schedulePoll();
+        return;
+      }
+      pollBusy = true;
+      try {
+        await fetchOrders();
+        pollDelayMs = realtimeBroken ? POLL_MIN_MS : POLL_MIN_WHEN_REALTIME_OK_MS;
+      } catch {
+        pollDelayMs = Math.min(POLL_MAX_MS, Math.round(pollDelayMs * 1.8));
+      } finally {
+        pollBusy = false;
+        schedulePoll();
+      }
+    };
+
+    const onVisibilityChange = () => {
+      if (typeof document !== 'undefined' && !document.hidden) {
+        schedulePoll(1500);
+      }
+    };
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', onVisibilityChange);
+    }
+
     const supabase = getSupabaseClient();
     if (!supabase || !isRealtimeEnabled()) {
+      realtimeBroken = true;
+      pollDelayMs = POLL_MIN_MS;
+      schedulePoll(POLL_MIN_MS);
       return () => {
+        disposed = true;
+        clearPollTimer();
+        if (typeof document !== 'undefined') {
+          document.removeEventListener('visibilitychange', onVisibilityChange);
+        }
         if (typeof window !== 'undefined') {
           window.removeEventListener('offline', onOffline);
         }
       };
     }
+
+    realtimeBroken = false;
+    pollDelayMs = POLL_MIN_WHEN_REALTIME_OK_MS;
+    schedulePoll(POLL_MIN_WHEN_REALTIME_OK_MS);
 
     // Helper functions for notifications
     const playNotification = (soundPath: string, text: string) => {
@@ -1516,19 +1654,32 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         }
       )
       .subscribe((status: any) => {
+        if (status === 'SUBSCRIBED') {
+          realtimeBroken = false;
+          pollDelayMs = POLL_MIN_WHEN_REALTIME_OK_MS;
+          schedulePoll(POLL_MIN_WHEN_REALTIME_OK_MS);
+        }
         if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          realtimeBroken = true;
+          pollDelayMs = POLL_MIN_MS;
           disableRealtime();
           supabase.removeChannel(channel);
+          schedulePoll(1200);
         }
       });
 
     return () => {
+      disposed = true;
+      clearPollTimer();
       supabase.removeChannel(channel);
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', onVisibilityChange);
+      }
       if (typeof window !== 'undefined') {
         window.removeEventListener('offline', onOffline);
       }
     };
-  }, [isAdminAuthenticated, currentUser?.id, adminUser, resolveOrderAddress]);
+  }, [isAdminAuthenticated, currentUser?.id, adminUser, resolveOrderAddress, fetchOrders]);
 
   const issueInvoiceNow = useCallback(async (orderId: string) => {
     const existingLocal = orders.find(o => o.id === orderId);
@@ -4584,7 +4735,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   }, [currentUser, orders]);
 
   return (
-    <OrderContext.Provider value={{ orders, userOrders, loading, addOrder, createInStoreSale, createInStorePendingOrder, createInStoreDraftQuotation, resumeInStorePendingOrder, cancelInStorePendingOrder, updateOrderStatus, assignOrderToDelivery, acceptDeliveryAssignment, getOrderById, fetchRemoteOrderById, fetchOrders, awardPointsForReviewedOrder, incrementInvoicePrintCount, markOrderPaid, recordOrderPaymentPartial, issueInvoiceNow }}>
+    <OrderContext.Provider value={{ orders, userOrders, loading, addOrder, createInStoreSale, createInStorePendingOrder, createInStoreDraftQuotation, resumeInStorePendingOrder, cancelInStorePendingOrder, updateOrderStatus, assignOrderToDelivery, acceptDeliveryAssignment, getOrderById, fetchRemoteOrderById, refreshOrderFromServer, fetchOrders, awardPointsForReviewedOrder, incrementInvoicePrintCount, markOrderPaid, recordOrderPaymentPartial, issueInvoiceNow }}>
       {children}
     </OrderContext.Provider>
   );
