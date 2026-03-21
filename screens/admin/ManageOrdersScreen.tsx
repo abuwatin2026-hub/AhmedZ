@@ -4626,7 +4626,7 @@ const ManageOrdersScreen: React.FC = () => {
                             </tr>
                         </thead>
                         <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                            {loading ? (
+                            {loading && filteredAndSortedOrders.length === 0 ? (
                                 <tr>
                                     <td colSpan={8} className="text-center py-10 text-gray-500 dark:text-gray-400">
                                         <div className="flex justify-center items-center space-x-2 rtl:space-x-reverse">
@@ -5274,7 +5274,7 @@ const ManageOrdersScreen: React.FC = () => {
             </div>
 
             <div className="md:hidden space-y-4">
-                {loading ? (
+                {loading && filteredAndSortedOrders.length === 0 ? (
                     <div className="flex justify-center items-center py-10">
                         <Spinner />
                     </div>

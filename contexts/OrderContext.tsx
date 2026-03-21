@@ -1324,7 +1324,6 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             merged.sort((a, b) => (String(b.createdAt || '')).localeCompare(String(a.createdAt || '')));
             fetchedRows = merged.length;
             setOrders(merged);
-            setLoading(false);
             void (async () => {
               try {
                 const remoteOrders = await Promise.all(merged.map((o) => resolveOrderAddress(o)));
@@ -1386,7 +1385,9 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           isAuthenticated: isAdminAuthenticated,
         });
       }
-      setOrders(nextOrders);
+      if (!failed) {
+        setOrders(nextOrders);
+      }
       setLoading(false);
       isFetchingRef.current = false;
     }
