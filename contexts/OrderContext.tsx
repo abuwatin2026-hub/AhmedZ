@@ -2716,6 +2716,9 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       const deliveryPayload: Order = {
         ...newOrder,
         paidAt: undefined,
+        // Clear ghost error messages from previous failed attempts
+        inStoreFailureReason: undefined,
+        inStoreFailureAt: undefined,
         invoiceNumber: invoiceNumber || newOrder.invoiceNumber,
         invoiceIssuedAt: nowIso,
         invoiceSnapshot: buildValidationInvoiceSnapshot(),
