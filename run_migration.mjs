@@ -11,68 +11,36 @@ async function sql(q) {
   return b;
 }
 
-// Fix: create 6 remaining AR open items with correct column names
-const repairSQL = `
-do $$
-declare
-  v_order record;
-  v_je_id uuid;
-  v_cnt int := 0;
-begin
-  for v_order in
-    SELECT o.id, o.base_total, o.due_date, upper(coalesce(nullif(o.currency,''), 'SAR')) as currency
-    FROM public.orders o
-    WHERE o.status = 'delivered'
-      AND lower(coalesce(o.data->>'invoiceTerms','')) = 'credit'
-      AND NOT EXISTS (SELECT 1 FROM public.ar_open_items aoi WHERE aoi.invoice_id = o.id)
-    ORDER BY o.created_at
-  loop
-    SELECT je.id INTO v_je_id
-    FROM public.journal_entries je
-    WHERE je.source_table = 'orders' AND je.source_id = v_order.id::text
-    ORDER BY je.entry_date DESC LIMIT 1;
+// Find ALL orders with inStoreFailureReason (any status)
+const all = await sql(`
+  SELECT RIGHT(o.id::text, 6) as sid, o.status, o.data->>'inStoreFailureReason' as reason
+  FROM public.orders o
+  WHERE o.data->>'inStoreFailureReason' IS NOT NULL AND o.data->>'inStoreFailureReason' <> ''
+`);
+console.log('Orders still with error messages:', all.length);
+all.forEach(o => console.log(`  #${o.sid} | ${o.status} | ${o.reason?.substring(0,60)}`));
 
-    if v_je_id is null then continue; end if;
-
-    INSERT INTO public.ar_open_items(invoice_id, journal_entry_id, original_amount, open_balance, currency, status)
-    VALUES (v_order.id, v_je_id, v_order.base_total, v_order.base_total, v_order.currency, 'open')
-    ON CONFLICT DO NOTHING;
-
-    v_cnt := v_cnt + 1;
-    raise notice 'Created AR for order %', v_order.id;
-  end loop;
-
-  raise notice 'Done: % AR items created', v_cnt;
-end;
-$$;
-`;
-
-try {
-  await sql(repairSQL);
-  console.log('✅ AR open items repair done\n');
-} catch (e) {
-  console.error('❌ Error:', e.message);
+// Clear ALL remaining ones
+if (all.length > 0) {
+  await sql(`
+    do $$
+    begin
+      alter table public.orders disable trigger user;
+      UPDATE public.orders
+      SET data = (data - 'inStoreFailureReason' - 'inStoreFailureAt'),
+          updated_at = now()
+      WHERE data->>'inStoreFailureReason' IS NOT NULL
+        AND data->>'inStoreFailureReason' <> '';
+      alter table public.orders enable trigger user;
+    end;
+    $$;
+  `);
+  console.log('✅ Cleared all remaining error messages');
 }
 
-// Verify final state
-const v = (await sql(`
-  SELECT
-    (SELECT COUNT(*) FROM public.orders o WHERE o.status='delivered' AND lower(coalesce(o.data->>'invoiceTerms',''))='credit') as total,
-    (SELECT COUNT(DISTINCT o.id) FROM public.orders o JOIN public.journal_entries je ON je.source_table='orders' AND je.source_id=o.id::text WHERE o.status='delivered' AND lower(coalesce(o.data->>'invoiceTerms',''))='credit') as with_je,
-    (SELECT COUNT(DISTINCT o.id) FROM public.orders o JOIN public.ar_open_items aoi ON aoi.invoice_id=o.id WHERE o.status='delivered' AND lower(coalesce(o.data->>'invoiceTerms',''))='credit') as with_ar,
-    (SELECT COALESCE(SUM(o.base_total),0) FROM public.orders o WHERE o.status='delivered' AND lower(coalesce(o.data->>'invoiceTerms',''))='credit') as base_total,
-    (SELECT COALESCE(SUM(aoi.open_balance),0) FROM public.ar_open_items aoi JOIN public.orders o ON aoi.invoice_id=o.id WHERE o.status='delivered' AND lower(coalesce(o.data->>'invoiceTerms',''))='credit') as ar_balance,
-    (SELECT COALESCE(SUM(jl.debit),0) FROM public.orders o JOIN public.journal_entries je ON je.source_table='orders' AND je.source_id=o.id::text JOIN public.journal_lines jl ON jl.journal_entry_id=je.id JOIN public.chart_of_accounts a ON a.id=jl.account_id AND a.code='1200' WHERE o.status='delivered' AND lower(coalesce(o.data->>'invoiceTerms',''))='credit') as ar_debit
-`))[0];
-
-console.log('══════ التحقق النهائي ══════');
-console.log(`طلبات آجلة مسلمة: ${v.total}`);
-console.log(`لها قيد محاسبي: ${v.with_je} ${v.with_je == v.total ? '✅' : '⚠️'}`);
-console.log(`لها AR open item: ${v.with_ar} ${v.with_ar == v.total ? '✅' : '⚠️'}`);
-console.log(`base_total: ${Number(v.base_total).toFixed(2)}`);
-console.log(`AR open balance: ${Number(v.ar_balance).toFixed(2)}`);
-console.log(`JE 1200 debit: ${Number(v.ar_debit).toFixed(2)}`);
-const d1 = Math.abs(Number(v.base_total) - Number(v.ar_balance));
-const d2 = Math.abs(Number(v.base_total) - Number(v.ar_debit));
-console.log(`فرق base vs AR: ${d1.toFixed(2)} ${d1 < 1 ? '✅' : '⚠️'}`);
-console.log(`فرق base vs JE: ${d2.toFixed(2)} ${d2 < 1 ? '✅' : '⚠️'}`);
+// Verify
+const remaining = await sql(`
+  SELECT COUNT(*) as cnt FROM public.orders
+  WHERE data->>'inStoreFailureReason' IS NOT NULL AND data->>'inStoreFailureReason' <> ''
+`);
+console.log(`\nRemaining: ${remaining[0].cnt} ${remaining[0].cnt == 0 ? '✅' : '⚠️'}`);
