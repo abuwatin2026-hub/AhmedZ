@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getSupabaseClient } from '../../supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
@@ -17,8 +17,21 @@ type VoucherHistoryRow = {
   sourceEvent: string;
   documentNumber: string;
   totalDebit: number;
+  baseDebit: number;
+  baseCredit: number;
   currency: string;
   createdBy: string;
+  lineCount: number;
+  lines: {
+    accountCode: string;
+    accountName: string;
+    partyName: string;
+    debit: number;
+    credit: number;
+    currency: string;
+    foreignAmount: number;
+    memo: string;
+  }[];
   voidReason?: string;
 };
 type VoucherLine = {
@@ -160,6 +173,8 @@ export default function VoucherEntryScreen() {
   const [historyTypeFilter, setHistoryTypeFilter] = useState<'all' | 'receipt' | 'payment' | 'journal'>('all');
   const [historyDateFrom, setHistoryDateFrom] = useState<string>('');
   const [historyDateTo, setHistoryDateTo] = useState<string>('');
+  const [historyPage, setHistoryPage] = useState(1);
+  const [expandedHistoryEntryId, setExpandedHistoryEntryId] = useState<string>('');
 
   useEffect(() => {
     const supabase = getSupabaseClient();
@@ -449,10 +464,10 @@ export default function VoucherEntryScreen() {
     try {
       let query = supabase
         .from('journal_entries')
-        .select('id,entry_date,memo,status,source_event,document_id,created_by,void_reason,journal_lines(debit,credit,currency_code,foreign_amount),accounting_documents(document_number)')
+        .select('id,entry_date,memo,status,source_event,document_id,created_by,void_reason,journal_lines(debit,credit,currency_code,foreign_amount,line_memo,chart_of_accounts(code,name),financial_parties!journal_lines_party_id_fkey(name)),accounting_documents(document_number)')
         .eq('source_table', 'manual')
         .order('entry_date', { ascending: false })
-        .limit(100);
+        .range(0, historyPage * 100 - 1);
       if (historyFilter !== 'all') query = query.eq('status', historyFilter);
       if (historyTypeFilter !== 'all') query = query.eq('source_event', historyTypeFilter);
       if (historyDateFrom) query = query.gte('entry_date', historyDateFrom);
@@ -462,20 +477,29 @@ export default function VoucherEntryScreen() {
       const mapped: VoucherHistoryRow[] = (rows || []).map((r: any) => {
         const jlines = Array.isArray(r.journal_lines) ? r.journal_lines : [];
         const tDebitBase = jlines.reduce((s: number, l: any) => s + Number(l.debit || 0), 0);
+        const tCreditBase = jlines.reduce((s: number, l: any) => s + Number(l.credit || 0), 0);
         let cur = '';
-        let foreignAmt = 0;
         for (const l of jlines) {
-          if (l.currency_code && Number(l.foreign_amount) > 0) {
-            cur = l.currency_code;
-            foreignAmt = Number(l.foreign_amount);
-            break;
-          }
+          const code = String(l.currency_code || '').trim().toUpperCase();
+          if (code) { cur = code; break; }
         }
-        if (!cur) cur = jlines[0]?.currency_code || '';
-        const tDebit = foreignAmt > 0 ? foreignAmt : tDebitBase;
+        const foreignAmtDebit = jlines
+          .filter((l: any) => Number(l.debit || 0) > 0)
+          .reduce((s: number, l: any) => s + (Number(l.foreign_amount || 0) > 0 ? Number(l.foreign_amount || 0) : 0), 0);
+        const tDebit = foreignAmtDebit > 0 ? foreignAmtDebit : tDebitBase;
         const docNum = Array.isArray(r.accounting_documents)
           ? (r.accounting_documents[0]?.document_number || '')
           : ((r.accounting_documents as any)?.document_number || '');
+        const mappedLines = jlines.map((l: any) => ({
+          accountCode: String(l?.chart_of_accounts?.code || ''),
+          accountName: String(l?.chart_of_accounts?.name || ''),
+          partyName: String(l?.financial_parties?.name || ''),
+          debit: Number(l.debit || 0),
+          credit: Number(l.credit || 0),
+          currency: String(l.currency_code || '').trim().toUpperCase(),
+          foreignAmount: Number(l.foreign_amount || 0),
+          memo: String(l.line_memo || ''),
+        }));
         return {
           id: String(r.id || ''),
           entryDate: String(r.entry_date || ''),
@@ -488,8 +512,12 @@ export default function VoucherEntryScreen() {
           sourceEvent: String(r.source_event || ''),
           documentNumber: String(docNum),
           totalDebit: tDebit,
+          baseDebit: tDebitBase,
+          baseCredit: tCreditBase,
           currency: String(cur || '').toUpperCase(),
           createdBy: String(r.created_by || ''),
+          lineCount: mappedLines.length,
+          lines: mappedLines,
           voidReason: String(r.void_reason || ''),
         };
       });
@@ -499,7 +527,7 @@ export default function VoucherEntryScreen() {
     } finally {
       setHistoryLoading(false);
     }
-  }, [canView, historyFilter, historyTypeFilter, historyDateFrom, historyDateTo, showNotification]);
+  }, [canView, historyFilter, historyTypeFilter, historyDateFrom, historyDateTo, historyPage, showNotification]);
 
   useEffect(() => { void fetchHistory(); }, [fetchHistory]);
 
@@ -1023,6 +1051,12 @@ export default function VoucherEntryScreen() {
               ✕ مسح الفترة
             </button>
           )}
+          {historyPage > 1 && (
+            <button type="button" onClick={() => { setHistoryPage(1); setExpandedHistoryEntryId(''); }}
+              className="text-xs text-blue-600 hover:text-blue-700 px-2 py-1 rounded border border-blue-200 dark:border-blue-800">
+              إرجاع لأول 100
+            </button>
+          )}
         </div>
         {historyLoading ? (
           <div className="text-xs text-gray-500 dark:text-gray-400 py-4 text-center">جاري تحميل السجل...</div>
@@ -1038,95 +1072,162 @@ export default function VoucherEntryScreen() {
                   <th className="py-2 px-2 font-semibold text-gray-600 dark:text-gray-300">التاريخ</th>
                   <th className="py-2 px-2 font-semibold text-gray-600 dark:text-gray-300">البيان</th>
                   <th className="py-2 px-2 font-semibold text-gray-600 dark:text-gray-300">المبلغ</th>
+                  <th className="py-2 px-2 font-semibold text-gray-600 dark:text-gray-300">العملة</th>
+                  <th className="py-2 px-2 font-semibold text-gray-600 dark:text-gray-300">السطور</th>
                   <th className="py-2 px-2 font-semibold text-gray-600 dark:text-gray-300">الحالة</th>
                   <th className="py-2 px-2 font-semibold text-gray-600 dark:text-gray-300">عمليات</th>
                 </tr>
               </thead>
               <tbody>
                 {history.map((h) => (
-                  <tr key={h.id} className="border-b dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-700/30 text-center">
-                    <td className="py-2 px-2 font-mono text-xs" dir="ltr">{h.documentNumber || h.id.slice(-8)}</td>
-                    <td className="py-2 px-2">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${h.sourceEvent === 'receipt' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-200'
-                        : h.sourceEvent === 'payment' ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-200'
-                          : 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-200'
-                        }`}>{eventLabel(h.sourceEvent)}</span>
-                    </td>
-                    <td className="py-2 px-2 font-mono text-xs" dir="ltr">
-                      {(() => {
-                        try {
-                          const d = new Date(h.entryDate);
-                          return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
-                        } catch { return h.entryDate; }
-                      })()}
-                    </td>
-                    <td className="py-2 px-2 text-gray-700 dark:text-gray-300 max-w-[200px] truncate">{h.memo && h.memo.length > 3 ? h.memo : '—'}</td>
-                    <td className="py-2 px-2 font-mono font-bold" dir="ltr">
-                      {h.totalDebit > 0 ? h.totalDebit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
-                      {h.currency && h.totalDebit > 0 && <span className="text-xs text-gray-400 mr-1">{h.currency}</span>}
-                    </td>
-                    <td className="py-2 px-2">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${statusColor(h.status, h.voidReason)}`}>
-                        {statusLabel(h.status, h.voidReason)}
-                      </span>
-                    </td>
-                    <td className="py-2 px-2">
-                      <div className="flex items-center justify-center gap-1">
-                        <button type="button" onClick={() => void printHistoryEntry(h.id, h.sourceEvent)} className="px-2 py-1 rounded text-xs border border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700">
-                          طباعة
-                        </button>
-                        {(h.status === 'draft' || h.status === 'pending_approval') && canApprove ? (
-                          <button type="button" onClick={() => void approveHistoryEntry(h.id, h.status)}
-                            className={`px-2 py-1 rounded text-xs text-white hover:opacity-90 ${
-                              h.status === 'draft' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-green-600 hover:bg-green-700'
-                            }`}>
-                            {h.status === 'draft' ? 'إرسال للاعتماد' : 'اعتماد وترحيل'}
+                  <Fragment key={h.id}>
+                    <tr key={h.id} className="border-b dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-700/30 text-center">
+                      <td className="py-2 px-2 font-mono text-xs" dir="ltr">{h.documentNumber || h.id.slice(-8)}</td>
+                      <td className="py-2 px-2">
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${h.sourceEvent === 'receipt' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-200'
+                          : h.sourceEvent === 'payment' ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-200'
+                            : 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-200'
+                          }`}>{eventLabel(h.sourceEvent)}</span>
+                      </td>
+                      <td className="py-2 px-2 font-mono text-xs" dir="ltr">
+                        {(() => {
+                          try {
+                            const d = new Date(h.entryDate);
+                            return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
+                          } catch { return h.entryDate; }
+                        })()}
+                      </td>
+                      <td className="py-2 px-2 text-gray-700 dark:text-gray-300 max-w-[200px] truncate">{h.memo && h.memo.length > 3 ? h.memo : '—'}</td>
+                      <td className="py-2 px-2 font-mono font-bold" dir="ltr">
+                        {h.totalDebit > 0 ? h.totalDebit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
+                      </td>
+                      <td className="py-2 px-2 text-xs font-mono" dir="ltr">{h.currency || baseCurrencyCode}</td>
+                      <td className="py-2 px-2 text-xs font-mono" dir="ltr">{h.lineCount}</td>
+                      <td className="py-2 px-2">
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${statusColor(h.status, h.voidReason)}`}>
+                          {statusLabel(h.status, h.voidReason)}
+                        </span>
+                      </td>
+                      <td className="py-2 px-2">
+                        <div className="flex items-center justify-center gap-1">
+                          <button type="button" onClick={() => setExpandedHistoryEntryId(expandedHistoryEntryId === h.id ? '' : h.id)} className="px-2 py-1 rounded text-xs border border-blue-200 dark:border-blue-700 text-blue-700 dark:text-blue-200 hover:bg-blue-50 dark:hover:bg-blue-900/20">
+                            {expandedHistoryEntryId === h.id ? 'إخفاء' : 'تفاصيل'}
                           </button>
-                        ) : null}
-                        {h.status === 'pending_approval' && canApprove ? (
-                          <button type="button" onClick={async () => {
-                            const reason = window.prompt('سبب الرفض؟');
-                            if (!reason?.trim()) return;
-                            const supabase = getSupabaseClient();
-                            if (!supabase) return;
-                            try {
-                              const { error } = await supabase.rpc('reject_voucher', { p_entry_id: h.id, p_reason: reason.trim() } as any);
-                              if (error) throw error;
-                              showNotification('تم رفض السند وإعادته للمسودة.', 'success');
-                              void fetchHistory();
-                            } catch (e: any) { showNotification(String(e?.message || 'تعذر الرفض.'), 'error'); }
-                          }} className="px-2 py-1 rounded text-xs bg-red-500 text-white hover:bg-red-600">
-                            رفض
+                          <button type="button" onClick={() => void printHistoryEntry(h.id, h.sourceEvent)} className="px-2 py-1 rounded text-xs border border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700">
+                            طباعة
                           </button>
-                        ) : null}
-                        {h.status === 'pending_approval' && h.createdBy === userId ? (
-                          <button type="button" onClick={async () => {
-                            if (!window.confirm('سحب السند وإعادته للمسودة؟')) return;
-                            const supabase = getSupabaseClient();
-                            if (!supabase) return;
-                            try {
-                              const { error } = await supabase.rpc('recall_voucher', { p_entry_id: h.id } as any);
-                              if (error) throw error;
-                              showNotification('تم سحب السند وإعادته للمسودة.', 'success');
-                              void fetchHistory();
-                            } catch (e: any) { showNotification(String(e?.message || 'تعذر السحب.'), 'error'); }
-                          }} className="px-2 py-1 rounded text-xs bg-gray-400 text-white hover:bg-gray-500">
-                            سحب
-                          </button>
-                        ) : null}
-                        {(h.status === 'draft' || h.status === 'posted') && canVoid ? (
-                          <button type="button" onClick={() => void voidHistoryEntry(h.id)} className="px-2 py-1 rounded text-xs bg-red-600 text-white hover:bg-red-700">
-                            إبطال
-                          </button>
-                        ) : null}
-                      </div>
-                    </td>
-                  </tr>
+                          {(h.status === 'draft' || h.status === 'pending_approval') && canApprove ? (
+                            <button type="button" onClick={() => void approveHistoryEntry(h.id, h.status)}
+                              className={`px-2 py-1 rounded text-xs text-white hover:opacity-90 ${
+                                h.status === 'draft' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-green-600 hover:bg-green-700'
+                              }`}>
+                              {h.status === 'draft' ? 'إرسال للاعتماد' : 'اعتماد وترحيل'}
+                            </button>
+                          ) : null}
+                          {h.status === 'pending_approval' && canApprove ? (
+                            <button type="button" onClick={async () => {
+                              const reason = window.prompt('سبب الرفض؟');
+                              if (!reason?.trim()) return;
+                              const supabase = getSupabaseClient();
+                              if (!supabase) return;
+                              try {
+                                const { error } = await supabase.rpc('reject_voucher', { p_entry_id: h.id, p_reason: reason.trim() } as any);
+                                if (error) throw error;
+                                showNotification('تم رفض السند وإعادته للمسودة.', 'success');
+                                void fetchHistory();
+                              } catch (e: any) { showNotification(String(e?.message || 'تعذر الرفض.'), 'error'); }
+                            }} className="px-2 py-1 rounded text-xs bg-red-500 text-white hover:bg-red-600">
+                              رفض
+                            </button>
+                          ) : null}
+                          {h.status === 'pending_approval' && h.createdBy === userId ? (
+                            <button type="button" onClick={async () => {
+                              if (!window.confirm('سحب السند وإعادته للمسودة؟')) return;
+                              const supabase = getSupabaseClient();
+                              if (!supabase) return;
+                              try {
+                                const { error } = await supabase.rpc('recall_voucher', { p_entry_id: h.id } as any);
+                                if (error) throw error;
+                                showNotification('تم سحب السند وإعادته للمسودة.', 'success');
+                                void fetchHistory();
+                              } catch (e: any) { showNotification(String(e?.message || 'تعذر السحب.'), 'error'); }
+                            }} className="px-2 py-1 rounded text-xs bg-gray-400 text-white hover:bg-gray-500">
+                              سحب
+                            </button>
+                          ) : null}
+                          {(h.status === 'draft' || h.status === 'posted') && canVoid ? (
+                            <button type="button" onClick={() => void voidHistoryEntry(h.id)} className="px-2 py-1 rounded text-xs bg-red-600 text-white hover:bg-red-700">
+                              إبطال
+                            </button>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                    {expandedHistoryEntryId === h.id ? (
+                      <tr className="border-b dark:border-gray-700/50 bg-gray-50/70 dark:bg-gray-900/20">
+                        <td colSpan={9} className="py-3 px-3">
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs mb-3">
+                            <div className="px-2 py-1 rounded bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
+                              <span className="text-gray-500 dark:text-gray-400">مدين (أساسي): </span>
+                              <span className="font-mono" dir="ltr">{h.baseDebit.toFixed(2)} {baseCurrencyCode}</span>
+                            </div>
+                            <div className="px-2 py-1 rounded bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
+                              <span className="text-gray-500 dark:text-gray-400">دائن (أساسي): </span>
+                              <span className="font-mono" dir="ltr">{h.baseCredit.toFixed(2)} {baseCurrencyCode}</span>
+                            </div>
+                            <div className="px-2 py-1 rounded bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
+                              <span className="text-gray-500 dark:text-gray-400">منشئ السند: </span>
+                              <span className="font-mono" dir="ltr">{h.createdBy ? h.createdBy.slice(0, 8) : '—'}</span>
+                            </div>
+                          </div>
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-xs">
+                              <thead>
+                                <tr className="border-b dark:border-gray-700 text-center">
+                                  <th className="py-1 px-1">الحساب</th>
+                                  <th className="py-1 px-1">الطرف</th>
+                                  <th className="py-1 px-1">مدين</th>
+                                  <th className="py-1 px-1">دائن</th>
+                                  <th className="py-1 px-1">عملة</th>
+                                  <th className="py-1 px-1">أجنبي</th>
+                                  <th className="py-1 px-1">البيان</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {h.lines.map((ln, idx) => (
+                                  <tr key={`${h.id}-${idx}`} className="border-b dark:border-gray-700/40 text-center">
+                                    <td className="py-1 px-1">{ln.accountCode || '—'} {ln.accountName ? `— ${ln.accountName}` : ''}</td>
+                                    <td className="py-1 px-1">{ln.partyName || '—'}</td>
+                                    <td className="py-1 px-1 font-mono" dir="ltr">{ln.debit > 0 ? ln.debit.toFixed(2) : '—'}</td>
+                                    <td className="py-1 px-1 font-mono" dir="ltr">{ln.credit > 0 ? ln.credit.toFixed(2) : '—'}</td>
+                                    <td className="py-1 px-1 font-mono" dir="ltr">{ln.currency || baseCurrencyCode}</td>
+                                    <td className="py-1 px-1 font-mono" dir="ltr">{ln.foreignAmount > 0 ? ln.foreignAmount.toFixed(2) : '—'}</td>
+                                    <td className="py-1 px-1">{ln.memo || '—'}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : null}
+                  </Fragment>
                 ))}
               </tbody>
             </table>
           </div>
         )}
+        <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+          <span>المعروض الآن: {history.length} سند</span>
+          <button
+            type="button"
+            onClick={() => setHistoryPage((p) => p + 1)}
+            disabled={historyLoading || history.length < historyPage * 100}
+            className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm disabled:opacity-60"
+          >
+            تحميل المزيد
+          </button>
+        </div>
       </div>
     </div>
   );
