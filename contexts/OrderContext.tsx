@@ -2517,6 +2517,54 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       }
     }
     const clientTraceId = String((input as any).clientTraceId || '').trim();
+    if (clientTraceId) {
+      const supabase = getSupabaseClient();
+      if (supabase) {
+        const pickExisting = (rows: any[] | null | undefined) => {
+          const row = Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
+          if (!row) return null;
+          const base = (row?.data || {}) as Order;
+          const existing: Order = {
+            ...base,
+            id: String(row.id),
+            status: (row.status as OrderStatus) || ((base as any).status as OrderStatus) || 'pending',
+            createdAt: typeof row.created_at === 'string' ? row.created_at : (base.createdAt || new Date().toISOString()),
+            deliveryZoneId: typeof row.delivery_zone_id === 'string' ? row.delivery_zone_id : base.deliveryZoneId,
+            ...(row.warehouse_id ? { warehouseId: row.warehouse_id } : {}),
+            ...(row.currency ? { currency: String(row.currency).toUpperCase() } : {}),
+          };
+          if (row.fx_rate != null && Number.isFinite(Number(row.fx_rate))) (existing as any).fxRate = Number(row.fx_rate);
+          if (row.base_total != null && Number.isFinite(Number(row.base_total))) (existing as any).baseTotal = Number(row.base_total);
+          return existing;
+        };
+        let existing: Order | null = null;
+        try {
+          const { data } = await supabase
+            .from('orders')
+            .select('id,status,created_at,delivery_zone_id,warehouse_id,currency,fx_rate,base_total,data')
+            .contains('data', { clientTraceId })
+            .order('created_at', { ascending: false })
+            .limit(1);
+          existing = pickExisting(data as any[]);
+        } catch {}
+        if (!existing) {
+          try {
+            const { data } = await supabase
+              .from('orders')
+              .select('id,status,created_at,delivery_zone_id,warehouse_id,currency,fx_rate,base_total,data')
+              .contains('data', { traceId: clientTraceId })
+              .order('created_at', { ascending: false })
+              .limit(1);
+            existing = pickExisting(data as any[]);
+          } catch {}
+        }
+        if (existing) {
+          const display = await resolveOrderAddress(existing);
+          setOrders(prev => [display, ...prev.filter(o => o.id !== display.id)]);
+          return display;
+        }
+      }
+    }
     const newOrder: Order = {
       id: isResumingExistingOrder ? existingOrderId : crypto.randomUUID(),
       userId: effectiveCustomerAuthId,

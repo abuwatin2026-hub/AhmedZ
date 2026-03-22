@@ -59,6 +59,8 @@ const POSScreen: React.FC = () => {
   const [promotionPickerOpen, setPromotionPickerOpen] = useState(false);
   const [promotionBundleQty, setPromotionBundleQty] = useState<number>(1);
   const [promotionBusy, setPromotionBusy] = useState(false);
+  const [isFinalizingSale, setIsFinalizingSale] = useState(false);
+  const finalizeInFlightRef = useRef(false);
   const [pendingFilter, setPendingFilter] = useState('');
   const searchInputRef = useRef<HTMLInputElement>(null);
   const pendingFilterRef = useRef<HTMLInputElement>(null);
@@ -1379,6 +1381,7 @@ const POSScreen: React.FC = () => {
   };
 
   const handleFinalize = (payload: { paymentMethod: string; paymentBreakdown: Array<{ method: string; amount: number; referenceNumber?: string; senderName?: string; senderPhone?: string; declaredAmount?: number; amountConfirmed?: boolean; cashReceived?: number; }> }) => {
+    if (finalizeInFlightRef.current) return;
     if (items.length === 0) return;
     const breakdown = (payload.paymentBreakdown || []).filter(p => (Number(p.amount) || 0) > 0);
     const hasCash = breakdown.some(p => p.method === 'cash');
@@ -1421,7 +1424,16 @@ const POSScreen: React.FC = () => {
         } : {})
       };
     });
+    const beginFinalize = () => {
+      finalizeInFlightRef.current = true;
+      setIsFinalizingSale(true);
+    };
+    const endFinalize = () => {
+      finalizeInFlightRef.current = false;
+      setIsFinalizingSale(false);
+    };
     if (pendingOrderId) {
+      beginFinalize();
       const attempt = (reason?: string) => {
         return resumeInStorePendingOrder(pendingOrderId, {
           paymentMethod: payload.paymentMethod,
@@ -1465,13 +1477,14 @@ const POSScreen: React.FC = () => {
           showNotification(localizeSupabaseError(err) || (err instanceof Error ? err.message : 'فشل إتمام الطلب المستأنف'), 'error');
         });
       };
-      void attempt();
+      void attempt().finally(endFinalize);
     } else {
       if (discountAmount > 0) {
         if (hasPromotionLines) {
           showNotification('لا يمكن طلب موافقة خصم لفاتورة تحتوي عروض.', 'error');
           return;
         }
+        beginFinalize();
         createInStorePendingOrder({
           lines,
           currency: transactionCurrency,
@@ -1517,9 +1530,11 @@ const POSScreen: React.FC = () => {
         }).catch(err => {
           const msg = err instanceof Error ? err.message : 'فشل طلب موافقة الخصم';
           showNotification(msg, 'error');
-        });
+        }).finally(endFinalize);
         return;
       }
+      beginFinalize();
+      const saleClientTraceId = crypto.randomUUID();
       const attempt = (reason?: string) => {
         return createInStoreSale({
           lines,
@@ -1534,6 +1549,7 @@ const POSScreen: React.FC = () => {
           isCreditSale: payload.paymentMethod === 'credit',
           invoiceTerms: payload.paymentMethod === 'credit' ? 'credit' : 'cash',
           belowCostOverrideReason: reason,
+          clientTraceId: saleClientTraceId,
           paymentMethod: payload.paymentMethod,
           paymentAmountConfirmed: true,
           paymentBreakdown: breakdown.map(p => ({
@@ -1633,7 +1649,7 @@ const POSScreen: React.FC = () => {
           showNotification(localizeSupabaseError(err) || (err instanceof Error ? err.message : 'فشل إتمام الطلب'), 'error');
         });
       };
-      void attempt();
+      void attempt().finally(endFinalize);
     }
   };
 
@@ -1792,6 +1808,7 @@ const POSScreen: React.FC = () => {
                   const changed = items.length > 0 && initWid && wid && wid !== initWid;
                   return items.length > 0 && pricingReady && !pricingBusy && !changed && !fxRateProblem;
                 })()}
+                isSubmitting={isFinalizingSale}
                 blockReason={pricingBlockReason}
                 onHold={handleHold}
                 onFinalize={handleFinalize}

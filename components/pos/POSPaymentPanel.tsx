@@ -21,6 +21,7 @@ interface Props {
   total: number;
   currencyCode?: string;
   canFinalize: boolean;
+  isSubmitting?: boolean;
   blockReason?: string;
   onHold: () => void;
   onFinalize: (payload: { paymentMethod: string; paymentBreakdown: PaymentLine[] }) => void;
@@ -37,7 +38,7 @@ type KeypadTarget =
   | { kind: 'cash_multi'; index: number }
   | { kind: 'declared_multi'; index: number };
 
-const POSPaymentPanel: React.FC<Props> = ({ total, currencyCode, canFinalize, blockReason, onHold, onFinalize, pendingOrderId, onCancelHold, onQuotation, touchMode }) => {
+const POSPaymentPanel: React.FC<Props> = ({ total, currencyCode, canFinalize, isSubmitting = false, blockReason, onHold, onFinalize, pendingOrderId, onCancelHold, onQuotation, touchMode }) => {
   const { settings } = useSettings();
   const code = String(currencyCode || '').toUpperCase() || '—';
   const currencyDecimals = useMemo(() => getCurrencyDecimalsByCode(code), [code]);
@@ -205,7 +206,7 @@ const POSPaymentPanel: React.FC<Props> = ({ total, currencyCode, canFinalize, bl
 
   const summaryTone = remaining === 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400';
 
-  const canSubmit = validation.ok;
+  const canSubmit = validation.ok && !isSubmitting;
   const finalize = () => {
     const payloadBreakdown = breakdown.map(l => ({
       method: l.method,
@@ -243,7 +244,7 @@ const POSPaymentPanel: React.FC<Props> = ({ total, currencyCode, canFinalize, bl
       }
 
       if (e.key === 'F9' || (e.ctrlKey && e.key === 'Enter')) {
-        if (!canSubmit) return;
+        if (!canSubmit || isSubmitting) return;
         e.preventDefault();
         finalize();
       }
@@ -253,7 +254,7 @@ const POSPaymentPanel: React.FC<Props> = ({ total, currencyCode, canFinalize, bl
     return () => {
       window.removeEventListener('keydown', handler);
     };
-  }, [canSubmit, finalize, onCancelHold, onHold, pendingOrderId]);
+  }, [canSubmit, finalize, isSubmitting, onCancelHold, onHold, pendingOrderId]);
 
   const openKeypad = (target: KeypadTarget, title: string, initial: number) => {
     setKeypadTarget(target);
@@ -815,7 +816,7 @@ const POSPaymentPanel: React.FC<Props> = ({ total, currencyCode, canFinalize, bl
             disabled={!canSubmit}
             className={`flex-1 rounded-lg bg-primary-500 text-white disabled:opacity-50 font-semibold ${touchMode ? 'px-5 py-4 text-lg' : 'px-4 py-3'}`}
           >
-            إتمام
+            {isSubmitting ? 'جارٍ الإتمام...' : 'إتمام'}
           </button>
         </div>
         {onQuotation && (
