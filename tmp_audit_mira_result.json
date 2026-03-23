@@ -1,0 +1,196 @@
+{
+  "item": {
+    "id": "cc95d851-8e98-4925-859a-50007e005143",
+    "name": {
+      "ar": "عصير ميرا صغير 48حبة*125ملي",
+      "en": ""
+    },
+    "base_uom_id": "fff55b67-63e1-487a-be2a-2054c7ee7825",
+    "base_uom_name": "unit_1770927279786 (unit_1770927279786)",
+    "purchase_uom_id": null,
+    "purchase_uom_name": "غير محدد",
+    "sales_uom_id": null,
+    "sales_uom_name": "غير محدد"
+  },
+  "purchased": {
+    "by_unit": [
+      {
+        "uom_id": "fff55b67-63e1-487a-be2a-2054c7ee7825",
+        "uom_name": "unit_1770927279786 (unit_1770927279786)",
+        "qty": 550,
+        "qty_base": 550
+      }
+    ],
+    "total_base": 550
+  },
+  "entered_stock_from_receipts": {
+    "by_unit": [
+      {
+        "uom_id": "fff55b67-63e1-487a-be2a-2054c7ee7825",
+        "uom_name": "unit_1770927279786 (unit_1770927279786)",
+        "qty": 550,
+        "qty_base": 550
+      }
+    ],
+    "total_base": 550
+  },
+  "sold": {
+    "total_base": 1,
+    "details": {
+      "qty_base": 1,
+      "qty": 1,
+      "count": 1,
+      "by_uom": {
+        "fff55b67-63e1-487a-be2a-2054c7ee7825": 1
+      }
+    }
+  },
+  "sold_returns": {
+    "total_base": 0,
+    "return_in": null,
+    "sale_return_in": null
+  },
+  "transfers": {
+    "transfer_out_base": 1428,
+    "transfer_in_base": 1428,
+    "refs": [
+      {
+        "ref": "warehouse_transfers:acfa0c14-694e-4d47-8c35-7987933c9846",
+        "in_base": 399,
+        "out_base": 399,
+        "diff": 0,
+        "balanced": true,
+        "count": 2
+      },
+      {
+        "ref": "warehouse_transfers:634eb8a5-8e04-4963-9629-bd0d9bea2796",
+        "in_base": 524,
+        "out_base": 524,
+        "diff": 0,
+        "balanced": true,
+        "count": 2
+      },
+      {
+        "ref": "warehouse_transfers:7283583b-ad0d-4385-afaf-f8eda5675916",
+        "in_base": 399,
+        "out_base": 399,
+        "diff": 0,
+        "balanced": true,
+        "count": 2
+      },
+      {
+        "ref": "warehouse_transfers:ae246367-99d1-4974-902c-1b75a0817893",
+        "in_base": 100,
+        "out_base": 100,
+        "diff": 0,
+        "balanced": true,
+        "count": 2
+      },
+      {
+        "ref": "warehouse_transfers:1598227d-6b8e-45c7-a6c2-8f9f7a39c075",
+        "in_base": 6,
+        "out_base": 6,
+        "diff": 0,
+        "balanced": true,
+        "count": 2
+      }
+    ],
+    "all_balanced": true
+  },
+  "movement_by_type": {
+    "purchase_in": {
+      "qty_base": 550,
+      "qty": 550,
+      "count": 1,
+      "by_uom": {
+        "unit_1770927279786 (unit_1770927279786)": 550
+      }
+    },
+    "sale_out": {
+      "qty_base": 1,
+      "qty": 1,
+      "count": 1,
+      "by_uom": {
+        "unit_1770927279786 (unit_1770927279786)": 1
+      }
+    },
+    "transfer_out": {
+      "qty_base": 1428,
+      "qty": 1428,
+      "count": 5,
+      "by_uom": {
+        "unit_1770927279786 (unit_1770927279786)": 1428
+      }
+    },
+    "transfer_in": {
+      "qty_base": 1428,
+      "qty": 1428,
+      "count": 5,
+      "by_uom": {
+        "unit_1770927279786 (unit_1770927279786)": 1428
+      }
+    }
+  },
+  "stock": {
+    "rows": [
+      {
+        "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
+        "warehouse_name": "المشتريات",
+        "available_quantity": 418,
+        "unit_marker": "unit_1770927279786"
+      },
+      {
+        "warehouse_id": "69c3aa8a-e339-4a3d-9d06-31ac6a12f589",
+        "warehouse_name": "مخزن الشركة",
+        "available_quantity": 399,
+        "unit_marker": "unit_1770927279786"
+      },
+      {
+        "warehouse_id": "1637d5cc-d8bd-43bb-9c8c-61219b92548f",
+        "warehouse_name": "الرئيسي",
+        "available_quantity": 100,
+        "unit_marker": "unit_1770927279786"
+      },
+      {
+        "warehouse_id": "f461cf1c-533f-422f-b006-de0f2da4d9ba",
+        "warehouse_name": "المكتب",
+        "available_quantity": 6,
+        "unit_marker": "unit_1770927279786"
+      }
+    ],
+    "total_available": 923,
+    "expected_from_movements": 549,
+    "diff_stock_minus_expected": 374,
+    "consistent": false,
+    "by_warehouse_diff": [
+      {
+        "warehouse_id": "7628598d-3c02-4a55-b7db-76df1c421175",
+        "warehouse_name": "المشتريات",
+        "movement_net_base": -879,
+        "stock_available": 418,
+        "diff_stock_minus_movement": 1297
+      },
+      {
+        "warehouse_id": "69c3aa8a-e339-4a3d-9d06-31ac6a12f589",
+        "warehouse_name": "مخزن الشركة",
+        "movement_net_base": 1322,
+        "stock_available": 399,
+        "diff_stock_minus_movement": -923
+      },
+      {
+        "warehouse_id": "1637d5cc-d8bd-43bb-9c8c-61219b92548f",
+        "warehouse_name": "الرئيسي",
+        "movement_net_base": 100,
+        "stock_available": 100,
+        "diff_stock_minus_movement": 0
+      },
+      {
+        "warehouse_id": "f461cf1c-533f-422f-b006-de0f2da4d9ba",
+        "warehouse_name": "المكتب",
+        "movement_net_base": 6,
+        "stock_available": 6,
+        "diff_stock_minus_movement": 0
+      }
+    ]
+  }
+}

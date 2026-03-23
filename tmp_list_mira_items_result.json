@@ -1,0 +1,23 @@
+[
+  {
+    "id": "cc95d851-8e98-4925-859a-50007e005143",
+    "name_text": "{\"ar\": \"عصير ميرا صغير 48حبة*125ملي\", \"en\": \"\"}",
+    "data_text": "{\"id\": \"cc95d851-8e98-4925-859a-50007e005143\", \"name\": {\"ar\": \"عصير ميرا صغير 48حبة*125ملي\", \"en\": \"\"}, \"group\": \"الطازج\", \"price\": 15.74, \"addons\": [], \"status\": \"active\", \"barcode\": \"\", \"category\": \"food\", \"imageUrl\": \"data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22800%22 height=%22800%22><defs><linearGradient id=%22g%22 x1=%220%22 y1=%220%22 x2=%221%22 y2=%221%22><stop offset=%220%22 stop-color=%22%237FA99B%22/><stop offset=%221%22 stop-color=%22%232F5D62%22/></linearGradient></defs><rect width=%22100%%22 height=%22100%%22 fill=%22url(%23g)%22/></svg>\", \"packSize\": 0, \"sellable\": true, \"unitType\": \"unit_1770927279786\", \"uomUnits\": [], \"costPrice\": 12.14, \"minWeight\": 1, \"cartonSize\": 0, \"isFeatured\": false, \"buyingPrice\": 12.14, \"description\": {\"ar\": \"عصير ميرا صغير 48حبة*125ملي\", \"en\": \"\"}, \"supplyTaxCost\": 0, \"transportCost\": 0, \"availableStock\": 1099}",
+    "created_at": "2026-02-28T01:21:34.187Z",
+    "updated_at": "2026-03-11T22:30:47.954Z"
+  },
+  {
+    "id": "f07161c3-de5d-456f-9168-a40657dd2712",
+    "name_text": "{\"ar\": \"عصير ميرا وسط 30حبة*250ملي\", \"en\": \"\"}",
+    "data_text": "{\"id\": \"f07161c3-de5d-456f-9168-a40657dd2712\", \"name\": {\"ar\": \"عصير ميرا وسط 30حبة*250ملي\", \"en\": \"\"}, \"group\": \"\", \"price\": 17, \"addons\": [], \"status\": \"active\", \"barcode\": \"\", \"category\": \"food\", \"imageUrl\": \"data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22800%22 height=%22800%22><defs><linearGradient id=%22g%22 x1=%220%22 y1=%220%22 x2=%221%22 y2=%221%22><stop offset=%220%22 stop-color=%22%237FA99B%22/><stop offset=%221%22 stop-color=%22%232F5D62%22/></linearGradient></defs><rect width=%22100%%22 height=%22100%%22 fill=%22url(%23g)%22/></svg>\", \"packSize\": 0, \"sellable\": true, \"unitType\": \"unit_1770927279786\", \"uomUnits\": [], \"costPrice\": 0, \"minWeight\": 1, \"cartonSize\": 0, \"isFeatured\": false, \"buyingPrice\": 0, \"description\": {\"ar\": \"عصير ميرا وسط 30حبة*250ملي\", \"en\": \"\"}, \"supplyTaxCost\": 0, \"transportCost\": 0, \"availableStock\": 1120, \"shelf_life_days\": 0}",
+    "created_at": "2026-03-11T18:25:42.077Z",
+    "updated_at": "2026-03-11T20:07:41.085Z"
+  },
+  {
+    "id": "499fb7ad-2155-499f-b5c7-c1df4a41d65c",
+    "name_text": "{\"ar\": \"عصير ميرا عائلي 12حبة*1لتر\", \"en\": \"\"}",
+    "data_text": "{\"id\": \"499fb7ad-2155-499f-b5c7-c1df4a41d65c\", \"name\": {\"ar\": \"عصير ميرا عائلي 12حبة*1لتر\", \"en\": \"\"}, \"group\": \"الطازج\", \"price\": 21.83, \"addons\": [], \"status\": \"active\", \"barcode\": \"\", \"category\": \"food\", \"imageUrl\": \"data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22800%22 height=%22800%22><defs><linearGradient id=%22g%22 x1=%220%22 y1=%220%22 x2=%221%22 y2=%221%22><stop offset=%220%22 stop-color=%22%237FA99B%22/><stop offset=%221%22 stop-color=%22%232F5D62%22/></linearGradient></defs><rect width=%22100%%22 height=%22100%%22 fill=%22url(%23g)%22/></svg>\", \"packSize\": 0, \"sellable\": true, \"unitType\": \"unit_1770927279786\", \"uomUnits\": [], \"costPrice\": 19.29, \"minWeight\": 1, \"cartonSize\": 0, \"isFeatured\": false, \"buyingPrice\": 19.29, \"description\": {\"ar\": \"عصير ميرا عائلي \", \"en\": \"\"}, \"supplyTaxCost\": 0, \"transportCost\": 0, \"availableStock\": 500}",
+    "created_at": "2026-02-28T01:22:19.876Z",
+    "updated_at": "2026-03-08T03:06:15.001Z"
+  }
+]
