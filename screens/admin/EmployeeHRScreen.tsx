@@ -106,6 +106,7 @@ export default function EmployeeHRScreen() {
   const canManageHr = hasPermission('hr.contracts.manage') || hasPermission('expenses.manage') || hasPermission('accounting.manage');
   const canApproveHr = hasPermission('hr.contracts.approve') || hasPermission('accounting.approve');
   const canViewHr = hasPermission('hr.contracts.view') || canManageHr || canApproveHr;
+  const [saving, setSaving] = useState(false);
 
   const brand = useMemo(() => ({
     name: (settings.cafeteriaName?.ar || settings.cafeteriaName?.en || '').trim(),
@@ -493,6 +494,7 @@ export default function EmployeeHRScreen() {
     setCModalOpen(true);
   };
   const saveContract = async () => {
+    if (saving) return;
     if (!canManageHr) { showNotification('ليس لديك صلاحية إدارة العقود.', 'error'); return; }
     const s = getSupabaseClient(); if (!s) return;
     const p: any = { ...cForm }; delete p.id; delete p.created_at;
@@ -521,11 +523,13 @@ export default function EmployeeHRScreen() {
     p.work_location = String(p.work_location || '').trim() || null;
     p.special_terms = String(p.special_terms || '').trim() || null;
     p.notes = String(p.notes || '').trim() || null;
+    setSaving(true);
     try {
       if (editingContract) { const { error } = await s.from('employee_contracts').update(p).eq('id', editingContract.id); if (error) throw error; }
       else { const { error } = await s.from('employee_contracts').insert(p); if (error) throw error; }
       setCModalOpen(false); await loadAll(); showNotification('تم الحفظ', 'success');
     } catch (e: any) { showNotification(e?.message || 'خطأ', 'error'); }
+    finally { setSaving(false); }
   };
   const deleteContract = async (id: string) => {
     if (!canManageHr) { showNotification('ليس لديك صلاحية حذف العقود.', 'error'); return; }
@@ -541,6 +545,7 @@ export default function EmployeeHRScreen() {
     setGModalOpen(true);
   };
   const saveGuarantee = async () => {
+    if (saving) return;
     if (!canManageHr) { showNotification('ليس لديك صلاحية إدارة الضمانات.', 'error'); return; }
     const s = getSupabaseClient(); if (!s) return;
     const p: any = { ...gForm }; delete p.id; delete p.created_at;
@@ -558,11 +563,13 @@ export default function EmployeeHRScreen() {
     p.guarantor_relationship = String(p.guarantor_relationship || '').trim() || null;
     p.special_terms = String(p.special_terms || '').trim() || null;
     p.notes = String(p.notes || '').trim() || null;
+    setSaving(true);
     try {
       if (editingGuarantee) { const { error } = await s.from('employee_guarantees').update(p).eq('id', editingGuarantee.id); if (error) throw error; }
       else { const { error } = await s.from('employee_guarantees').insert(p); if (error) throw error; }
       setGModalOpen(false); await loadAll(); showNotification('تم الحفظ', 'success');
     } catch (e: any) { showNotification(e?.message || 'خطأ', 'error'); }
+    finally { setSaving(false); }
   };
   const deleteGuarantee = async (id: string) => {
     if (!canManageHr) { showNotification('ليس لديك صلاحية حذف الضمانات.', 'error'); return; }
@@ -831,7 +838,7 @@ export default function EmployeeHRScreen() {
 
               <div className="flex justify-end gap-3 pt-2 border-t dark:border-gray-700">
                 <button type="button" onClick={() => setCModalOpen(false)} className={`${BTN} border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300`}>إلغاء</button>
-                <button type="button" disabled={!canManageHr} onClick={() => void saveContract()} className={`${BTN} bg-emerald-600 text-white disabled:opacity-60`}>حفظ العقد</button>
+                <button type="button" disabled={!canManageHr || saving} onClick={() => void saveContract()} className={`${BTN} bg-emerald-600 text-white disabled:opacity-60 disabled:cursor-not-allowed`}>{saving ? 'جاري الحفظ...' : 'حفظ العقد'}</button>
               </div>
             </div>
           </div>
@@ -885,7 +892,7 @@ export default function EmployeeHRScreen() {
 
               <div className="flex justify-end gap-3 pt-2 border-t dark:border-gray-700">
                 <button type="button" onClick={() => setGModalOpen(false)} className={`${BTN} border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300`}>إلغاء</button>
-                <button type="button" disabled={!canManageHr} onClick={() => void saveGuarantee()} className={`${BTN} bg-emerald-600 text-white disabled:opacity-60`}>حفظ الضمان</button>
+                <button type="button" disabled={!canManageHr || saving} onClick={() => void saveGuarantee()} className={`${BTN} bg-emerald-600 text-white disabled:opacity-60 disabled:cursor-not-allowed`}>{saving ? 'جاري الحفظ...' : 'حفظ الضمان'}</button>
               </div>
             </div>
           </div>

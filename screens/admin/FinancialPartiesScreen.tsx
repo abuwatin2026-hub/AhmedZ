@@ -46,6 +46,7 @@ const FinancialPartiesScreen: React.FC = () => {
   const [backfillBusyId, setBackfillBusyId] = useState<string>('');
   const [creditLimitsRows, setCreditLimitsRows] = useState<CreditLimitRow[]>([]);
   const [creditLimitsLoading, setCreditLimitsLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     void getBaseCurrencyCode().then((c) => {
@@ -164,6 +165,7 @@ const FinancialPartiesScreen: React.FC = () => {
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (saving) return;
     if (!canManage) {
       showNotification('ليس لديك صلاحية لإضافة/تعديل الأطراف.', 'error');
       return;
@@ -173,6 +175,7 @@ const FinancialPartiesScreen: React.FC = () => {
       showNotification(v, 'error');
       return;
     }
+    setSaving(true);
     const supabase = getSupabaseClient();
     if (!supabase) return;
 
@@ -226,6 +229,7 @@ const FinancialPartiesScreen: React.FC = () => {
     setCreditLimitsRows([]);
     await load();
     showNotification('تم حفظ الطرف المالي.', 'success');
+    setSaving(false);
   };
 
   const handleBackfillParty = async (partyId: string) => {
@@ -568,8 +572,8 @@ const FinancialPartiesScreen: React.FC = () => {
                 <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200">
                   إلغاء
                 </button>
-                <button type="submit" className="px-4 py-2 rounded-lg bg-primary-600 text-white hover:bg-primary-700">
-                  حفظ
+                <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-60 disabled:cursor-not-allowed">
+                  {saving ? 'جاري الحفظ...' : 'حفظ'}
                 </button>
               </div>
             </form>

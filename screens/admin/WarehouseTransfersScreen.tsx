@@ -40,6 +40,7 @@ const WarehouseTransfersScreen: React.FC = () => {
     const [costViewCurrency, setCostViewCurrency] = useState(baseCurrencyCode);
     const [costViewRate, setCostViewRate] = useState(1);
     const [verifyingTransferId, setVerifyingTransferId] = useState<string | null>(null);
+    const [completingTransferId, setCompletingTransferId] = useState<string | null>(null);
     const [verificationByTransferId, setVerificationByTransferId] = useState<Record<string, {
         checkedAt: string;
         allOk: boolean;
@@ -458,15 +459,19 @@ const WarehouseTransfersScreen: React.FC = () => {
     };
 
     const handleComplete = async (transfer: WarehouseTransfer) => {
+        if (completingTransferId) return; // منع الضغط المزدوج
         if (!confirm(`هل أنت متأكد من إتمام عملية النقل "${transfer.transferNumber}"؟`)) {
             return;
         }
 
+        setCompletingTransferId(transfer.id);
         try {
             await completeTransfer(transfer.id);
             showNotification('تم إتمام عملية النقل بنجاح', 'success');
         } catch (error: any) {
             showNotification(error.message || 'حدث خطأ', 'error');
+        } finally {
+            setCompletingTransferId(null);
         }
     };
 
@@ -805,10 +810,11 @@ const WarehouseTransfersScreen: React.FC = () => {
                                 <div className="flex gap-2 pt-4 border-t border-gray-200 dark:border-gray-700">
                                     <button
                                         onClick={() => handleComplete(transfer)}
-                                        className="flex-1 px-4 py-2 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/30 flex items-center justify-center gap-2"
+                                        disabled={completingTransferId === transfer.id}
+                                        className="flex-1 px-4 py-2 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/30 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
                                         <Icons.Check className="w-4 h-4" />
-                                        إتمام النقل
+                                        {completingTransferId === transfer.id ? 'جاري الإتمام...' : 'إتمام النقل'}
                                     </button>
                                     <button
                                         onClick={() => handleCancel(transfer)}
