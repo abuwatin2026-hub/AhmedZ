@@ -510,6 +510,8 @@ export interface Order {
   netDays?: number;
   dueDate?: string;
   _createdBy?: string;
+  inStoreFailureReason?: string;
+  inStoreFailureAt?: string;
 }
 
 export interface User {

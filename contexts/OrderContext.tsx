@@ -3110,14 +3110,12 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             if (rpcErr) {
               paymentRecordOk = false;
               const transientError = (typeof navigator !== 'undefined' && navigator.onLine === false) || isAbortLikeError(rpcErr);
-              if (transientError) {
-                queuePaymentRepair(p, i);
-                continue;
-              }
+              // Always queue failed payments for background retry — never silently drop them
+              queuePaymentRepair(p, i);
               if (import.meta.env.DEV) {
-                logger.warn('Failed to record payment for in-store sale:', rpcErr);
+                logger.warn(`Failed to record payment for in-store sale (${transientError ? 'transient' : 'non-transient, queued for retry'}):`, rpcErr);
               }
-              break;
+              continue; // ← was `break`: continue to process remaining payment lines
             }
           }
         }
