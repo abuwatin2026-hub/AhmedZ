@@ -2823,6 +2823,57 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           console.log('[createInStoreSale] Delegating invoice generation to backend.');
         }
 
+        // ── Reserve stock BEFORE attempting delivery confirmation ──
+        // The confirm_order_delivery_with_credit RPC requires stock movements to
+        // already exist for this order/warehouse. Without this step, it rejects
+        // with "cannot mark delivered without stock movements".
+        {
+          const reserveMerged = new Map<string, { quantity: number; itemId: string; batchId?: string }>();
+          for (const item of (newOrder.items || []).filter((it: any) => !(it?.lineType === 'promotion' || it?.promotionId))) {
+            const itemId = String((item as any)?.itemId || (item as any)?.id || '');
+            const quantity = Number(getRequestedBaseQuantity(item)) || 0;
+            if (!itemId || !(quantity > 0)) continue;
+            const batchId = String((item as any)?._fefoBatchId || (item as any)?.forcedBatchId || '').trim();
+            const key = `${itemId}:${batchId}`;
+            const prev = reserveMerged.get(key);
+            reserveMerged.set(key, { itemId, batchId: batchId || undefined, quantity: (prev?.quantity || 0) + quantity });
+          }
+
+          const promoLinesForReserve = Array.isArray((newOrder as any).promotionLines) ? (newOrder as any).promotionLines : [];
+          for (const line of promoLinesForReserve) {
+            const promItemsArr = Array.isArray((line as any)?.items) ? (line as any).items : [];
+            for (const pi of promItemsArr) {
+              const itemId = String((pi as any)?.itemId || (pi as any)?.id || '');
+              const quantity = Number((pi as any)?.quantity) || 0;
+              if (!itemId || !(quantity > 0)) continue;
+              const key = `${itemId}:`;
+              const prev = reserveMerged.get(key);
+              reserveMerged.set(key, { itemId, quantity: (prev?.quantity || 0) + quantity });
+            }
+          }
+
+          const reserveItemsList = Array.from(reserveMerged.values())
+            .map(({ itemId, quantity, batchId }) => ({ itemId, quantity, batchId }))
+            .filter((x) => x.itemId && Number(x.quantity) > 0);
+
+          if (reserveItemsList.length > 0) {
+            const reserveErr = await rpcReserveStockForOrder(sb2, {
+              items: reserveItemsList,
+              orderId: newOrder.id,
+              warehouseId: effectiveOrderWarehouseId,
+            });
+            if (reserveErr) {
+              const offlineNow = typeof navigator !== 'undefined' && navigator.onLine === false;
+              if (offlineNow || isAbortLikeError(reserveErr)) {
+                await rollbackCreatedOrder('stock_reserve_offline');
+                return await queueOfflineSale();
+              }
+              await rollbackCreatedOrder(`stock_reserve_failed | ${localizeSupabaseError(reserveErr)}`);
+              throw new Error(localizeSupabaseError(reserveErr) || 'فشل حجز المخزون. تحقق من توفر الأصناف والكميات.');
+            }
+          }
+        }
+
         const { error: rpcError } = await rpcConfirmOrderDeliveryWithCredit(sb2, {
           orderId: newOrder.id,
           items: sanitizedItems,
