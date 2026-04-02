@@ -1,0 +1,23 @@
+{
+  ".gitignore": [
+    {
+      "relative_path": ".gitignore",
+      "sha256_current": "104de3a99807f16f71f8ab7e3524641e78434d0bc3d8a7fb77590d879afc605b",
+      "sha256_erpnext": "c3d29265dd217d47a4ddea05400ce25b0de6cb32f36c327a4a8c55f457e8b0cf"
+    }
+  ],
+  "README.md": [
+    {
+      "relative_path": "README.md",
+      "sha256_current": "2045ea09c83de49ba2ae3e7cf39e69ef259239c42a9f1cc791f66b24d4f61a92",
+      "sha256_erpnext": "709f84a1d8ef170c362070a80a717cb4a779b66b7202738820d9f836deb42c9a"
+    }
+  ],
+  "package.json": [
+    {
+      "relative_path": "package.json",
+      "sha256_current": "18e71364ebf7e63394f1cffb5b2a7e9574f024edac7f90c8c9bebd503a5684dc",
+      "sha256_erpnext": "3204ec7a1ee5a635fbbd197c2da3e34c428b104e49e5b3c36b65499eb4d2c1ef"
+    }
+  ]
+}

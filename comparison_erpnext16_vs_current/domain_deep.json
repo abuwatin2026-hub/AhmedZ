@@ -1,0 +1,422 @@
+{
+  "current_total_files": 2293,
+  "erpnext_total_files": 4794,
+  "current_domain_signals": {
+    "purchasing": {
+      "count": 151,
+      "samples": [
+        "contexts/PurchasesContext.tsx",
+        "contexts/SupplierEnhancementContext.tsx",
+        "screens/admin/ImportShipmentDetailsScreen.tsx",
+        "screens/admin/ImportShipmentsScreen.tsx",
+        "screens/admin/LettersOfCreditScreen.tsx",
+        "screens/admin/PurchaseOrderScreen.tsx",
+        "screens/admin/SupplierContractsScreen.tsx",
+        "screens/admin/SupplierCreditNotesScreen.tsx",
+        "screens/admin/SupplierEvaluationsScreen.tsx",
+        "screens/admin/SuppliersScreen.tsx",
+        "screens/admin/reports/SupplierStockReportScreen.tsx",
+        "scripts/debug_supplier_report.sql"
+      ]
+    },
+    "inventory": {
+      "count": 253,
+      "samples": [
+        "contexts/StockContext.tsx",
+        "contexts/WarehouseContext.tsx",
+        "screens/admin/ExpiryBatchesScreen.tsx",
+        "screens/admin/InventoryWithdrawalScreen.tsx",
+        "screens/admin/ManageStockScreen.tsx",
+        "screens/admin/StocktakingScreen.tsx",
+        "screens/admin/WarehousesScreen.tsx",
+        "screens/admin/WarehouseTransfersScreen.tsx",
+        "screens/admin/WastageExpiryReportsScreen.tsx",
+        "screens/admin/WastageScreen.tsx",
+        "screens/admin/reports/InventoryStockReportScreen.tsx",
+        "screens/admin/reports/SupplierStockReportScreen.tsx"
+      ]
+    },
+    "sales_pos": {
+      "count": 387,
+      "samples": [
+        "contexts/CartContext.tsx",
+        "contexts/CouponContext.tsx",
+        "contexts/OrderContext.tsx",
+        "contexts/PromotionContext.tsx",
+        "contexts/SalesReturnContext.tsx",
+        "screens/CartScreen.tsx",
+        "screens/CheckoutScreen.tsx",
+        "screens/InvoiceScreen.tsx",
+        "screens/MyOrdersScreen.tsx",
+        "screens/OrderConfirmationScreen.tsx",
+        "screens/POSScreen.tsx",
+        "screens/PromotionDetailsScreen.tsx"
+      ]
+    },
+    "accounting_finance": {
+      "count": 318,
+      "samples": [
+        "screens/admin/BankReconciliationScreen.tsx",
+        "screens/admin/ChartOfAccountsScreen.tsx",
+        "screens/admin/CODSettlementsScreen.tsx",
+        "screens/admin/FxRatesScreen.tsx",
+        "screens/admin/JournalsScreen.tsx",
+        "screens/admin/PartyLedgerStatementScreen.tsx",
+        "screens/admin/SettlementWorkspaceScreen.tsx",
+        "screens/admin/ShiftReconciliationScreen.tsx",
+        "screens/admin/reports/FinancialReportsByJournal.tsx",
+        "scripts/apply-accountant-dashboard-align-prod.mjs",
+        "scripts/backfill_historical_currency_data.sql",
+        "scripts/build-accountant-exact-pack-prod.mjs"
+      ]
+    },
+    "hr_payroll": {
+      "count": 36,
+      "samples": [
+        "screens/admin/AttendancePunchScreen.tsx",
+        "screens/admin/AttendanceScreen.tsx",
+        "screens/admin/EmployeeHRScreen.tsx",
+        "screens/admin/EOSBScreen.tsx",
+        "screens/admin/LeaveManagementScreen.tsx",
+        "screens/admin/PayrollAllowancesTab.tsx",
+        "screens/admin/PayrollConfigScreen.tsx",
+        "screens/admin/PayrollScreen.tsx",
+        "screens/admin/RecruitmentScreen.tsx",
+        "scripts/activate-attendance-prod.mjs",
+        "scripts/audit-order-operations-three-prod.mjs",
+        "scripts/audit-three-screens-prod.mjs"
+      ]
+    },
+    "crm_customer": {
+      "count": 35,
+      "samples": [
+        "contexts/ReviewContext.tsx",
+        "screens/admin/ManageCustomersScreen.tsx",
+        "screens/admin/ManageReviewsScreen.tsx",
+        "screens/admin/reports/CustomerReports.tsx",
+        "scripts/debug_staff_customers.sql",
+        "scripts/debug_staff_customer_overlap_deep.sql",
+        "scripts/diagnose_customer_staff_mismatch.sql",
+        "scripts/dump_customers.sql",
+        "supabase/functions/convert-party-to-customer/index.ts",
+        "supabase/functions/create-admin-customer/index.ts",
+        "supabase/functions/create_admin_customer/index.ts",
+        "supabase/migrations/20260129150000_phase6_credit_sales_and_admin_customer.sql"
+      ]
+    },
+    "projects": {
+      "count": 3,
+      "samples": [
+        "scripts/register-orders-sla-task.ps1",
+        "scripts/register-stock-health-task.ps1",
+        "supabase/.temp/project-ref"
+      ]
+    },
+    "manufacturing": {
+      "count": 14,
+      "samples": [
+        "screens/admin/KittingScreen.tsx",
+        "scripts/deploy_migrations_production.ps1",
+        "scripts/fix-bom.ps1",
+        "scripts/fix_production_batch_costs.sql",
+        "scripts/remove-bom-config.ps1",
+        "supabase/migrations/20260108230000_accounting_manufacturing_updates.sql",
+        "supabase/migrations/20260123260000_phase9_production_locked.sql",
+        "supabase/migrations/20260204190000_production_alignment.sql",
+        "supabase/migrations/20260209112000_run_historical_restatement_on_production.sql",
+        "supabase/migrations/20260209124000_run_restatement_v2_on_production.sql",
+        "supabase/migrations/20260212224000_wipe_production_data_except_settings.sql",
+        "supabase/migrations/20260318040500_kitting_composite_items.sql"
+      ]
+    },
+    "assets": {
+      "count": 6,
+      "samples": [
+        "screens/admin/FixedAssetsScreen.tsx",
+        "supabase/migrations/20260311040000_fixed_assets_module.sql",
+        "supabase/migrations/20260312060000_fixed_assets_phase2_enterprise.sql",
+        "supabase/migrations/20260312070000_fixed_assets_components_and_depr_rebase.sql",
+        "supabase/migrations/20260312073000_fixed_assets_component_replacement.sql",
+        "public/.well-known/assetlinks.json"
+      ]
+    },
+    "quality": {
+      "count": 0,
+      "samples": []
+    },
+    "reporting_analytics": {
+      "count": 249,
+      "samples": [
+        "screens/AdminDashboardScreen.tsx",
+        "screens/admin/AdminDashboardScreen.tsx",
+        "screens/admin/PartyLedgerStatementScreen.tsx",
+        "screens/admin/ReportsScreen.tsx",
+        "screens/admin/ShiftReportsScreen.tsx",
+        "screens/admin/WastageExpiryReportsScreen.tsx",
+        "screens/admin/reports/AuditLogScreen.tsx",
+        "screens/admin/reports/CustomerReports.tsx",
+        "screens/admin/reports/FinancialReports.tsx",
+        "screens/admin/reports/FinancialReportsByJournal.tsx",
+        "screens/admin/reports/FoodTraceReports.tsx",
+        "screens/admin/reports/InventoryStockReportScreen.tsx"
+      ]
+    },
+    "integration_extensibility": {
+      "count": 1258,
+      "samples": [
+        "screens/admin/LettersOfCreditScreen.tsx",
+        "screens/admin/SupplierCreditNotesScreen.tsx",
+        "scripts/build-top20-product-anomaly-remediation-prod.mjs",
+        "scripts/debug_system_user_functions.sql",
+        "scripts/diag-instore-pricing-credit.mjs",
+        "scripts/diagnose-credit-limit-order.mjs",
+        "scripts/live-instore-credit-receipt-smoke.mjs",
+        "scripts/pos-credit-smoke.mjs",
+        "scripts/push-credit-limit-fix-prod.mjs",
+        "scripts/start_local_supabase.ps1",
+        "scripts/verify-payment-directory-prod.mjs",
+        "supabase/.gitignore"
+      ]
+    },
+    "governance_audit": {
+      "count": 119,
+      "samples": [
+        "contexts/SystemAuditContext.tsx",
+        "screens/admin/ApprovalsScreen.tsx",
+        "screens/admin/SystemAuditScreen.tsx",
+        "screens/admin/reports/AuditLogScreen.tsx",
+        "screens/admin/reports/FoodTraceReports.tsx",
+        "scripts/audit-cancelled-after-delivery-impact-prod.mjs",
+        "scripts/audit-cancelled-report-inclusion-prod.mjs",
+        "scripts/audit-cogs-system-prod.mjs",
+        "scripts/audit-instore-order-management-prod.mjs",
+        "scripts/audit-inventory-management-full-prod.mjs",
+        "scripts/audit-migrations.ps1",
+        "scripts/audit-order-operations-three-prod.mjs"
+      ]
+    }
+  },
+  "erpnext_domain_signals": {
+    "purchasing": {
+      "count": 343,
+      "samples": [
+        "erpnext/accounts/doctype/purchase_invoice/purchase_invoice.js",
+        "erpnext/accounts/doctype/purchase_invoice/purchase_invoice.json",
+        "erpnext/accounts/doctype/purchase_invoice/purchase_invoice.py",
+        "erpnext/accounts/doctype/purchase_invoice/purchase_invoice_dashboard.py",
+        "erpnext/accounts/doctype/purchase_invoice/purchase_invoice_list.js",
+        "erpnext/accounts/doctype/purchase_invoice/README.md",
+        "erpnext/accounts/doctype/purchase_invoice/test_purchase_invoice.py",
+        "erpnext/accounts/doctype/purchase_invoice/test_records.json",
+        "erpnext/accounts/doctype/purchase_invoice/__init__.py",
+        "erpnext/accounts/doctype/purchase_invoice_advance/purchase_invoice_advance.json",
+        "erpnext/accounts/doctype/purchase_invoice_advance/purchase_invoice_advance.py",
+        "erpnext/accounts/doctype/purchase_invoice_advance/README.md"
+      ]
+    },
+    "inventory": {
+      "count": 717,
+      "samples": [
+        "erpnext/assets/doctype/asset_capitalization_stock_item/asset_capitalization_stock_item.json",
+        "erpnext/assets/doctype/asset_capitalization_stock_item/asset_capitalization_stock_item.py",
+        "erpnext/assets/doctype/asset_capitalization_stock_item/__init__.py",
+        "erpnext/manufacturing/doctype/bom_update_batch/bom_update_batch.json",
+        "erpnext/manufacturing/doctype/bom_update_batch/bom_update_batch.py",
+        "erpnext/manufacturing/doctype/bom_update_batch/__init__.py",
+        "erpnext/manufacturing/doctype/plant_floor/stock_summary_template.html",
+        "erpnext/manufacturing/doctype/production_plan_material_request_warehouse/production_plan_material_request_warehouse.js",
+        "erpnext/manufacturing/doctype/production_plan_material_request_warehouse/production_plan_material_request_warehouse.json",
+        "erpnext/manufacturing/doctype/production_plan_material_request_warehouse/production_plan_material_request_warehouse.py",
+        "erpnext/manufacturing/doctype/production_plan_material_request_warehouse/test_production_plan_material_request_warehouse.py",
+        "erpnext/manufacturing/doctype/production_plan_material_request_warehouse/__init__.py"
+      ]
+    },
+    "sales_pos": {
+      "count": 912,
+      "samples": [
+        "erpnext/accounts/doctype/coupon_code/coupon_code.js",
+        "erpnext/accounts/doctype/coupon_code/coupon_code.json",
+        "erpnext/accounts/doctype/coupon_code/coupon_code.py",
+        "erpnext/accounts/doctype/coupon_code/test_coupon_code.py",
+        "erpnext/accounts/doctype/coupon_code/__init__.py",
+        "erpnext/accounts/doctype/discounted_invoice/discounted_invoice.json",
+        "erpnext/accounts/doctype/discounted_invoice/discounted_invoice.py",
+        "erpnext/accounts/doctype/discounted_invoice/__init__.py",
+        "erpnext/accounts/doctype/invoice_discounting/invoice_discounting.js",
+        "erpnext/accounts/doctype/invoice_discounting/invoice_discounting.json",
+        "erpnext/accounts/doctype/invoice_discounting/invoice_discounting.py",
+        "erpnext/accounts/doctype/invoice_discounting/invoice_discounting_dashboard.py"
+      ]
+    },
+    "accounting_finance": {
+      "count": 1471,
+      "samples": [
+        "erpnext/accounts/doctype/__init__.py",
+        "erpnext/accounts/doctype/account/account.js",
+        "erpnext/accounts/doctype/account/account.json",
+        "erpnext/accounts/doctype/account/account.py",
+        "erpnext/accounts/doctype/account/account_tree.js",
+        "erpnext/accounts/doctype/account/README.md",
+        "erpnext/accounts/doctype/account/test_account.py",
+        "erpnext/accounts/doctype/account/__init__.py",
+        "erpnext/accounts/doctype/account/chart_of_accounts/chart_of_accounts.py",
+        "erpnext/accounts/doctype/account/chart_of_accounts/__init__.py",
+        "erpnext/accounts/doctype/account/chart_of_accounts/unverified/at_austria_chart_template.json",
+        "erpnext/accounts/doctype/account/chart_of_accounts/unverified/be_l10nbe_chart_template.json"
+      ]
+    },
+    "hr_payroll": {
+      "count": 35,
+      "samples": [
+        "erpnext/accounts/doctype/account/chart_of_accounts/unverified/hr_l10n_hr_chart_template_rrif.json",
+        "erpnext/setup/doctype/employee/employee.js",
+        "erpnext/setup/doctype/employee/employee.json",
+        "erpnext/setup/doctype/employee/employee.py",
+        "erpnext/setup/doctype/employee/employee_list.js",
+        "erpnext/setup/doctype/employee/employee_tree.js",
+        "erpnext/setup/doctype/employee/README.md",
+        "erpnext/setup/doctype/employee/test_employee.py",
+        "erpnext/setup/doctype/employee/__init__.py",
+        "erpnext/setup/doctype/employee_education/employee_education.json",
+        "erpnext/setup/doctype/employee_education/employee_education.py",
+        "erpnext/setup/doctype/employee_education/README.md"
+      ]
+    },
+    "crm_customer": {
+      "count": 312,
+      "samples": [
+        "erpnext/accounts/doctype/campaign_item/campaign_item.json",
+        "erpnext/accounts/doctype/campaign_item/campaign_item.py",
+        "erpnext/accounts/doctype/campaign_item/__init__.py",
+        "erpnext/accounts/doctype/customer_group_item/customer_group_item.json",
+        "erpnext/accounts/doctype/customer_group_item/customer_group_item.py",
+        "erpnext/accounts/doctype/customer_group_item/__init__.py",
+        "erpnext/accounts/doctype/customer_item/customer_item.json",
+        "erpnext/accounts/doctype/customer_item/customer_item.py",
+        "erpnext/accounts/doctype/customer_item/__init__.py",
+        "erpnext/accounts/doctype/loyalty_point_entry/loyalty_point_entry.js",
+        "erpnext/accounts/doctype/loyalty_point_entry/loyalty_point_entry.json",
+        "erpnext/accounts/doctype/loyalty_point_entry/loyalty_point_entry.py"
+      ]
+    },
+    "projects": {
+      "count": 165,
+      "samples": [
+        "erpnext/accounts/doctype/psoa_project/psoa_project.json",
+        "erpnext/accounts/doctype/psoa_project/psoa_project.py",
+        "erpnext/accounts/doctype/psoa_project/__init__.py",
+        "erpnext/accounts/doctype/sales_invoice_timesheet/sales_invoice_timesheet.json",
+        "erpnext/accounts/doctype/sales_invoice_timesheet/sales_invoice_timesheet.py",
+        "erpnext/accounts/doctype/sales_invoice_timesheet/__init__.py",
+        "erpnext/assets/doctype/asset_maintenance_task/asset_maintenance_task.json",
+        "erpnext/assets/doctype/asset_maintenance_task/asset_maintenance_task.py",
+        "erpnext/assets/doctype/asset_maintenance_task/__init__.py",
+        "erpnext/projects/doctype/__init__.py",
+        "erpnext/projects/doctype/activity_cost/activity_cost.js",
+        "erpnext/projects/doctype/activity_cost/activity_cost.json"
+      ]
+    },
+    "manufacturing": {
+      "count": 464,
+      "samples": [
+        "erpnext/buying/report/subcontracted_item_to_be_received/subcontracted_item_to_be_received.js",
+        "erpnext/buying/report/subcontracted_item_to_be_received/subcontracted_item_to_be_received.json",
+        "erpnext/buying/report/subcontracted_item_to_be_received/subcontracted_item_to_be_received.py",
+        "erpnext/buying/report/subcontracted_item_to_be_received/test_subcontracted_item_to_be_received.py",
+        "erpnext/buying/report/subcontracted_item_to_be_received/__init__.py",
+        "erpnext/buying/report/subcontracted_raw_materials_to_be_transferred/subcontracted_raw_materials_to_be_transferred.js",
+        "erpnext/buying/report/subcontracted_raw_materials_to_be_transferred/subcontracted_raw_materials_to_be_transferred.json",
+        "erpnext/buying/report/subcontracted_raw_materials_to_be_transferred/subcontracted_raw_materials_to_be_transferred.py",
+        "erpnext/buying/report/subcontracted_raw_materials_to_be_transferred/test_subcontracted_raw_materials_to_be_transferred.py",
+        "erpnext/buying/report/subcontracted_raw_materials_to_be_transferred/__init__.py",
+        "erpnext/buying/report/subcontract_order_summary/subcontract_order_summary.js",
+        "erpnext/buying/report/subcontract_order_summary/subcontract_order_summary.json"
+      ]
+    },
+    "assets": {
+      "count": 177,
+      "samples": [
+        "erpnext/accounts/report/asset_depreciations_and_balances/asset_depreciations_and_balances.js",
+        "erpnext/accounts/report/asset_depreciations_and_balances/asset_depreciations_and_balances.json",
+        "erpnext/accounts/report/asset_depreciations_and_balances/asset_depreciations_and_balances.py",
+        "erpnext/accounts/report/asset_depreciations_and_balances/__init__.py",
+        "erpnext/accounts/report/asset_depreciation_ledger/asset_depreciation_ledger.js",
+        "erpnext/accounts/report/asset_depreciation_ledger/asset_depreciation_ledger.json",
+        "erpnext/accounts/report/asset_depreciation_ledger/asset_depreciation_ledger.py",
+        "erpnext/accounts/report/asset_depreciation_ledger/__init__.py",
+        "erpnext/assets/doctype/__init__.py",
+        "erpnext/assets/doctype/asset/asset.js",
+        "erpnext/assets/doctype/asset/asset.json",
+        "erpnext/assets/doctype/asset/asset.py"
+      ]
+    },
+    "quality": {
+      "count": 122,
+      "samples": [
+        "erpnext/manufacturing/report/cost_of_poor_quality_report/cost_of_poor_quality_report.js",
+        "erpnext/manufacturing/report/cost_of_poor_quality_report/cost_of_poor_quality_report.json",
+        "erpnext/manufacturing/report/cost_of_poor_quality_report/cost_of_poor_quality_report.py",
+        "erpnext/manufacturing/report/cost_of_poor_quality_report/__init__.py",
+        "erpnext/manufacturing/report/quality_inspection_summary/quality_inspection_summary.js",
+        "erpnext/manufacturing/report/quality_inspection_summary/quality_inspection_summary.json",
+        "erpnext/manufacturing/report/quality_inspection_summary/quality_inspection_summary.py",
+        "erpnext/manufacturing/report/quality_inspection_summary/__init__.py",
+        "erpnext/quality_management/doctype/__init__.py",
+        "erpnext/quality_management/doctype/non_conformance/non_conformance.js",
+        "erpnext/quality_management/doctype/non_conformance/non_conformance.json",
+        "erpnext/quality_management/doctype/non_conformance/non_conformance.py"
+      ]
+    },
+    "reporting_analytics": {
+      "count": 998,
+      "samples": [
+        "erpnext/accounts/doctype/bank/bank_dashboard.py",
+        "erpnext/accounts/doctype/bank_statement_import/bank_statement_import.css",
+        "erpnext/accounts/doctype/bank_statement_import/bank_statement_import.js",
+        "erpnext/accounts/doctype/bank_statement_import/bank_statement_import.json",
+        "erpnext/accounts/doctype/bank_statement_import/bank_statement_import.py",
+        "erpnext/accounts/doctype/bank_statement_import/bank_statement_import_list.js",
+        "erpnext/accounts/doctype/bank_statement_import/test_bank_statement_import.py",
+        "erpnext/accounts/doctype/bank_statement_import/__init__.py",
+        "erpnext/accounts/doctype/bisect_accounting_statements/bisect_accounting_statements.js",
+        "erpnext/accounts/doctype/bisect_accounting_statements/bisect_accounting_statements.json",
+        "erpnext/accounts/doctype/bisect_accounting_statements/bisect_accounting_statements.py",
+        "erpnext/accounts/doctype/bisect_accounting_statements/test_bisect_accounting_statements.py"
+      ]
+    },
+    "integration_extensibility": {
+      "count": 350,
+      "samples": [
+        "erpnext/accounts/doctype/accounts_settings/regional/united_states.js",
+        "erpnext/accounts/doctype/advance_payment_ledger_entry/advance_payment_ledger_entry.js",
+        "erpnext/accounts/doctype/advance_payment_ledger_entry/advance_payment_ledger_entry.json",
+        "erpnext/accounts/doctype/advance_payment_ledger_entry/advance_payment_ledger_entry.py",
+        "erpnext/accounts/doctype/advance_payment_ledger_entry/test_advance_payment_ledger_entry.py",
+        "erpnext/accounts/doctype/advance_payment_ledger_entry/__init__.py",
+        "erpnext/accounts/doctype/bank_transaction_payments/bank_transaction_payments.json",
+        "erpnext/accounts/doctype/bank_transaction_payments/bank_transaction_payments.py",
+        "erpnext/accounts/doctype/bank_transaction_payments/__init__.py",
+        "erpnext/accounts/doctype/cashier_closing_payments/cashier_closing_payments.json",
+        "erpnext/accounts/doctype/cashier_closing_payments/cashier_closing_payments.py",
+        "erpnext/accounts/doctype/cashier_closing_payments/__init__.py"
+      ]
+    },
+    "governance_audit": {
+      "count": 41,
+      "samples": [
+        "erpnext/regional/report/vat_audit_report/test_vat_audit_report.py",
+        "erpnext/regional/report/vat_audit_report/vat_audit_report.js",
+        "erpnext/regional/report/vat_audit_report/vat_audit_report.json",
+        "erpnext/regional/report/vat_audit_report/vat_audit_report.py",
+        "erpnext/regional/report/vat_audit_report/__init__.py",
+        "erpnext/stock/report/serial_/_batch_traceability_report/__init__.py",
+        "erpnext/stock/report/serial_no_and_batch_traceability/serial_no_and_batch_traceability.js",
+        "erpnext/stock/report/serial_no_and_batch_traceability/serial_no_and_batch_traceability.json",
+        "erpnext/stock/report/serial_no_and_batch_traceability/serial_no_and_batch_traceability.py",
+        "erpnext/stock/report/serial_no_and_batch_traceability/__init__.py",
+        "SECURITY.md",
+        "TRADEMARK_POLICY.md"
+      ]
+    }
+  }
+}

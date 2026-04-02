@@ -1,0 +1,332 @@
+--- PAGE 1 ---
+سأعطيك خطة تنفيذ كاملة على شكل مراحل Phases)، وكل مرحلة مقسمة إلى أقسام واضحة، بحيث فريقك
+يشتغل خطوة خطوة بدون تشتت . 
+نحن نبني: 
+     واجهة جديدة بالكامل فوق ERPNext باستخدام Frappe Framework كـ Backend 
+ 
+        الخطة الشاملة (من الصفر إلى منتج كامل 
+  PHASE 0: التخطيط (لا تتخطاها أبدًا 
+       الهدف: 
+تحديد كل شيء قبل كتابة سطر كود 
+الأقسام: 
+1 . تحديد نطاق المشروع Scope) 
+o ما هي الموديولات؟ 
+▪ Customers 
+▪ Sales 
+▪ Inventory 
+▪ Accounting (اختياري بالبداية) 
+2 . تحديد المستخدمين User Roles) 
+o Admin 
+o Sales 
+o Accountant 
+3 . رسم User Flows 
+o مثال: 
+▪ إنشاء عميل 
+▪ إنشاء فاتورة 
+▪ عرض التقارير 
+4 . اختيار Stack 
+
+--- PAGE 2 ---
+o Frontend: Next.js 
+o Backend: ERPNext 
+o BFF: Node.js 
+ 
+  PHASE 1: البنية الأساسية Foundation) 
+       الهدف: 
+إنشاء بيئة المشروع  
+الأقسام: 
+1 . إعداد ERPNext 
+o API فعال 
+o Users + Roles 
+2 . إنشاء مشروع Frontend 
+3 . إنشاء BFF (Backend For Frontend) 
+4 . إعداد Git + Workflow 
+o Branches 
+o Code review 
+5 . تصميم Structure المشروع 
+ 
+  PHASE 2: نظام المصادقة Auth System) 
+       الهدف: 
+تسجيل الدخول + إدارة الجلسات 
+الأقسام: 
+1 . Login API 
+2 . حفظ Session / Token 
+3 . حماية الصفحات Protected Routes) 
+4 . Logout 
+
+--- PAGE 3 ---
+5 . Role-based UI 
+ 
+  PHASE 3: Layout + Design System 
+       الهدف: 
+بناء الأساس البصري للنظام 
+الأقسام: 
+1 . Layout رئيسي 
+o Sidebar 
+o Navbar 
+2 . Design System 
+o ألوان 
+o Typography 
+o Buttons 
+o Inputs 
+3 . Components عامة 
+o Table 
+o Modal 
+o Form عناصر 
+     هذه المرحلة مهمة جدًا لأنها ستستخدم في كل النظام  
+ 
+  PHASE 4: Core Modules (Manual UI) 
+       الهدف: 
+بناء أول موديولات بشكل يدوي 
+الأقسام: 
+1. Customers Module 
+• List 
+
+--- PAGE 4 ---
+• View 
+• Create/Edit 
+2. Sales Module 
+• Sales Order 
+• Invoices 
+3. Dashboard 
+• إحصائيات 
+• Charts 
+     هنا الفريق يفهم النظام 
+ 
+  PHASE 5: API Layer Optimization (BFF) 
+       الهدف: 
+تنظيم الاتصال مع ERPNext 
+الأقسام: 
+1 . توحيد Endpoints 
+2 . Caching 
+3 . Error Handling 
+4 . Data Transformation 
+ 
+   PHASE 6: Dynamic UI Engine    (أهم مرحلة) 
+       الهدف: 
+تقليل العمل اليدوي  
+الأقسام: 
+1 . Form Generator 
+o يعتمد على DocType 
+2 . Table Generator 
+
+--- PAGE 5 ---
+o Pagination 
+o Filters 
+3 . Field Mapping 
+o Data → Input Type 
+4 . Validation System 
+     بعد هذه المرحلة: 
+     70% من النظام يصبح أوتوماتيكي 
+ 
+  PHASE 7: Permissions & Security 
+       الهدف: 
+نظام آمن 
+الأقسام: 
+1 . Role-based rendering 
+2 . Route protection 
+3 . Backend validation (ERPNext) 
+4 . API security 
+ 
+  PHASE 8: Advanced Features 
+       الهدف: 
+رفع جودة المنتج 
+الأقسام: 
+1 . Notifications 
+2 . Real-time updates 
+3 . Activity logs 
+4 . File uploads 
+5 . Search system 
+
+--- PAGE 6 ---
+ 
+  PHASE 9: Performance Optimization 
+       الهدف: 
+نظام سريع  
+الأقسام: 
+1 . Caching (React Query) 
+2 . Lazy loading 
+3 . Code splitting 
+4 . API optimization 
+ 
+  PHASE 10: Testing 
+       الهدف: 
+نظام مستقر  
+الأقسام: 
+1 . Unit Testing 
+2 . Integration Testing 
+3 . E2E Testing 
+ 
+   PHASE 11: Deployment 
+       الهدف: 
+إطلاق النظام 
+الأقسام: 
+1 . Frontend deployment 
+2 . Backend deployment 
+3 . Domain + SSL 
+4 . CI/CD 
+
+--- PAGE 7 ---
+ 
+  PHASE 12: Post-Launch 
+       الهدف: 
+تطوير مستمر  
+الأقسام: 
+1 . Monitoring 
+2 . Bug fixing 
+3 . تحسين UX 
+4 . إضافة Features 
+ 
+    كيف تستخدم هذه الخطة مع فريقك؟ 
+     النظام الصحيح: 
+• كل Phase = Sprint 
+• كل قسم Task 
+• لا تنتقل للمرحلة التالية إلا بعد إغلاق الحالية 
+ 
+   أهم 3  مراحل لا تستهين بها 
+1 . Phase 3 (Design System) 
+2 . Phase 5 (BFF) 
+3 . Phase 6 (Dynamic UI) 
+ 
+تمام   — الآن ندخل في  التنفيذ الحقيقي. 
+سأحوّل لك  PHASE 1 (Foundation) إلى خطة يومية واضحة للفريق، كأنكم تشتغلون Sprint منظم. 
+الهدف من هذه المرحلة : 
+بناء أساس قوي لمشروع واجهة جديدة فوق ERPNext باستخدام Next.js + BFF 
+ 
+
+--- PAGE 8 ---
+                مدة المرحلة7 – 10 أيام 
+سأعطيك خطة 7 أيام مكثفة (ممكن تمددها إلى 10 حسب الفريق) 
+ 
+  DAY 1: إعداد البيئة Environment Setup) 
+       الهدف: 
+تشغيل كل شيء محليًا  
+                        Backend Team: 
+• تثبيت ERPNext محليًا 
+• إنشاء Site 
+• التأكد أن API يعمل: 
+api/resource/User 
+ 
+                        Frontend Team: 
+• إنشاء مشروع: 
+npx create-next-app frontend 
+• تثبيت: 
+o axios 
+o react-query 
+ 
+                        BFF Team: 
+• إنشاء مشروع Node.js: 
+mkdir bff && cd bff 
+npm init -y 
+npm install express axios cors 
+ 
+
+--- PAGE 9 ---
+       مخرجات اليوم: 
+• كل جزء يعمل بشكل مستقل  
+ 
+  DAY 2: إعداد Git + Structure 
+       الهدف: 
+تنظيم العمل الجماعي 
+كل الفريق: 
+• إنشاء Repository 
+ 
+   Structure: 
+project/ 
+ ├── frontend/ 
+ ├── bff/ 
+ └── docs/ 
+ 
+                        Tasks: 
+• إعداد Git Flow: 
+o main 
+o develop 
+o feature/* 
+• إعداد ESLint + Prettier 
+ 
+       مخرجات: 
+• بيئة منظمة + جاهزة للتعاون 
+ 
+
+--- PAGE 10 ---
+  DAY 3: ربط ERPNext مع BFF 
+       الهدف: 
+BFF يتكلم مع ERPNext 
+ 
+                        BFF Team: 
+1. إعداد السيرفر: 
+const express = require("express"); 
+const app = express(); 
+ 
+app.listen(3001, () => console.log("BFF running")); 
+ 
+2. إنشاء اتصال مع ERPNext: 
+const axios = require("axios"); 
+ 
+const erp = axios.create({ 
+  baseURL: "http://localhost:8000/api", 
+  withCredentials: true, 
+}); 
+ 
+3. Endpoint تجريبي: 
+app.get("/customers", async (req, res) => { 
+  const data = await erp.get("/resource/Customer"); 
+  res.json(data.data); 
+}); 
+ 
+       مخرجات: 
+
+--- PAGE 11 ---
+• BFF يرجع بيانات من ERPNext 
+ 
+  DAY 4: ربط Frontend مع BFF 
+       الهدف: 
+Frontend → BFF → ERPNext 
+ 
+                        Frontend Team: 
+1. API Service: 
+import axios from "axios"; 
+ 
+export const api = axios.create({ 
+  baseURL: "http://localhost:3001", 
+}); 
+ 
+2. جلب بيانات: 
+useEffect(() => { 
+  api.get("/customers").then(console.log); 
+}, []); 
+ 
+       مخرجات: 
+• عرض بيانات ERPNext داخل الواجهة               
+ 
+  DAY 5: إعداد Authentication (أساسي) 
+       الهدف: 
+تسجيل الدخول  
+
+--- PAGE 12 ---
+ 
+                        BFF Team: 
+• Endpoint login: 
+app.post("/login", async (req, res) => { 
+  const { username, password } = req.body; 
+ 
+  const response = await erp.post("/method/login", { 
+    usr: username, 
+    pwd: password, 
+  }); 
+ 
+  res.json(response.data); 
+}); 
+ 
+                        Frontend Team: 
+• صفحة Login 
+• حفظ Session 
+ 
+       مخرجات: 
+• تسجيل دخول يعمل  
+ 
+  DAY 6: إعداد Layout أساسي 
+       الهدف: 
+هيكل النظام 
+ 
+                        Frontend Team: 
