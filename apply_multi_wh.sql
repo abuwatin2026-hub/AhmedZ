@@ -28,7 +28,7 @@ begin
   loop
     v_item_id := coalesce(nullif(v_item->>'itemId',''), nullif(v_item->>'id',''));
     v_requested := coalesce(nullif(v_item->>'quantity','')::numeric, nullif(v_item->>'qty','')::numeric, 0);
-    v_item_wh := coalesce(nullif(v_item->>'warehouseId', '')::uuid, v_item_wh);
+    v_item_wh := coalesce(nullif(v_item->>'warehouseId', '')::uuid, p_warehouse_id);
     if v_item_id is null or v_item_id = '' or v_requested <= 0 then
       continue;
     end if;
@@ -163,7 +163,7 @@ begin
   if p_order_id is null then
     raise exception 'p_order_id is required';
   end if;
-  if v_item_wh is null then
+  if p_warehouse_id is null then
     raise exception 'warehouse_id is required';
   end if;
   if p_items is null or jsonb_typeof(p_items) <> 'array' then
@@ -196,7 +196,7 @@ begin
   loop
     v_item_id := coalesce(nullif(v_item->>'itemId',''), nullif(v_item->>'id',''));
     v_requested := coalesce(nullif(v_item->>'quantity','')::numeric, nullif(v_item->>'qty','')::numeric, 0);
-    v_item_wh := coalesce(nullif(v_item->>'warehouseId', '')::uuid, v_item_wh);
+    v_item_wh := coalesce(nullif(v_item->>'warehouseId', '')::uuid, p_warehouse_id);
     v_item_batch_text := nullif(v_item->>'batchId', '');
     if v_item_id is null or v_item_id = '' or v_requested <= 0 then
       continue;
