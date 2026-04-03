@@ -2,6 +2,10 @@ import { createClient } from '@supabase/supabase-js';
 
 const SUPABASE_URL = (process.env.AZTA_SUPABASE_URL || '').trim();
 const SUPABASE_KEY = (process.env.AZTA_SUPABASE_ANON_KEY || '').trim();
+const OWNER_EMAIL = (process.env.AZTA_SMOKE_OWNER_EMAIL || 'owner@azta.com').trim();
+const OWNER_PASSWORD = (process.env.AZTA_SMOKE_OWNER_PASSWORD || 'Owner@123').trim();
+const KEEP_ORDER = ['1', 'true', 'yes'].includes(String(process.env.AZTA_SMOKE_KEEP_ORDER || '').trim().toLowerCase());
+const CREDIT_LIMIT = Number(process.env.AZTA_SMOKE_CREDIT_LIMIT || 500000);
 
 if (!SUPABASE_URL || !SUPABASE_KEY) {
   console.error('Missing AZTA_SUPABASE_URL / AZTA_SUPABASE_ANON_KEY');
@@ -289,8 +293,8 @@ const createCustomerViaSignUpAndInsert = async (fullName, phone, creditLimit) =>
   if (insErr) throw new Error(insErr.message);
   await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
   const { data, error } = await supabase.auth.signInWithPassword({
-    email: 'owner@azta.com',
-    password: 'Owner@123',
+    email: OWNER_EMAIL,
+    password: OWNER_PASSWORD,
   });
   if (error || !data.session) throw new Error(error?.message || 'owner re-login failed');
   return newUserId;
@@ -299,8 +303,8 @@ const createCustomerViaSignUpAndInsert = async (fullName, phone, creditLimit) =>
 try {
   await must('auth.owner.signIn', async () => {
     const { data, error } = await supabase.auth.signInWithPassword({
-      email: 'owner@azta.com',
-      password: 'Owner@123',
+      email: OWNER_EMAIL,
+      password: OWNER_PASSWORD,
     });
     if (error || !data.session) throw new Error(error?.message || 'no session');
     return data.user?.id;
@@ -322,30 +326,46 @@ try {
       p_customer_id: null,
       p_quantity: 1,
     });
-    if (error) throw new Error(error.message);
+    if (error) {
+      const msg = String(error.message || '');
+      if (!msg.includes('Could not choose the best candidate function')) {
+        throw new Error(msg);
+      }
+      const { data: menuItem, error: mErr } = await supabase
+        .from('menu_items')
+        .select('price')
+        .eq('id', itemId)
+        .maybeSingle();
+      if (mErr) throw new Error(mErr.message);
+      const fallback = Number(menuItem?.price || 0);
+      if (!Number.isFinite(fallback) || fallback <= 0) {
+        throw new Error(`bad fallback price ${String(menuItem?.price)}`);
+      }
+      return fallback;
+    }
     const n = Number(data);
     if (!Number.isFinite(n) || n <= 0) throw new Error(`bad price ${String(data)}`);
     return n;
   });
 
   const customerId = await must('customer.create_or_pick', async () => {
+    const phoneSuffix = String(Math.floor(Math.random() * 900000) + 100000);
+    const fullName = `عميل جملة دخان ${phoneSuffix}`;
+    const phone = `777${phoneSuffix}`;
     try {
-      return await ensureOwnerCustomerWholesaleWithCredit(1000);
+      try {
+        return await createWholesaleCustomerWithCredit(fullName, phone, CREDIT_LIMIT);
+      } catch {
+        return await createCustomerViaSignUpAndInsert(fullName, phone, CREDIT_LIMIT);
+      }
     } catch {
       const existing = await findExistingWholesaleCustomer();
       if (existing) return existing;
-      const phoneSuffix = String(Math.floor(Math.random() * 900000) + 100000);
-      const fullName = 'عميل جملة دخان';
-      const phone = `777${phoneSuffix}`;
-      try {
-        return await createWholesaleCustomerWithCredit(fullName, phone, 1000);
-      } catch {
-        const any = await findAnyCustomer();
-        if (!any) {
-          return await createCustomerViaSignUpAndInsert(fullName, phone, 1000);
-        }
-        return await promoteCustomerToWholesaleWithCredit(any, 1000);
+      const any = await findAnyCustomer();
+      if (!any) {
+        return await ensureOwnerCustomerWholesaleWithCredit(CREDIT_LIMIT);
       }
+      return await promoteCustomerToWholesaleWithCredit(any, CREDIT_LIMIT);
     }
   });
 
@@ -368,6 +388,7 @@ try {
       paidAt: undefined,
       paymentMethod: 'ar',
       invoiceTerms: 'credit',
+      creditOverrideReason: 'اختبار بيع حضوري آجل على الإنتاج',
       netDays: 30,
       dueDate: ymd,
       customerId,
@@ -441,7 +462,7 @@ try {
   });
 } catch {
 } finally {
-  if (orderIdForCleanup) {
+  if (orderIdForCleanup && !KEEP_ORDER) {
     try {
       await supabase.from('orders').delete().eq('id', orderIdForCleanup);
     } catch {
