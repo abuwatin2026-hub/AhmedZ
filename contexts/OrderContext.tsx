@@ -2828,15 +2828,16 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         // already exist for this order/warehouse. Without this step, it rejects
         // with "cannot mark delivered without stock movements".
         {
-          const reserveMerged = new Map<string, { quantity: number; itemId: string; batchId?: string }>();
+          const reserveMerged = new Map<string, { quantity: number; itemId: string; batchId?: string; warehouseId?: string }>();
           for (const item of (newOrder.items || []).filter((it: any) => !(it?.lineType === 'promotion' || it?.promotionId))) {
             const itemId = String((item as any)?.itemId || (item as any)?.id || '');
             const quantity = Number(getRequestedBaseQuantity(item)) || 0;
             if (!itemId || !(quantity > 0)) continue;
             const batchId = String((item as any)?._fefoBatchId || (item as any)?.forcedBatchId || '').trim();
-            const key = `${itemId}:${batchId}`;
+            const whId = String((item as any)?.warehouseId || '').trim() || effectiveOrderWarehouseId;
+            const key = `${whId}:${itemId}:${batchId}`;
             const prev = reserveMerged.get(key);
-            reserveMerged.set(key, { itemId, batchId: batchId || undefined, quantity: (prev?.quantity || 0) + quantity });
+            reserveMerged.set(key, { itemId, batchId: batchId || undefined, warehouseId: whId, quantity: (prev?.quantity || 0) + quantity });
           }
 
           const promoLinesForReserve = Array.isArray((newOrder as any).promotionLines) ? (newOrder as any).promotionLines : [];
@@ -2846,14 +2847,15 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
               const itemId = String((pi as any)?.itemId || (pi as any)?.id || '');
               const quantity = Number((pi as any)?.quantity) || 0;
               if (!itemId || !(quantity > 0)) continue;
-              const key = `${itemId}:`;
+              const whId = effectiveOrderWarehouseId;
+              const key = `${whId}:${itemId}:`;
               const prev = reserveMerged.get(key);
-              reserveMerged.set(key, { itemId, quantity: (prev?.quantity || 0) + quantity });
+              reserveMerged.set(key, { itemId, warehouseId: whId, quantity: (prev?.quantity || 0) + quantity });
             }
           }
 
           const reserveItemsList = Array.from(reserveMerged.values())
-            .map(({ itemId, quantity, batchId }) => ({ itemId, quantity, batchId }))
+            .map(({ itemId, quantity, batchId, warehouseId }) => ({ itemId, quantity, batchId, warehouseId }))
             .filter((x) => x.itemId && Number(x.quantity) > 0);
 
           if (reserveItemsList.length > 0) {

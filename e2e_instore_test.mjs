@@ -47,6 +47,7 @@ async function main() {
   if(!c1) throw new Error('لا يوجد صنف بـ batch في مخزن الشركة');
 
   // صنف 2: من مخزن الشركة أيضاً مع batch مختلف، صنف مختلف + وحدة مفردة
+  // صنف 2: من المخزن الرئيسي مع batch مختلف
   const cand2 = await sql(`
     SELECT DISTINCT ON (bb.item_id)
       bb.item_id::text, bb.batch_id::text, bb.warehouse_id::text,
@@ -55,13 +56,12 @@ async function main() {
       (SELECT mi.name::text FROM menu_items mi WHERE mi.id::text=bb.item_id::text) as name
     FROM batch_balances bb
     JOIN stock_management sm ON sm.item_id::text=bb.item_id::text AND sm.warehouse_id=bb.warehouse_id
-    WHERE bb.warehouse_id='${whSharka?.id}' AND bb.quantity > 5 AND sm.available_quantity > 5
-      AND bb.item_id::text != '${c1.item_id}'
+    WHERE bb.warehouse_id='${whRaisi?.id}' AND bb.quantity > 5 AND sm.available_quantity > 5
     ORDER BY bb.item_id, bb.quantity DESC
     LIMIT 1
   `);
   let c2 = cand2[0];
-  const wh2Name = 'مخزن الشركة (batch مختلف)';
+  const wh2Name = 'المخزن الرئيسي';
 
   const name1 = ar(c1.name), name2 = ar(c2.name);
   const wh1Name = 'مخزن الشركة';
