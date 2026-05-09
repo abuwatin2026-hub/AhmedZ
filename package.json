@@ -56,6 +56,10 @@
     "orders:sla:check": "node scripts/orders-sla-probe-prod.mjs && node scripts/run-orders-sla-alert-prod.mjs",
     "orders:sla:alert": "node scripts/run-orders-sla-alert-prod.mjs",
     "orders:sla:schedule": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\register-orders-sla-task.ps1",
+    "orders:integrity:probe": "node scripts/orders-integrity-probe-prod.mjs",
+    "orders:integrity:check": "node scripts/orders-integrity-probe-prod.mjs && node scripts/run-orders-integrity-alert-prod.mjs",
+    "orders:integrity:alert": "node scripts/run-orders-integrity-alert-prod.mjs",
+    "orders:integrity:schedule": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\register-orders-integrity-task.ps1",
     "attendance:activate:prod": "node scripts/activate-attendance-prod.mjs",
     "attendance:activate:prod:dry": "node scripts/activate-attendance-prod.mjs --dry-run"
   },

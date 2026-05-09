@@ -39,6 +39,7 @@ const IN_STORE_ZONE_ID = '11111111-1111-4111-8111-111111111111';
 
 let orderIdForCleanup = null;
 const orderIdsForCleanup = [];
+let fatalError = null;
 
 const fetchDefaultCompanyBranch = async () => {
   const { data: company, error: cErr } = await supabase.from('companies').select('id').order('created_at', { ascending: true }).limit(1).maybeSingle();
@@ -156,7 +157,7 @@ const createOneInStoreSale = async ({ warehouseId, baseCurrency, label }) => {
       createdAt: nowIso,
       deliveredAt: nowIso,
       paidAt: nowIso,
-      paymentMethod: 'card',
+      paymentMethod: 'cash',
       invoiceTerms: 'cash',
       netDays: 0,
       dueDate: ymd,
@@ -205,13 +206,14 @@ const createOneInStoreSale = async ({ warehouseId, baseCurrency, label }) => {
       }
     }
 
-    const { error: payErr } = await supabase.rpc('record_order_payment', {
+    const { error: payErr } = await supabase.rpc('record_order_payment_v2', {
       p_order_id: id,
       p_amount: unitPrice,
-      p_method: 'card',
+      p_method: 'cash',
       p_occurred_at: nowIso,
       p_currency: baseCurrency,
       p_idempotency_key: `pos-sale:${label}:${id}:${nowIso}`,
+      p_data: { smoke: true, source: 'pos-sale-smoke' },
     });
     if (payErr) throw new Error(payErr.message);
 
@@ -219,12 +221,45 @@ const createOneInStoreSale = async ({ warehouseId, baseCurrency, label }) => {
   });
 
   await must(`sale.verify.currency.${label}`, async () => {
-    const { data, error } = await supabase.from('orders').select('data,status').eq('id', orderId).maybeSingle();
+    const { data, error } = await supabase
+      .from('orders')
+      .select('id, data, status')
+      .eq('id', orderId)
+      .maybeSingle();
     if (error) throw new Error(error.message);
+    const st = String(data?.status || '').toLowerCase();
+    if (st !== 'delivered') throw new Error(`expected delivered, got ${st || 'unknown'}`);
     const code = String(data?.data?.currency || '').trim().toUpperCase();
     if (!code) throw new Error('currency missing in orders.data');
-    const st = String(data?.status || '');
-    return `${st}:${code}`;
+
+    const { count: saleOutCount, error: sErr } = await supabase
+      .from('inventory_movements')
+      .select('id', { count: 'exact', head: true })
+      .eq('reference_table', 'orders')
+      .eq('reference_id', orderId)
+      .eq('movement_type', 'sale_out');
+    if (sErr) throw new Error(sErr.message);
+    if ((saleOutCount || 0) < 1) throw new Error('missing sale_out movement');
+
+    const { count: jeCount, error: jeErr } = await supabase
+      .from('journal_entries')
+      .select('id', { count: 'exact', head: true })
+      .eq('source_table', 'orders')
+      .eq('source_id', orderId)
+      .in('source_event', ['invoiced', 'delivered']);
+    if (jeErr) throw new Error(jeErr.message);
+    if ((jeCount || 0) < 1) throw new Error('missing journal entry');
+
+    const { count: paymentCount, error: pErr } = await supabase
+      .from('payments')
+      .select('id', { count: 'exact', head: true })
+      .eq('reference_table', 'orders')
+      .eq('reference_id', orderId)
+      .eq('direction', 'in');
+    if (pErr) throw new Error(pErr.message);
+    if ((paymentCount || 0) < 1) throw new Error('missing payment row');
+
+    return `delivered:${code}:sale_out=${saleOutCount || 0}:je=${jeCount || 0}:pay=${paymentCount || 0}`;
   });
 
   return orderId;
@@ -241,52 +276,7 @@ const ensureSellableItemWithStock = async (warehouseId) => {
     return String(inserted?.id || '');
   };
 
-  const { data: rows, error } = await supabase
-    .from('v_sellable_products')
-    .select('id, available_quantity')
-    .gt('available_quantity', 0)
-    .limit(50);
-  if (error) throw new Error(error.message);
-  const ids = (rows || []).map(r => String(r.id)).filter(isUuid);
-
-  if (ids.length) {
-    const { data: batches, error: bErr } = await supabase
-      .from('batches')
-      .select('item_id, quantity_received, quantity_consumed, quantity_transferred, status')
-      .eq('warehouse_id', warehouseId)
-      .eq('status', 'active')
-      .in('item_id', ids)
-      .limit(200);
-    if (bErr) throw new Error(bErr.message);
-    const ok = new Set(
-      (batches || [])
-        .filter(b => Number(b.quantity_received || 0) - Number(b.quantity_consumed || 0) - Number(b.quantity_transferred || 0) > 0)
-        .map(b => String(b.item_id))
-    );
-    const okIds = ids.filter(id => ok.has(id));
-    if (!okIds.length) {
-      // fall through to create
-    } else {
-      const { data: priced, error: pErr } = await supabase
-        .from('menu_items')
-        .select('id, price, cost_price')
-        .in('id', okIds)
-        .gt('price', 0)
-        .order('price', { ascending: false })
-        .limit(10);
-      if (pErr) throw new Error(pErr.message);
-      const pick = (priced || []).find(r => Number(r.price) >= Number(r.cost_price || 0));
-      if (pick?.id) {
-        const baseUomId = await ensureBaseUomId();
-        const { error: iuErr } = await supabase.from('item_uom').upsert(
-          { item_id: String(pick.id), base_uom_id: baseUomId, purchase_uom_id: baseUomId, sales_uom_id: baseUomId },
-          { onConflict: 'item_id' }
-        );
-        if (iuErr) throw new Error(iuErr.message);
-        return String(pick.id);
-      }
-    }
-  }
+  // Use an isolated test item to avoid batch availability flakiness from live items.
 
   const itemId = crypto.randomUUID();
   const { error: miErr } = await supabase.from('menu_items').insert({
@@ -376,7 +366,9 @@ try {
     await must('singlewarehouse.target', async () => targetWarehouseId);
     await createOneInStoreSale({ warehouseId: targetWarehouseId, baseCurrency, label: 'W1' });
   }
-} catch {
+} catch (e) {
+  fatalError = e;
+  push('fatal', false, e?.message || String(e));
 } finally {
   const cleanupList = Array.from(new Set([...(orderIdForCleanup ? [orderIdForCleanup] : []), ...orderIdsForCleanup]));
   if (!KEEP_ORDERS) {
@@ -394,4 +386,4 @@ for (const r of out) {
 }
 
 const failed = out.filter(x => !x.ok);
-process.exit(failed.length ? 1 : 0);
+process.exit(failed.length || fatalError ? 1 : 0);
