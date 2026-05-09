@@ -2090,7 +2090,8 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         .map((it: any) => String(it?.warehouseId || warehouseId || '').trim())
         .filter(Boolean)
     ));
-    const effectiveOrderWarehouseId = String(lineWarehouseIds[0] || warehouseId || '').trim();
+    const sessionWarehouseId = String(warehouseId || '').trim();
+    const effectiveOrderWarehouseId = String(sessionWarehouseId || lineWarehouseIds[0] || '').trim();
     if (!effectiveOrderWarehouseId) {
       throw new Error('لا يمكن إنشاء الطلب بدون تحديد مستودع تنفيذ.');
     }
@@ -2777,8 +2778,12 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       if (!supabase) throw new Error('Supabase غير مهيأ.');
       const sb2 = supabase!;
       if (canMarkPaidUi) {
-        const rollbackCreatedOrder = async (reason: string) => {
+        const rollbackCreatedOrder = async (reason: string, mode: 'pending' | 'delete' = 'pending') => {
           try {
+            if (mode === 'delete') {
+              const { error: deleteErr } = await sb2.from('orders').delete().eq('id', newOrder.id);
+              if (!deleteErr) return;
+            }
             const pending = {
               ...finalized,
               status: 'pending',
@@ -2870,7 +2875,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
                 await rollbackCreatedOrder('stock_reserve_offline');
                 return await queueOfflineSale();
               }
-              await rollbackCreatedOrder(`stock_reserve_failed | ${localizeSupabaseError(reserveErr)}`);
+              await rollbackCreatedOrder(`stock_reserve_failed | ${localizeSupabaseError(reserveErr)}`, 'delete');
               throw new Error(localizeSupabaseError(reserveErr) || 'فشل حجز المخزون. تحقق من توفر الأصناف والكميات.');
             }
           }
@@ -3765,13 +3770,16 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       throw new Error('نطاق المستودع غير محدد لهذا الطلب. يمنع التنفيذ خارج نطاق الجلسة.');
     };
     const warehouseId = await resolveWarehouseId();
-    const merged = new Map<string, number>();
+    const merged = new Map<string, { itemId: string; warehouseId: string; quantity: number }>();
     const baseItems = (existing.items || []).filter((it: any) => !(it?.lineType === 'promotion' || it?.promotionId || it?.category === 'promotion'));
     for (const item of baseItems) {
       const itemId = String((item as any)?.itemId || (item as any)?.id || '');
       const quantity = Number(getRequestedBaseQuantity(item)) || 0;
       if (!itemId || !(quantity > 0)) continue;
-      merged.set(itemId, (merged.get(itemId) || 0) + quantity);
+      const whId = String((item as any)?.warehouseId || warehouseId || '').trim();
+      const key = `${whId}:${itemId}`;
+      const prev = merged.get(key);
+      merged.set(key, { itemId, warehouseId: whId, quantity: (prev?.quantity || 0) + quantity });
     }
     const promoLines = Array.isArray((existing as any).promotionLines) ? (existing as any).promotionLines : [];
     for (const line of promoLines) {
@@ -3780,12 +3788,14 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         const itemId = String((pi as any)?.itemId || (pi as any)?.id || '');
         const quantity = Number((pi as any)?.quantity) || 0;
         if (!itemId || !(quantity > 0)) continue;
-        merged.set(itemId, (merged.get(itemId) || 0) + quantity);
+        const key = `${warehouseId}:${itemId}`;
+        const prev = merged.get(key);
+        merged.set(key, { itemId, warehouseId, quantity: (prev?.quantity || 0) + quantity });
       }
     }
-    const reserveItems = Array.from(merged.entries())
-      .map(([itemId, quantity]) => ({ itemId, quantity }))
-      .filter((x) => isUuid(x.itemId) && Number(x.quantity) > 0);
+    const reserveItems = Array.from(merged.values())
+      .map(({ itemId, warehouseId: itemWarehouseId, quantity }) => ({ itemId, warehouseId: itemWarehouseId, quantity }))
+      .filter((x) => isUuid(x.itemId) && Number(x.quantity) > 0 && isUuid(String((x as any).warehouseId || '')));
     if (reserveItems.length > 0) {
       const { error: releaseErr } = await supabase.rpc('release_reserved_stock_for_order', {
         p_items: reserveItems,
@@ -3801,6 +3811,8 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         itemId: String((item as any)?.itemId || (item as any)?.id || ''),
         quantity: getRequestedItemQuantity(item),
         uomCode: String((item as any)?.uomCode || '').trim() || undefined,
+        uomQtyInBase: Number((item as any)?.uomQtyInBase) || 1,
+        warehouseId: String((item as any)?.warehouseId || warehouseId || '').trim() || undefined,
       }))
       .filter((entry) => isUuid(entry.itemId) && Number(entry.quantity) > 0);
     if (payloadItems.length === 0 && promoLines.length === 0) {
@@ -3819,6 +3831,16 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       ...(typeof payment.isCreditSale === 'boolean' ? { isCreditSale: payment.isCreditSale } : {}),
       ...(payment.invoiceTerms ? { invoiceTerms: payment.invoiceTerms } : {}),
     };
+    if (payloadItems.length > 0) {
+      const reserveErr = await rpcReserveStockForOrder(supabase, {
+        items: payloadItems,
+        orderId: existing.id,
+        warehouseId,
+      });
+      if (reserveErr) {
+        throw new Error(localizeSupabaseError(reserveErr));
+      }
+    }
     const { error: rpcError } = await rpcConfirmOrderDeliveryWithCredit(supabase, {
       orderId: existing.id,
       items: payloadItems,
@@ -4171,12 +4193,15 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
       // Use atomic RPC for delivery confirmation (Status Update + Stock Deduction)
       const baseItems = (updated.items || []).filter((it: any) => !(it?.lineType === 'promotion' || it?.promotionId || it?.category === 'promotion'));
-      const merged = new Map<string, number>();
+      const merged = new Map<string, { itemId: string; warehouseId: string; quantity: number }>();
       for (const item of baseItems) {
         const itemId = String((item as any)?.itemId || (item as any)?.id || '');
         const quantity = Number(getRequestedBaseQuantity(item)) || 0;
         if (!itemId || !(quantity > 0)) continue;
-        merged.set(itemId, (merged.get(itemId) || 0) + quantity);
+        const whId = String((item as any)?.warehouseId || warehouseId || '').trim();
+        const key = `${whId}:${itemId}`;
+        const prev = merged.get(key);
+        merged.set(key, { itemId, warehouseId: whId, quantity: (prev?.quantity || 0) + quantity });
       }
       const promoLines = Array.isArray((updated as any).promotionLines) ? (updated as any).promotionLines : [];
       for (const line of promoLines) {
@@ -4185,17 +4210,21 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           const itemId = String((pi as any)?.itemId || (pi as any)?.id || '');
           const quantity = Number((pi as any)?.quantity) || 0;
           if (!itemId || !(quantity > 0)) continue;
-          merged.set(itemId, (merged.get(itemId) || 0) + quantity);
+          const key = `${warehouseId}:${itemId}`;
+          const prev = merged.get(key);
+          merged.set(key, { itemId, warehouseId, quantity: (prev?.quantity || 0) + quantity });
         }
       }
-      const reserveItems = Array.from(merged.entries())
-        .map(([itemId, quantity]) => ({ itemId, quantity }))
-        .filter((x) => isUuid(x.itemId) && Number(x.quantity) > 0);
+      const reserveItems = Array.from(merged.values())
+        .map(({ itemId, warehouseId: itemWarehouseId, quantity }) => ({ itemId, warehouseId: itemWarehouseId, quantity }))
+        .filter((x) => isUuid(x.itemId) && Number(x.quantity) > 0 && isUuid(String((x as any).warehouseId || '')));
       const payloadItems = baseItems
         .map((item) => ({
           itemId: String((item as any)?.itemId || (item as any)?.id || ''),
           quantity: getRequestedItemQuantity(item),
           uomCode: String((item as any)?.uomCode || '').trim() || undefined,
+          uomQtyInBase: Number((item as any)?.uomQtyInBase) || 1,
+          warehouseId: String((item as any)?.warehouseId || warehouseId || '').trim() || undefined,
         }))
         .filter((entry) => isUuid(entry.itemId) && Number(entry.quantity) > 0);
       if (payloadItems.length === 0) {
@@ -4217,7 +4246,10 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         const orderRow: any = tryOrder?.data || null;
         const byCol = typeof orderRow?.warehouse_id === 'string' ? orderRow?.warehouse_id : undefined;
         const byData = typeof orderRow?.data?.warehouseId === 'string' ? orderRow?.data?.warehouseId : undefined;
-        const candidate = byCol || byData;
+        const byLine = Array.isArray((updated as any)?.items)
+          ? String((((updated as any).items as any[]).find((it: any) => String(it?.warehouseId || '').trim()) as any)?.warehouseId || '').trim()
+          : '';
+        const candidate = byCol || byData || byLine;
         if (candidate) return candidate;
         throw new Error('نطاق المستودع غير محدد لهذا الطلب. يمنع التنفيذ خارج نطاق الجلسة.');
       };
@@ -4230,6 +4262,16 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         });
         if (releaseErr) {
           throw new Error(localizeSupabaseError(releaseErr));
+        }
+      }
+      if (payloadItems.length > 0) {
+        const reserveErr = await rpcReserveStockForOrder(supabase, {
+          items: payloadItems,
+          orderId: updated.id,
+          warehouseId,
+        });
+        if (reserveErr) {
+          throw new Error(localizeSupabaseError(reserveErr));
         }
       }
       let isWholesaleCustomer = false;

@@ -1,0 +1,2 @@
+﻿const pg=require("pg");
+(async()=>{const c=new pg.Client({host:'aws-1-ap-south-1.pooler.supabase.com',port:5432,user:'postgres.pmhivhtaoydfolseelyc',password:process.env.DBPW,database:'postgres',ssl:{rejectUnauthorized:false}});await c.connect();const r=await c.query(`select data->'items' as items from public.orders where id=$1::uuid`,['0a1c2ae2-485f-4931-9674-c8ae524dc7aa']);console.log(JSON.stringify(r.rows[0]?.items?.[0]||null,null,2));await c.end();})().catch(e=>{console.error(e);process.exit(1)})

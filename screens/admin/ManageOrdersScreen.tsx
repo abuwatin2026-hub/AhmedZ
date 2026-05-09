@@ -3842,6 +3842,7 @@ const ManageOrdersScreen: React.FC = () => {
                                 getEditableStatusesForOrder(order).length === 0 ||
                                 (isDeliveryOnly && order.assignedDeliveryUserId === adminUser?.id && !order.deliveryAcceptedAt) ||
                                 isFullyReturned ||
+                                isReadOnlyOrdersView ||
                                 Boolean((order as any).isDraft)
                             }
                             className={`w-full p-2 border-none rounded-md text-sm font-semibold text-center focus:ring-2 focus:ring-orange-500 transition ${adminStatusColors[order.status]}`}
@@ -3993,7 +3994,7 @@ const ManageOrdersScreen: React.FC = () => {
                             <button
                                 type="button"
                                 onClick={() => loadQuotationToCart(order)}
-                                className="flex-1 py-2 bg-amber-500 text-white rounded hover:bg-amber-600 transition text-sm font-semibold text-gray-900"
+                                className="flex-1 py-2 bg-amber-500 text-gray-900 rounded hover:bg-amber-600 transition text-sm font-semibold"
                             >
                                 اعتماد الفاتورة
                             </button>
@@ -4910,7 +4911,7 @@ const ManageOrdersScreen: React.FC = () => {
                                                                 <button
                                                                     type="button"
                                                                     onClick={() => loadQuotationToCart(order)}
-                                                                    className="px-3 py-1 bg-amber-500 text-white rounded hover:bg-amber-600 transition text-xs font-semibold text-gray-900"
+                                                                    className="px-3 py-1 bg-amber-500 text-gray-900 rounded hover:bg-amber-600 transition text-xs font-semibold"
                                                                 >
                                                                     اعتماد كفاتورة
                                                                 </button>
