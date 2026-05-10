@@ -1962,7 +1962,12 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const canMarkPaidUi = hasPermission('orders.markPaid');
 
     const IN_STORE_DELIVERY_ZONE_ID = '11111111-1111-4111-8111-111111111111';
-    const baseCurrency = String((await getBaseCurrencyCode()) || '').toUpperCase().trim() || 'YER';
+    const baseCurrency = String((await withInStoreStageTimeout(
+      getBaseCurrencyCode(),
+      'base_currency',
+      'جلب العملة الأساسية',
+      12000
+    )) || '').toUpperCase().trim() || 'YER';
     const desiredCurrency = String((input as any).currency || baseCurrency || '').toUpperCase().trim() || baseCurrency;
     const enabledPaymentMethods = Object.entries(settings.paymentMethods || {})
       .filter(([, isEnabled]) => Boolean(isEnabled))
@@ -2018,7 +2023,14 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       throw new Error('يجب إضافة صنف واحد على الأقل.');
     }
 
-    const menuItems = await Promise.all(normalizedMenuLines.map((l) => loadMenuItemById(l.menuItemId)));
+    const menuItems = await runWithConcurrency(normalizedMenuLines, async (line) => {
+      return await withInStoreStageTimeout(
+        loadMenuItemById(line.menuItemId),
+        'load_menu_item',
+        `تحميل بيانات الصنف ${String(line.menuItemId || '').trim() || 'غير معروف'}`,
+        12000
+      );
+    }, 4);
     if (menuItems.some((m) => !m)) {
       throw new Error('تعذر تحميل بعض الأصناف.');
     }
@@ -2034,11 +2046,16 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         throw new Error('لا يمكن البيع الآجل بدون عميل أو طرف مالي صالح.');
       }
       if (isUuid(rawId)) {
-        const { data: cRow } = await supabase
-          .from('customers')
-          .select('auth_user_id, customer_type, payment_terms, credit_limit')
-          .eq('auth_user_id', rawId)
-          .maybeSingle();
+        const { data: cRow } = await withInStoreStageTimeout(
+          supabase
+            .from('customers')
+            .select('auth_user_id, customer_type, payment_terms, credit_limit')
+            .eq('auth_user_id', rawId)
+            .maybeSingle(),
+          'validate_credit_customer',
+          'التحقق من عميل البيع الآجل',
+          12000
+        );
         if (!cRow?.auth_user_id) {
           throw new Error('البيع الآجل متاح فقط لعميل مسجل في قسم إدارة العملاء بنوع wholesale.');
         }
@@ -2605,27 +2622,42 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         };
         let existing: Order | null = null;
         try {
-          const { data } = await supabase
-            .from('orders')
-            .select('id,status,created_at,delivery_zone_id,warehouse_id,currency,fx_rate,base_total,data')
-            .contains('data', { clientTraceId })
-            .order('created_at', { ascending: false })
-            .limit(1);
+          const { data } = await withInStoreStageTimeout(
+            supabase
+              .from('orders')
+              .select('id,status,created_at,delivery_zone_id,warehouse_id,currency,fx_rate,base_total,data')
+              .contains('data', { clientTraceId })
+              .order('created_at', { ascending: false })
+              .limit(1),
+            'trace_lookup',
+            'التحقق من محاولة البيع السابقة بنفس رقم التتبع',
+            10000
+          );
           existing = pickExisting(data as any[]);
         } catch {}
         if (!existing) {
           try {
-            const { data } = await supabase
-              .from('orders')
-              .select('id,status,created_at,delivery_zone_id,warehouse_id,currency,fx_rate,base_total,data')
-              .contains('data', { traceId: clientTraceId })
-              .order('created_at', { ascending: false })
-              .limit(1);
+            const { data } = await withInStoreStageTimeout(
+              supabase
+                .from('orders')
+                .select('id,status,created_at,delivery_zone_id,warehouse_id,currency,fx_rate,base_total,data')
+                .contains('data', { traceId: clientTraceId })
+                .order('created_at', { ascending: false })
+                .limit(1),
+              'trace_lookup',
+              'التحقق من محاولة البيع السابقة بنفس رقم التتبع',
+              10000
+            );
             existing = pickExisting(data as any[]);
           } catch {}
         }
         if (existing) {
-          const display = await resolveOrderAddress(existing);
+          const display = await withInStoreStageTimeout(
+            resolveOrderAddress(existing),
+            'resolve_existing_order',
+            'تهيئة الطلب السابق المرتبط بنفس رقم التتبع',
+            10000
+          );
           setOrders(prev => [display, ...prev.filter(o => o.id !== display.id)]);
           return display;
         }
@@ -2758,11 +2790,21 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         // The order may not actually exist remotely if the previous attempt failed
         // before the insert completed. Try update first, but fall back to create.
         try {
-          await updateRemoteOrder({ ...newOrder, status: 'pending' });
+          await withInStoreStageTimeout(
+            updateRemoteOrder({ ...newOrder, status: 'pending' }),
+            'update_order',
+            'تحديث الطلب الحالي على الخادم',
+            20000
+          );
           // Verify the order actually exists after update (update on 0 rows is silent)
           const supabaseCheck = getSupabaseClient();
           if (supabaseCheck) {
-            const { data: existing } = await supabaseCheck.from('orders').select('id').eq('id', newOrder.id).maybeSingle();
+            const { data: existing } = await withInStoreStageTimeout(
+              supabaseCheck.from('orders').select('id').eq('id', newOrder.id).maybeSingle(),
+              'verify_updated_order',
+              'التحقق من وجود الطلب بعد التحديث',
+              10000
+            );
             if (!existing) {
               await withInStoreStageTimeout(
                 createRemoteOrder({ ...newOrder, status: 'pending' }),
@@ -2795,7 +2837,12 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           const supabase = getSupabaseClient();
           if (supabase) {
             const sb1 = supabase!;
-            const { data: invNum } = await sb1.rpc('assign_invoice_number_if_missing', { p_order_id: newOrder.id });
+            const { data: invNum } = await withInStoreStageTimeout(
+              sb1.rpc('assign_invoice_number_if_missing', { p_order_id: newOrder.id }),
+              'assign_invoice_number',
+              'تعيين رقم الفاتورة',
+              12000
+            );
             if (typeof invNum === 'string' && invNum) {
               invoiceNumber = invNum;
               newOrder.invoiceNumber = invNum;
@@ -2944,11 +2991,16 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             .filter((x) => x.itemId && Number(x.quantity) > 0);
 
           if (reserveItemsList.length > 0) {
-            const reserveErr = await rpcReserveStockForOrder(sb2, {
-              items: reserveItemsList,
-              orderId: newOrder.id,
-              warehouseId: effectiveOrderWarehouseId,
-            });
+            const reserveErr = await withInStoreStageTimeout(
+              rpcReserveStockForOrder(sb2, {
+                items: reserveItemsList,
+                orderId: newOrder.id,
+                warehouseId: effectiveOrderWarehouseId,
+              }),
+              'reserve_stock',
+              'حجز المخزون للطلب',
+              20000
+            );
             if (reserveErr) {
               const offlineNow = typeof navigator !== 'undefined' && navigator.onLine === false;
               if (offlineNow || isAbortLikeError(reserveErr)) {
@@ -2961,18 +3013,28 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           }
         }
 
-        const { error: rpcError } = await rpcConfirmOrderDeliveryWithCredit(sb2, {
-          orderId: newOrder.id,
-          items: sanitizedItems,
-          updatedData: sanitizedFinalized,
-          warehouseId: effectiveOrderWarehouseId,
-        });
+        const { error: rpcError } = await withInStoreStageTimeout(
+          rpcConfirmOrderDeliveryWithCredit(sb2, {
+            orderId: newOrder.id,
+            items: sanitizedItems,
+            updatedData: sanitizedFinalized,
+            warehouseId: effectiveOrderWarehouseId,
+          }),
+          'confirm_delivery',
+          'تأكيد التسليم وترحيل البيع',
+          30000
+        );
 
         let confirmError: any = rpcError;
         if (confirmError) {
           const msgLower = String((confirmError as any)?.message || '').trim().toLowerCase();
           if (msgLower === 'posted_order_immutable' || msgLower.includes('posted_order_immutable')) {
-            const fresh = await fetchRemoteOrderById(newOrder.id);
+            const fresh = await withInStoreStageTimeout(
+              fetchRemoteOrderById(newOrder.id),
+              'read_order_after_confirm',
+              'قراءة الطلب بعد التأكيد',
+              12000
+            );
             if (fresh) {
               finalized = fresh;
             }
@@ -2996,7 +3058,12 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           if (isInvoiceSnapshotError) {
             try {
               const issuedAtIso = nowIso;
-              const baseCurrencyCode = String((await getBaseCurrencyCode()) || baseCurrency || 'YER').toUpperCase();
+              const baseCurrencyCode = String((await withInStoreStageTimeout(
+                getBaseCurrencyCode(),
+                'base_currency',
+                'جلب العملة الأساسية',
+                12000
+              )) || baseCurrency || 'YER').toUpperCase();
               const fxRateSnapshot = Number.isFinite(Number(fxRate)) ? Number(fxRate) : 1;
               const currencySnapshot = desiredCurrency || baseCurrencyCode;
               const invNum = newOrder.invoiceNumber || invoiceNumber || generateInvoiceNumber(newOrder.id, issuedAtIso);
@@ -3040,15 +3107,25 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
                 invoiceNumber: invNum,
               })));
 
-              const { error: retryError } = await rpcConfirmOrderDeliveryWithCredit(sb2, {
-                orderId: newOrder.id,
-                items: sanitizedItems,
-                updatedData: retryFinalized,
-                warehouseId: effectiveOrderWarehouseId,
-              });
+              const { error: retryError } = await withInStoreStageTimeout(
+                rpcConfirmOrderDeliveryWithCredit(sb2, {
+                  orderId: newOrder.id,
+                  items: sanitizedItems,
+                  updatedData: retryFinalized,
+                  warehouseId: effectiveOrderWarehouseId,
+                }),
+                'confirm_delivery_retry',
+                'إعادة تأكيد التسليم بعد تجهيز snapshot الفاتورة',
+                30000
+              );
               confirmError = retryError;
               if (!confirmError) {
-                const freshOrder = await fetchRemoteOrderById(newOrder.id);
+                const freshOrder = await withInStoreStageTimeout(
+                  fetchRemoteOrderById(newOrder.id),
+                  'read_order_after_confirm',
+                  'قراءة الطلب بعد إعادة التأكيد',
+                  12000
+                );
                 if (freshOrder) {
                   finalized = freshOrder;
                 }
@@ -3060,13 +3137,23 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           const offlineNow = typeof navigator !== 'undefined' && navigator.onLine === false;
           if (offlineNow || isAbortLikeError(confirmError)) {
             await rollbackCreatedOrder('offline_or_aborted');
-            const fresh = await fetchRemoteOrderById(newOrder.id);
+            const fresh = await withInStoreStageTimeout(
+              fetchRemoteOrderById(newOrder.id),
+              'read_order_after_offline_fallback',
+              'قراءة الطلب بعد التحويل للمعلق',
+              12000
+            );
             return fresh || ({ ...newOrder, status: 'pending' } as Order);
           }
           {
             const msg = String((confirmError as any)?.message || '').trim().toLowerCase();
             if (msg === 'posted_order_immutable' || msg.includes('posted_order_immutable')) {
-              const fresh = await fetchRemoteOrderById(newOrder.id);
+              const fresh = await withInStoreStageTimeout(
+                fetchRemoteOrderById(newOrder.id),
+                'read_order_after_immutable',
+                'قراءة الطلب بعد تأكيد حالة النشر',
+                12000
+              );
               if (fresh) return fresh;
               return ({ ...newOrder, status: 'delivered' } as Order);
             }
@@ -3130,7 +3217,12 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             timeoutText.includes('query_canceled');
           if (isStatementTimeout) {
             await rollbackCreatedOrder(`statement_timeout | ${combinedForDisplay || combinedMsg || 'query_canceled'}${code ? ` | code:${code}` : ''}`);
-            const freshPending = await fetchRemoteOrderById(newOrder.id);
+            const freshPending = await withInStoreStageTimeout(
+              fetchRemoteOrderById(newOrder.id),
+              'read_pending_after_timeout',
+              'قراءة الطلب المعلق بعد مهلة قاعدة البيانات',
+              12000
+            );
             return freshPending || ({ ...newOrder, status: 'pending' } as Order);
           }
           const rollbackReason = [combinedForDisplay || combinedMsg || 'rpc_error', code ? `code:${code}` : ''].filter(Boolean).join(' | ');
@@ -3145,7 +3237,12 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         }
 
         // Fetch fresh order to get the backend-generated invoice details
-        const freshOrder = await fetchRemoteOrderById(newOrder.id);
+        const freshOrder = await withInStoreStageTimeout(
+          fetchRemoteOrderById(newOrder.id),
+          'read_final_order',
+          'قراءة الطلب النهائي من الخادم',
+          12000
+        );
         if (freshOrder) {
           finalized = freshOrder;
         } else {
@@ -3154,7 +3251,12 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         }
 
         if (paymentBreakdown.length > 0) {
-          const paymentCurrency = String((finalized as any).currency || (await getBaseCurrencyCode()) || '').toUpperCase();
+          const paymentCurrency = String((finalized as any).currency || (await withInStoreStageTimeout(
+            getBaseCurrencyCode(),
+            'base_currency',
+            'جلب العملة الأساسية',
+            12000
+          )) || '').toUpperCase();
           const sbPay = getSupabaseClient();
           if (!sbPay) throw new Error('Supabase غير مهيأ.');
           const queuePaymentRepair = (payment: { amount: number; method: string; referenceNumber?: string; senderName?: string; senderPhone?: string; declaredAmount?: number; amountConfirmed?: boolean; destinationAccountId?: string }, idx: number) => {
@@ -3180,20 +3282,25 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           };
           for (let i = 0; i < paymentBreakdown.length; i++) {
             const p = paymentBreakdown[i];
-            const rpcErr = await rpcRecordOrderPayment(sbPay, {
-              orderId: newOrder.id,
-              amount: Number(p.amount) || 0,
-              method: p.method,
-              occurredAt: nowIso,
-              currency: paymentCurrency,
-              idempotencyKey: `instore:${newOrder.id}:${nowIso}:${i}:${p.method}:${Number(p.amount) || 0}`,
-              destinationAccountId: String((p as any).destinationAccountId || '').trim() || undefined,
-              referenceNumber: p.referenceNumber || undefined,
-              senderName: p.senderName || undefined,
-              senderPhone: p.senderPhone || undefined,
-              declaredAmount: Number((p as any).declaredAmount) || undefined,
-              amountConfirmed: typeof (p as any).amountConfirmed === 'boolean' ? Boolean((p as any).amountConfirmed) : undefined,
-            });
+            const rpcErr = await withInStoreStageTimeout(
+              rpcRecordOrderPayment(sbPay, {
+                orderId: newOrder.id,
+                amount: Number(p.amount) || 0,
+                method: p.method,
+                occurredAt: nowIso,
+                currency: paymentCurrency,
+                idempotencyKey: `instore:${newOrder.id}:${nowIso}:${i}:${p.method}:${Number(p.amount) || 0}`,
+                destinationAccountId: String((p as any).destinationAccountId || '').trim() || undefined,
+                referenceNumber: p.referenceNumber || undefined,
+                senderName: p.senderName || undefined,
+                senderPhone: p.senderPhone || undefined,
+                declaredAmount: Number((p as any).declaredAmount) || undefined,
+                amountConfirmed: typeof (p as any).amountConfirmed === 'boolean' ? Boolean((p as any).amountConfirmed) : undefined,
+              }),
+              'record_payment',
+              `تسجيل الدفعة ${i + 1}`,
+              15000
+            );
             if (rpcErr) {
               paymentRecordOk = false;
               const transientError = (typeof navigator !== 'undefined' && navigator.onLine === false) || isAbortLikeError(rpcErr);
@@ -3214,19 +3321,29 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         if (input.isCredit && paymentRecordOk) {
           const hasArPayment = paymentBreakdown.some(p => p.method === 'ar');
           if (!hasArPayment) {
-            const arCurrency = String((finalized as any).currency || (await getBaseCurrencyCode()) || '').toUpperCase();
+            const arCurrency = String((finalized as any).currency || (await withInStoreStageTimeout(
+              getBaseCurrencyCode(),
+              'base_currency',
+              'جلب العملة الأساسية',
+              12000
+            )) || '').toUpperCase();
             const sbAr = getSupabaseClient();
             if (sbAr) {
               const arAmount = computedTotalRounded - paymentBreakdown.reduce((s, p) => s + (Number(p.amount) || 0), 0);
               if (arAmount > 0) {
-                const arErr = await rpcRecordOrderPayment(sbAr, {
-                  orderId: newOrder.id,
-                  amount: arAmount,
-                  method: 'ar',
-                  occurredAt: nowIso,
-                  currency: arCurrency,
-                  idempotencyKey: `instore:${newOrder.id}:${nowIso}:ar:${arAmount}`,
-                });
+                const arErr = await withInStoreStageTimeout(
+                  rpcRecordOrderPayment(sbAr, {
+                    orderId: newOrder.id,
+                    amount: arAmount,
+                    method: 'ar',
+                    occurredAt: nowIso,
+                    currency: arCurrency,
+                    idempotencyKey: `instore:${newOrder.id}:${nowIso}:ar:${arAmount}`,
+                  }),
+                  'record_ar_payment',
+                  'تسجيل قيد الآجل',
+                  15000
+                );
                 if (arErr) {
                   paymentRecordOk = false;
                   const transientError = (typeof navigator !== 'undefined' && navigator.onLine === false) || isAbortLikeError(arErr);
@@ -3259,7 +3376,12 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         }
 
       } else {
-        const { data: sessionData, error: sessionError } = await sb2.auth.getSession();
+        const { data: sessionData, error: sessionError } = await withInStoreStageTimeout(
+          sb2.auth.getSession(),
+          'auth_session',
+          'التحقق من الجلسة الحالية',
+          10000
+        );
         if (sessionError || !sessionData.session) {
           const { error: deleteErr } = await sb2.from('orders').delete().eq('id', newOrder.id);
           if (deleteErr) {
@@ -3297,7 +3419,12 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           .filter((x) => x.itemId && Number(x.quantity) > 0);
 
         if (reserveItems.length > 0) {
-          const reserveErr = await rpcReserveStockForOrder(sb2, { items: reserveItems, orderId: newOrder.id, warehouseId: effectiveOrderWarehouseId });
+          const reserveErr = await withInStoreStageTimeout(
+            rpcReserveStockForOrder(sb2, { items: reserveItems, orderId: newOrder.id, warehouseId: effectiveOrderWarehouseId }),
+            'reserve_stock',
+            'حجز المخزون للطلب',
+            20000
+          );
           if (reserveErr) {
             const offlineNow = typeof navigator !== 'undefined' && navigator.onLine === false;
             if (offlineNow || isAbortLikeError(reserveErr)) {
@@ -3326,7 +3453,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
 
 
-    await Promise.all([
+    await withInStoreStageTimeout(Promise.all([
       addOrderEvent({
         orderId: newOrder.id,
         action: 'order.created',
@@ -3354,7 +3481,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         createdAt: nowIso,
         payload: { invoiceNumber: finalized.invoiceNumber },
       })] : []),
-    ]);
+    ]), 'order_events', 'تسجيل أحداث الطلب', 12000);
 
     // We already have the fresh order in `finalized` (if canMarkPaidUi path was taken)
     // No need to call updateRemoteOrder again for "shouldIssueInvoice" as backend did it.
