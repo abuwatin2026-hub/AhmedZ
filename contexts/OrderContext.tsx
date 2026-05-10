@@ -2176,6 +2176,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     // Stock validation is strictly enforced by the backend RPC (confirm_order_delivery).
 
     let pricedItems: CartItem[] = items;
+    let repricingUsedLocalFallback = false;
     if (!offlineHint) {
       const supabaseForPricing = getSupabaseClient();
       if (!supabaseForPricing) throw new Error('Supabase غير مهيأ.');
@@ -2222,37 +2223,61 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
               15000
             );
           };
-          let { data, error } = await call(rawCustomerId);
+          try {
+            let { data, error } = await call(rawCustomerId);
 
-          if (error && isRpcNotFoundError(error)) {
-            const reloaded = await reloadPostgrestSchema();
-            if (reloaded) {
-              const retry = await call(rawCustomerId);
-              data = retry.data;
-              error = retry.error;
+            if (error && isRpcNotFoundError(error)) {
+              const reloaded = await reloadPostgrestSchema();
+              if (reloaded) {
+                const retry = await call(rawCustomerId);
+                data = retry.data;
+                error = retry.error;
+              }
             }
-          }
 
-          if (error) throw new Error(localizeSupabaseError(error));
-          const row = (Array.isArray(data) ? data[0] : data) as any;
-          const unitPrice = Number(row?.suggested_price);
-          if (!Number.isFinite(unitPrice) || unitPrice < 0) {
-            throw new Error('تعذر احتساب السعر.');
+            if (error) throw new Error(localizeSupabaseError(error));
+            const row = (Array.isArray(data) ? data[0] : data) as any;
+            const unitPrice = Number(row?.suggested_price);
+            if (!Number.isFinite(unitPrice) || unitPrice < 0) {
+              throw new Error('تعذر احتساب السعر.');
+            }
+            const basePatch: any = {
+              _pricedByRpc: true,
+              _fefoBatchId: row?.batch_id ? String(row.batch_id) : undefined,
+              _fefoBatchCode: row?.batch_code ? String(row.batch_code) : undefined,
+              _fefoExpiryDate: row?.expiry_date ? String(row.expiry_date) : undefined,
+              _fefoUnitCost: Number(row?.unit_cost) || 0,
+              _fefoMinPrice: row?.min_price != null ? Number(row?.min_price) : undefined,
+              _fefoNextBatchMinPrice: row?.next_batch_min_price != null ? Number(row?.next_batch_min_price) : undefined,
+              _fefoWarningNextBatchPriceDiff: Boolean(row?.warning_next_batch_price_diff),
+            };
+            if (item.unitType === 'gram') {
+              return { ...item, price: unitPrice, pricePerUnit: unitPrice * 1000, ...basePatch };
+            }
+            return { ...item, price: unitPrice, ...basePatch };
+          } catch (err: any) {
+            const msg = String(err?.message || '');
+            const timeoutLike =
+              /IN_STORE_STAGE_TIMEOUT:repricing/i.test(msg)
+              || /IN_STORE_PRICING_TIMEOUT/i.test(msg)
+              || /مهلة إعادة التسعير/i.test(msg)
+              || /انتهت مهلة إعادة التسعير/i.test(msg);
+            const localPrice = Number(item?.price);
+            const localPerUnit = Number(item?.pricePerUnit);
+            if (timeoutLike && Number.isFinite(localPrice) && localPrice >= 0) {
+              repricingUsedLocalFallback = true;
+              if (item.unitType === 'gram') {
+                return {
+                  ...item,
+                  price: localPrice,
+                  pricePerUnit: Number.isFinite(localPerUnit) && localPerUnit > 0 ? localPerUnit : localPrice * 1000,
+                  _pricedByRpc: false,
+                };
+              }
+              return { ...item, price: localPrice, _pricedByRpc: false };
+            }
+            throw err;
           }
-          const basePatch: any = {
-            _pricedByRpc: true,
-            _fefoBatchId: row?.batch_id ? String(row.batch_id) : undefined,
-            _fefoBatchCode: row?.batch_code ? String(row.batch_code) : undefined,
-            _fefoExpiryDate: row?.expiry_date ? String(row.expiry_date) : undefined,
-            _fefoUnitCost: Number(row?.unit_cost) || 0,
-            _fefoMinPrice: row?.min_price != null ? Number(row?.min_price) : undefined,
-            _fefoNextBatchMinPrice: row?.next_batch_min_price != null ? Number(row?.next_batch_min_price) : undefined,
-            _fefoWarningNextBatchPriceDiff: Boolean(row?.warning_next_batch_price_diff),
-          };
-          if (item.unitType === 'gram') {
-            return { ...item, price: unitPrice, pricePerUnit: unitPrice * 1000, ...basePatch };
-          }
-          return { ...item, price: unitPrice, ...basePatch };
         }, 4);
     } else {
       pricedItems = items.map((item) => {
@@ -2271,6 +2296,9 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
 
     items = pricedItems;
+    if (repricingUsedLocalFallback) {
+      showNotification('تعذر جلب التسعير النهائي لبعض الأصناف ضمن المهلة، تم اعتماد السعر المحلي مؤقتًا وسيُعاد التحقق أثناء المعالجة.', 'warning');
+    }
 
     let fxRate = 1;
 
