@@ -1365,7 +1365,8 @@ const ManageOrdersScreen: React.FC = () => {
     const inStoreMissingServerPricing = useMemo(() => {
         if (!isInStoreSaleOpen || !inStoreLines.length) return false;
         if (typeof navigator !== 'undefined' && navigator.onLine === false) return false;
-        for (const l of inStoreLines) {
+        for (let index = 0; index < inStoreLines.length; index += 1) {
+            const l = inStoreLines[index];
             const mi = menuItems.find(m => m.id === l.menuItemId);
             if (!mi) return true;
             const unitType = mi.unitType || 'piece';
@@ -1377,10 +1378,34 @@ const ManageOrdersScreen: React.FC = () => {
             if (!(pricingQty > 0)) continue;
             const key = `${l.menuItemId}:${unitType}:${pricingQty}:${warehouseId}:${inStoreSelectedCustomerId || ''}`;
             const priced = inStorePricingMap[key];
-            if (!priced || priced.isTxnPrice !== true) return true;
+            const alerts = inStoreAlertsByIndex[index] || [];
+            const hardAlert = alerts.find(a => String(a?.type || '').trim() === 'out_of_stock' || String(a?.severity || '').trim() === 'error');
+            if (hardAlert?.message) return true;
+            if (!priced) return true;
+            if (priced.isTxnPrice === true) continue;
+            if (priced.reasonCode === 'NO_VALID_BATCH') return true;
         }
         return false;
-    }, [inStoreLines, inStorePricingMap, inStoreSelectedCustomerId, isInStoreSaleOpen, menuItems]);
+    }, [inStoreAlertsByIndex, inStoreLines, inStorePricingMap, inStoreSelectedCustomerId, isInStoreSaleOpen, menuItems, sessionScope.scope?.warehouseId]);
+
+    const inStoreHasFallbackPricing = useMemo(() => {
+        if (!isInStoreSaleOpen || !inStoreLines.length) return false;
+        for (const l of inStoreLines) {
+            const mi = menuItems.find(m => m.id === l.menuItemId);
+            if (!mi) continue;
+            const unitType = mi.unitType || 'piece';
+            const uomQty = Number(l.uomQtyInBase || 1) || 1;
+            const warehouseId = String(l.warehouseId || sessionScope.scope?.warehouseId || '').trim();
+            const pricingQty = (unitType === 'kg' || unitType === 'gram')
+                ? (Number(l.weight) || Number(l.quantity) || 0)
+                : ((Number(l.quantity) || 0) * uomQty);
+            if (!(pricingQty > 0)) continue;
+            const key = `${l.menuItemId}:${unitType}:${pricingQty}:${warehouseId}:${inStoreSelectedCustomerId || ''}`;
+            const priced = inStorePricingMap[key];
+            if (priced && priced.isTxnPrice !== true && priced.reasonCode !== 'NO_VALID_BATCH') return true;
+        }
+        return false;
+    }, [inStoreLines, inStorePricingMap, inStoreSelectedCustomerId, isInStoreSaleOpen, menuItems, sessionScope.scope?.warehouseId]);
 
     const inStorePricingBlockReason = useMemo(() => {
         if (!isInStoreSaleOpen || !inStoreLines.length) return '';
@@ -1403,6 +1428,7 @@ const ManageOrdersScreen: React.FC = () => {
             const hardAlert = alerts.find(a => String(a?.type || '').trim() === 'out_of_stock' || String(a?.severity || '').trim() === 'error');
             if (hardAlert?.message) return String(hardAlert.message);
             if (priced?.reasonCode === 'NO_VALID_BATCH') return `لا توجد دفعة صالحة للبيع في ${warehouseName} لهذا الصنف.`;
+            if (priced?.reasonCode === 'LOCAL_FALLBACK') return `تعذر جلب السعر النهائي من الخادم للمستودع ${warehouseName} حاليًا، وسيعاد اعتماده أثناء التسجيل.`;
             if (warehouseId) return `لم يكتمل التسعير الخادمي للمستودع ${warehouseName} بعد.`;
             return 'لم يكتمل التسعير الخادمي لبعض الأصناف بعد.';
         }
@@ -5493,6 +5519,11 @@ const ManageOrdersScreen: React.FC = () => {
                             {inStorePricingBusy
                                 ? 'يتم الآن جلب السعر النهائي من الخادم وقد يختلف عن السعر المحلي.'
                                 : (inStorePricingBlockReason || 'لا يوجد تسعير خادمي معتمد لكل الأصناف، لذلك تم إيقاف التسجيل حتى اكتمال التسعير.')}
+                        </div>
+                    )}
+                    {!inStorePricingBusy && !inStoreMissingServerPricing && inStoreHasFallbackPricing && (
+                        <div className="text-xs text-amber-700 dark:text-amber-300">
+                            بعض الأسعار المعروضة محلية مؤقتًا، وسيعاد اعتماد السعر النهائي من الخادم أثناء تسجيل البيع.
                         </div>
                     )}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
