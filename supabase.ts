@@ -126,6 +126,13 @@ const createConcurrencyFetch = (
   const maxQueue = Number.isFinite(options?.maxQueue) ? Math.max(0, Number(options?.maxQueue)) : 1000;
 
   let active = 0;
+  const priorityQueue: Array<{
+    input: RequestInfo | URL;
+    init?: RequestInit;
+    resolve: (res: Response) => void;
+    reject: (err: any) => void;
+    signal?: AbortSignal | null;
+  }> = [];
   const queue: Array<{
     input: RequestInfo | URL;
     init?: RequestInit;
@@ -147,7 +154,7 @@ const createConcurrencyFetch = (
   const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
   const waitForQueueSlot = async (signal?: AbortSignal | null, maxWaitMs = 15_000) => {
     const startedAt = Date.now();
-    while (maxQueue > 0 && queue.length >= maxQueue) {
+    while (maxQueue > 0 && (priorityQueue.length + queue.length) >= maxQueue) {
       if (signal?.aborted) throw makeAbortError();
       if (Date.now() - startedAt >= maxWaitMs) {
         const err: any = new Error('Request queue is busy. Please retry.');
@@ -159,8 +166,8 @@ const createConcurrencyFetch = (
   };
 
   const pump = () => {
-    while (active < maxConcurrent && queue.length) {
-      const job = queue.shift()!;
+    while (active < maxConcurrent && (priorityQueue.length || queue.length)) {
+      const job = priorityQueue.length ? priorityQueue.shift()! : queue.shift()!;
       if (job.signal?.aborted) {
         job.reject(makeAbortError());
         continue;
@@ -178,8 +185,10 @@ const createConcurrencyFetch = (
 
   return async (input: RequestInfo | URL, init?: RequestInit) => {
     const signal = init?.signal ?? null;
+    const method = String(init?.method || 'GET').toUpperCase();
+    const isPriority = method !== 'GET' && method !== 'HEAD';
     if (signal?.aborted) throw makeAbortError();
-    if (active < maxConcurrent && queue.length === 0) {
+    if (active < maxConcurrent && priorityQueue.length === 0 && queue.length === 0) {
       active += 1;
       try {
         return await baseFetch(input, init);
@@ -195,12 +204,18 @@ const createConcurrencyFetch = (
 
     return await new Promise<Response>((resolve, reject) => {
       const job = { input, init, resolve, reject, signal };
-      queue.push(job);
+      if (isPriority) {
+        priorityQueue.push(job);
+      } else {
+        queue.push(job);
+      }
 
       if (signal) {
         const onAbort = () => {
-          const idx = queue.indexOf(job);
-          if (idx >= 0) queue.splice(idx, 1);
+          const idx = priorityQueue.indexOf(job);
+          if (idx >= 0) priorityQueue.splice(idx, 1);
+          const idx2 = queue.indexOf(job);
+          if (idx2 >= 0) queue.splice(idx2, 1);
           reject(makeAbortError());
         };
         if (signal.aborted) {
