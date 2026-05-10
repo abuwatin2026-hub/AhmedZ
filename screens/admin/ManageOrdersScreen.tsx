@@ -1360,7 +1360,7 @@ const ManageOrdersScreen: React.FC = () => {
             if (!(pricingQty > 0)) continue;
             const key = `${l.menuItemId}:${unitType}:${pricingQty}:${inStoreSelectedCustomerId || ''}`;
             const priced = inStorePricingMap[key];
-            if (!priced) return true;
+            if (!priced || priced.isTxnPrice !== true) return true;
         }
         return false;
     }, [inStoreLines, inStorePricingMap, inStoreSelectedCustomerId, isInStoreSaleOpen, menuItems]);
