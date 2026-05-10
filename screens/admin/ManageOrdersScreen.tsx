@@ -1199,14 +1199,14 @@ const ManageOrdersScreen: React.FC = () => {
             const mi = menuItems.find(m => m.id === l.menuItemId);
             const unitType = mi?.unitType || 'piece';
             const uomQty = Number(l.uomQtyInBase || 1) || 1;
+            const lineWarehouseId = String(l.warehouseId || sessionScope.scope?.warehouseId || '').trim();
             const qty = (unitType === 'kg' || unitType === 'gram')
                 ? (Number(l.weight) || Number(l.quantity) || 0)
                 : ((Number(l.quantity) || 0) * uomQty);
             const priceSig = mi ? `${Number(mi.price) || 0}:${Number((mi as any).pricePerUnit) || 0}` : '0:0';
-            return `${l.menuItemId}:${unitType}:${qty}:u${uomQty}:p${priceSig}`;
+            return `${l.menuItemId}:${unitType}:${qty}:u${uomQty}:w${lineWarehouseId}:p${priceSig}`;
         }).sort().join('|');
-        const wh = sessionScope.scope?.warehouseId || '';
-        return `${base}|cust:${inStoreSelectedCustomerId || ''}|wh:${wh}|cur:${inStoreTransactionCurrency}`;
+        return `${base}|cust:${inStoreSelectedCustomerId || ''}|cur:${inStoreTransactionCurrency}`;
     }, [inStoreLines, inStoreSelectedCustomerId, isInStoreSaleOpen, menuItems, sessionScope.scope?.warehouseId, inStoreTransactionCurrency]);
 
     useEffect(() => {
@@ -1230,7 +1230,6 @@ const ManageOrdersScreen: React.FC = () => {
             return;
         }
 
-        const warehouseId = sessionScope.scope?.warehouseId || '';
         const runId = inStorePricingRunIdRef.current + 1;
         inStorePricingRunIdRef.current = runId;
         let disposed = false;
@@ -1257,16 +1256,17 @@ const ManageOrdersScreen: React.FC = () => {
                     const mi = menuItems.find(m => m.id === l.menuItemId);
                     const unitType = mi?.unitType || 'piece';
                     const uomQty = Number(l.uomQtyInBase || 1) || 1;
+                    const warehouseId = String(l.warehouseId || sessionScope.scope?.warehouseId || '').trim();
                     const pricingQty = (unitType === 'kg' || unitType === 'gram')
                         ? (Number(l.weight) || Number(l.quantity) || 0)
                         : ((Number(l.quantity) || 0) * uomQty);
-                    const key = `${l.menuItemId}:${unitType}:${pricingQty}:${inStoreSelectedCustomerId || ''}`;
-                    return { key, itemId: l.menuItemId, unitType, pricingQty };
+                    const key = `${l.menuItemId}:${unitType}:${pricingQty}:${warehouseId}:${inStoreSelectedCustomerId || ''}`;
+                    return { key, itemId: l.menuItemId, unitType, pricingQty, warehouseId };
                 }).filter(r => r.pricingQty > 0);
 
-                const uniq = new Map<string, { key: string; itemId: string; unitType: string; pricingQty: number }>();
+                const uniq = new Map<string, { key: string; itemId: string; unitType: string; pricingQty: number; warehouseId: string }>();
                 for (const r of requests) {
-                    const compact = `${r.itemId}:${r.unitType}:${r.pricingQty}:${inStoreSelectedCustomerId || ''}`;
+                    const compact = `${r.itemId}:${r.unitType}:${r.pricingQty}:${r.warehouseId}:${inStoreSelectedCustomerId || ''}`;
                     if (!uniq.has(compact)) uniq.set(compact, r);
                 }
 
@@ -1283,12 +1283,12 @@ const ManageOrdersScreen: React.FC = () => {
                     };
 
                     // Use FEFO batch pricing from server when warehouse is available
-                    if (warehouseId && supabase) {
+                    if (r.warehouseId && supabase) {
                         try {
                             const customerId = inStoreSelectedCustomerId || undefined;
                             const rpcReq = supabase.rpc('get_fefo_pricing', {
                                 p_item_id: r.itemId,
-                                p_warehouse_id: warehouseId,
+                                p_warehouse_id: r.warehouseId,
                                 p_quantity: r.pricingQty,
                                 p_customer_id: customerId || null,
                                 p_currency_code: inStoreTransactionCurrency || null,
@@ -1354,11 +1354,12 @@ const ManageOrdersScreen: React.FC = () => {
             if (!mi) return true;
             const unitType = mi.unitType || 'piece';
             const uomQty = Number(l.uomQtyInBase || 1) || 1;
+            const warehouseId = String(l.warehouseId || sessionScope.scope?.warehouseId || '').trim();
             const pricingQty = (unitType === 'kg' || unitType === 'gram')
                 ? (Number(l.weight) || Number(l.quantity) || 0)
                 : ((Number(l.quantity) || 0) * uomQty);
             if (!(pricingQty > 0)) continue;
-            const key = `${l.menuItemId}:${unitType}:${pricingQty}:${inStoreSelectedCustomerId || ''}`;
+            const key = `${l.menuItemId}:${unitType}:${pricingQty}:${warehouseId}:${inStoreSelectedCustomerId || ''}`;
             const priced = inStorePricingMap[key];
             if (!priced || priced.isTxnPrice !== true) return true;
         }
@@ -2407,10 +2408,11 @@ const ManageOrdersScreen: React.FC = () => {
             const isWeightBased = isWeightBasedUnit(unitType as any);
             const quantity = !isWeightBased ? (line.quantity || 0) : 1;
             const weight = isWeightBased ? (line.weight || 0) : 0;
+            const warehouseId = String(line.warehouseId || sessionScope.scope?.warehouseId || '').trim();
             const pricingQty = isWeightBased
                 ? (Number(weight) || Number(quantity) || 0)
                 : ((Number(quantity) || 0) * (Number(line.uomQtyInBase || 1) || 1));
-            const pricingKey = `${line.menuItemId}:${unitType || 'piece'}:${pricingQty}:${inStoreSelectedCustomerId || ''}`;
+            const pricingKey = `${line.menuItemId}:${unitType || 'piece'}:${pricingQty}:${warehouseId}:${inStoreSelectedCustomerId || ''}`;
             const priced = inStorePricingMap[pricingKey];
             
             const fallbackUnitPrice = unitType === 'gram' && menuItem.pricePerUnit ? menuItem.pricePerUnit / 1000 : menuItem.price;
@@ -2764,10 +2766,11 @@ const ManageOrdersScreen: React.FC = () => {
             const mi = menuItems.find(m => m.id === l.menuItemId);
             const unitType = mi?.unitType || 'piece';
             const uomQty = Number(l.uomQtyInBase || 1) || 1;
+            const warehouseId = String(l.warehouseId || sessionScope.scope?.warehouseId || '').trim();
             const pricingQty = (unitType === 'kg' || unitType === 'gram')
                 ? (Number(l.weight) || Number(l.quantity) || 0)
                 : ((Number(l.quantity) || 0) * uomQty);
-            const key = `${l.menuItemId}:${unitType}:${pricingQty}:${inStoreSelectedCustomerId || ''}`;
+            const key = `${l.menuItemId}:${unitType}:${pricingQty}:${warehouseId}:${inStoreSelectedCustomerId || ''}`;
             const pricing = inStorePricingMap[key];
             
             if (pricing?.isTxnPrice) {
@@ -6350,8 +6353,9 @@ const ManageOrdersScreen: React.FC = () => {
                                     const name = mi.name?.[language] || mi.name?.ar || mi.name?.en || mi.id;
                                     const isWeightBased = mi.unitType === 'kg' || mi.unitType === 'gram';
                                     const uomQty = Number(line.uomQtyInBase || 1) || 1;
+                                    const warehouseId = String(line.warehouseId || sessionScope.scope?.warehouseId || '').trim();
                                     const pricingQty = isWeightBased ? (Number(line.weight ?? 0) || 0) : ((Number(line.quantity ?? 0) || 0) * (Number(line.uomQtyInBase || 1) || 1));
-                                    const pricingKey = `${line.menuItemId}:${mi.unitType || 'piece'}:${pricingQty}:${inStoreSelectedCustomerId || ''}`;
+                                    const pricingKey = `${line.menuItemId}:${mi.unitType || 'piece'}:${pricingQty}:${warehouseId}:${inStoreSelectedCustomerId || ''}`;
                                     const priced = inStorePricingMap[pricingKey];
                                     const fallbackUnitPrice = mi.unitType === 'gram' && mi.pricePerUnit ? mi.pricePerUnit / 1000 : mi.price;
                                     const pricedUnitPrice = mi.unitType === 'gram'
