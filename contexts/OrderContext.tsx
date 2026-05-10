@@ -352,6 +352,55 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     return localizeSupabaseError(err);
   };
 
+  const runWithConcurrency = async <T, R>(
+    items: T[],
+    worker: (item: T, index: number) => Promise<R>,
+    limit = 4
+  ): Promise<R[]> => {
+    const safeLimit = Math.max(1, Number(limit) || 1);
+    const results: R[] = new Array(items.length);
+    let cursor = 0;
+    const runners = Array.from({ length: Math.min(safeLimit, items.length) }, async () => {
+      while (true) {
+        const idx = cursor;
+        cursor += 1;
+        if (idx >= items.length) return;
+        results[idx] = await worker(items[idx], idx);
+      }
+    });
+    await Promise.all(runners);
+    return results;
+  };
+
+  const createInStoreStageTimeoutError = (stage: string, label: string, timeoutMs: number) => {
+    const err: any = new Error(`انتهت مهلة ${label} أثناء تسجيل البيع الحضوري بعد ${Math.round(timeoutMs / 1000)} ثانية.`);
+    err.code = 'IN_STORE_STAGE_TIMEOUT';
+    err.stage = stage;
+    err.timeoutMs = timeoutMs;
+    return err;
+  };
+
+  const withInStoreStageTimeout = async <T,>(
+    promiseLike: PromiseLike<T>,
+    stage: string,
+    label: string,
+    timeoutMs = 15000
+  ): Promise<T> => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    try {
+      return await Promise.race([
+        Promise.resolve(promiseLike),
+        new Promise<T>((_, reject) => {
+          timer = setTimeout(() => {
+            reject(createInStoreStageTimeoutError(stage, label, timeoutMs));
+          }, timeoutMs);
+        }),
+      ]);
+    } finally {
+      if (timer != null) clearTimeout(timer);
+    }
+  };
+
   const rpcReserveStockForOrder = async (supabase: any, input: { items: any[]; orderId?: string | null; warehouseId?: string | null }) => {
     const tryDirect3 = async () => {
       const { error } = await supabase.rpc('reserve_stock_for_order', {
@@ -2109,7 +2158,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       const supabaseForPricing = getSupabaseClient();
       if (!supabaseForPricing) throw new Error('Supabase غير مهيأ.');
 
-      const canReuseServerPriced = items.every((item: any) => {
+      const hasValidServerPrice = (item: any) => {
         if (item?.lineType === 'promotion' || item?.promotionId) return true;
         if ((item as any)?._pricedByRpc !== true) return false;
         const unitPrice = Number(item?.price);
@@ -2119,35 +2168,37 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           if (!Number.isFinite(per) || per <= 0) return false;
         }
         return true;
-      });
+      };
 
-      if (canReuseServerPriced) {
-        pricedItems = items.map((item: any) => {
+      pricedItems = await runWithConcurrency(items, async (item: any) => {
           if (item?.lineType === 'promotion' || item?.promotionId) return item as CartItem;
-          const unitPrice = Number(item.price);
-          if (item.unitType === 'gram') {
-            const per = Number(item.pricePerUnit) || unitPrice * 1000;
-            return { ...item, price: unitPrice, pricePerUnit: per };
+          if (hasValidServerPrice(item)) {
+            const unitPrice = Number(item.price);
+            if (item.unitType === 'gram') {
+              const per = Number(item.pricePerUnit) || unitPrice * 1000;
+              return { ...item, price: unitPrice, pricePerUnit: per };
+            }
+            return { ...item, price: unitPrice };
           }
-          return { ...item, price: unitPrice };
-        });
-      } else {
-        pricedItems = await Promise.all(items.map(async (item: any) => {
-          if (item?.lineType === 'promotion' || item?.promotionId) return item as CartItem;
           const uomFactor = Number((item as any).uomQtyInBase) || 1;
           const pricingQty = (item.unitType === 'kg' || item.unitType === 'gram')
             ? (item.weight || item.quantity)
             : item.quantity * uomFactor;
           const rawCustomerId = (input.customerId && String(input.customerId).trim() !== '') ? String(input.customerId) : null;
           const call = async (customerId: string | null) => {
-            return await supabaseForPricing!.rpc('get_fefo_pricing', {
-              p_item_id: item.id,
-              p_warehouse_id: (item as any).warehouseId || effectiveOrderWarehouseId,
-              p_quantity: pricingQty,
-              p_customer_id: customerId,
-              p_currency_code: desiredCurrency,
-              p_batch_id: (item as any).forcedBatchId || null,
-            });
+            return await withInStoreStageTimeout(
+              supabaseForPricing!.rpc('get_fefo_pricing', {
+                p_item_id: item.id,
+                p_warehouse_id: (item as any).warehouseId || effectiveOrderWarehouseId,
+                p_quantity: pricingQty,
+                p_customer_id: customerId,
+                p_currency_code: desiredCurrency,
+                p_batch_id: (item as any).forcedBatchId || null,
+              }),
+              'repricing',
+              `إعادة التسعير النهائية للصنف ${String(item?.name?.ar || item?.name?.en || item?.id || '').trim() || 'غير معروف'}`,
+              15000
+            );
           };
           let { data, error } = await call(rawCustomerId);
 
@@ -2180,8 +2231,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             return { ...item, price: unitPrice, pricePerUnit: unitPrice * 1000, ...basePatch };
           }
           return { ...item, price: unitPrice, ...basePatch };
-        }));
-      }
+        }, 4);
     } else {
       pricedItems = items.map((item) => {
         if (!(item as any)?._pricedByRpc) {
@@ -2232,9 +2282,14 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       }
       const supabaseFx = getSupabaseClient();
       if (!supabaseFx) throw new Error('Supabase غير مهيأ.');
-      const { data: fxValue, error: fxErr } = await supabaseFx.rpc('get_fx_rate_rpc', {
-        p_currency_code: desiredCurrency,
-      } as any);
+      const { data: fxValue, error: fxErr } = await withInStoreStageTimeout(
+        supabaseFx.rpc('get_fx_rate_rpc', {
+          p_currency_code: desiredCurrency,
+        } as any),
+        'fx_rate',
+        `جلب سعر صرف العملة ${desiredCurrency}`,
+        12000
+      );
       if (fxErr) throw new Error(localizeSupabaseError(fxErr));
       const fx = Number(fxValue);
       if (!Number.isFinite(fx) || !(fx > 0)) {
@@ -2477,11 +2532,16 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       try {
         const supabase = getSupabaseClient();
         if (supabase) {
-          const { data: cRow } = await supabase
-            .from('customers')
-            .select('auth_user_id')
-            .eq('auth_user_id', String(input.customerId))
-            .maybeSingle();
+          const { data: cRow } = await withInStoreStageTimeout(
+            supabase
+              .from('customers')
+              .select('auth_user_id')
+              .eq('auth_user_id', String(input.customerId))
+              .maybeSingle(),
+            'resolve_customer',
+            'التحقق من العميل',
+            12000
+          );
           if (cRow?.auth_user_id) effectiveCustomerAuthId = String(input.customerId);
         }
       } catch { }
@@ -2493,11 +2553,16 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       try {
         const supabase = getSupabaseClient();
         if (supabase) {
-          const { data: pRow, error: pErr } = await supabase
-            .from('financial_parties')
-            .select('id, party_type, is_active')
-            .eq('id', rawPartyId)
-            .maybeSingle();
+          const { data: pRow, error: pErr } = await withInStoreStageTimeout(
+            supabase
+              .from('financial_parties')
+              .select('id, party_type, is_active')
+              .eq('id', rawPartyId)
+              .maybeSingle(),
+            'validate_party',
+            'التحقق من الطرف المالي',
+            12000
+          );
           if (pErr) throw pErr;
           if (!pRow?.id) {
             throw new Error('الطرف المالي غير موجود.');
@@ -2699,15 +2764,30 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           if (supabaseCheck) {
             const { data: existing } = await supabaseCheck.from('orders').select('id').eq('id', newOrder.id).maybeSingle();
             if (!existing) {
-              await createRemoteOrder({ ...newOrder, status: 'pending' });
+              await withInStoreStageTimeout(
+                createRemoteOrder({ ...newOrder, status: 'pending' }),
+                'create_order',
+                'إنشاء الطلب على الخادم',
+                20000
+              );
             }
           }
         } catch {
           // If update fails for any reason, try creating instead
-          await createRemoteOrder({ ...newOrder, status: 'pending' });
+          await withInStoreStageTimeout(
+            createRemoteOrder({ ...newOrder, status: 'pending' }),
+            'create_order',
+            'إنشاء الطلب على الخادم',
+            20000
+          );
         }
       } else {
-        await createRemoteOrder({ ...newOrder, status: 'pending' });
+        await withInStoreStageTimeout(
+          createRemoteOrder({ ...newOrder, status: 'pending' }),
+          'create_order',
+          'إنشاء الطلب على الخادم',
+          20000
+        );
       }
 
       if (shouldAttemptImmediatePayment) {
