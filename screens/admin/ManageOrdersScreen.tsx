@@ -543,7 +543,7 @@ const ManageOrdersScreen: React.FC = () => {
     const [inStorePartyOptions, setInStorePartyOptions] = useState<Array<{ id: string; name: string; type?: string }>>([]);
     const [inStorePartyLoading, setInStorePartyLoading] = useState(false);
     const [inStorePricingBusy, setInStorePricingBusy] = useState(false);
-    const [inStorePricingMap, setInStorePricingMap] = useState<Record<string, { unitPrice: number; unitPricePerKg?: number; isTxnPrice?: boolean }>>({});
+    const [inStorePricingMap, setInStorePricingMap] = useState<Record<string, { unitPrice: number; unitPricePerKg?: number; isTxnPrice?: boolean; reasonCode?: string }>>({});
     const [currencyOptions, setCurrencyOptions] = useState<string[]>([]);
     const [itemUomRowsByItemId, setItemUomRowsByItemId] = useState<Record<string, Array<{ code: string; name?: string; qtyInBase: number }>>>({});
     const itemUomLoadingRef = useRef<Set<string>>(new Set());
@@ -581,12 +581,24 @@ const ManageOrdersScreen: React.FC = () => {
         inStoreAlertsRequestRef.current[index] = requestKey;
         setInStoreAlertsLoadingByIndex(prev => ({ ...prev, [index]: true }));
         try {
-            const { data, error } = await supabase.rpc('get_warehouse_item_alerts', {
+            let timer: number | null = null;
+            const rpcReq = supabase.rpc('get_warehouse_item_alerts', {
                 p_item_id: itemId, p_warehouse_id: whId, p_requested_qty: qty,
             } as any);
+            const { data, error } = await Promise.race([
+                Promise.resolve(rpcReq as any),
+                new Promise<{ data: any; error: any }>((_, reject) => {
+                    timer = window.setTimeout(() => reject(new Error('IN_STORE_ALERTS_TIMEOUT')), 7000);
+                }),
+            ]).finally(() => {
+                if (timer != null) window.clearTimeout(timer);
+            }) as { data: any; error: any };
             if (error) throw error;
             if (inStoreAlertsRequestRef.current[index] !== requestKey) return;
-            setInStoreAlertsByIndex(prev => ({ ...prev, [index]: Array.isArray(data) ? data : [] }));
+            const normalized = Array.isArray(data)
+                ? data.flatMap((row: any) => Array.isArray(row?.get_warehouse_item_alerts) ? row.get_warehouse_item_alerts : [row]).filter(Boolean)
+                : [];
+            setInStoreAlertsByIndex(prev => ({ ...prev, [index]: normalized as WarehouseAlert[] }));
         } catch {
             if (inStoreAlertsRequestRef.current[index] !== requestKey) return;
             setInStoreAlertsByIndex(prev => ({ ...prev, [index]: [] }));
@@ -1279,7 +1291,7 @@ const ManageOrdersScreen: React.FC = () => {
                             : (Number(mi.price) || 0);
                         const unitPrice = Number(baseUnitPrice) || 0;
                         const unitPricePerKg = r.unitType === 'gram' ? unitPrice * 1000 : undefined;
-                            return { key: r.key, unitPrice, unitPricePerKg, unitType: r.unitType, isTxnPrice: false };
+                            return { key: r.key, unitPrice, unitPricePerKg, unitType: r.unitType, isTxnPrice: false, reasonCode: 'LOCAL_FALLBACK' };
                     };
 
                     // Use FEFO batch pricing from server when warehouse is available
@@ -1301,9 +1313,12 @@ const ManageOrdersScreen: React.FC = () => {
                             }
                             const row = Array.isArray(fefo) ? fefo[0] : fefo;
                             const suggestedPrice = Number(row?.suggested_price) || 0;
-                            if (suggestedPrice <= 0) return await fallback();
+                            if (suggestedPrice <= 0) {
+                                const fallbackRow = await fallback();
+                                return { ...fallbackRow, reasonCode: String(row?.reason_code || 'NO_VALID_BATCH') };
+                            }
                             const unitPricePerKg = r.unitType === 'gram' ? suggestedPrice * 1000 : undefined;
-                            return { key: r.key, unitPrice: suggestedPrice, unitPricePerKg, unitType: r.unitType, isTxnPrice: true };
+                            return { key: r.key, unitPrice: suggestedPrice, unitPricePerKg, unitType: r.unitType, isTxnPrice: true, reasonCode: String(row?.reason_code || '') || undefined };
                         } catch {
                             return await fallback();
                         }
@@ -1314,13 +1329,14 @@ const ManageOrdersScreen: React.FC = () => {
                 const results = await runTasksWithConcurrency(tasks, 4);
 
                 if (disposed || runId !== inStorePricingRunIdRef.current) return;
-                const next: Record<string, { unitPrice: number; unitPricePerKg?: number; isTxnPrice?: boolean }> = {};
+                const next: Record<string, { unitPrice: number; unitPricePerKg?: number; isTxnPrice?: boolean; reasonCode?: string }> = {};
                 for (const row of results) {
                     if (!row?.key) continue;
                     next[String(row.key)] = {
                         unitPrice: Number(row.unitPrice) || 0,
                         unitPricePerKg: row.unitPricePerKg != null ? (Number(row.unitPricePerKg) || 0) : undefined,
                         isTxnPrice: Boolean((row as any).isTxnPrice),
+                        reasonCode: String((row as any).reasonCode || '').trim() || undefined,
                     };
                 }
                 setInStorePricingMap(next);
@@ -1365,6 +1381,33 @@ const ManageOrdersScreen: React.FC = () => {
         }
         return false;
     }, [inStoreLines, inStorePricingMap, inStoreSelectedCustomerId, isInStoreSaleOpen, menuItems]);
+
+    const inStorePricingBlockReason = useMemo(() => {
+        if (!isInStoreSaleOpen || !inStoreLines.length) return '';
+        for (let index = 0; index < inStoreLines.length; index += 1) {
+            const l = inStoreLines[index];
+            const mi = menuItems.find(m => m.id === l.menuItemId);
+            if (!mi) continue;
+            const unitType = mi.unitType || 'piece';
+            const uomQty = Number(l.uomQtyInBase || 1) || 1;
+            const warehouseId = String(l.warehouseId || sessionScope.scope?.warehouseId || '').trim();
+            const warehouseName = warehouses.find(w => String(w.id || '').trim() === warehouseId)?.name || 'المستودع المختار';
+            const pricingQty = (unitType === 'kg' || unitType === 'gram')
+                ? (Number(l.weight) || Number(l.quantity) || 0)
+                : ((Number(l.quantity) || 0) * uomQty);
+            if (!(pricingQty > 0)) continue;
+            const key = `${l.menuItemId}:${unitType}:${pricingQty}:${warehouseId}:${inStoreSelectedCustomerId || ''}`;
+            const priced = inStorePricingMap[key];
+            if (priced?.isTxnPrice === true) continue;
+            const alerts = inStoreAlertsByIndex[index] || [];
+            const hardAlert = alerts.find(a => String(a?.type || '').trim() === 'out_of_stock' || String(a?.severity || '').trim() === 'error');
+            if (hardAlert?.message) return String(hardAlert.message);
+            if (priced?.reasonCode === 'NO_VALID_BATCH') return `لا توجد دفعة صالحة للبيع في ${warehouseName} لهذا الصنف.`;
+            if (warehouseId) return `لم يكتمل التسعير الخادمي للمستودع ${warehouseName} بعد.`;
+            return 'لم يكتمل التسعير الخادمي لبعض الأصناف بعد.';
+        }
+        return '';
+    }, [inStoreAlertsByIndex, inStoreLines, inStorePricingMap, inStoreSelectedCustomerId, isInStoreSaleOpen, menuItems, sessionScope.scope?.warehouseId, warehouses]);
 
     useEffect(() => {
         const fetchDriverBalances = async () => {
@@ -2647,7 +2690,7 @@ const ManageOrdersScreen: React.FC = () => {
             return;
         }
         if (inStoreMissingServerPricing) {
-            showNotification('تعذر اعتماد التسعير من الخادم لبعض الأصناف. أعد اختيار الصنف أو تحقق من الاتصال.', 'error');
+            showNotification(inStorePricingBlockReason || 'تعذر اعتماد التسعير من الخادم لبعض الأصناف. أعد اختيار الصنف أو تحقق من الاتصال.', 'error');
             return;
         }
         const total = Number(inStoreTotals.total) || 0;
@@ -5449,7 +5492,7 @@ const ManageOrdersScreen: React.FC = () => {
                         <div className="text-xs text-amber-700 dark:text-amber-300">
                             {inStorePricingBusy
                                 ? 'يتم الآن جلب السعر النهائي من الخادم وقد يختلف عن السعر المحلي.'
-                                : 'لا يوجد تسعير خادمي معتمد لكل الأصناف، لذلك تم إيقاف التسجيل حتى اكتمال التسعير.'}
+                                : (inStorePricingBlockReason || 'لا يوجد تسعير خادمي معتمد لكل الأصناف، لذلك تم إيقاف التسجيل حتى اكتمال التسعير.')}
                         </div>
                     )}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -6366,6 +6409,15 @@ const ManageOrdersScreen: React.FC = () => {
                                         : pricedUnitPrice;
                                     const stockRow = getStockByItemId(String(mi.id || ''));
                                     const globalAvailable = getGlobalSellableByItemId(String(mi.id || ''));
+                                    const selectedWarehouseId = String(line.warehouseId || sessionScope.scope?.warehouseId || '').trim();
+                                    const selectedWarehouseName = warehouses.find(w => String(w.id || '').trim() === selectedWarehouseId)?.name || 'المستودع المختار';
+                                    const selectedAlerts = inStoreAlertsByIndex[index] || [];
+                                    const selectedAvailableFromAlerts = selectedAlerts.reduce<number | null>((acc, alert) => {
+                                        const available = Number((alert as any)?.available);
+                                        if (!Number.isFinite(available)) return acc;
+                                        return Math.max(acc ?? 0, available);
+                                    }, null);
+                                    const selectedWarehouseHasError = selectedAlerts.some(a => String(a?.severity || '').trim() === 'error' || String(a?.type || '').trim() === 'out_of_stock');
                                     const sessionAvailableBase = stockRow
                                         ? Math.max(0, Number(stockRow.availableQuantity || 0) - Number(stockRow.reservedQuantity || 0))
                                         : globalAvailable;
@@ -6385,17 +6437,27 @@ const ManageOrdersScreen: React.FC = () => {
                                     const unitPrice = convertBaseToInStoreTxn(baseUnitPrice, Number(inStoreTransactionFxRate) || 1);
                                     const lineTotal = convertBaseToInStoreTxn(baseLineTotal, Number(inStoreTransactionFxRate) || 1);
                                     const currentValue = isWeightBased ? (line.weight ?? 0) : (line.quantity ?? 0);
-                                    const sessionAvailableInUom = (!isWeightBased && uomQty > 0)
-                                        ? Math.floor((sessionAvailableBase / uomQty) + 1e-9)
-                                        : sessionAvailableBase;
+                                    const selectedAvailableBase = selectedWarehouseId === String(sessionScope.scope?.warehouseId || '').trim()
+                                        ? sessionAvailableBase
+                                        : (selectedAvailableFromAlerts ?? null);
+                                    const selectedAvailableInUom = selectedAvailableBase == null
+                                        ? null
+                                        : ((!isWeightBased && uomQty > 0)
+                                            ? Math.floor((selectedAvailableBase / uomQty) + 1e-9)
+                                            : selectedAvailableBase);
                                     const globalAvailableInUom = (!isWeightBased && uomQty > 0)
                                         ? Math.floor((globalAvailable / uomQty) + 1e-9)
                                         : globalAvailable;
-                                    const exceeded = typeof sessionAvailableInUom === 'number' ? currentValue > sessionAvailableInUom : false;
+                                    const exceeded = typeof selectedAvailableInUom === 'number' ? currentValue > selectedAvailableInUom : false;
                                     const canCoverFromOtherWarehouse = exceeded && currentValue <= globalAvailableInUom;
                                     const stockBadge = isWeightBased
                                         ? null
-                                        : (exceeded
+                                        : (selectedWarehouseHasError
+                                            ? {
+                                                label: `غير متوفر في ${selectedWarehouseName}`,
+                                                cls: 'bg-red-50 text-red-800 border-red-200 dark:bg-red-900/30 dark:text-red-200 dark:border-red-800',
+                                            }
+                                            : exceeded
                                             ? (canCoverFromOtherWarehouse
                                                 ? {
                                                     label: 'يتطلب تبديل مستودع',
@@ -6406,7 +6468,7 @@ const ManageOrdersScreen: React.FC = () => {
                                                     cls: 'bg-red-50 text-red-800 border-red-200 dark:bg-red-900/30 dark:text-red-200 dark:border-red-800',
                                                 })
                                             : {
-                                                label: 'متوفر في الجلسة',
+                                                label: selectedWarehouseId === String(sessionScope.scope?.warehouseId || '').trim() ? 'متوفر في الجلسة' : `متوفر في ${selectedWarehouseName}`,
                                                 cls: 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-200 dark:border-emerald-800',
                                             });
 
@@ -6432,9 +6494,9 @@ const ManageOrdersScreen: React.FC = () => {
                                                     <div className="text-xs text-gray-500 dark:text-gray-400">{getUnitLabel(String(mi.unitType || 'piece') as any, 'ar') || localizeUomCodeAr(String(mi.unitType || 'piece'))}</div>
                                                     {!isWeightBased ? (
                                                         <div className="text-xs text-gray-500 dark:text-gray-400">
-                                                            مستودع الجلسة: {sessionAvailableInUom}{' '}
+                                                            {selectedWarehouseId === String(sessionScope.scope?.warehouseId || '').trim() ? 'مستودع الجلسة' : selectedWarehouseName}: {selectedAvailableInUom ?? '...'}{' '}
                                                             {localizeUomCodeAr(String(line.uomCode || mi.unitType || 'piece'))}{' '}
-                                                            <span className="text-gray-400">({sessionAvailableBase} {getUnitLabel(String(mi.unitType || 'piece') as any, 'ar') || localizeUomCodeAr(String(mi.unitType || 'piece'))} • محجوز: {sessionReservedBase})</span>
+                                                            <span className="text-gray-400">({selectedAvailableBase ?? '...'} {getUnitLabel(String(mi.unitType || 'piece') as any, 'ar') || localizeUomCodeAr(String(mi.unitType || 'piece'))}{selectedWarehouseId === String(sessionScope.scope?.warehouseId || '').trim() ? ` • محجوز: ${sessionReservedBase}` : ''})</span>
                                                         </div>
                                                     ) : null}
                                                     {!isWeightBased ? (
@@ -6446,7 +6508,7 @@ const ManageOrdersScreen: React.FC = () => {
                                                     ) : null}
                                                     {!isWeightBased && canCoverFromOtherWarehouse && (
                                                         <div className="text-[11px] text-amber-700 dark:text-amber-300">
-                                                            الكمية المطلوبة لا تكفي في مستودع الجلسة؛ يمكن تغطيتها من مستودع آخر عبر اختيار المستودع أدناه.
+                                                            الكمية المطلوبة لا تكفي في {selectedWarehouseId === String(sessionScope.scope?.warehouseId || '').trim() ? 'مستودع الجلسة' : selectedWarehouseName}؛ يمكن تغطيتها من مستودع آخر عبر اختيار المستودع أدناه.
                                                         </div>
                                                     )}
                                                     {!isWeightBased && exceeded && !canCoverFromOtherWarehouse && (
@@ -6496,7 +6558,7 @@ const ManageOrdersScreen: React.FC = () => {
                                                                 updateInStoreLine(index, isWeightBased ? { weight: val } : { quantity: val });
                                                             }}
                                                             min={0}
-                                                            max={sessionAvailableInUom}
+                                                            max={typeof selectedAvailableInUom === 'number' ? selectedAvailableInUom : undefined}
                                                             step={isWeightBased ? (mi.unitType === 'gram' ? 1 : 0.01) : 1}
                                                             className={`text-center ${exceeded ? 'border-red-500' : ''}`}
                                                         />
@@ -6505,7 +6567,7 @@ const ManageOrdersScreen: React.FC = () => {
                                                             onClick={() => {
                                                                 const step = isWeightBased ? (mi.unitType === 'gram' ? 100 : 0.5) : 1;
                                                                 const current = isWeightBased ? (line.weight ?? 0) : (line.quantity ?? 0);
-                                                                const max = sessionAvailableInUom;
+                                                                const max = selectedAvailableInUom;
                                                                 const next = typeof max === 'number' ? Math.min(max, current + step) : current + step;
                                                                 updateInStoreLine(index, isWeightBased ? { weight: next } : { quantity: next });
                                                             }}
@@ -6517,7 +6579,7 @@ const ManageOrdersScreen: React.FC = () => {
                                                     </div>
                                                     {exceeded && (
                                                         <div className="mt-1 text-[10px] text-red-600 dark:text-red-400">
-                                                            يتجاوز متاح مستودع الجلسة: {sessionAvailableInUom?.toFixed ? sessionAvailableInUom.toFixed(2) : sessionAvailableInUom}
+                                                            يتجاوز متاح {selectedWarehouseId === String(sessionScope.scope?.warehouseId || '').trim() ? 'مستودع الجلسة' : selectedWarehouseName}: {selectedAvailableInUom?.toFixed ? selectedAvailableInUom.toFixed(2) : selectedAvailableInUom}
                                                         </div>
                                                     )}
                                                 </div>
