@@ -2821,7 +2821,6 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const verifyRemoteOrderExists = async (orderToVerify: Order) => {
       const supabase = getSupabaseClient();
       if (!supabase) return false;
-      const traceId = String((orderToVerify as any)?.clientTraceId || (orderToVerify as any)?.traceId || '').trim();
       const orderId = String(orderToVerify?.id || '').trim();
       const byId = orderId
         ? await withInStoreStageTimeout(
@@ -2831,19 +2830,25 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             10000
           )
         : { data: null as any };
-      if ((byId as any)?.data?.id) return true;
-      if (!traceId) return false;
-      const byTrace = await withInStoreStageTimeout(
-        supabase
-          .from('orders')
-          .select('id')
-          .eq('data->>clientTraceId', traceId)
-          .maybeSingle(),
-        'verify_created_order_trace',
-        'التحقق من وجود الطلب برقم التتبع بعد مهلة الإنشاء',
-        10000
-      );
-      return Boolean((byTrace as any)?.data?.id);
+      return Boolean((byId as any)?.data?.id);
+    };
+
+    const waitMs = async (ms: number) => {
+      await new Promise<void>((resolve) => {
+        setTimeout(() => resolve(), Math.max(0, Number(ms) || 0));
+      });
+    };
+
+    const verifyRemoteOrderExistsEventually = async (orderToVerify: Order, attempts = 6) => {
+      const maxAttempts = Math.max(1, Number(attempts) || 1);
+      for (let i = 0; i < maxAttempts; i += 1) {
+        const exists = await verifyRemoteOrderExists(orderToVerify).catch(() => false);
+        if (exists) return true;
+        if (i < maxAttempts - 1) {
+          await waitMs(1200 + (i * 800));
+        }
+      }
+      return false;
     };
 
     const createRemoteOrderWithRecovery = async (orderToCreate: Order) => {
@@ -2852,12 +2857,33 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           createRemoteOrder({ ...orderToCreate, status: 'pending' }),
           'create_order',
           'إنشاء الطلب على الخادم',
-          20000
+          30000
         );
       } catch (err) {
-        const exists = await verifyRemoteOrderExists(orderToCreate).catch(() => false);
+        const exists = await verifyRemoteOrderExistsEventually(orderToCreate, 6).catch(() => false);
         if (exists) {
           return;
+        }
+        const msg = String((err as any)?.message || '');
+        const createTimeout =
+          /IN_STORE_STAGE_TIMEOUT:create_order/i.test(msg)
+          || /مهلة إنشاء الطلب/i.test(msg)
+          || /انتهت مهلة إنشاء الطلب/i.test(msg);
+        if (createTimeout) {
+          try {
+            await withInStoreStageTimeout(
+              createRemoteOrder({ ...orderToCreate, status: 'pending' }),
+              'create_order_retry',
+              'إعادة محاولة إنشاء الطلب على الخادم',
+              25000
+            );
+          } catch (retryErr) {
+            const existsAfterRetry = await verifyRemoteOrderExistsEventually(orderToCreate, 4).catch(() => false);
+            if (existsAfterRetry) return;
+            throw retryErr;
+          }
+          const existsAfterRetry = await verifyRemoteOrderExistsEventually(orderToCreate, 4).catch(() => false);
+          if (existsAfterRetry) return;
         }
         throw err;
       }
