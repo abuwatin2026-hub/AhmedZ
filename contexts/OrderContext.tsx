@@ -2790,6 +2790,51 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     // invoiceNumber already declared above
     let finalized: Order = newOrder;
 
+    const verifyRemoteOrderExists = async (orderToVerify: Order) => {
+      const supabase = getSupabaseClient();
+      if (!supabase) return false;
+      const traceId = String((orderToVerify as any)?.clientTraceId || (orderToVerify as any)?.traceId || '').trim();
+      const orderId = String(orderToVerify?.id || '').trim();
+      const byId = orderId
+        ? await withInStoreStageTimeout(
+            supabase.from('orders').select('id').eq('id', orderId).maybeSingle(),
+            'verify_created_order',
+            'التحقق من وجود الطلب بعد مهلة الإنشاء',
+            10000
+          )
+        : { data: null as any };
+      if ((byId as any)?.data?.id) return true;
+      if (!traceId) return false;
+      const byTrace = await withInStoreStageTimeout(
+        supabase
+          .from('orders')
+          .select('id')
+          .eq('data->>clientTraceId', traceId)
+          .maybeSingle(),
+        'verify_created_order_trace',
+        'التحقق من وجود الطلب برقم التتبع بعد مهلة الإنشاء',
+        10000
+      );
+      return Boolean((byTrace as any)?.data?.id);
+    };
+
+    const createRemoteOrderWithRecovery = async (orderToCreate: Order) => {
+      try {
+        await withInStoreStageTimeout(
+          createRemoteOrder({ ...orderToCreate, status: 'pending' }),
+          'create_order',
+          'إنشاء الطلب على الخادم',
+          20000
+        );
+      } catch (err) {
+        const exists = await verifyRemoteOrderExists(orderToCreate).catch(() => false);
+        if (exists) {
+          return;
+        }
+        throw err;
+      }
+    };
+
     try {
       if (isResumingExistingOrder) {
         // The order may not actually exist remotely if the previous attempt failed
@@ -2811,30 +2856,15 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
               10000
             );
             if (!existing) {
-              await withInStoreStageTimeout(
-                createRemoteOrder({ ...newOrder, status: 'pending' }),
-                'create_order',
-                'إنشاء الطلب على الخادم',
-                20000
-              );
+              await createRemoteOrderWithRecovery(newOrder);
             }
           }
         } catch {
           // If update fails for any reason, try creating instead
-          await withInStoreStageTimeout(
-            createRemoteOrder({ ...newOrder, status: 'pending' }),
-            'create_order',
-            'إنشاء الطلب على الخادم',
-            20000
-          );
+          await createRemoteOrderWithRecovery(newOrder);
         }
       } else {
-        await withInStoreStageTimeout(
-          createRemoteOrder({ ...newOrder, status: 'pending' }),
-          'create_order',
-          'إنشاء الطلب على الخادم',
-          20000
-        );
+        await createRemoteOrderWithRecovery(newOrder);
       }
 
       if (shouldAttemptImmediatePayment) {
