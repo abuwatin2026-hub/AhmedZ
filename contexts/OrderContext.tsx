@@ -2008,6 +2008,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         _fefoMinPrice: l._fefoMinPrice,
         _fefoNextBatchMinPrice: l._fefoNextBatchMinPrice,
         _fefoWarningNextBatchPriceDiff: l._fefoWarningNextBatchPriceDiff,
+        menuItemSnapshot: l?.menuItemSnapshot && typeof l.menuItemSnapshot === 'object' ? l.menuItemSnapshot : undefined,
       }));
     const normalizedPromoLines = rawLines
       .filter((l: any) => typeof l?.promotionId === 'string' && Boolean(l.promotionId))
@@ -2024,6 +2025,10 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
 
     const menuItems = await runWithConcurrency(normalizedMenuLines, async (line) => {
+      const snapshot = line.menuItemSnapshot as MenuItem | undefined;
+      if (snapshot && String((snapshot as any)?.id || '').trim() === String(line.menuItemId || '').trim()) {
+        return snapshot;
+      }
       return await withInStoreStageTimeout(
         loadMenuItemById(line.menuItemId),
         'load_menu_item',

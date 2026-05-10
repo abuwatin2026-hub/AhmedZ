@@ -2773,12 +2773,16 @@ const ManageOrdersScreen: React.FC = () => {
             if (pricing?.isTxnPrice) {
                 return {
                     ...l,
+                    menuItemSnapshot: mi,
                     _pricedByRpc: true,
                     price: unitType === 'gram' ? pricing.unitPricePerKg : pricing.unitPrice,
                     pricePerUnit: pricing.unitPricePerKg
                 };
             }
-            return l;
+            return {
+                ...l,
+                menuItemSnapshot: mi,
+            };
         });
 
         const payload: any = {
