@@ -83,6 +83,15 @@ type InStoreSaleUxMetric = {
     detached: boolean;
     createdAt: string;
 };
+type InStoreSaleStageSnapshot = {
+    opId: string;
+    stage: string;
+    label: string;
+    status: 'start' | 'success' | 'timeout' | 'error';
+    elapsedMs: number;
+    at: string;
+    error?: string;
+};
 
 const ManageOrdersScreen: React.FC = () => {
     const navigate = useNavigate();
@@ -282,6 +291,7 @@ const ManageOrdersScreen: React.FC = () => {
     const inStorePendingOrderIdRef = useRef('');
     const inStoreBackgroundProbeTimerRef = useRef<number | null>(null);
     const inStoreBackgroundProbeBusyRef = useRef(false);
+    const [inStoreStageByOpId, setInStoreStageByOpId] = useState<Record<string, InStoreSaleStageSnapshot>>({});
     const [inStoreUxMetrics, setInStoreUxMetrics] = useState<InStoreSaleUxMetric[]>([]);
     const inStoreUxPersistBusyRef = useRef(false);
     const inStoreUxPersistQueueRef = useRef<InStoreSaleUxMetric[]>([]);
@@ -400,6 +410,15 @@ const ManageOrdersScreen: React.FC = () => {
         }
         inStoreBackgroundProbeBusyRef.current = false;
     }, []);
+    const describeInStoreStage = useCallback((opId: string) => {
+        const snapshot = inStoreStageByOpId[String(opId || '').trim()];
+        if (!snapshot) return '';
+        const label = String(snapshot.label || snapshot.stage || 'مرحلة غير معروفة').trim();
+        if (snapshot.status === 'timeout') return `آخر مرحلة: ${label} (انتهت مهلتها).`;
+        if (snapshot.status === 'error') return `آخر مرحلة: ${label} (فشلت).`;
+        if (snapshot.status === 'success') return `آخر مرحلة مكتملة: ${label}.`;
+        return `آخر مرحلة جارية: ${label}.`;
+    }, [inStoreStageByOpId]);
     const startInStoreBackgroundProbe = useCallback((orderId: string, opId: string) => {
         stopInStoreBackgroundProbe();
         let ticks = 0;
@@ -437,19 +456,22 @@ const ManageOrdersScreen: React.FC = () => {
                     void fetchOrders();
                     return;
                 }
-                if (ticks >= 40) {
+                if (ticks >= 8) {
                     stopInStoreBackgroundProbe();
-                    showNotification(`تعذر تأكيد نتيجة العملية تلقائيًا. تتبع: ${opId} | رقم الطلب: ${orderId.slice(-6).toUpperCase()}`, 'error');
+                    const stageHint = describeInStoreStage(opId);
+                    showNotification(`لم يتم العثور على طلب مطابق بعد المهلة. التتبع: ${opId}. ${stageHint} أعد المحاولة ولا تعتبر العملية ناجحة.`, 'error');
                 }
             } catch {
-                if (ticks >= 40) {
+                if (ticks >= 8) {
                     stopInStoreBackgroundProbe();
+                    const stageHint = describeInStoreStage(opId);
+                    showNotification(`تعذر التحقق من إنشاء الطلب بالخلفية. التتبع: ${opId}. ${stageHint} أعد المحاولة.`, 'error');
                 }
             } finally {
                 inStoreBackgroundProbeBusyRef.current = false;
             }
-        }, 15000);
-    }, [fetchOrders, fetchRemoteOrderById, showNotification, stopInStoreBackgroundProbe]);
+        }, 12000);
+    }, [describeInStoreStage, fetchOrders, fetchRemoteOrderById, showNotification, stopInStoreBackgroundProbe]);
     useEffect(() => {
         return () => {
             stopInStoreBackgroundProbe();
@@ -457,6 +479,28 @@ const ManageOrdersScreen: React.FC = () => {
     }, [stopInStoreBackgroundProbe]);
     useEffect(() => {
         if (typeof window === 'undefined') return;
+        const stageHandler = (event: Event) => {
+            const detail = (event as CustomEvent<any>)?.detail || {};
+            const opId = String(detail?.opId || '').trim();
+            if (!opId) return;
+            const snapshot: InStoreSaleStageSnapshot = {
+                opId,
+                stage: String(detail?.stage || '').trim() || 'unknown',
+                label: String(detail?.label || '').trim() || String(detail?.stage || '').trim() || 'مرحلة غير معروفة',
+                status: (String(detail?.status || '').trim() as InStoreSaleStageSnapshot['status']) || 'start',
+                elapsedMs: Number.isFinite(Number(detail?.elapsedMs)) ? Math.max(0, Number(detail.elapsedMs)) : 0,
+                at: String(detail?.at || '').trim() || new Date().toISOString(),
+                error: String(detail?.error || '').trim() || undefined,
+            };
+            setInStoreStageByOpId((prev) => {
+                const next = { ...prev, [opId]: snapshot };
+                const entries = Object.entries(next);
+                if (entries.length <= 120) return next;
+                entries.sort((a, b) => String(a[1]?.at || '').localeCompare(String(b[1]?.at || '')));
+                const trimmed = entries.slice(Math.max(0, entries.length - 120));
+                return Object.fromEntries(trimmed);
+            });
+        };
         const handler = (event: Event) => {
             const detail = (event as CustomEvent<any>)?.detail || {};
             const opId = String(detail?.opId || '').trim();
@@ -473,8 +517,10 @@ const ManageOrdersScreen: React.FC = () => {
             inStoreUxPersistQueueRef.current.push(metric);
             void flushInStoreUxMetricQueue();
         };
+        window.addEventListener('in_store_sale_stage', stageHandler as EventListener);
         window.addEventListener('in_store_sale_ux_metric', handler as EventListener);
         return () => {
+            window.removeEventListener('in_store_sale_stage', stageHandler as EventListener);
             window.removeEventListener('in_store_sale_ux_metric', handler as EventListener);
         };
     }, [flushInStoreUxMetricQueue]);
@@ -2679,7 +2725,8 @@ const ManageOrdersScreen: React.FC = () => {
             if (isCreateTimeout) {
                 inStoreCreateDetachedRef.current = true;
                 setIsInStoreSaleOpen(false);
-                showNotification(`تجاوزت العملية الحد الآمن للانتظار، وتم تحويلها للمتابعة بالخلفية. تتبع: ${opId}`, 'info');
+                const stageHint = describeInStoreStage(opId);
+                showNotification(`تجاوزت العملية حد الانتظار ولم يتم تأكيد إنشاء الطلب بعد. ${stageHint} سيتم التحقق بالخلفية. التتبع: ${opId}`, 'info');
                 startInStoreBackgroundProbe(existingOrderId, opId);
                 return;
             }

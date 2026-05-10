@@ -147,6 +147,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const reserveStockRpcModeRef = useRef<null | 'wrapper' | 'direct3' | 'legacy1'>(null);
   const confirmDeliveryWithCreditRpcModeRef = useRef<null | 'wrapper' | 'direct4'>(null);
   const confirmDeliveryRpcModeRef = useRef<null | 'wrapper' | 'direct4' | 'direct3'>(null);
+  const inStoreStageTraceIdRef = useRef('');
 
 
   const logAudit = async (action: string, details: string, metadata?: any) => {
@@ -387,8 +388,28 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     timeoutMs = 15000
   ): Promise<T> => {
     let timer: ReturnType<typeof setTimeout> | null = null;
+    const startedAt = Date.now();
+    const traceId = String(inStoreStageTraceIdRef.current || '').trim();
+    const emitStage = (status: 'start' | 'success' | 'timeout' | 'error', err?: any) => {
+      if (!traceId || typeof window === 'undefined') return;
+      try {
+        window.dispatchEvent(new CustomEvent('in_store_sale_stage', {
+          detail: {
+            opId: traceId,
+            stage,
+            label,
+            status,
+            elapsedMs: Math.max(0, Date.now() - startedAt),
+            at: new Date().toISOString(),
+            error: err ? String((err as any)?.message || err || '') : undefined,
+          }
+        }));
+      } catch {
+      }
+    };
+    emitStage('start');
     try {
-      return await Promise.race([
+      const result = await Promise.race([
         Promise.resolve(promiseLike),
         new Promise<T>((_, reject) => {
           timer = setTimeout(() => {
@@ -396,6 +417,12 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           }, timeoutMs);
         }),
       ]);
+      emitStage('success');
+      return result;
+    } catch (err) {
+      const isTimeout = String((err as any)?.code || '').trim().toUpperCase() === 'IN_STORE_STAGE_TIMEOUT';
+      emitStage(isTimeout ? 'timeout' : 'error', err);
+      throw err;
     } finally {
       if (timer != null) clearTimeout(timer);
     }
@@ -1978,6 +2005,10 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       cashReceived?: number;
     }>;
   }) => {
+    const stageTraceId = String((input as any).clientTraceId || '').trim();
+    const previousStageTraceId = inStoreStageTraceIdRef.current;
+    if (stageTraceId) inStoreStageTraceIdRef.current = stageTraceId;
+    try {
     if (!isAdminAuthenticated || !canCreateInStoreSale()) {
       throw new Error('ليس لديك صلاحية تسجيل بيع حضوري.');
     }
@@ -3622,6 +3653,11 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     setOrders(prev => [finalized, ...prev.filter(o => o.id !== finalized.id)]);
 
     return finalized;
+    } finally {
+      if (stageTraceId && inStoreStageTraceIdRef.current === stageTraceId) {
+        inStoreStageTraceIdRef.current = previousStageTraceId;
+      }
+    }
   };
 
   const createInStorePendingOrder = async (input: {
