@@ -408,7 +408,25 @@ const ManageOrdersScreen: React.FC = () => {
             inStoreBackgroundProbeBusyRef.current = true;
             try {
                 ticks += 1;
-                const order = await fetchRemoteOrderById(orderId);
+                let order = await fetchRemoteOrderById(orderId);
+                if (!order) {
+                    const supabase = getSupabaseClient();
+                    if (supabase) {
+                        try {
+                            const { data } = await supabase
+                                .from('orders')
+                                .select('id')
+                                .or(`data->>clientTraceId.eq.${opId},data->>traceId.eq.${opId}`)
+                                .order('created_at', { ascending: false })
+                                .limit(1)
+                                .maybeSingle();
+                            const tracedOrderId = String((data as any)?.id || '').trim();
+                            if (tracedOrderId) {
+                                order = await fetchRemoteOrderById(tracedOrderId);
+                            }
+                        } catch {}
+                    }
+                }
                 if (order) {
                     stopInStoreBackgroundProbe();
                     const shortId = String(order.id || '').slice(-6).toUpperCase();

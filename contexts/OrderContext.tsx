@@ -804,6 +804,56 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     setOrders((prev) => prev.filter((o) => o.id !== orderId));
   }, [fetchRemoteOrderById, resolveOrderAddress]);
 
+  const buildOrderPersistencePayload = (order: Order, options?: { includeStatus?: boolean; minimal?: boolean }) => {
+    const includeStatus = options?.includeStatus !== false;
+    const minimal = options?.minimal === true;
+    const scopedWarehouseId = sessionScope?.scope?.warehouseId;
+    const warehouseId = (typeof (order as any).warehouseId === 'string' && isUuid((order as any).warehouseId))
+      ? (order as any).warehouseId
+      : (typeof scopedWarehouseId === 'string' && isUuid(scopedWarehouseId) ? scopedWarehouseId : null);
+    const deliveryZoneId = (typeof order.deliveryZoneId === 'string' && isUuid(order.deliveryZoneId))
+      ? order.deliveryZoneId
+      : null;
+    const partyId = (order as any)?.partyId;
+    const toNumOrNull = (v: any) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : null;
+    };
+    const payload: Record<string, any> = {
+      data: order,
+      customer_auth_user_id: isUuid(order.userId) ? order.userId : null,
+      delivery_zone_id: deliveryZoneId,
+      warehouse_id: warehouseId,
+      party_id: isUuid(partyId) ? partyId : null,
+    };
+    if (includeStatus) payload.status = order.status;
+    if (typeof (order as any).currency === 'string' && String((order as any).currency).trim()) {
+      payload.currency = String((order as any).currency).trim().toUpperCase();
+    }
+    if (minimal) return payload;
+
+    payload.customer_name = String((order as any).customerName || '').trim() || null;
+    payload.phone_number = String((order as any).phoneNumber || '').trim() || null;
+    payload.payment_method = String((order as any).paymentMethod || '').trim() || null;
+    payload.notes = String((order as any).notes || '').trim() || null;
+    payload.address = String((order as any).address || '').trim() || null;
+    payload.items = Array.isArray((order as any).items) ? (order as any).items : [];
+    payload.total = toNumOrNull((order as any).total);
+    payload.subtotal = toNumOrNull((order as any).subtotal);
+    payload.delivery_fee = toNumOrNull((order as any).deliveryFee);
+    payload.discount = toNumOrNull((order as any).discountAmount);
+    payload.tax = toNumOrNull((order as any).tax);
+    payload.tax_amount = toNumOrNull((order as any).taxAmount);
+    payload.tax_rate = toNumOrNull((order as any).taxRate);
+    payload.fx_rate = toNumOrNull((order as any).fxRate);
+    payload.base_total = toNumOrNull((order as any).baseTotal);
+    payload.net_days = Number.isFinite(Number((order as any).netDays)) ? Number((order as any).netDays) : null;
+    payload.due_date = (order as any).dueDate || null;
+    payload.invoice_terms = String((order as any).invoiceTerms || (order as any).invoiceStatement || '').trim() || null;
+
+    return payload;
+  };
+
   const updateRemoteOrder = useCallback(async (order: Order, options?: { includeStatus?: boolean }) => {
     try {
       const supabase = getSupabaseClient();
@@ -826,19 +876,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         return /schema cache/i.test(msg) && new RegExp(String(column).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i').test(msg);
       };
       const includeStatus = options?.includeStatus !== false;
-      const payload: Record<string, any> = {
-        data: order,
-      };
-      if (includeStatus) payload.status = order.status;
-      if (typeof (order as any).currency === 'string' && String((order as any).currency).trim()) {
-        payload.currency = String((order as any).currency).trim().toUpperCase();
-      }
-      if (typeof order.deliveryZoneId === 'string' && isUuid(order.deliveryZoneId)) {
-        payload.delivery_zone_id = order.deliveryZoneId;
-      }
-      if (typeof (order as any).warehouseId === 'string' && isUuid((order as any).warehouseId)) {
-        payload.warehouse_id = (order as any).warehouseId;
-      }
+      const payload = buildOrderPersistencePayload(order, { includeStatus, minimal: false });
 
       let error: any = null;
       ({ error } = await supabase
@@ -846,12 +884,17 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         .update(payload)
         .eq('id', order.id));
 
-      if (error && (isSchemaCacheMissingColumnError(error, 'delivery_zone_id') || isSchemaCacheMissingColumnError(error, 'warehouse_id'))) {
-        const fallback: Record<string, any> = { data: order };
-        if (includeStatus) fallback.status = order.status;
-        if (typeof (order as any).currency === 'string' && String((order as any).currency).trim()) {
-          fallback.currency = String((order as any).currency).trim().toUpperCase();
-        }
+      if (error && (
+        isSchemaCacheMissingColumnError(error, 'delivery_zone_id')
+        || isSchemaCacheMissingColumnError(error, 'warehouse_id')
+        || isSchemaCacheMissingColumnError(error, 'party_id')
+        || isSchemaCacheMissingColumnError(error, 'total')
+        || isSchemaCacheMissingColumnError(error, 'subtotal')
+        || isSchemaCacheMissingColumnError(error, 'items')
+        || isSchemaCacheMissingColumnError(error, 'delivery_fee')
+        || isSchemaCacheMissingColumnError(error, 'discount')
+      )) {
+        const fallback = buildOrderPersistencePayload(order, { includeStatus, minimal: true });
         ({ error } = await supabase
           .from('orders')
           .update(fallback)
@@ -867,7 +910,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       }
       throw new Error(localizeSupabaseError(err));
     }
-  }, []);
+  }, [orders, sessionScope?.scope?.warehouseId]);
 
   const createRemoteOrder = useCallback(async (order: Order) => {
     try {
@@ -879,26 +922,10 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         if (code === 'PGRST204' && msg) return msg.toLowerCase().includes(String(column).toLowerCase());
         return /schema cache/i.test(msg) && new RegExp(String(column).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i').test(msg);
       };
-      const scopedWarehouseId = sessionScope?.scope?.warehouseId;
-      const warehouseId = (typeof (order as any).warehouseId === 'string' && isUuid((order as any).warehouseId))
-        ? (order as any).warehouseId
-        : (typeof scopedWarehouseId === 'string' && isUuid(scopedWarehouseId) ? scopedWarehouseId : null);
-      const deliveryZoneId = (typeof order.deliveryZoneId === 'string' && isUuid(order.deliveryZoneId))
-        ? order.deliveryZoneId
-        : null;
       const payload: Record<string, any> = {
         id: order.id,
-        status: order.status,
-        delivery_zone_id: deliveryZoneId,
-        warehouse_id: warehouseId,
-        data: order,
+        ...buildOrderPersistencePayload(order, { includeStatus: true, minimal: false }),
       };
-      const partyId = (order as any)?.partyId;
-      payload.party_id = isUuid(partyId) ? partyId : null;
-      if (typeof (order as any).currency === 'string' && String((order as any).currency).trim()) {
-        payload.currency = String((order as any).currency).trim().toUpperCase();
-      }
-      payload.customer_auth_user_id = isUuid(order.userId) ? order.userId : null;
 
       let error: any = null;
       ({ error } = await supabase
@@ -912,13 +939,8 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       )) {
         const fallback: Record<string, any> = {
           id: order.id,
-          status: order.status,
-          data: order,
-          customer_auth_user_id: payload.customer_auth_user_id,
+          ...buildOrderPersistencePayload(order, { includeStatus: true, minimal: true }),
         };
-        if (typeof (order as any).currency === 'string' && String((order as any).currency).trim()) {
-          fallback.currency = String((order as any).currency).trim().toUpperCase();
-        }
         ({ error } = await supabase
           .from('orders')
           .insert(fallback));
