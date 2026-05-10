@@ -2297,7 +2297,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
     items = pricedItems;
     if (repricingUsedLocalFallback) {
-      showNotification('تعذر جلب التسعير النهائي لبعض الأصناف ضمن المهلة، تم اعتماد السعر المحلي مؤقتًا وسيُعاد التحقق أثناء المعالجة.', 'warning');
+      logger.warn('In-store repricing used local fallback for one or more items due to timeout.');
     }
 
     let fxRate = 1;
