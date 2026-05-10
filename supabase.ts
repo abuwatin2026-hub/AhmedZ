@@ -144,6 +144,19 @@ const createConcurrencyFetch = (
       return e;
     }
   };
+  const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+  const waitForQueueSlot = async (signal?: AbortSignal | null, maxWaitMs = 15_000) => {
+    const startedAt = Date.now();
+    while (maxQueue > 0 && queue.length >= maxQueue) {
+      if (signal?.aborted) throw makeAbortError();
+      if (Date.now() - startedAt >= maxWaitMs) {
+        const err: any = new Error('Request queue is busy. Please retry.');
+        err.name = 'ConcurrencyQueueBusyTimeout';
+        throw err;
+      }
+      await sleep(35);
+    }
+  };
 
   const pump = () => {
     while (active < maxConcurrent && queue.length) {
@@ -177,9 +190,7 @@ const createConcurrencyFetch = (
     }
 
     if (maxQueue > 0 && queue.length >= maxQueue) {
-      const err: any = new Error('Too many pending requests');
-      err.name = 'ConcurrencyQueueOverflow';
-      throw err;
+      await waitForQueueSlot(signal, 15_000);
     }
 
     return await new Promise<Response>((resolve, reject) => {

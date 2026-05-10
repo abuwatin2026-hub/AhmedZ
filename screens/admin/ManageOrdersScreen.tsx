@@ -422,6 +422,7 @@ const ManageOrdersScreen: React.FC = () => {
     const startInStoreBackgroundProbe = useCallback((orderId: string, opId: string) => {
         stopInStoreBackgroundProbe();
         let ticks = 0;
+        let resumeAttempted = false;
         inStoreBackgroundProbeTimerRef.current = window.setInterval(async () => {
             if (inStoreBackgroundProbeBusyRef.current) return;
             inStoreBackgroundProbeBusyRef.current = true;
@@ -447,19 +448,57 @@ const ManageOrdersScreen: React.FC = () => {
                     }
                 }
                 if (order) {
-                    stopInStoreBackgroundProbe();
-                    const shortId = String(order.id || '').slice(-6).toUpperCase();
                     const statusKey = (String(order.status || '').trim() as OrderStatus) || 'pending';
-                    const statusLabel = statusTranslations[statusKey] || String(order.status || 'pending');
-                    showNotification(`اكتمل التحقق من عملية الخلفية #${shortId} (الحالة: ${statusLabel}) | تتبع ${opId}`, order.status === 'delivered' ? 'success' : 'info');
-                    inStorePendingOrderIdRef.current = '';
-                    void fetchOrders();
-                    return;
+                    if (statusKey === 'delivered') {
+                        stopInStoreBackgroundProbe();
+                        const shortId = String(order.id || '').slice(-6).toUpperCase();
+                        showNotification(`اكتمل التحقق من عملية الخلفية #${shortId} (الحالة: تم التوصيل) | تتبع ${opId}`, 'success');
+                        inStorePendingOrderIdRef.current = '';
+                        void fetchOrders();
+                        return;
+                    }
+                    if (statusKey === 'pending' && isInStoreOrder(order) && !resumeAttempted) {
+                        resumeAttempted = true;
+                        showNotification(`تم إنشاء الطلب لكنه ما يزال قيد الانتظار. جاري محاولة الإتمام تلقائيًا... | تتبع ${opId}`, 'info');
+                        try {
+                            const canMarkPaidNow = hasPermission('orders.markPaid');
+                            if (canMarkPaidNow) {
+                                const pbRaw = (order as any)?.paymentBreakdown ?? (order as any)?.data?.paymentBreakdown;
+                                const paymentBreakdown = Array.isArray(pbRaw) ? pbRaw : [];
+                                const paymentMethod = String((order as any)?.paymentMethod ?? (order as any)?.data?.paymentMethod ?? 'cash').trim() || 'cash';
+                                const cashAmount = paymentBreakdown
+                                    .filter((p: any) => String(p?.method || '').trim() === 'cash')
+                                    .reduce((s: number, p: any) => s + (Number(p?.amount) || 0), 0);
+                                const hasCash = cashAmount > 0.000000001 || (paymentBreakdown.length === 0 && paymentMethod === 'cash');
+                                if (!(hasCash && !currentShift)) {
+                                    await resumeInStorePendingOrder(order.id, {
+                                        paymentMethod,
+                                        paymentBreakdown: paymentBreakdown.length ? paymentBreakdown : undefined,
+                                        occurredAt: new Date().toISOString(),
+                                    });
+                                }
+                            }
+                            const refreshed = await fetchRemoteOrderById(order.id);
+                            if (refreshed && String(refreshed.status || '').trim() === 'delivered') {
+                                stopInStoreBackgroundProbe();
+                                const shortId = String(refreshed.id || '').slice(-6).toUpperCase();
+                                showNotification(`اكتمل التحقق وتم إتمام الطلب #${shortId} | تتبع ${opId}`, 'success');
+                                inStorePendingOrderIdRef.current = '';
+                                void fetchOrders();
+                                return;
+                            }
+                        } catch {}
+                    }
                 }
                 if (ticks >= 8) {
                     stopInStoreBackgroundProbe();
                     const stageHint = describeInStoreStage(opId);
-                    showNotification(`لم يتم العثور على طلب مطابق بعد المهلة. التتبع: ${opId}. ${stageHint} أعد المحاولة ولا تعتبر العملية ناجحة.`, 'error');
+                    if (order && String(order.status || '').trim() === 'pending') {
+                        const shortId = String(order.id || '').slice(-6).toUpperCase();
+                        showNotification(`تم العثور على الطلب #${shortId} لكنه ما يزال قيد الانتظار. ${stageHint} استخدم زر "إعادة محاولة الإتمام". التتبع: ${opId}`, 'error');
+                    } else {
+                        showNotification(`لم يتم العثور على طلب مطابق بعد المهلة. التتبع: ${opId}. ${stageHint} أعد المحاولة ولا تعتبر العملية ناجحة.`, 'error');
+                    }
                 }
             } catch {
                 if (ticks >= 8) {
@@ -471,7 +510,7 @@ const ManageOrdersScreen: React.FC = () => {
                 inStoreBackgroundProbeBusyRef.current = false;
             }
         }, 12000);
-    }, [describeInStoreStage, fetchOrders, fetchRemoteOrderById, showNotification, stopInStoreBackgroundProbe]);
+    }, [currentShift, describeInStoreStage, fetchOrders, fetchRemoteOrderById, hasPermission, isInStoreOrder, resumeInStorePendingOrder, showNotification, stopInStoreBackgroundProbe]);
     useEffect(() => {
         return () => {
             stopInStoreBackgroundProbe();
