@@ -129,7 +129,7 @@ const CustomerLayout: React.FC = () => {
   const { settings } = useSettings();
   if (settings.maintenanceEnabled) {
     return (
-      <div className="min-h-screen min-h-dvh flex items-center justify-center bg-gray-50 dark:bg-gray-950 text-gray-800 dark:text-gray-200 px-6">
+      <div className="min-h-dvh flex items-center justify-center bg-gray-50 dark:bg-gray-950 text-gray-800 dark:text-gray-200 px-6">
         <div className="w-full max-w-md bg-white dark:bg-gray-900 rounded-xl shadow-lg p-6 text-center">
           <div className="text-2xl font-bold mb-2">التطبيق في وضع الصيانة</div>
           <div className="text-sm text-gray-600 dark:text-gray-400 mb-4">{settings.maintenanceMessage || 'الرجاء المحاولة لاحقًا.'}</div>
@@ -141,7 +141,7 @@ const CustomerLayout: React.FC = () => {
     );
   }
   return (
-    <div className="min-h-screen min-h-dvh font-sans text-gray-800 dark:text-gray-200">
+    <div className="min-h-dvh font-sans text-gray-800 dark:text-gray-200">
       <Header />
       <ConnectivityBanner />
       <Notification />

@@ -430,7 +430,7 @@ const AdminLayout: React.FC = () => {
   };
 
   return (
-    <div className="flex min-h-screen min-h-dvh bg-gray-100 dark:bg-gray-900 font-sans rtl:flex-row-reverse">
+    <div className="flex min-h-dvh bg-gray-100 dark:bg-gray-900 font-sans rtl:flex-row-reverse">
       {/* Overlay for mobile */}
       {isSidebarOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-20 md:hidden" onClick={() => setIsSidebarOpen(false)}></div>

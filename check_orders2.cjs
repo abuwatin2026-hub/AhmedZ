@@ -9,11 +9,6 @@ async function check() {
       select id, data->>'customerName' as name 
       from public.orders
       where created_at >= '2026-05-09T00:00:00Z'
-        and (
-          lower(coalesce(data->>'customerName', '')) like '%uat%'
-          or lower(coalesce(data->>'customerName', '')) like '%test%'
-          or lower(coalesce(data->>'isTestOrder', 'false')) in ('true', '1', 'yes')
-        )
     `);
     console.log(res.rows);
   } finally {
