@@ -3383,7 +3383,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           fetchRemoteOrderById(newOrder.id),
           'read_final_order',
           'قراءة الطلب النهائي من الخادم',
-          12000
+          20000
         );
         if (freshOrder) {
           finalized = freshOrder;
@@ -4546,13 +4546,14 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
 
       // Use atomic RPC for delivery confirmation (Status Update + Stock Deduction)
+      const orderWarehouseId = String((updated as any).warehouseId || (updated as any).warehouse_id || '').trim();
       const baseItems = (updated.items || []).filter((it: any) => !(it?.lineType === 'promotion' || it?.promotionId || it?.category === 'promotion'));
       const merged = new Map<string, { itemId: string; warehouseId: string; quantity: number }>();
       for (const item of baseItems) {
         const itemId = String((item as any)?.itemId || (item as any)?.id || '');
         const quantity = Number(getRequestedBaseQuantity(item)) || 0;
         if (!itemId || !(quantity > 0)) continue;
-        const whId = String((item as any)?.warehouseId || warehouseId || '').trim();
+        const whId = String((item as any)?.warehouseId || orderWarehouseId || '').trim();
         const key = `${whId}:${itemId}`;
         const prev = merged.get(key);
         merged.set(key, { itemId, warehouseId: whId, quantity: (prev?.quantity || 0) + quantity });
@@ -4564,9 +4565,10 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           const itemId = String((pi as any)?.itemId || (pi as any)?.id || '');
           const quantity = Number((pi as any)?.quantity) || 0;
           if (!itemId || !(quantity > 0)) continue;
-          const key = `${warehouseId}:${itemId}`;
+          const whId = String((pi as any)?.warehouseId || orderWarehouseId || '').trim();
+          const key = `${whId}:${itemId}`;
           const prev = merged.get(key);
-          merged.set(key, { itemId, warehouseId, quantity: (prev?.quantity || 0) + quantity });
+          merged.set(key, { itemId, warehouseId: whId, quantity: (prev?.quantity || 0) + quantity });
         }
       }
       const reserveItems = Array.from(merged.values())
